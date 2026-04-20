@@ -10,6 +10,7 @@ import {
   ScrollText,
   Shield,
   Wrench,
+  FileText,
   KeyRound,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/audit', icon: ScrollText, label: 'Audit Log', multiTenantOnly: true },
   { to: '/alerts', icon: Shield, label: 'Security Alerts', multiTenantOnly: true },
   { to: '/sessions', icon: KeyRound, label: 'Sessions', multiTenantOnly: true },
+  { to: '/logs', icon: FileText, label: 'Server Logs' },
   { to: '/tools', icon: Wrench, label: 'Admin Tools', multiTenantOnly: true },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

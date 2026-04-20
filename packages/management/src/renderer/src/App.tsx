@@ -13,6 +13,7 @@ import { SecurityAlertsPage } from '@/pages/SecurityAlertsPage';
 import { SessionsPage } from '@/pages/SessionsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { AdminToolsPage } from '@/pages/AdminToolsPage';
+import { LogsPage } from '@/pages/LogsPage';
 import { useAuthStore } from '@/stores/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="alerts" element={<SecurityAlertsPage />} />
         <Route path="sessions" element={<SessionsPage />} />
         <Route path="tools" element={<AdminToolsPage />} />
+        <Route path="logs" element={<LogsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

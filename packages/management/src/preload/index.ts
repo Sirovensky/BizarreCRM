@@ -79,6 +79,9 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   // admin:* (env-settings editor — edits .env directly)
   'admin:get-env-settings',
   'admin:set-env-settings',
+  // admin:* (log viewer — reads logs/ files directly via fs)
+  'admin:list-logs',
+  'admin:tail-log',
   // service:* (sc.exe / pm2)
   'service:get-status',
   'service:start',
@@ -189,6 +192,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getEnvSettings: () => safeInvoke('admin:get-env-settings'),
     setEnvSettings: (updates: Record<string, string>) =>
       safeInvoke('admin:set-env-settings', updates),
+    listLogs: () => safeInvoke('admin:list-logs'),
+    tailLog: (payload: { name: string; lines: number }) =>
+      safeInvoke('admin:tail-log', payload),
   },
 
   // ── Service Control (sc.exe/PM2 — works without server) ────────

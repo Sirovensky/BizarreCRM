@@ -282,6 +282,10 @@ interface ElectronAPI {
     getEnvSettings(): Promise<ApiResponse<{ fields: EnvSettingField[] }>>;
     /** Bulk-write env keys to .env. Caller must restart the server to apply. */
     setEnvSettings(updates: Record<string, string>): Promise<ApiResponse<{ keysUpdated: string[]; requiresRestart: boolean }>>;
+    /** Enumerate whitelisted log files with size + mtime. */
+    listLogs(): Promise<ApiResponse<{ files: Array<{ name: string; path: string | null; size: number; mtime: string | null; exists: boolean; error?: string }> }>>;
+    /** Tail the last N lines of a whitelisted log file. */
+    tailLog(payload: { name: string; lines: number }): Promise<ApiResponse<{ content: string; size: number; mtime: string | null; truncated: boolean }>>;
   };
   service: {
     getStatus(): Promise<ServiceStatus>;

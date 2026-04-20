@@ -221,6 +221,17 @@ const SchemaResetRateLimits = z.object({
   all: z.boolean().optional(),
 }).strict();
 
+// Log viewer: only whitelisted file names are accepted. The whitelist is
+// hard-coded to prevent path-traversal — even though `assertSafePath` would
+// normally guard fs reads, the log viewer never accepts an arbitrary path.
+const LOG_FILE_WHITELIST = ['bizarre-crm.out.log', 'bizarre-crm.err.log'] as const;
+type LogFileName = typeof LOG_FILE_WHITELIST[number];
+
+const SchemaTailLog = z.object({
+  name: z.enum(LOG_FILE_WHITELIST as unknown as [LogFileName, ...LogFileName[]]),
+  lines: z.number().int().min(1).max(2000),
+}).strict();
+
 // ── ALLOWED_FILE_ROOTS ────────────────────────────────────────────────
 // Only these roots are accepted for admin:browse-drive / admin:create-folder.
 // On Windows the common form is a drive letter root (C:\, D:\, ...).
@@ -716,6 +727,67 @@ function upsertEnvKey(content: string, key: string, rawValue: string): string {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Resolve `<root>/logs/<name>` and assert the resolved path stays inside
+ * the trusted root's `logs/` directory. Returns null on integrity failure
+ * so the caller can return a structured error instead of crashing.
+ */
+function resolveLogPath(name: string): { ok: true; path: string } | { ok: false; message: string } {
+  let root: string | null = null;
+  try { root = resolveTrustedProjectRoot(); } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Project root not resolvable' };
+  }
+  if (!root) return { ok: false, message: 'Project root could not be verified' };
+  const logsDir = path.resolve(path.join(root, 'logs'));
+  const target = path.resolve(path.join(logsDir, name));
+  if (!isPathUnder(target, logsDir)) {
+    return { ok: false, message: 'log path escaped trusted logs/' };
+  }
+  return { ok: true, path: target };
+}
+
+/**
+ * Read the last `lines` lines of `filePath`. Reads the tail of the file
+ * in chunks (8 KiB) backwards so that gigabyte-sized PM2 logs do not
+ * load the whole file into memory just to grab the last 200 lines.
+ */
+function tailFile(filePath: string, lines: number): { content: string; size: number; truncated: boolean } {
+  const stat = fs.statSync(filePath);
+  if (stat.size === 0) return { content: '', size: 0, truncated: false };
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const chunkSize = 8192;
+    const buffers: Buffer[] = [];
+    let position = stat.size;
+    let collectedLines = 0;
+    let truncated = false;
+    while (position > 0 && collectedLines <= lines) {
+      const readSize = Math.min(chunkSize, position);
+      position -= readSize;
+      const buf = Buffer.alloc(readSize);
+      fs.readSync(fd, buf, 0, readSize, position);
+      buffers.unshift(buf);
+      // Count newlines in the chunk we just read.
+      for (let i = 0; i < buf.length; i++) {
+        if (buf[i] === 0x0a) collectedLines++;
+      }
+      // Hard cap: never let a runaway file blow memory. 4 MiB is plenty for
+      // 2000 lines of pm2 output even with stack traces.
+      const totalBytes = buffers.reduce((a, b) => a + b.length, 0);
+      if (totalBytes > 4 * 1024 * 1024) { truncated = true; break; }
+    }
+    let content = Buffer.concat(buffers).toString('utf-8');
+    if (collectedLines > lines) {
+      // Drop the partial first line so the output starts at a real newline.
+      const allLines = content.split('\n');
+      content = allLines.slice(allLines.length - lines).join('\n');
+    }
+    return { content, size: stat.size, truncated };
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1579,6 +1651,58 @@ export function registerManagementIpc(): void {
     }
     writeEnvAtomic(env.path, content);
     return { success: true, data: { keysUpdated: Object.keys(parsed.data), requiresRestart: true } };
+  }));
+
+  // ── Log viewer (PM2 stdout/stderr) ─────────────────────────────
+  // Reads logs/ files directly via fs in the dashboard main process.
+  // Works even when the server is down — operator can still see why it
+  // crashed. Whitelist + path-prefix check guard against traversal.
+
+  ipcMain.handle('admin:list-logs', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    const files = LOG_FILE_WHITELIST.map((name) => {
+      const resolved = resolveLogPath(name);
+      if (!resolved.ok) {
+        return { name, path: null, size: 0, mtime: null, exists: false, error: resolved.message };
+      }
+      try {
+        const stat = fs.statSync(resolved.path);
+        return {
+          name,
+          path: resolved.path,
+          size: stat.size,
+          mtime: stat.mtime.toISOString(),
+          exists: true,
+        };
+      } catch {
+        return { name, path: resolved.path, size: 0, mtime: null, exists: false };
+      }
+    });
+    return { success: true, data: { files } };
+  }));
+
+  ipcMain.handle('admin:tail-log', wrapHandler(async (event, payload: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTailLog.safeParse(payload);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const resolved = resolveLogPath(parsed.data.name);
+    if (!resolved.ok) return { success: false, message: resolved.message };
+    if (!fs.existsSync(resolved.path)) {
+      return { success: true, data: { content: '', size: 0, mtime: null, truncated: false } };
+    }
+    const stat = fs.statSync(resolved.path);
+    const tail = tailFile(resolved.path, parsed.data.lines);
+    return {
+      success: true,
+      data: {
+        content: tail.content,
+        size: tail.size,
+        mtime: stat.mtime.toISOString(),
+        truncated: tail.truncated,
+      },
+    };
   }));
 
   // ── Utilities ──────────────────────────────────────────────────
