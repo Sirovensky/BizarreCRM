@@ -20,6 +20,23 @@ Execution layer on top of `ios/ActionPlan.md`. Tells each sub-agent:
 5. Open a PR titled `[§N] <section title>`. Small commits > big commits.
 6. CI runs the phase gate for the section; merge blocks until green.
 
+## Merged sections (do not pick — content consolidated)
+
+| Deprecated § | See instead |
+|---|---|
+| §79 Rollout Strategy | §313 |
+| §91 Customer-facing app | (out of scope) |
+| §157 Haptic custom patterns | §69 |
+| §159 Color token system | §311 |
+| §160 Typography scale | §311 |
+| §205 Staff chat deep | §47 |
+| §206 Role matrix deep | §49 |
+| §241 Audit log viewer deep | §52 |
+| §259 Referral tracking deep | §118 |
+| §297 Apple Watch complications | §154 |
+
+Deprecated numbers kept in ActionPlan as pointer stubs so link integrity holds.
+
 ---
 
 ## Independence rules (hard constraints)
@@ -167,14 +184,16 @@ Each row is an independent agent. Zero cross-dependencies between rows except al
 | 3 | Dashboard | `Dashboard` | `Packages/Dashboard/Sources/**` | §4-§18 |
 | 4 | Tickets list + detail (read) | `Tickets` | `Packages/Tickets/Sources/**` | §3, §5-§18 |
 | 5 | Customers list + detail (read) | `Customers` | `Packages/Customers/Sources/**` | §3, §4, §6-§18 |
-| 7 | Inventory list + detail (read) | `Inventory` | `Packages/Inventory/Sources/**` | §3-§6, §8-§18 |
-| 10 | Invoices list + detail (read) | `Invoices` | `Packages/Invoices/Sources/**` | §3-§9, §11-§18 |
-| 6 | SMS threads + messages (read) | `Communications` | `Packages/Communications/Sources/**` | §3-§5, §7-§18 |
-| 8 | Notifications list | `Notifications` | `Packages/Notifications/Sources/**` | others |
-| 9 | Estimates list + detail | `Estimates` | `Packages/Estimates/Sources/**` | others |
-| 11 | Appointments list | `Appointments` | `Packages/Appointments/Sources/**` | others |
-| 12 | Expenses list | `Expenses` | `Packages/Expenses/Sources/**` | others |
-| 13 | Employees list | `Employees` | `Packages/Employees/Sources/**` | others |
+| 6 | Inventory list + detail (read) | `Inventory` | `Packages/Inventory/Sources/**` | others |
+| 7 | Invoices list + detail (read) | `Invoices` | `Packages/Invoices/Sources/**` | others |
+| 8 | Estimates list + detail | `Estimates` | `Packages/Estimates/Sources/**` | others |
+| 9 | Leads list | `Customers` | `Packages/Customers/Sources/Leads/**` | others |
+| 10 | Appointments list | `Appointments` | `Packages/Appointments/Sources/**` | others |
+| 11 | Expenses list | `Expenses` | `Packages/Expenses/Sources/**` | others |
+| 12 | SMS threads + messages (read) | `Communications` | `Packages/Communications/Sources/**` | others |
+| 13 | Notifications list | `Notifications` | `Packages/Notifications/Sources/**` | others |
+| 14 | Employees list | `Employees` | `Packages/Employees/Sources/**` | others |
+| 15 | Reports stubs | `Reports` | `Packages/Reports/Sources/**` (read placeholders; full charts in Phase 8) | others |
 | 18 | Global search | `Search` | `Packages/Search/Sources/**` | others |
 | 130 | On-device FTS5 indexer | `Search` | §18 | `Search/FTS/**` |
 
@@ -191,13 +210,13 @@ Shared rule: each adds its own `APIClient+<Domain>.swift` in `Networking` packag
 | 4+85 | Ticket create / edit deep | `Tickets` | §4 | `Tickets/Create/**`, `Tickets/Edit/**` |
 | 131 | Ticket state machine | `Tickets` | §4 | `Tickets/StateMachine.swift` |
 | 5+253 | Customer create / edit / merge | `Customers` | §5 | `Customers/Create/**`, `Customers/Merge/**` |
-| 7+113 | Inventory create / receive | `Inventory` | §7 | `Inventory/Create/**`, `Inventory/Receiving/**` |
-| 89 | Stocktake | `Inventory` | §7 | `Inventory/Stocktake/**` |
-| 10+132 | Invoice payment / refund | `Invoices` | §10 | `Invoices/Payment/**`, `Invoices/Refunds/**` |
-| 9 | Estimate convert to ticket | `Estimates` | §9, §4 | `Estimates/Convert/**` |
-| 11+124 | Appointment create + scheduling engine | `Appointments` | §11 | `Appointments/Create/**` |
-| 125 | Message templates | `Communications` | §6 | `Communications/Templates/**` |
-| 48 | Employee clock in/out | `Employees` | §13 | `Employees/Clock/**` |
+| 6+113 | Inventory create / receive | `Inventory` | §6 | `Inventory/Create/**`, `Inventory/Receiving/**` |
+| 89 | Stocktake | `Inventory` | §6 | `Inventory/Stocktake/**` |
+| 7+132 | Invoice payment / refund | `Invoices` | §7 | `Invoices/Payment/**`, `Invoices/Refunds/**` |
+| 8 | Estimate convert to ticket | `Estimates` | §8, §4 | `Estimates/Convert/**` |
+| 10+124 | Appointment create + scheduling engine | `Appointments` | §10 | `Appointments/Create/**` |
+| 125 | Message templates | `Communications` | §12 | `Communications/Templates/**` |
+| 48 | Employee clock in/out | `Employees` | §14 | `Employees/Clock/**` |
 | 119 | Commissions | `Employees` | §48 | `Employees/Commissions/**` |
 
 **Phase 4 gate:** Every entity roundtrips server; audit log entries appear; offline writes survive.
@@ -276,9 +295,9 @@ Each feature package gets an iPad polish ticket; owner stays the feature owner f
 
 | § | Title | Pkg | Deps | Owns |
 |---|---|---|---|---|
-| 14 | Reports charts | `Reports` | Phase 3 | `Packages/Reports/Sources/**` |
-| 243 | Tenant BI | `Reports` | §14 | `Reports/BI/**` |
-| 302 | Drill-through | `Reports` | §14 | `Reports/DrillThrough/**` |
+| 15 | Reports charts | `Reports` | Phase 3 | `Packages/Reports/Sources/**` |
+| 243 | Tenant BI | `Reports` | §15 | `Reports/BI/**` |
+| 302 | Drill-through | `Reports` | §15 | `Reports/DrillThrough/**` |
 | 117 | Loyalty engine | `Customers` | Phase 4 | `Customers/Loyalty/**` |
 | 38 | Memberships | `Customers` | §117 | `Customers/Memberships/**` |
 | 118+259 | Referral program | `Customers` | §117 | `Customers/Referrals/**` |
