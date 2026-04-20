@@ -753,9 +753,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Blacklist lookup via tenant-configurable provider (CheckMEND/IMEI24/Swappa)
 - [ ] Called from ticket create / inventory trade-in
 - [ ] Server proxies the request; third-party tokens never in iOS bundle
-- [ ] Results UI: green "Clean" / amber "Previously reported lost — verify with customer" / red "Reported stolen — do not accept"
-- [ ] Policy: red blocks ticket creation + requires manager override with reason
-- [ ] Policy: amber requires photo of ID + signed affidavit
+- [ ] Results UI: show whatever the provider returns as plain info (status + last-checked date). We do not gatekeep — staff decide based on their own shop policy.
+- [ ] No automatic blocking on any status; no mandatory affidavit / override flow. Shop-level policy lives in their ops manual, not our app.
 - [ ] Sovereignty: raw IMEI never logged off tenant server; third-party response cached with TTL
 - [ ] Warranty record created on ticket close for each installed part/service
 - [ ] Warranty record fields: part_id, serial, install date, duration (90d/1yr/lifetime), conditions
