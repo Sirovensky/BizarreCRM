@@ -517,7 +517,8 @@ export function AutomationsTab() {
     queryKey: ['settings', 'statuses'],
     queryFn: async () => {
       const res = await settingsApi.getStatuses();
-      return (res.data.data?.statuses || res.data.data || []) as TicketStatus[];
+      // Server: res.json({ success: true, data: statuses }) — array directly.
+      return (res.data.data || []) as TicketStatus[];
     },
   });
 

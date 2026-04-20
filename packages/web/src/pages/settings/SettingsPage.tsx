@@ -866,7 +866,8 @@ function StatusesTab() {
     queryKey: ['settings', 'statuses'],
     queryFn: async () => {
       const res = await settingsApi.getStatuses();
-      return res.data.data as TicketStatus[];
+      // SQLite may return 0/1 for boolean fields; cast through unknown.
+      return res.data.data as unknown as TicketStatus[];
     },
   });
 

@@ -164,6 +164,8 @@ function isBareHostname(): boolean {
   const host = window.location.hostname; // e.g. "localhost", "example.com", "shop.example.com"
   // Bare domain: localhost, example.com, or an IP address
   if (host === 'localhost' || host === '127.0.0.1') return true;
+  // Any IPv4 address (LAN, loopback, etc.) — never a tenant subdomain
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
   // "bizarreelectronics.localhost" = tenant subdomain in dev (2 parts but NOT bare)
   if (host.endsWith('.localhost')) return false;
   // If the host has no subdomain (only one dot: "example.com")

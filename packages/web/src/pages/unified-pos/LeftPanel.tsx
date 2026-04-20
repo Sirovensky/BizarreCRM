@@ -16,12 +16,13 @@ function UnifiedSearchBar() {
   const [input, setInput] = useState('');
   const [focused, setFocused] = useState(false);
   const [results, setResults] = useState<{ type: string; label: string; sub?: string; action: () => void }[]>([]);
-  const { setCustomer, customer, addProduct, clearCart } = useUnifiedPosStore();
+  const { setCustomer, customer, addProduct, addRepair, clearCart } = useUnifiedPosStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!input.trim()) { setResults([]); return; }
+    let isCancelled = false;
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const q = input.trim();
@@ -56,16 +57,44 @@ function UnifiedSearchBar() {
               }
               for (const device of ticket.devices ?? []) {
                 const parts = (device.parts ?? []).map((p: any) => ({
-                  _key: genId(), inventory_item_id: p.inventory_item_id,
+                  _key: genId(),
+                  inventory_item_id: p.inventory_item_id,
                   name: p.item_name || `Part #${p.inventory_item_id}`,
-                  sku: p.item_sku || null, quantity: p.quantity, price: p.price,
-                  taxable: true, status: p.status || 'available',
+                  sku: p.item_sku || null,
+                  quantity: p.quantity,
+                  price: p.price,
+                  taxable: true,
+                  status: p.status || 'available',
                 }));
-                addProduct({ type: 'product', id: genId(), inventoryItemId: 0, name: `${device.device_name} - ${device.service?.name || 'Service'}`, sku: null, quantity: 1, unitPrice: device.price || 0, taxable: false, taxInclusive: false } as any);
+                addRepair({
+                  type: 'repair',
+                  id: genId(),
+                  device: {
+                    device_type: device.device_type || '',
+                    device_name: device.device_name || '',
+                    device_model_id: device.device_model_id ?? null,
+                    imei: device.imei || '',
+                    serial: device.serial || '',
+                    security_code: device.security_code || '',
+                    color: device.color || '',
+                    network: device.network || '',
+                    pre_conditions: device.pre_conditions || [],
+                    additional_notes: device.additional_notes || '',
+                    device_location: device.device_location || '',
+                    warranty: !!device.warranty,
+                    warranty_days: device.warranty_days || 0,
+                  },
+                  serviceName: device.service?.name || 'Service/Labor',
+                  repairServiceId: device.service_id ?? null,
+                  selectedGradeId: null,
+                  laborPrice: device.price || 0,
+                  lineDiscount: device.line_discount || 0,
+                  parts,
+                  taxable: false,
+                });
               }
               toast.success(`Loaded ticket T-${ticketMatch[1].padStart(4, '0')}`);
-              setInput('');
-              setResults([]);
+              if (!isCancelled) { setInput(''); setResults([]); }
             } catch { toast.error('Failed to load ticket'); }
           },
         });
@@ -82,8 +111,7 @@ function UnifiedSearchBar() {
             sub: c.mobile || c.phone || c.email,
             action: () => {
               setCustomer(c);
-              setInput('');
-              setResults([]);
+              if (!isCancelled) { setInput(''); setResults([]); }
             },
           });
         }
@@ -107,8 +135,7 @@ function UnifiedSearchBar() {
                 unitPrice: p.retail_price ?? p.price ?? 0,
                 taxable: true, taxInclusive: !!p.tax_inclusive,
               });
-              setInput('');
-              setResults([]);
+              if (!isCancelled) { setInput(''); setResults([]); }
               toast.success(`Added ${p.name}`);
             },
           });
@@ -117,9 +144,9 @@ function UnifiedSearchBar() {
         // Search failed — handled by empty results
       }
 
-      setResults(items);
+      if (!isCancelled) setResults(items);
     }, 250);
-    return () => clearTimeout(debounceRef.current);
+    return () => { isCancelled = true; clearTimeout(debounceRef.current); };
   }, [input]); // intentional: debounced search triggers on input change, API fns and store actions are stable
 
   const iconMap: Record<string, any> = { ticket: Ticket, customer: User, product: Package };
@@ -407,6 +434,8 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
         />
         <button
           onClick={toggleLaborTax}
+          aria-label={item.taxable ? 'Labor taxable — click to remove tax' : 'Labor non-taxable — click to add tax'}
+          aria-pressed={item.taxable}
           className={cn(
             'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
             item.taxable
@@ -422,6 +451,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
         </span>
         <button
           onClick={() => removeCartItem(item.id)}
+          aria-label={`Remove ${item.device.device_name || item.serviceName} from cart`}
           className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
           title="Remove"
         >
@@ -438,6 +468,8 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
               <span className="w-14 text-right">${(p.quantity * p.price).toFixed(2)}</span>
               <button
                 onClick={() => togglePartTax(p._key)}
+                aria-label={p.taxable ? `${p.name} taxable — click to remove tax` : `${p.name} non-taxable — click to add tax`}
+                aria-pressed={p.taxable}
                 className={cn(
                   'w-14 text-right rounded px-0.5 transition-colors cursor-pointer',
                   p.taxable
@@ -486,6 +518,8 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
       />
       <button
         onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<ProductCartItem>)}
+        aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
+        aria-pressed={item.taxable}
         className={cn(
           'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
           item.taxable && !item.taxInclusive
@@ -503,6 +537,7 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
       </span>
       <button
         onClick={() => removeCartItem(item.id)}
+        aria-label={`Remove ${item.name} from cart`}
         className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
         title="Remove"
       >
@@ -524,6 +559,8 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
       </span>
       <button
         onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<MiscCartItem>)}
+        aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
+        aria-pressed={item.taxable}
         className={cn(
           'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
           item.taxable
@@ -539,6 +576,7 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
       </span>
       <button
         onClick={() => removeCartItem(item.id)}
+        aria-label={`Remove ${item.name} from cart`}
         className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
         title="Remove"
       >

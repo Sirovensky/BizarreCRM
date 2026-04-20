@@ -234,11 +234,14 @@ export const ticketApi = {
 };
 
 // ==================== Invoices ====================
+import type { InvoiceDetail } from '@/types/invoice';
+
 export const invoiceApi = {
   list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number }) =>
     api.get('/invoices', { params }),
   stats: () => api.get('/invoices/stats'),
-  get: (id: number) => api.get(`/invoices/${id}`),
+  // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
+  get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
   // DA-6: send an idempotency key so a double-click or flaky network can't
   // create two invoices for the same ticket. Server middleware (idempotent)
   // caches responses keyed on (user, url, key) for 5 minutes.
@@ -348,9 +351,18 @@ export const inventoryApi = {
 };
 
 // ==================== Settings ====================
+
+/** Shape returned by GET /settings/statuses: { success: true, data: TicketStatus[] } */
+export interface StatusListResponse {
+  success: boolean;
+  // Matches the shared TicketStatus shape returned by the server.
+  // SQLite booleans (0/1) are coerced by callers where needed.
+  data: TicketStatus[];
+}
+
 export const settingsApi = {
   reconcileCogs: () => api.post('/settings/reconcile-cogs'),
-  getStatuses: () => api.get('/settings/statuses'),
+  getStatuses: () => api.get<StatusListResponse>('/settings/statuses'),
   createStatus: (data: CreateStatusInput) => api.post('/settings/statuses', data),
   updateStatus: (id: number, data: UpdateStatusInput) => api.put(`/settings/statuses/${id}`, data),
   deleteStatus: (id: number) => api.delete(`/settings/statuses/${id}`),

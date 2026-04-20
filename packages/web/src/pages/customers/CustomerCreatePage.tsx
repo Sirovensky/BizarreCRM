@@ -136,6 +136,9 @@ export function CustomerCreatePage() {
     if (!form.first_name.trim()) {
       newErrors.first_name = 'First name is required';
     }
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      newErrors.email = 'Invalid email';
+    }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -250,7 +253,7 @@ export function CustomerCreatePage() {
               Contact Information
             </h2>
             <div className="space-y-4">
-              <FormField label="Email" htmlFor="email">
+              <FormField label="Email" htmlFor="email" error={errors.email}>
                 <input
                   id="email"
                   type="email"

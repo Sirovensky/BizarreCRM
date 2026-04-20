@@ -20,6 +20,7 @@ import {
   type RefundReasonCode,
 } from '@/components/billing/RefundReasonPicker';
 import { api } from '@/api/client';
+import type { InvoiceDetail } from '@/types/invoice';
 
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -70,7 +71,8 @@ export function InvoiceDetailPage() {
   const blockchypEnabled = bcData?.data?.data?.enabled ?? false;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
 
-  const invoice: any = data?.data?.data?.invoice;
+  // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
+  const invoice: InvoiceDetail | undefined = data?.data?.data;
   const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
 
   const payMutation = useMutation({

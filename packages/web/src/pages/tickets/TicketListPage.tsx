@@ -816,7 +816,8 @@ export function TicketListPage() {
     queryFn: () => settingsApi.getStatuses(),
     staleTime: 30_000, // refresh every 30s to pick up new statuses
   });
-  const statuses: TicketStatus[] = statusData?.data?.data?.statuses || statusData?.data?.statuses || [];
+  // Server: res.json({ success: true, data: statuses }) — array directly.
+  const statuses: TicketStatus[] = statusData?.data?.data || [];
 
   // ─── Fetch users (for Assigned To filter) ─────────────────────────
   const { data: usersData } = useQuery({

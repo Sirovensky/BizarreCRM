@@ -3,6 +3,57 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem, CustomerResult, RepairDrillState, TicketMeta } from './types';
 import { useAuthStore } from '@/stores/authStore';
 
+// Discriminated union for the POS checkout success payload.
+// Server route: POST /pos/checkout-with-ticket
+// The client merges the server data with a `mode` field before storing.
+interface CheckoutTicketRef {
+  id: number;
+  order_id: string;
+  c_first_name?: string | null;
+  c_last_name?: string | null;
+  customer?: { first_name: string; last_name: string; phone?: string | null; email?: string | null } | null;
+  devices?: Array<{ id: number; device_name: string; device_type?: string; service_name?: string }>;
+}
+interface CheckoutInvoiceRef {
+  id: number;
+  order_id: string;
+  total?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
+}
+/** Common optional fallback fields the SuccessScreen reads for legacy compatibility */
+interface CheckoutSuccessExtras {
+  // Legacy flat fields that may appear on older server responses or
+  // are spread from the server data object in callers.
+  ticket_id?: number | null;
+  order_id?: string | null;
+  invoice_id?: number | null;
+  total?: number;
+  change?: number;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
+  devices?: Array<{ id: number; device_name: string; device_type?: string; service_name?: string }>;
+  store_credit_issued?: number;
+  checkin_default_category?: string | null;
+  auto_print_label?: boolean;
+}
+
+export type CheckoutSuccessPayload = CheckoutSuccessExtras & (
+  | {
+      mode: 'checkout';
+      ticket: CheckoutTicketRef | null;
+      invoice: CheckoutInvoiceRef;
+    }
+  | {
+      mode: 'create_ticket';
+      ticket: CheckoutTicketRef;
+      invoice?: CheckoutInvoiceRef | null;
+    }
+);
+
 /** Returns a user-scoped localStorage key so each user gets their own POS state */
 function getUserPosKey(): string {
   const user = useAuthStore.getState().user;
@@ -50,8 +101,8 @@ interface UnifiedPosState {
   setActiveTab: (tab: 'repairs' | 'products' | 'misc') => void;
   showCheckout: boolean;
   setShowCheckout: (show: boolean) => void;
-  showSuccess: any;
-  setShowSuccess: (data: any) => void;
+  showSuccess: CheckoutSuccessPayload | null;
+  setShowSuccess: (data: CheckoutSuccessPayload | null) => void;
 
   // Reset everything
   resetAll: () => void;

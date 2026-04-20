@@ -212,7 +212,8 @@ export function TicketCreatePage() {
     queryKey: ['ticket-statuses'],
     queryFn: () => settingsApi.getStatuses(),
   });
-  const statuses = statusData?.data?.data?.statuses || statusData?.data?.statuses || [];
+  // Server: res.json({ success: true, data: statuses }) — array directly, no .statuses nesting.
+  const statuses = statusData?.data?.data || [];
 
   // ─── Users (technicians) ──────────────────────────────────────────
   const { data: usersData } = useQuery({

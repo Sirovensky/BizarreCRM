@@ -198,7 +198,8 @@ export function TicketDetailPage() {
     queryKey: ['ticket-statuses'],
     queryFn: () => settingsApi.getStatuses(),
   });
-  const statuses: TicketStatus[] = statusData?.data?.data?.statuses || statusData?.data?.statuses || [];
+  // Server: res.json({ success: true, data: statuses }) — array directly, no .statuses nesting.
+  const statuses: TicketStatus[] = statusData?.data?.data || [];
 
   // ─── Fetch history ────────────────────────────────────────────────
   const { data: historyData } = useQuery({
@@ -229,7 +230,8 @@ export function TicketDetailPage() {
     queryFn: () => invoiceApi.get(ticket!.invoice_id!),
     enabled: !!ticket?.invoice_id,
   });
-  const invoice = invoiceData?.data?.data?.invoice;
+  // Server: res.json({ success: true, data: <flat invoice> }) — no .invoice nesting.
+  const invoice = invoiceData?.data?.data;
 
   // ─── Fetch employees ──────────────────────────────────────────────
   const { data: employeesData } = useQuery({
