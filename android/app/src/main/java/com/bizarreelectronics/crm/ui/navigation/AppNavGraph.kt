@@ -189,6 +189,10 @@ sealed class Screen(val route: String) {
     data object EmployeeDetail : Screen("employees/{id}") {
         fun createRoute(id: Long) = "employees/$id"
     }
+
+    // §32.3 Crash reports — Settings → Diagnostics. Lists files written by
+    // util/CrashReporter to filesDir/crash-reports/.
+    data object CrashReports : Screen("settings/diagnostics/crash-reports")
 }
 
 data class BottomNavItem(
@@ -838,6 +842,12 @@ fun AppNavGraph(
                     // actually something for the user to triage.
                     onSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                     onPinSetup = { navController.navigate(Screen.PinSetup.route) },
+                    onCrashReports = { navController.navigate(Screen.CrashReports.route) },
+                )
+            }
+            composable(Screen.CrashReports.route) {
+                com.bizarreelectronics.crm.ui.screens.settings.CrashReportsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.PinSetup.route) {

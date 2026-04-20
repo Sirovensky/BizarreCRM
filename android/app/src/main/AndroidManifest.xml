@@ -131,6 +131,20 @@
                 android:resource="@xml/widget_info" />
         </receiver>
 
+        <!-- §32.3: FileProvider for sharing crash-report log files from
+             filesDir/crash-reports via the system share-sheet. Authority is
+             ${applicationId}.fileprovider; mapped paths live in
+             res/xml/file_paths.xml (only crash-reports/ exposed). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Disable the default WorkManager initializer — we use on-demand
              initialization via BizarreCrmApp (which implements Configuration.Provider). -->
         <provider

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      §32.3 — exposes filesDir/crash-reports/ via FileProvider so the
+      Settings → Crash reports screen can share log files via the system
+      share-sheet without using world-readable storage. The "files-path"
+      root maps to Context.getFilesDir(). Subdir is restricted; nothing
+      else under filesDir leaks.
+    -->
+    <files-path
+        name="crash-reports"
+        path="crash-reports/" />
+</paths>

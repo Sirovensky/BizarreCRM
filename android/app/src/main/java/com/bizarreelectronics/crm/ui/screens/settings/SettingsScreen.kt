@@ -210,6 +210,8 @@ fun SettingsScreen(
     // §2.5 PIN — opens the PinSetupScreen. Row label flips between
     // "Set up PIN" / "Change PIN" based on PinPreferences.isPinSet.
     onPinSetup: (() -> Unit)? = null,
+    // §32.3 — opens the Crash reports diagnostic screen.
+    onCrashReports: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -267,6 +269,17 @@ fun SettingsScreen(
                     icon = Icons.Default.Lock,
                     title = if (pinIsSet) "Change PIN" else "Set up PIN",
                     onClick = onPinSetup,
+                )
+            }
+
+            // §32.3 — Diagnostics → Crash reports. Visible whenever the
+            // callback is wired; the screen handles the empty case so the
+            // row never lies about "no crashes" before the user opens it.
+            if (onCrashReports != null) {
+                SettingsRow(
+                    icon = Icons.Default.BugReport,
+                    title = "Crash reports",
+                    onClick = onCrashReports,
                 )
             }
 

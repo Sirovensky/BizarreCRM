@@ -2706,7 +2706,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Offline buffer in Room; flushes on connectivity + foreground.
 
 ### 32.3 Crash reporting
-- [~] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table. (`util/CrashReporter.kt` writes per-crash log file to `filesDir/crash-reports/` with thread + build + device + cause chain. Rotates to last 10. Room table + breadcrumbs deferred. Installed in `BizarreCrmApp.onCreate`.)
+- [x] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table. (`util/CrashReporter.kt` writes per-crash log to `filesDir/crash-reports/` (thread + build + device + cause chain, rotates to last 10) and `Settings → Crash reports` lets the user view / share via FileProvider / delete. Room table + breadcrumbs still deferred — file-based store works for now.)
 - [ ] Upload on next launch via `POST /telemetry/crashes`.
 - [ ] Opt-in per user (Settings → Diagnostics).
 - [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.
