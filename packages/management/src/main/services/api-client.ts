@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
 import tls from 'node:tls';
+import { app } from 'electron';
 
 let serverPort = 443;
 const REQUEST_TIMEOUT = 30_000;
@@ -83,21 +84,32 @@ function computePemFingerprint(pemContent: string): string {
 /**
  * Resolve the path to server.cert relative to the monorepo root.
  *
- * __dirname at runtime (Electron main, after build) is inside the asar or
- * the unpacked resources folder.  We walk up from the current file to the
- * repo root to find packages/server/certs/server.cert.  If the file is
- * absent (e.g. first-time setup before the server has generated certs), we
- * return null and skip pinning — the connect attempt will still be rejected
- * because rejectUnauthorized behaviour applies — but we log a clear warning.
+ * AUDIT-MGT-007: The previous implementation walked 5 levels of path.dirname
+ * from __dirname, which was correct in dev but broken in a packaged ASAR —
+ * __dirname resolves inside the asar archive and walking up 5 levels only
+ * reaches resources/, not resources/crm-source/.
+ *
+ * Fix: mirror the same packaged/dev split used by resolveTrustedProjectRoot()
+ * in management-api.ts:
+ *   - Packaged: <process.resourcesPath>/crm-source/packages/server/certs/server.cert
+ *   - Dev:      <app.getAppPath()>/../../packages/server/certs/server.cert
+ *               (monorepo layout: app lives in packages/management)
+ *
+ * Returns null if the cert file does not exist; pinning is skipped with a
+ * warning so the dashboard can still start on first-run (before the server
+ * has generated certs).
  */
 function resolveCertPath(): string | null {
-  // In development __dirname is …/packages/management/src/main/services
-  // Walk up 5 levels to reach the monorepo root.
-  let dir = __dirname;
-  for (let i = 0; i < 5; i++) {
-    dir = path.dirname(dir);
+  let crmSource: string;
+  if (app.isPackaged) {
+    // Packaged build: electron-builder copies crm-source into resourcesPath
+    // via the extraResources rule in electron-builder.yml.
+    crmSource = path.join(process.resourcesPath, 'crm-source');
+  } else {
+    // Dev build: monorepo layout — app.getAppPath() === <repo>/packages/management
+    crmSource = path.resolve(app.getAppPath(), '..', '..');
   }
-  const candidate = path.join(dir, 'packages', 'server', 'certs', 'server.cert');
+  const candidate = path.join(crmSource, 'packages', 'server', 'certs', 'server.cert');
   return fs.existsSync(candidate) ? candidate : null;
 }
 

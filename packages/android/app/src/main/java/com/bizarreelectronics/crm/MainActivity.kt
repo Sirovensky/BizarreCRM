@@ -82,10 +82,9 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // FLAG_SECURE removed per product decision — screenshots permitted
-        // app-wide so users and developers can capture flows. Users handling
-        // sensitive PII should rely on device-level protection (screen lock,
-        // work profile) rather than window-flag blocking.
+        // AUDIT-AND-011: restore FLAG_SECURE — customer PII should not leak via Recents thumbnail,
+        // MediaProjection, or adb screencap. GDPR Article 32 + PCI-DSS 3.4.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
 
         // Resolve a route from two possible sources, in priority order:

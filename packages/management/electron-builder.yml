@@ -101,6 +101,7 @@ extraResources:
     filter:
       - packages/server/src/**
       - packages/server/dist/**
+      - packages/server/certs/**
       - packages/server/package.json
       - packages/server/tsconfig.json
       - packages/web/src/**

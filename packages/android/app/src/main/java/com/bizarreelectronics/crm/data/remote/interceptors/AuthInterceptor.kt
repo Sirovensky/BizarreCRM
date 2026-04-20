@@ -13,9 +13,19 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.security.SecureRandom
+import java.security.cert.CertificateException
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 /**
  * OkHttp interceptor that handles JWT authentication.
@@ -221,12 +231,12 @@ class AuthInterceptor @Inject constructor(
                     .header("Content-Type", "application/json")
                     .build()
 
-                // Bare client — no interceptors, no retries — just the raw call.
-                // hostnameVerifier mirrors the self-signed-cert policy the app already uses.
-                val bareClient = okhttp3.OkHttpClient.Builder()
-                    .callTimeout(LOGOUT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                    .hostnameVerifier { _, _ -> true }
-                    .build()
+                // AUDIT-AND-015: bare client with hostname-restricted TLS policy matching
+                // RetrofitClient — trust-all only for LAN hosts in DEBUG; release and
+                // public hostnames use platform CA + default hostname verifier so a MITM
+                // cannot intercept and suppress the logout (keeping the server session alive).
+                val logoutHost = logoutUrl.host
+                val bareClient = buildLogoutClient(logoutHost)
 
                 val resp = bareClient.newCall(logoutRequest).execute()
                 if (BuildConfig.DEBUG) {
@@ -238,6 +248,66 @@ class AuthInterceptor @Inject constructor(
             }
         }
         authPrefs.clear()
+    }
+
+    // AUDIT-AND-015: LAN-host predicate — mirrors RetrofitClient.isDebugTrustedHost.
+    private val debugLoopbackHosts: Set<String> = setOf(
+        "localhost", "10.0.2.2", "10.0.3.2", "127.0.0.1", "::1",
+    )
+
+    private fun isLanHost(hostname: String?): Boolean {
+        if (hostname.isNullOrBlank()) return false
+        val h = hostname.lowercase()
+        if (h in debugLoopbackHosts) return true
+        return try {
+            val addr: InetAddress = InetAddress.getByName(h)
+            if (addr !is Inet4Address) false
+            else {
+                val b = addr.address
+                val b0 = b[0].toInt() and 0xff
+                val b1 = b[1].toInt() and 0xff
+                b0 == 10 || (b0 == 172 && b1 in 16..31) || (b0 == 192 && b1 == 168)
+            }
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * Builds a bare OkHttpClient for the fire-and-forget /auth/logout call.
+     * TLS policy: DEBUG + LAN host → accept self-signed cert (matching RetrofitClient).
+     * Release OR public host → platform default CA + hostname verifier.
+     * No interceptors, no retries — caller swallows all failures (best-effort semantics).
+     */
+    private fun buildLogoutClient(logoutHost: String): okhttp3.OkHttpClient {
+        val builder = okhttp3.OkHttpClient.Builder()
+            .callTimeout(LOGOUT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+
+        if (BuildConfig.DEBUG && isLanHost(logoutHost)) {
+            try {
+                val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+                tmf.init(null as java.security.KeyStore?)
+                val platformTm = tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
+
+                val lanTrustAll = object : X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) =
+                        platformTm.checkClientTrusted(chain, authType)
+                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                        try { platformTm.checkServerTrusted(chain, authType) }
+                        catch (_: CertificateException) { /* accept self-signed on LAN */ }
+                    }
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = platformTm.acceptedIssuers
+                }
+                val sslCtx = SSLContext.getInstance("TLS")
+                sslCtx.init(null, arrayOf<TrustManager>(lanTrustAll), SecureRandom())
+                builder.sslSocketFactory(sslCtx.socketFactory, lanTrustAll)
+                builder.hostnameVerifier { hn, session ->
+                    isLanHost(hn) || HttpsURLConnection.getDefaultHostnameVerifier().verify(hn, session)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "buildLogoutClient: failed to configure LAN TLS, using platform defaults: ${e.message}")
+            }
+        }
+        // else: no custom TLS set → OkHttp uses platform defaults (correct for release / cloud)
+        return builder.build()
     }
 
     private fun isAuthEndpoint(request: Request): Boolean {

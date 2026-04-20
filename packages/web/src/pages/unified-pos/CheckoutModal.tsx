@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { posApi, membershipApi, settingsApi } from '@/api/endpoints';
+import { posApi, membershipApi, settingsApi, blockchypApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
@@ -187,6 +187,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     setSignature(dataUrl);
   }, []);
 
+  // ─── BlockChyp terminal status ──────────────────────────────────
+  // AUDIT-WEB-003: gate card payments behind a real terminal. If BlockChyp
+  // is not configured, the Card button is disabled — no simulation fallback.
+  const { data: bcStatusData } = useQuery({
+    queryKey: ['blockchyp-status'],
+    queryFn: () => blockchypApi.status(),
+    staleTime: 30_000,
+  });
+  const blockchypConfigured = bcStatusData?.data?.data?.enabled ?? false;
+
   // ─── Membership Upsell ──────────────────────────────────────────
   const { customer } = useUnifiedPosStore();
   const queryClient = useQueryClient();
@@ -302,16 +312,6 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     if (r20 > r10) amounts.push(r20);
     return amounts;
   }, [totals.total]);
-
-  // Card "processing" simulation
-  useEffect(() => {
-    if (!processing) return;
-    const timer = setTimeout(() => {
-      setProcessing(false);
-      setCardApproved(true);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [processing]);
 
   const handleCompleteCheckout = async () => {
     if (splitMode) {
@@ -442,21 +442,30 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
             {!splitMode && (
               <div className="grid grid-cols-4 gap-2">
-                {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => { setMethod(key); setCardApproved(false); setProcessing(false); }}
-                    className={cn(
-                      'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
-                      method === key
-                        ? 'border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-400'
-                        : 'border-surface-200 text-surface-600 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {label}
-                  </button>
-                ))}
+                {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => {
+                  // AUDIT-WEB-003: Card is only available when a BlockChyp terminal
+                  // is configured. No simulation fallback.
+                  const isCardDisabled = key === 'Card' && !blockchypConfigured;
+                  return (
+                    <button
+                      key={key}
+                      disabled={isCardDisabled}
+                      title={isCardDisabled ? 'Terminal not configured — go to Settings → Payments to pair a BlockChyp terminal' : undefined}
+                      onClick={() => { if (!isCardDisabled) { setMethod(key); setCardApproved(false); setProcessing(false); } }}
+                      className={cn(
+                        'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
+                        isCardDisabled
+                          ? 'cursor-not-allowed border-surface-200 opacity-50 dark:border-surface-700'
+                          : method === key
+                            ? 'border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-500/10 dark:text-teal-400'
+                            : 'border-surface-200 text-surface-600 hover:border-surface-300 dark:border-surface-700 dark:text-surface-400',
+                      )}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -565,26 +574,27 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             </div>
           )}
 
-          {/* Card processing UI */}
-          {!splitMode && (method === 'Card') && !cardApproved && (
+          {/* Card processing UI — AUDIT-WEB-003: only shown when BlockChyp is
+              configured. No simulation: the terminal handles the transaction. */}
+          {!splitMode && method === 'Card' && blockchypConfigured && !cardApproved && (
             <div className="flex flex-col items-center gap-3 py-4">
               {processing ? (
                 <>
                   <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-                  <p className="text-sm text-surface-600 dark:text-surface-300">Processing payment...</p>
+                  <p className="text-sm text-surface-600 dark:text-surface-300">Processing payment on terminal…</p>
                 </>
               ) : (
                 <button
                   onClick={() => setProcessing(true)}
                   className="rounded-lg bg-teal-600 px-6 py-2 text-sm font-medium text-white hover:bg-teal-700"
                 >
-                  Process ${totals.total.toFixed(2)} on {method}
+                  Process ${totals.total.toFixed(2)} on Terminal
                 </button>
               )}
             </div>
           )}
 
-          {!splitMode && (method === 'Card') && cardApproved && (
+          {!splitMode && method === 'Card' && blockchypConfigured && cardApproved && (
             <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 py-3 dark:bg-green-500/10">
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               <span className="text-sm font-semibold text-green-700 dark:text-green-400">Approved!</span>

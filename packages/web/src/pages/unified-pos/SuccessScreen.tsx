@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, Smartphone, MessageSquare, Mail } from 'lucide-react';
+import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
-import { serverInfoApi, smsApi, notificationApi } from '@/api/endpoints';
+import { serverInfoApi, smsApi, notificationApi, ticketApi } from '@/api/endpoints';
 // FA-L4: QrReceiptCode on the POS success screen lets the customer scan the
 // receipt URL from the counter. It's a secondary channel — email/SMS remain
 // the primary delivery — but works offline for walk-up customers.
@@ -18,7 +18,16 @@ export function SuccessScreen() {
   const [smsSending, setSmsSending] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
 
-  // Fetch server info for QR code URL
+  // Derive IDs early (before hooks) so they can be passed to enabled checks.
+  // These are safe to compute unconditionally because they only read showSuccess.
+  const _data = showSuccess;
+  const _ticket = _data?.ticket;
+  const _devices = _ticket?.devices ?? _data?.devices ?? [];
+  const _firstDevice = _devices[0];
+  const _ticketId: number | null = _ticket?.id ?? _data?.ticket_id ?? null;
+  const _firstDeviceId: number | null = _firstDevice?.id ?? null;
+
+  // Fetch server info for QR code URL — must be above early return (hook rules).
   const { data: serverInfo } = useQuery({
     queryKey: ['server-info'],
     queryFn: () => serverInfoApi.get(),
@@ -26,6 +35,24 @@ export function SuccessScreen() {
     enabled: !!showSuccess,
   });
   const serverUrl = serverInfo?.data?.data?.server_url ?? '';
+
+  // AUDIT-WEB-002: fetch a scoped, short-lived (30-min) photo-upload token.
+  // The QR URL embeds this token instead of the full staff bearer JWT so a
+  // customer's phone cannot quietly retain a long-lived staff credential.
+  // Token has aud='photo-upload' to prevent cross-endpoint reuse.
+  const {
+    data: scopedToken,
+    isError: photoTokenError,
+  } = useQuery({
+    queryKey: ['photo-upload-token', _ticketId, _firstDeviceId],
+    queryFn: async () => {
+      const res = await ticketApi.getPhotoUploadToken(_ticketId!, _firstDeviceId!);
+      return res.data.data.token;
+    },
+    enabled: !!(showSuccess && _ticketId && _firstDeviceId),
+    staleTime: 25 * 60 * 1000, // 25 min — token itself expires at 30 min
+    retry: false,
+  });
 
   if (!showSuccess) return null;
 
@@ -74,8 +101,11 @@ export function SuccessScreen() {
     try {
       await notificationApi.sendReceipt({ invoice_id: invoiceId, email: customerEmail || undefined });
       toast.success('Receipt sent via email');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to send email receipt');
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined;
+      toast.error(msg || 'Failed to send email receipt');
     } finally {
       setEmailSending(false);
     }
@@ -127,34 +157,10 @@ export function SuccessScreen() {
     resetAll();
   };
 
-  // FA-M12: Short-term fix — include the POS session's access token in the QR
-  // URL so the scanning phone is authorised for the upload endpoint. Without
-  // the `?t=` query param, PhotoCapturePage shows "Invalid Link" (see
-  // packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:82-90).
-  //
-  // Longer-term design (TODO): the ticket-creation endpoint should mint a
-  // scoped, short-lived (e.g. 30-min) photo-upload token with the shape
-  //   { sub: 'photo-upload', ticket_id, ticket_device_id, exp }
-  // and the QR should embed *that* token instead of the user's bearer token.
-  // That limits blast-radius if the URL leaks (scan shoulder, printed handoff
-  // slip, etc.) and prevents a customer's phone from quietly retaining a
-  // long-lived staff credential. The upload route should then accept either
-  // a normal JWT or the scoped photo-upload token, gated to the matching
-  // ticket_device_id.
-  //
-  // Server-side safeguards already in place:
-  //   - MIME whitelist (image/jpeg|png|webp|gif) — tickets.routes.ts:39
-  //   - 10MB per-file size limit — tickets.routes.ts:59
-  //   - fileUploadValidator middleware — tickets.routes.ts:2179
-  //   - Randomised filenames prevent path traversal — tickets.routes.ts:52-56
-  //   - Max 20 files per request — tickets.routes.ts:2179
-  // Residual risk: no rate-limit on `POST /:id/photos` specifically, so a
-  // leaked token could be used for quota exhaustion against the tenant's
-  // storage allotment (storage quota is enforced but 10MB * 20 * N requests
-  // can still spam the disk before the quota check fails the request).
-  const authToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
-  const qrUrl = serverUrl && ticketId && firstDeviceId
-    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}?t=${authToken || ''}`
+  // AUDIT-WEB-002: build QR URL only when a scoped token is available.
+  // Never fall back to the full staff bearer JWT.
+  const qrUrl = serverUrl && ticketId && firstDeviceId && scopedToken
+    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}?t=${scopedToken}`
     : null;
 
   // ─── Ticket Created Success ────────────────────────────────────────
@@ -196,32 +202,44 @@ export function SuccessScreen() {
           )}
         </div>
 
-        {/* Photo capture: QR code + Push to Phone */}
-        {qrUrl && (
+        {/* Photo capture: QR code
+            AUDIT-WEB-002: uses a scoped 30-min token, not the staff bearer JWT.
+            Shows "QR unavailable" if the token mint call fails. */}
+        {firstDeviceId && ticketId && (
           <div className="w-full max-w-sm rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/5">
             <p className="mb-3 text-center text-sm font-semibold text-amber-800 dark:text-amber-300">
               Take Device Photos
             </p>
-            <div className="flex items-start justify-center gap-4">
-              {/* QR code */}
-              <div className="text-center">
-                <div className="mx-auto mb-1.5 flex h-28 w-28 items-center justify-center rounded-lg bg-white p-1.5">
-                  <img
-                    src={`/api/v1/qr?data=${encodeURIComponent(qrUrl)}`}
-                    alt="Scan to take photos"
-                    className="h-24 w-24"
-                  />
+            {photoTokenError ? (
+              <p className="text-center text-xs text-amber-700 dark:text-amber-400">
+                QR unavailable — could not generate a secure upload link.
+              </p>
+            ) : qrUrl ? (
+              <div className="flex items-start justify-center gap-4">
+                {/* QR code */}
+                <div className="text-center">
+                  <div className="mx-auto mb-1.5 flex h-28 w-28 items-center justify-center rounded-lg bg-white p-1.5">
+                    <img
+                      src={`/api/v1/qr?data=${encodeURIComponent(qrUrl)}`}
+                      alt="Scan to take photos"
+                      className="h-24 w-24"
+                    />
+                  </div>
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Scan QR with any phone
+                  </p>
                 </div>
-                <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                  Scan QR with any phone
-                </p>
+                {/* FA-L1: "Push to Phone" control removed — it was a permanently
+                    disabled placeholder. Planned rewire: push the photo-capture
+                    session to whichever Android device is signed into the same
+                    tenant/user, with the QR code as a fallback for walk-up
+                    customers. Hidden until the server-side push dispatch lands. */}
               </div>
-              {/* FA-L1: "Push to Phone" control removed — it was a permanently
-                  disabled placeholder. Planned rewire: push the photo-capture
-                  session to whichever Android device is signed into the same
-                  tenant/user, with the QR code as a fallback for walk-up
-                  customers. Hidden until the server-side push dispatch lands. */}
-            </div>
+            ) : (
+              <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                Generating secure link…
+              </p>
+            )}
           </div>
         )}
 

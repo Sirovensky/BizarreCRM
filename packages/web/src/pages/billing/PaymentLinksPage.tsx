@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { settingsApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -49,6 +50,21 @@ export function PaymentLinksPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'paid' | 'cancelled'>('all');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
+
+  // AUDIT-WEB-006: feature flag — payment links must be disabled at the
+  // generation point until a live checkout provider is configured.
+  // Reads store_config key 'billing_pay_link_enabled'; defaults to false.
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+    staleTime: 60_000,
+  });
+  const paymentLinksEnabled = configData?.['billing_pay_link_enabled'] === 'true';
+  const paymentLinksDisabledReason =
+    'Payment links are not yet active — configure a checkout provider first (Settings → Payments).';
 
   const { data, isLoading } = useQuery({
     queryKey: ['payment-links', filter],
@@ -112,20 +128,38 @@ export function PaymentLinksPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Payment Requests</h1>
-        {canManagePaymentLinks ? (
+        {/* AUDIT-WEB-006: button is hidden when payment links are not active.
+            Showing it disabled would tempt staff to create links that lead to
+            a dead-end page for customers. */}
+        {canManagePaymentLinks && paymentLinksEnabled ? (
           <button
             className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
             onClick={() => setShowForm((s) => !s)}
           >
             {showForm ? 'Close form' : 'New payment request'}
           </button>
+        ) : canManagePaymentLinks ? (
+          <button
+            disabled
+            title={paymentLinksDisabledReason}
+            className="cursor-not-allowed rounded-md bg-surface-200 px-4 py-2 text-sm font-semibold text-surface-400 opacity-50 dark:bg-surface-700 dark:text-surface-500"
+          >
+            New payment request
+          </button>
         ) : null}
       </div>
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Payment request links show customers the amount due, but they do not charge cards or mark invoices paid.
-        Take payment through POS or your terminal until hosted checkout is connected.
-      </div>
+      {/* AUDIT-WEB-006: when disabled, explain why at the top of the page. */}
+      {!paymentLinksEnabled ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {paymentLinksDisabledReason}
+        </div>
+      ) : (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Payment request links show customers the amount due, but they do not charge cards or mark invoices paid.
+          Take payment through POS or your terminal until hosted checkout is connected.
+        </div>
+      )}
 
       {!canManagePaymentLinks ? (
         <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
@@ -133,7 +167,7 @@ export function PaymentLinksPage() {
         </div>
       ) : null}
 
-      {canManagePaymentLinks && showForm ? (
+      {canManagePaymentLinks && paymentLinksEnabled && showForm ? (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <input

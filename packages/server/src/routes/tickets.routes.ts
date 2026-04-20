@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -8,7 +9,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { generateOrderId } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { requirePermission } from '../middleware/auth.js';
+import { requirePermission, JWT_SIGN_OPTIONS } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { validatePrice, validateQuantity, roundCents, toCents, validateId } from '../utils/validate.js';
 import { writeCommission } from '../utils/commissions.js';
@@ -2158,65 +2159,177 @@ router.delete('/notes/:noteId', requirePermission('tickets.edit'), asyncHandler(
 }));
 
 // ===================================================================
+// POST /:id/devices/:deviceId/photo-upload-token  — mint scoped token
+// ===================================================================
+// AUDIT-WEB-002: Returns a short-lived JWT scoped to one ticket+device so
+// customers can use the QR photo-upload link without holding a full staff
+// bearer token. Token expires in 30 minutes and carries aud='photo-upload'
+// to prevent cross-endpoint reuse.
+router.post(
+  '/:id/devices/:deviceId/photo-upload-token',
+  requirePermission('tickets.edit'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const adb = req.asyncDb;
+    const ticketId = validateId(req.params.id, 'ticket id');
+    if (!ticketId) throw new AppError('Invalid ticket ID');
+    const deviceId = validateId(req.params.deviceId, 'device id');
+    if (!deviceId) throw new AppError('Invalid device ID');
+
+    const ticket = await adb.get<AnyRow>(
+      'SELECT id FROM tickets WHERE id = ? AND is_deleted = 0',
+      ticketId,
+    );
+    if (!ticket) throw new AppError('Ticket not found', 404);
+
+    const device = await adb.get<AnyRow>(
+      'SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?',
+      deviceId,
+      ticketId,
+    );
+    if (!device) throw new AppError('Device does not belong to this ticket', 400);
+
+    const token = jwt.sign(
+      {
+        sub: 'photo-upload',
+        ticket_id: ticketId,
+        ticket_device_id: deviceId,
+      },
+      config.accessJwtSecret,
+      {
+        ...JWT_SIGN_OPTIONS,
+        audience: 'photo-upload',
+        expiresIn: '30m',
+      },
+    );
+
+    res.json({ success: true, data: { token } });
+  }),
+);
+
+// ===================================================================
 // POST /:id/photos - Upload photos
 // ===================================================================
 // SEC-H25: uploading photos modifies the ticket — gate behind tickets.edit.
-router.post('/:id/photos', requirePermission('tickets.edit'), enforceUploadQuota, upload.array('photos', 20), fileUploadValidator({ allowedMimes: ALLOWED_MIMES }), asyncHandler(async (req: Request, res: Response) => {
-  const adb = req.asyncDb;
-  const ticketId = validateId(req.params.id, 'ticket id');
-  if (!ticketId) throw new AppError('Invalid ticket ID');
-
-  const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
-  if (!existing) throw new AppError('Ticket not found', 404);
-
-  const files = req.files as Express.Multer.File[];
-  if (!files || files.length === 0) throw new AppError('No photos uploaded');
-
-  // Multi-tenant storage quota enforcement — atomic check + reserve
-  const totalSize = files.reduce((sum, f) => sum + (f.size ?? 0), 0);
-  if (!reserveStorage(req.tenantId, totalSize, req.tenantLimits?.storageLimitMb ?? null)) {
-    for (const f of files) {
-      if (f?.path) { try { fs.unlinkSync(f.path); } catch {} }
+// AUDIT-WEB-002: also accepts a scoped photo-upload token (aud='photo-upload',
+// sub='photo-upload') passed as Bearer. The scoped token must match the
+// ticket_id and ticket_device_id in the request body/params.
+router.post(
+  '/:id/photos',
+  // Middleware: allow EITHER a normal staff JWT OR a scoped photo-upload token.
+  (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, message: 'No token provided' });
+      return;
     }
-    res.status(403).json({
-      success: false,
-      upgrade_required: true,
-      feature: 'storage_limit',
-      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
-    });
-    return;
-  }
+    const raw = authHeader.slice(7);
 
-  const { type, ticket_device_id, caption } = req.body;
-  if (!ticket_device_id) throw new AppError('ticket_device_id is required');
+    // Attempt to verify as a scoped photo-upload token first.
+    let scopedPayload: { sub?: string; ticket_id?: number; ticket_device_id?: number } | null = null;
+    try {
+      scopedPayload = jwt.verify(raw, config.accessJwtSecret, {
+        algorithms: ['HS256'],
+        issuer: JWT_SIGN_OPTIONS.issuer,
+        audience: 'photo-upload',
+      }) as { sub?: string; ticket_id?: number; ticket_device_id?: number };
+    } catch {
+      // Not a scoped token — fall through to normal auth middleware below.
+    }
 
-  const deviceRow = await adb.get<AnyRow>('SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?', ticket_device_id, ticketId);
-  if (!deviceRow) throw new AppError('Device does not belong to this ticket', 400);
+    if (scopedPayload) {
+      if (scopedPayload.sub !== 'photo-upload') {
+        res.status(403).json({ success: false, message: 'Invalid scoped token' });
+        return;
+      }
+      // Attach scoped context for the handler to validate IDs.
+      (req as any).photoUploadScoped = scopedPayload;
+      // Skip requirePermission — scoped tokens carry their own authorization.
+      next();
+      return;
+    }
 
-  const photos: AnyRow[] = [];
-  for (const file of files) {
-    const result = await adb.run(`
-      INSERT INTO ticket_photos (ticket_device_id, type, file_path, caption, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, ticket_device_id, type || 'pre', file.filename, caption ?? null, now(), now());
+    // Fall through to normal staff-auth flow.
+    next();
+  },
+  // Normal staff auth (no-op when scoped token already attached).
+  (req: Request, res: Response, next: NextFunction) => {
+    if ((req as any).photoUploadScoped) { next(); return; }
+    requirePermission('tickets.edit')(req, res, next);
+  },
+  enforceUploadQuota,
+  upload.array('photos', 20),
+  fileUploadValidator({ allowedMimes: ALLOWED_MIMES }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const adb = req.asyncDb;
+    const ticketId = validateId(req.params.id, 'ticket id');
+    if (!ticketId) throw new AppError('Invalid ticket ID');
 
-    photos.push({
-      id: result.lastInsertRowid,
-      ticket_device_id: parseInt(ticket_device_id),
-      type: type || 'pre',
-      file_path: file.filename,
-      caption: caption ?? null,
-      created_at: now(),
-    });
-  }
+    const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
+    if (!existing) throw new AppError('Ticket not found', 404);
 
-  await Promise.all([
-    insertHistoryAsync(adb, ticketId, req.user!.id, 'photo_added', `${files.length} photo(s) uploaded`),
-    adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), ticketId),
-  ]);
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) throw new AppError('No photos uploaded');
 
-  res.status(201).json({ success: true, data: photos });
-}));
+    // Multi-tenant storage quota enforcement — atomic check + reserve
+    const totalSize = files.reduce((sum, f) => sum + (f.size ?? 0), 0);
+    if (!reserveStorage(req.tenantId, totalSize, req.tenantLimits?.storageLimitMb ?? null)) {
+      for (const f of files) {
+        if (f?.path) { try { fs.unlinkSync(f.path); } catch {} }
+      }
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'storage_limit',
+        message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+      });
+      return;
+    }
+
+    const { type, ticket_device_id, caption } = req.body;
+    if (!ticket_device_id) throw new AppError('ticket_device_id is required');
+
+    // AUDIT-WEB-002: if a scoped photo-upload token was used, verify the
+    // ticket_device_id in the body matches what the token was minted for.
+    const scoped = (req as any).photoUploadScoped as { ticket_id?: number; ticket_device_id?: number } | undefined;
+    if (scoped) {
+      const bodyDeviceId = parseInt(ticket_device_id, 10);
+      if (scoped.ticket_id !== ticketId || scoped.ticket_device_id !== bodyDeviceId) {
+        res.status(403).json({ success: false, message: 'Scoped token does not match this ticket/device' });
+        return;
+      }
+    }
+
+    const deviceRow = await adb.get<AnyRow>('SELECT id FROM ticket_devices WHERE id = ? AND ticket_id = ?', ticket_device_id, ticketId);
+    if (!deviceRow) throw new AppError('Device does not belong to this ticket', 400);
+
+    const photos: AnyRow[] = [];
+    for (const file of files) {
+      const result = await adb.run(`
+        INSERT INTO ticket_photos (ticket_device_id, type, file_path, caption, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, ticket_device_id, type || 'pre', file.filename, caption ?? null, now(), now());
+
+      photos.push({
+        id: result.lastInsertRowid,
+        ticket_device_id: parseInt(ticket_device_id),
+        type: type || 'pre',
+        file_path: file.filename,
+        caption: caption ?? null,
+        created_at: now(),
+      });
+    }
+
+    // AUDIT-WEB-002: scoped photo-upload tokens have no req.user — use a
+    // sentinel user id of 0 for the history row so it's distinguishable.
+    const actorId = req.user?.id ?? 0;
+    await Promise.all([
+      insertHistoryAsync(adb, ticketId, actorId, 'photo_added', `${files.length} photo(s) uploaded`),
+      adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), ticketId),
+    ]);
+
+    res.status(201).json({ success: true, data: photos });
+  }),
+);
 
 // ===================================================================
 // DELETE /photos/:photoId - Delete photo

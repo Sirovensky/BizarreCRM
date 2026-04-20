@@ -51,12 +51,17 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import com.bizarreelectronics.crm.BuildConfig
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.security.SecureRandom
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 // ─── State ──────────────────────────────────────────────────────────
@@ -107,6 +112,70 @@ class LoginViewModel @Inject constructor(
         private fun isCloudUrl(url: String?): Boolean {
             if (url.isNullOrBlank()) return true
             return url.contains(CLOUD_DOMAIN)
+        }
+
+        // AUDIT-AND-002: LAN-host predicate mirroring RetrofitClient.isDebugTrustedHost.
+        // Returns true only for loopback literals and RFC1918 private IPv4 addresses.
+        // Used to gate the debug-only TLS bypass in the server-probe and register clients.
+        private val DEBUG_LOOPBACK_HOSTS: Set<String> = setOf(
+            "localhost", "10.0.2.2", "10.0.3.2", "127.0.0.1", "::1",
+        )
+
+        private fun isLanHost(hostname: String?): Boolean {
+            if (hostname.isNullOrBlank()) return false
+            val h = hostname.lowercase()
+            if (h in DEBUG_LOOPBACK_HOSTS) return true
+            return try {
+                val addr: InetAddress = InetAddress.getByName(h)
+                if (addr !is Inet4Address) false
+                else {
+                    val b = addr.address
+                    val b0 = b[0].toInt() and 0xff
+                    val b1 = b[1].toInt() and 0xff
+                    b0 == 10 || (b0 == 172 && b1 in 16..31) || (b0 == 192 && b1 == 168)
+                }
+            } catch (_: Exception) { false }
+        }
+
+        /**
+         * Builds an OkHttpClient.Builder with TLS configured to match RetrofitClient policy:
+         * - DEBUG + LAN host → hostname-restricted trust-all (self-signed cert accepted)
+         * - Everything else (release OR public host) → platform default CA + hostname verifier
+         *
+         * AUDIT-AND-002: replaces the unconditional trust-all used by the server-probe
+         * and register-shop clients in LoginScreen. Public cloud hostnames always get
+         * proper CA validation even in debug.
+         */
+        fun buildProbeTlsClient(targetHost: String): OkHttpClient.Builder {
+            val builder = OkHttpClient.Builder()
+            if (BuildConfig.DEBUG && isLanHost(targetHost)) {
+                // LAN dev server with a self-signed cert — permit trust-all for this
+                // host only. Cloud hostnames deliberately fall through to the platform
+                // trust manager so credentials are never sent over an untrusted chain.
+                try {
+                    val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+                    tmf.init(null as java.security.KeyStore?)
+                    val platformTm = tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
+
+                    val lanTrustAll = object : X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) =
+                            platformTm.checkClientTrusted(chain, authType)
+                        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                            try { platformTm.checkServerTrusted(chain, authType) }
+                            catch (_: CertificateException) { /* accept self-signed on LAN */ }
+                        }
+                        override fun getAcceptedIssuers(): Array<X509Certificate> = platformTm.acceptedIssuers
+                    }
+                    val sslCtx = SSLContext.getInstance("TLS")
+                    sslCtx.init(null, arrayOf<TrustManager>(lanTrustAll), SecureRandom())
+                    builder.sslSocketFactory(sslCtx.socketFactory, lanTrustAll)
+                    builder.hostnameVerifier { hn, session ->
+                        isLanHost(hn) || HttpsURLConnection.getDefaultHostnameVerifier().verify(hn, session)
+                    }
+                } catch (_: Exception) { /* fall through to platform defaults */ }
+            }
+            // else: no sslSocketFactory/hostnameVerifier set → OkHttp uses platform defaults
+            return builder
         }
     }
 
@@ -172,26 +241,16 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val clientBuilder = OkHttpClient.Builder()
+                    // AUDIT-AND-002: use hostname-restricted TLS — trust-all only for LAN
+                    // hosts in DEBUG; cloud/public hostnames always use platform CA + verifier.
+                    val targetHost = url.removePrefix("https://").removePrefix("http://")
+                        .split("/").first().split(":").first()
+                    val client = buildProbeTlsClient(targetHost)
                         .connectTimeout(10, TimeUnit.SECONDS)
                         .readTimeout(10, TimeUnit.SECONDS)
                         .writeTimeout(10, TimeUnit.SECONDS)
                         .callTimeout(15, TimeUnit.SECONDS)
-
-                    if (BuildConfig.DEBUG) {
-                        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-                            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                        })
-                        val sslCtx = SSLContext.getInstance("TLS")
-                        sslCtx.init(null, trustAll, SecureRandom())
-                        clientBuilder
-                            .sslSocketFactory(sslCtx.socketFactory, trustAll[0] as X509TrustManager)
-                            .hostnameVerifier { _, _ -> true }
-                    }
-
-                    val client = clientBuilder.build()
+                        .build()
                     val request = Request.Builder()
                         .url("$url/api/v1/portal/embed/config")
                         .header("Origin", url)
@@ -250,26 +309,15 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val clientBuilder = OkHttpClient.Builder()
+                    // AUDIT-AND-002: registration always targets the cloud domain (public host);
+                    // buildProbeTlsClient returns platform defaults for any non-LAN hostname,
+                    // so user credentials are always sent over a properly verified TLS channel.
+                    val client = buildProbeTlsClient(CLOUD_DOMAIN)
                         .connectTimeout(15, TimeUnit.SECONDS)
                         .readTimeout(15, TimeUnit.SECONDS)
                         .writeTimeout(15, TimeUnit.SECONDS)
                         .callTimeout(30, TimeUnit.SECONDS)
-
-                    if (BuildConfig.DEBUG) {
-                        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-                            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                        })
-                        val sslCtx = SSLContext.getInstance("TLS")
-                        sslCtx.init(null, trustAll, SecureRandom())
-                        clientBuilder
-                            .sslSocketFactory(sslCtx.socketFactory, trustAll[0] as X509TrustManager)
-                            .hostnameVerifier { _, _ -> true }
-                    }
-
-                    val client = clientBuilder.build()
+                        .build()
                     val json = JSONObject().apply {
                         put("slug", slug)
                         put("shop_name", s.registerShopName.trim())

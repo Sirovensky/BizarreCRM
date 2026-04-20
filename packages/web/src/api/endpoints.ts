@@ -225,6 +225,12 @@ export const ticketApi = {
   deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
   // Clone as warranty case
   cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
+  // AUDIT-WEB-002: mint a scoped short-lived photo-upload token for the QR URL.
+  // Returns { token: string } — 30-minute JWT scoped to one ticket+device.
+  getPhotoUploadToken: (ticketId: number, deviceId: number) =>
+    api.post<{ success: boolean; data: { token: string } }>(
+      `/tickets/${ticketId}/devices/${deviceId}/photo-upload-token`,
+    ),
 };
 
 // ==================== Invoices ====================

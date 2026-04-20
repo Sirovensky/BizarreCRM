@@ -80,6 +80,36 @@ const SchemaCreateFolder = z.object({
   name: z.string().min(1).max(255).regex(/^[^/\\:*?"<>|]+$/),
 });
 
+// AUDIT-MGT-003: Zod schemas for super-admin mutation IPC handlers.
+// Previously these handlers forwarded raw renderer blobs to the server
+// without any IPC-layer validation, allowing arbitrary data to be injected.
+// These schemas are the first line of defence — invalid payloads are
+// rejected in the main process before the server ever sees them.
+
+const SchemaCreateTenant = z.object({
+  slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
+  company_name: z.string().min(1).max(256),
+  admin_email: z.string().email().max(256),
+  admin_password: z.string().min(12).max(1024),
+  plan: z.enum(['free', 'pro']).optional(),
+}).strict();
+
+// Mirrors the ALLOWED_CONFIG_KEYS whitelist on the server (super-admin.routes.ts PUT /config).
+const SchemaUpdateConfig = z.object({
+  management_api_enabled: z.string().optional(),
+  management_rate_limit_bypass: z.string().optional(),
+}).strict().refine(
+  (obj) => Object.keys(obj).length > 0,
+  { message: 'At least one config key must be provided' }
+);
+
+const SchemaBackupSettings = z.object({
+  backup_path: z.string().min(1).max(4096),
+  schedule: z.string().max(256),
+  retention_days: z.number().int().min(1).max(365),
+  encryption_enabled: z.boolean(),
+}).strict();
+
 // ── ALLOWED_FILE_ROOTS ────────────────────────────────────────────────
 // Only these roots are accepted for admin:browse-drive / admin:create-folder.
 // On Windows the common form is a drive letter root (C:\, D:\, ...).
@@ -545,8 +575,13 @@ export function registerManagementIpc(): void {
 
   ipcMain.handle('super-admin:create-tenant', wrapHandler(async (event, data: unknown) => {
     assertRendererOrigin(event);
-    // data is passed through as-is; server validates tenant shape
-    const res = await apiRequest('POST', '/super-admin/api/tenants', data);
+    // AUDIT-MGT-003: Validate at the IPC boundary — reject unknown/invalid
+    // fields before forwarding anything to the server.
+    const parsed = SchemaCreateTenant.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant data' };
+    }
+    const res = await apiRequest('POST', '/super-admin/api/tenants', parsed.data);
     return res.body;
   }));
 
@@ -596,8 +631,15 @@ export function registerManagementIpc(): void {
 
   ipcMain.handle('super-admin:update-config', wrapHandler(async (event, updates: unknown) => {
     assertRendererOrigin(event);
-    // updates is opaque config blob; server validates its shape
-    const res = await apiRequest('PUT', '/super-admin/api/config', updates);
+    // AUDIT-MGT-003: Validate at the IPC boundary — only the server's known
+    // ALLOWED_CONFIG_KEYS are accepted (management_api_enabled,
+    // management_rate_limit_bypass). Unknown keys are rejected here before
+    // they reach the server's own whitelist check.
+    const parsed = SchemaUpdateConfig.safeParse(updates);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid config update' };
+    }
+    const res = await apiRequest('PUT', '/super-admin/api/config', parsed.data);
     return res.body;
   }));
 
@@ -734,23 +776,24 @@ export function registerManagementIpc(): void {
     // Default button is Cancel so an accidental keyboard press cannot trigger.
     const tagLabel = tagCheck.tag ?? 'latest';
     const ownerWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
-    const confirmResult = await dialog.showMessageBox(
-      // Pass null when no window is available (headless / packaged without focus).
-      ...(ownerWindow ? [ownerWindow] : []),
-      {
-        type: 'question',
-        buttons: ['Install', 'Cancel'],
-        defaultId: 1,         // Cancel is the safe default
-        cancelId: 1,
-        title: 'Confirm Update',
-        message: `Install update to ${tagLabel}?`,
-        detail:
-          'The server will stop, rebuild from the latest signed tag, and restart. ' +
-          'This dashboard will close and reopen automatically.\n\n' +
-          'Click Install only if you intend to apply this update now.',
-        noLink: true,
-      } as Electron.MessageBoxOptions
-    );
+    const msgBoxOptions: Electron.MessageBoxOptions = {
+      type: 'question',
+      buttons: ['Install', 'Cancel'],
+      defaultId: 1,         // Cancel is the safe default
+      cancelId: 1,
+      title: 'Confirm Update',
+      message: `Install update to ${tagLabel}?`,
+      detail:
+        'The server will stop, rebuild from the latest signed tag, and restart. ' +
+        'This dashboard will close and reopen automatically.\n\n' +
+        'Click Install only if you intend to apply this update now.',
+      noLink: true,
+    };
+    // Use the window-scoped overload when a window is available so the dialog
+    // is modal to the window; fall back to the global overload otherwise.
+    const confirmResult = ownerWindow
+      ? await dialog.showMessageBox(ownerWindow, msgBoxOptions)
+      : await dialog.showMessageBox(msgBoxOptions);
 
     if (confirmResult.response !== 0) {
       console.log('[Update] Operator cancelled update at confirm dialog.');
@@ -1054,8 +1097,13 @@ export function registerManagementIpc(): void {
 
   ipcMain.handle('admin:update-backup-settings', wrapHandler(async (event, settings: unknown) => {
     assertRendererOrigin(event);
-    // settings is an opaque blob; server validates its shape
-    const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', settings);
+    // AUDIT-MGT-003/004: Validate at the IPC boundary — reject unknown keys
+    // and enforce types before forwarding to the server.
+    const parsed = SchemaBackupSettings.safeParse(settings);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid backup settings' };
+    }
+    const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', parsed.data);
     return res.body;
   }));
 
