@@ -692,8 +692,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Attachment** — add image from camera/library → inline preview; stored as note attachment.
 
 ### 4.7 Statuses & transitions
-- [ ] **Fetch taxonomy** `GET /settings/statuses` — drives picker; no hardcoded statuses.
-- [ ] **Color chip** from server hex.
+- [x] **Fetch taxonomy** `GET /settings/statuses` → `TicketStatusRow` array; drives `TicketStatusChangeSheet` (no hardcoded statuses).
+- [x] **Commit** via `PATCH /tickets/:id/status`; sheet highlights current status with a check, dismisses + refreshes detail on success.
+- [ ] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
 - [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
 - [ ] **QC sign-off modal** — signature capture (PencilKit `PKCanvasView`), comments, "Work complete" confirm.
 - [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
