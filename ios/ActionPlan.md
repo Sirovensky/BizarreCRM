@@ -1014,7 +1014,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] **Live Activity** — "Clocked in since 9:14 AM" on Lock Screen until clock-out.
 
 ### 14.4 Invite / manage (admin)
-- [ ] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link.
+- [ ] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. The server may not have an email if self hosted though - lets make sure we account for that. 
 - [ ] **Resend invite**.
 - [ ] **Assign role** — technician / cashier / manager / admin / custom.
 - [ ] **Deactivate** — soft delete.
@@ -1045,7 +1045,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.9 Time-off requests
 - [ ] Submit request (date range + reason).
-- [ ] Manager approve / deny.
+- [ ] Manager approve / deny.dont forget to ACTUALLY implement the manager's access point. 
 - [ ] Affects shift grid.
 
 ### 14.10 Shortcuts
@@ -1288,18 +1288,29 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Mac** — `DataScannerViewController` unavailable on Mac Catalyst; feature-gate to manual entry + continuity camera scan.
 
 ### 17.3 Card reader — BlockChyp
-- [!] **CocoaPods integration** — add `Podfile`, add `BlockChypTerminal` pod, update `project.yml` + CI.
-- [ ] **Terminal types supported** — Ingenico, Verifone, PAX; LAN (IP) + Bluetooth pairing.
-- [ ] **Pair flow** — Settings → POS → Terminal → "Pair new" → enter terminal # + IP or scan pairing QR on terminal screen.
-- [ ] **Stored credentials** — API key in Keychain (`com.bizarrecrm.blockchyp.apikey`, `.bearerToken`); only IP in app storage.
-- [ ] **Status tile** — Settings shows: terminal name, IP, signal (heartbeat), last test transaction date.
-- [ ] **Test ping** — Settings button "Test connection" → 1s test; green/red.
-- [ ] **Charge** — `charge(amount, idempotencyKey)` → terminal prompts → result → `POST /invoices/{id}/payments`.
-- [ ] **Refund** — same-batch void vs cross-batch refund; token required.
-- [ ] **Tip adjust** — pre-batch-close adjust API.
-- [ ] **Batch management** — force-close daily at configurable time; Settings "Close batch now" button.
-- [ ] **Error taxonomy** — `DeviceNotFound`, `ConnectionTimeout`, `UserCancelled`, `NetworkDown`, `InsufficientFunds`, `Declined`, `PartialAuth`, etc.; each maps to human-readable UX copy.
-- [ ] **Fallback** — if terminal offline, offer manual-keyed OR queue offline sale.
+
+**Architecture clarification (confirmed against BlockChyp docs + iOS SDK README, April 2026).** BlockChyp is a **semi-integrated** model with two communication modes the SDK abstracts behind the same API calls. Our app never handles raw card data either way — terminals talk to the payment network directly; we only receive tokens + results. Per-terminal mode is set at provisioning on the BlockChyp dashboard (cloud-relay checkbox).
+
+- **Local mode** — SDK resolves a terminal by name via the "Locate" endpoint, then sends the charge request straight to the terminal's LAN IP over the local network. Terminal talks to BlockChyp gateway / card networks itself, returns result direct to SDK on LAN. Lowest latency; survives internet blip as long as gateway uplink from terminal is OK. Preferred for countertop POS where iPad + terminal share Wi-Fi.
+- **Cloud-relay mode** — SDK sends request to BlockChyp cloud (`api.blockchyp.com`); cloud forwards to terminal via persistent outbound connection the terminal holds. Works when POS and terminal are on different networks (web POS, field-service tech whose iPad is on cellular, multi-location routing). Higher latency; connection-reset-sensitive.
+- **SDK abstracts the mode.** Same `charge(...)` call; the SDK's terminal-name-resolution picks local vs cloud path. Developer writes one code path; deployment-time setting picks the route.
+
+#### Integration tasks
+- [!] **CocoaPods integration** — add `Podfile`, add `BlockChyp` pod (`pod 'BlockChyp'` from `cocoapods.org/pods/BlockChyp`), update `project.yml` build phase + CI pod-install step.
+- [ ] **Terminal types supported** — BlockChyp-branded smart terminals (Lane/2500, Curve, Zing). Ingenico/Verifone/PAX are the underlying hardware families BlockChyp ships; we don't integrate their stacks directly — all through BlockChyp SDK.
+- [ ] **Pair flow** — Settings → POS → Terminal → "Pair new" → scan pairing QR shown on terminal screen or enter terminal name. App calls `terminalLocate(name:)` which returns routing info + local IP if in local mode, or cloud-relay flag if cloud.
+- [ ] **Stored credentials** — API key + bearer token in Keychain (`com.bizarrecrm.blockchyp.apikey`, `.bearerToken`). These authenticate to BlockChyp (local or cloud); terminal IP is persisted as a cache hint but re-resolved each session.
+- [ ] **Status tile** — Settings shows: terminal name, resolved mode (local / cloud-relay), local IP if applicable, heartbeat status, firmware version (from `terminalStatus`), last test transaction date.
+- [ ] **Test ping** — Settings button "Test connection" → `ping` SDK call; green/red.
+- [ ] **Charge** — `charge(amount, idempotencyKey)` → SDK picks local or cloud path based on terminal config → terminal prompts cardholder → SDK returns `{approved, authCode, maskedPan, last4, cardBrand, transactionId, token}` → we POST to `/invoices/{id}/payments` with the token + SDK metadata.
+- [ ] **PCI scope** — raw card data never enters our iOS app or our server. Terminal handles PAN / EMV / PIN entry; we receive a tokenized reference only. Document this in the PCI evidence pack (§28.x).
+- [ ] **Refund** — same-batch void vs cross-batch refund using captured token; same SDK API.
+- [ ] **Tip adjust** — pre-batch-close `tipAdjust` call on bar/restaurant tenants.
+- [ ] **Batch management** — force-close daily at configurable time; Settings "Close batch now" button calls `batchClose`.
+- [ ] **Error taxonomy** — `TerminalUnreachable`, `ConnectionTimeout`, `UserCancelled`, `NetworkDown` (cloud-relay only), `InsufficientFunds`, `Declined`, `PartialAuth`, `ChipReadFailure`, `PINEntryTimeout`. Each maps to human-readable UX copy; don't leak raw BlockChyp codes to cashier.
+- [ ] **Offline behavior** — local mode: if iPad internet drops but terminal's own uplink still works, charges can still succeed because terminal → gateway path is independent. Cloud-relay mode: no charges possible without internet. UI must surface which mode is active so cashier knows what offline means.
+- [ ] **Fallback when terminal truly unreachable** — offer manual-keyed card entry (role-gated, PIN protected, routes through BlockChyp manual-entry API) OR cash tender OR queue offline sale with "card pending" status for retry on reconnect.
+- [ ] **Network requirements doc** — setup wizard tells tenant: firewall must allow outbound `api.blockchyp.com:443` for cloud-relay. Local mode needs iPad + terminal on same subnet or routed LAN reachable on terminal's service port.
 
 ### 17.4 Receipt printer (MFi Star / Epson)
 - [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP (no MFi).
