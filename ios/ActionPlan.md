@@ -382,7 +382,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
 - [ ] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists.
-- [ ] **iPad 3-column split** — sidebar (saved views) + list + detail.
+- [ ] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane**, matching Apple Messages / Mail conventions: tap a row on the left, the ticket opens on the right. Selection persists; scrolling the list doesn't clear the open ticket. Saved-views / filter chips sit as a toolbar across the top of the list column (not a third sidebar), keeping the screen as a clean two-pane like Messages. Root app sidebar (Tickets / Customers / Inventory / ... tab switcher) lives in the outer `NavigationSplitView` and can be toggled / collapsed via `.toolbar(.hidden, for: .sidebar)` or user swipe so most of the time it's just list + detail. Use `NavigationSplitView(columnVisibility: .constant(.doubleColumn), preferredCompactColumn: .constant(.sidebar))` in landscape; in portrait, collapse detail into push navigation (standard iPad portrait behavior).
+  - Column widths: list 320–380pt; detail fills the rest. User can drag divider within bounds (`.navigationSplitViewColumnWidth(min:ideal:max:)`).
+  - Empty-detail state: "Select a ticket" illustration until a row is tapped (Apple Messages pattern).
+  - Row-to-detail transition on selection: inline detail swap, no push animation.
+  - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
+  - Matches §86.3 wireframe which will be updated to two-pane iPad landscape.
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
@@ -4671,31 +4676,57 @@ Used by `MockAPIClient` to replay canned responses.
 
 ---
 
-## 88. SMS AI-assist (on-device only)
+## 88. SMS AI-assist — on-device only, feasibility confirmed
 
-§6 SMS Composer gets WritingTools integration — entirely Apple Intelligence, no external LLM.
+**Feasibility (2026-04-20):** yes, doable within our constraints on eligible devices. Uses Apple's built-in Foundation Models (iOS 18.1+ / iPadOS 18.1+) + Writing Tools. No third-party cloud, no Private Cloud Compute (we opt out per §32 sovereignty).
+
+### 88.0 Hardware / OS floor + graceful disable
+
+Apple Intelligence (the on-device Foundation Model) requires:
+- **iPhone 15 Pro / Pro Max, iPhone 16 family, iPhone 17 family** (A17 Pro / A18 / later).
+- **iPad with M1 or later** (M1 / M2 / M3 / M4 Pro).
+- **iOS / iPadOS 18.1+** and the user has Apple Intelligence enabled in Settings.
+- 8+ GB RAM.
+
+On anything else — iPhone 15 non-Pro, iPhone SE, A14–A16 iPhones, iPads with A-series chips, iOS 17.x — **every AI button in the composer is hidden**. No degraded server-side substitute, no third-party fallback. Users on older devices see the composer exactly as if the feature didn't exist. This is the sovereignty rule: we don't offer an off-device fallback.
+
+Detection: `SystemLanguageModel.default.availability == .available` (iOS 18.1+ API). Observe the availability publisher so buttons live-flip if the user toggles Apple Intelligence in Settings.
 
 ### 88.1 Reply suggestions
-- After incoming SMS, one-tap "Suggest reply" button in composer.
-- Calls `WritingToolsCoordinator.suggestReplies(context: threadTail(10), tone: .friendly)`.
-- Returns 3 candidates; user taps to insert.
-- On devices without Apple Intelligence (pre-A17 / pre-M1), button hidden.
+- After an incoming SMS, one-tap "Suggest reply" button in the composer.
+- `LanguageModelSession` with a short system prompt scoped to the current thread's last N messages (capped at ~2000 tokens so we always stay on-device, never trigger PCC fallback which we've opted out of).
+- Returns 3 candidates; user taps to insert, then edits.
+- Hidden entirely on ineligible devices (§88.0).
 
 ### 88.2 Tone rewriter
 - "Polish" menu on composer: Friendly / Professional / Apologetic / Firm.
-- `WritingTools.rewrite(text, tone:)`.
+- Uses system Writing Tools sheet on the native `TextView` (free, no explicit integration work beyond adopting the right text control).
+- On ineligible devices, menu item simply isn't offered by iOS.
 
 ### 88.3 Grammar fix
-- Red-underline spellcheck native; "Fix all" action via WritingTools.
+- Red-underline spellcheck native (works on every device regardless of Apple Intelligence).
+- "Fix all" action via Writing Tools on eligible devices only.
 
 ### 88.4 Summarize thread
-- On a long thread, header chip "Summarize" → collapsed TL;DR banner.
+- Long-thread header chip "Summarize" → collapsed TL;DR banner above composer.
+- Input capped at ~2000 tokens of trailing messages to stay on-device. If a thread exceeds the cap, button grays out with "Thread too long to summarize on this device" (no cloud substitution).
 
 ### 88.5 Privacy
-- All runs on Neural Engine. No text leaves device. Confirmed via Privacy Manifest + MetricKit egress audit.
+- Inference runs on Neural Engine.
+- No text leaves device.
+- Privacy Manifest declares no tracking domains (§28.4).
+- MetricKit egress audit (§32.0) confirms no Apple-PCC endpoint contacted — we opt out.
+- Any telemetry event about feature usage carries placeholders per §32.6 redactor (`*SMS_BODY*`, `*CUSTOMER_NAME*`).
 
 ### 88.6 Telemetry
-- `sms.ai_suggest_used` event (no text content) → tenant server.
+- `sms.ai_suggest_used` event — counts + latency + model-variant hash. Zero content. Goes to tenant server only.
+- Surface under §32.4 event taxonomy.
+
+### 88.7 User setting
+- Settings → Messages → "Use AI suggestions". On by default on eligible devices; off for anyone who wants a purely manual composer. Saved per-user, per-tenant.
+
+### 88.8 Cross-platform
+- Android / web can't use Apple's on-device models. Their equivalents (if ever built) would use a tenant-server LLM route; iOS ignores that route and uses Apple's. No shared UI state between platforms beyond the "on/off" user setting.
 
 ---
 
@@ -4733,41 +4764,94 @@ Used by `MockAPIClient` to replay canned responses.
 
 ---
 
-## 90. Control Center + Dynamic Island stages
+## 90. Control Center + Dynamic Island + Action Button + Lock Screen widgets
 
-### 90.1 Control Center widgets
-- **Clock In/Out** toggle — reuses §48 App Intent. Long-press reveals current shift duration.
-- **Create Ticket** — launch ticket create directly.
-- **POS — Quick Sale** — opens POS empty cart.
-- All widgets glass-style, adopt user's Control Center tint.
+Principles (polished 2026-04-20):
+1. **Each surface has a distinct job.** Don't duplicate. Home-screen widgets = glanceable long-lived state. Lock-screen widgets = brief status + one-tap deep link. Control Center = **actions** (toggle something, not navigate). Dynamic Island = short-lived in-progress event, tap for more. Action Button = one user-picked action.
+2. **Less is more.** Live Activities have a strict Apple update budget and burn battery. Over-staging a ticket across four DI stages looks busy, is easy to miss mid-transition, and exhausts the push budget. Collapse to two meaningful states: `In progress` vs `Ready for pickup`.
+3. **Updates on status transitions, not timers.** Live Activity updates every N seconds drain battery and get throttled by the system. Only push on real state change.
+4. **Every presentation has a clear primary target.** Compact leading + compact trailing must read in < 1 second. Minimal form must be one glyph. Expanded adds actionable chips.
 
-### 90.2 Lock Screen widgets
-- **Ticket counter** circular widget (active tickets today).
-- **Revenue today** rectangular widget.
-- **Next appointment** rectangular widget (customer + time + address).
+### 90.1 Control Center widgets (actions only)
 
-### 90.3 Dynamic Island stages for Live Activities
-Ticket-in-progress Live Activity has four stages:
+Control Center is for actions, not navigation shortcuts. "Create Ticket" is navigation — belongs elsewhere. Kept:
 
-| Stage | Compact leading | Compact trailing | Minimal | Expanded |
+- [ ] **Clock In/Out** toggle — reuses §48 `ClockInIntent` / `ClockOutIntent`. Long-press reveals current shift duration. Single-tap toggle. Real action, correct fit.
+- [ ] **Scan Barcode** — invokes `ScanBarcodeIntent` (§151) which opens the scanner and hands the result to the POS cart OR inventory lookup depending on the user's current scene.
+- [ ] **Quick Cash Count** — opens numeric pad to record a cash-drawer count against an open shift (§39). Real action.
+
+Dropped:
+- ~~Create Ticket~~ — navigation shortcut; use Home Screen / Lock Screen widget + ⌘N on iPad.
+- ~~POS Quick Sale~~ — same; use Home Screen widget or App Intent.
+
+Visual:
+- [ ] Each widget respects Control Center tint (`.widgetAccentedRenderingMode`).
+- [ ] Icons are SF Symbols; no custom art in Control Center (Apple-recommended).
+
+### 90.2 Lock Screen widgets (glanceable)
+
+Live data at the lock screen without unlocking. Tap deep-links into the app (§326 scheme).
+
+- [ ] **Active tickets count** circular widget — number in Bebas Neue, subtle ring indicating "vs yesterday".
+- [ ] **Revenue today** rectangular widget — `$1,234` current + trend arrow.
+- [ ] **Next appointment** rectangular widget — customer + time + relative distance when location is known.
+- [ ] **Unread SMS count** inline widget — small inline text above time display.
+- [ ] **StandBy mode** — large "Next appointment" as the primary StandBy screen for staff who dock their iPhone on the counter.
+
+Update cadence: via silent push on real events (§21.1); never polled. Widget timeline entries stale after 30 min if no push landed.
+
+### 90.3 Live Activity — Ticket in progress (two stages, not four)
+
+Collapsed from the earlier four-stage design. Two stages are all a glanceable island can carry meaningfully.
+
+| Stage | Minimal | Compact leading | Compact trailing | Expanded |
 |---|---|---|---|---|
-| Check-in | icon wrench | customer initials | wrench | full row: customer + device + ETA |
-| Diagnostic | icon magnify | timer countdown | clock | progress bar + "Awaiting parts" |
-| Repair | icon gear | timer | gear | progress bar + tech name |
-| Done | icon check | "Ready" | check | "Ready for pickup — tap to notify" |
+| **In progress** | wrench glyph | customer initials in a circle | elapsed `Xh Ym` since intake | customer name + device + current status label + assignee avatar + "Open" + "Notify customer" buttons |
+| **Ready for pickup** | green check | ✅ | "Ready" | "Ready for pickup — tap to text customer" + "Open" + "Notify" buttons |
 
-### 90.4 POS Live Activity
-- Shown during a sale in progress (customer at counter).
-- Expanded: cart total, item count, payment state (waiting / approved / declined).
-- On approval: haptic + auto-end.
+Rules:
+- [ ] Start Live Activity on ticket status → `In progress` (intake or diagnostic start).
+- [ ] Update to `Ready for pickup` on status transition only — not on every intermediate status change; those are push-only per §73.
+- [ ] End Live Activity on status = Completed / Cancelled / Archived, OR after 8 hours idle (whichever first — Apple limits Live Activity lifespan anyway).
+- [ ] Only one ticket-in-progress Live Activity at a time per staff member. If they start a second, first collapses to a standard push.
+- [ ] No timer ticking in minimal / compact — only in expanded view (`Text(timerInterval:)` free of cost there). Saves battery.
+- [ ] Tap minimal / compact → opens ticket detail. Tap "Notify customer" button → fires pre-filled SMS template (§125) without leaving the island.
 
-### 90.5 Field-service Live Activity
-- During drive-to: ETA + next-customer name + distance.
-- During on-site: elapsed + current task.
+### 90.4 Live Activity — POS sale
+
+Short-lived: opens on payment tender, ends on approval / decline / void.
+
+| Stage | Minimal | Compact leading | Compact trailing | Expanded |
+|---|---|---|---|---|
+| **Tendering** | card glyph | cart icon | total `$XX.XX` | cart total + item count + "Waiting for card…" + Cancel button |
+| **Approved** | green check | ✅ | `$XX.XX` | Approved / last4 (brand) / "Print receipt" button |
+| **Declined** | red X | ❌ | `Declined` | Reason code + "Try another card" button |
+
+- [ ] Auto-end after 60 seconds post-approval (enough time to tap "Print receipt"); after 10s on decline (re-tender flow resumes).
+- [ ] Haptic success / error on stage change.
+- [ ] Expanded "Cancel" during Tendering calls `voidCharge` — only while pending-auth.
+
+### 90.5 Live Activity — Field-service (optional, behind feature flag)
+
+Only runs if tenant has Field Service (§59) enabled AND user has granted `whenInUse` location (§141).
+
+- **Driving**: ETA countdown + next customer name + miles remaining. Tap → Apple Maps handoff.
+- **On-site**: elapsed + current ticket. Tap → ticket detail.
+- Ends on job close OR on arrival-at-shop geofence exit of working-day hours.
 
 ### 90.6 Action Button (iPhone 15 Pro+)
-- Tenant-configurable default: Clock in/out / Create ticket / POS quick sale / Scan barcode.
-- Settings § under §19.4 Appearance.
+
+- [ ] Tenant-configurable **suggested defaults**: Clock in/out (most common), Scan barcode, Quick cash count. User picks one in Settings → Appearance (§19.4).
+- [ ] If the user hasn't configured one, the system default stays (camera / torch / etc.).
+- [ ] We don't override iOS Action Button settings; we offer ourselves as an option in the Shortcuts registrar and let the user choose in iOS Settings.
+
+### 90.7 What we don't do (on purpose)
+- No auto-start Live Activity on every ticket (only on the ticket the user is actively working).
+- No decorative DI content (no brand logo in minimal state — Apple rejects).
+- No per-second timer refresh in compact state — battery + update-budget cost.
+- No sound on DI state change — haptic only.
+- No Control Center widget that navigates (those belong on Lock Screen / Home widgets).
+- No Action Button hijack — user choice is sacred.
 
 ---
 
@@ -4962,7 +5046,11 @@ Non-success throws `APIError.server(message)`. Never branches on `error` key.
 
 ---
 
-## 96. App Store / TestFlight assets
+## 96. App Store / TestFlight assets — DEFERRED (pre-Phase-11 only)
+
+Not needed now. Content preserved as the release-agent spec; revisit pre-Phase 11 submission. Same posture as §33 + §97. Screenshots, app previews, descriptions, privacy disclosures, review notes all live in the marketing/release lane, not feature engineering.
+
+<!-- BEGIN DEFERRED — App Store / TestFlight assets
 
 ### 96.1 Screenshots
 - 6.9" iPhone (iPhone 16 Pro Max): 10 screenshots covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark mode / Glass nav / Offline / Settings.
@@ -4994,9 +5082,15 @@ Non-success throws `APIError.server(message)`. Never branches on `error` key.
 ### 96.6 What's New
 - Short changelog per release. Don't dump diff.
 
+END DEFERRED — App Store / TestFlight assets -->
+
 ---
 
-## 97. TestFlight rollout plan
+## 97. TestFlight rollout plan — DEFERRED (pre-Phase-11 only)
+
+Same posture as §33 + §96. Content kept as the release-agent spec.
+
+<!-- BEGIN DEFERRED — TestFlight rollout plan
 
 ### 97.1 Internal (team)
 - 25 internal testers. Fastlane lane `beta_internal` uploads on each main-branch merge.
@@ -5019,6 +5113,8 @@ Non-success throws `APIError.server(message)`. Never branches on `error` key.
 ### 97.5 Rollback
 - On crash-free < 99.0% rollback to previous binary via Phased Release pause + new build.
 - Never remove from sale unless security-critical.
+
+END DEFERRED — TestFlight rollout plan -->
 
 ---
 
@@ -5191,6 +5287,48 @@ The difference between "works" and "feels Apple-native" is 1000 tiny details. Ca
 ### 100.20 Spacing rhythm
 - 8 / 12 / 16 / 20 / 24 scale (tokens in §30).
 - Never hand-rolled paddings.
+
+---
+
+---
+
+## §§ 101–340 — triage guide (2026-04-20)
+
+Honest take: you don't need to read everything past §100 linearly. A lot of §§101–340 is fine-grain polish, obvious iOS convention, or overlap with earlier sections. Index below tiers them so you can jump to what matters.
+
+### Tier A — read these (substantive, Phase-gated work)
+
+**Infra / platform:**
+§103 Debug drawer · §135 Dead-letter queue viewer · §136 DB migrations · §147 Error taxonomy · §148 Logging · §149 Build flavors · §150 Certs / provisioning · §191 App lifecycle · §192 Data model ERD · §193 SwiftData-vs-GRDB · §194 Backup & restore · §310 POS offline queue · §311 Master design tokens · §312 API endpoint catalog · §313 Phase DoD · §318 Client rate-limiter · §319 Draft recovery · §336 Architecture flowchart
+
+**Security / compliance:**
+§139 GDPR/CCPA · §236 Session timeout · §237 Remember-me · §238 2FA · §239 Recovery codes · §240 SSO / SAML · §266 Passkey · §267 WebAuthn · §337 STRIDE threat model
+
+**Domain depth:**
+§131 Ticket state machine · §132 Returns & RMAs · §133 Quote e-sign · §140 Apple Pay · §201 Barcode formats · §202 IMEI / blacklist · §214 Discount engine · §215 Coupon codes · §216 Pricing rules · §221 Warranty claim · §222 SLA tracking · §223 QC checklist · §252 Customer 360 · §253 Customer merge · §321 Apple Wallet passes
+
+**Hardware / print:**
+§156 Print engine · §272 Terminal pairing · §280 Cash drawer · §309 Pairing stations · §322 PDF templates
+
+**Parity / audit:**
+§331 Android↔iOS parity · §332 Web↔iOS parity · §333 Server capability map · §334 DB schema ERD · §335 State diagrams · §338 Perf benchmark harness · §340 Battery bench
+
+### Tier B — scan only (reference material, not engineering backlog)
+
+§107 Analytics event naming (already covered by §32.4) · §109 Local dev mock server · §110 A11y labels catalog (already covered §26) · §114 Label printing · §130 FTS5 indexer · §142 Background-tasks catalog · §143 WKWebView policy · §199 Widgets deep · §200 Notifications UX polish (covered by §73) · §203 QR tracking labels · §204 Open-hours · §209 Email templates · §210 Webhooks · §323 Push copy deck · §325 Spotlight · §326 URL-scheme handler · §327 Localization glossary · §328 RTL · §330 Incident runbooks
+
+### Tier C — polish / obvious / skippable
+
+Sections that restate iOS conventions without adding plan-specific decisions, or that duplicate earlier-section content:
+
+§100 Final micro-interactions (20 bullets of standard iOS patterns; obvious) · §101 Feature flags · §104 Offline viewer (already covered §20) · §105 Notification channels (already covered §21/§73) · §106 Deep-link handoff (already covered §25/§68/§326) · §108 Sandbox vs prod (already scope-reduced) · §111 Camera stack (obvious iOS) · §112 Voice memos · §115 Re-order suggestions (covered §230) · §117 Loyalty deep (covered §38) · §118 Referral (updated) · §119 Commissions · §121 Ticket templates · §122 Vendor management · §123 Asset tracking · §124 Scheduling engine · §125 Message templates · §126 Waivers · §127 Marketing campaigns · §128 Recurring services · §129 Service bundles · §137 Bug-report form · §138 Changelog viewer · §141 Location manager · §144 Image caching (already rewritten §29.3) · §145 Automated a11y audits · §146 DI architecture · §151 Siri deep (overlaps §24) · §152 Focus modes · §153 Multi-window · §154 watchOS · §155 iPhone Mirroring · §158 Screen capture (already covered §28.8) · §161 Micro-copy style guide (overlap §67) · §162 First-empty tenant · §163 Ticket quick-actions (overlap §4) · §164 Keyboard handling · §§165-170 Toast/Confirm/Destructive/Undo/Multi-select/Drag-drop (standard iOS) · §§171-180 Clipboard/Inline-edit/Validation/Grid/Lazy-images/Scroll/List-virt/Glass-elev/Sidebar/Settings-search · §§181-190 Shake/Spatial-audio/Kiosk-dim/Battery-saver/Thermal/Quiet-haptics/CFD-layouts/Shift-reports/EOD/Open-shop · §197 Job posting (deferred) · §198 iPad M4 features · §207 Sticky a11y tips · §208 Customer portal links (covered §55) · §211-213 POS shortcuts / gift receipt / reprint (in §16) · §217-220 Renewal/Dunning/Late-fees/BNPL · §224-230 Batch/Serial/Transfer/Recon/Scrap/Dead-stock/Lead-times (all standard inventory ops) · §231-235 Admin tools / FF UI / Multi-tenant / Shared-device / PIN · §242-250 Feed / BI / Dashboards / Goals / Leaderboards / Gamification / Scorecards / Peer feedback / Recognition · §254-260 Preferred-comms / Birthday / CSAT / Complaint / Punch-card / Reviews · §261-265 Notes / Files / DocScan / Contacts / Magic-link · §268-270 Keyboard-avoidance / Diagnostic / On-device ML · §§273-279 Network wizard / Static-IP / Bonjour / BT / Reconnect / Firmware / Scale (standard peripheral ops) · §§281-290 Labels / Estimate versioning / ID formats / Fiscal / Multi-currency / Rounding / Currency display / Template versioning / Dynamic price / Clock-drift · §§291-296 Density / Glass strength / Sound / Brand mark / Keyboard layout / Magnifier · §§298-309 Review-checklist / Crisis / Docs / SLA-visualizer / Drill-through / Redesign gates / Theme / Branding / Skeletons / Timing / Keyboard-only / Printer pairing · §314 Wireframe ASCII · §315 Copy deck · §316 SF Symbol audit · §317 A/B harness · §320 Keyboard overlay · §324 Shortcuts gallery · §329 Uptime SLA (server-side, not iOS) · §339 Synthetic demo data
+
+### Reading order recommendation
+1. First pass: read Tier A only (~40 sections).
+2. Scan Tier B when you hit a feature that needs that specific reference.
+3. Skip Tier C entirely unless an agent specifically cites a §.
+
+Most Tier C content exists because the plan was written in "expand mode"; feel free to stub any of them individually with "see §X" pointers when building the corresponding feature — engineer-by-engineer, not in one sweep.
 
 ---
 
