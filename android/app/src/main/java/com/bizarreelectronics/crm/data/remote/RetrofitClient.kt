@@ -397,10 +397,13 @@ object RetrofitClient {
      */
     @Provides
     @Singleton
-    fun provideLoggingInterceptor(): HttpLoggingInterceptor {
-        return HttpLoggingInterceptor().apply {
+    fun provideLoggingInterceptor(redactingLogger: RedactingHttpLogger): HttpLoggingInterceptor {
+        // §28.6: route body-level log lines through RedactingHttpLogger so
+        // password / pin / token values are masked before logcat. Bumped to
+        // BODY in debug now that redaction is in place. Release stays NONE.
+        return HttpLoggingInterceptor(redactingLogger).apply {
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.HEADERS
+                HttpLoggingInterceptor.Level.BODY
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
@@ -408,6 +411,7 @@ object RetrofitClient {
             redactHeader("Cookie")
             redactHeader("Set-Cookie")
             redactHeader("X-API-Key")
+            redactHeader("X-CSRF-Token")
         }
     }
 

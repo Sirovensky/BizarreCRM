@@ -28,6 +28,7 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var appPreferences: AppPreferences
     @Inject lateinit var authPreferences: AuthPreferences
     @Inject lateinit var authApi: AuthApi
+    @Inject lateinit var quietHours: com.bizarreelectronics.crm.util.QuietHours
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -142,11 +143,23 @@ class FcmService : FirebaseMessagingService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
 
+        // §13.2 quiet hours: silence non-critical channels during the user's
+        // configured window. We keep the notification visible (still posts +
+        // increments badge) but drop priority + clear sound/vibration so it
+        // doesn't wake them. SLA breaches + security alerts ignore this and
+        // keep priority HIGH per QuietHours.shouldSilence's allowlist.
+        val silenced = quietHours.shouldSilence(channelId)
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (silenced) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
+            .apply {
+                if (silenced) {
+                    setSilent(true)
+                    setDefaults(0)
+                }
+            }
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             // M1 fix: keep the full payload off the lock screen.

@@ -362,7 +362,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
 - [x] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
 - [x] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`. (`util/ClipboardUtil.kt`: `copySensitive` auto-clear + `detectOtp` for paste).
-- [ ] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level).
+- [x] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level). (`data/remote/RedactingHttpLogger.kt` masks 14 sensitive JSON keys + form-urlencoded variants. Wired into HttpLoggingInterceptor.)
 - [ ] Challenge token expires silently after 10min → prompt restart login.
 
 ### 2.14 Shared-device mode (counter / kiosk multi-staff)
@@ -1590,7 +1590,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `security_event` (Max).
 - [ ] Each channel exposes vibration pattern + sound + bypass DND (for critical only) + badge enabled.
 - [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
-- [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`.
+- [~] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (Pref + helper + FCM silence path done in `util/QuietHours.kt`. SLA breach + security alerts allow-listed. Settings UI to edit window + system DND check pending.)
 - [ ] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach.
 - [ ] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
 
@@ -2221,7 +2221,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 21.9 Quiet hours / DND
 - [ ] Respect system `NotificationManager.getCurrentInterruptionFilter()` except `timeSensitive` categories which bypass with `setCategory(CATEGORY_ALARM)` (rarely).
-- [ ] In-app quiet hours (Settings → Notifications): suppresses push display but records notification entry for later.
+- [~] In-app quiet hours (Settings → Notifications): suppresses push display but records notification entry for later. (Helper + FCM silence wired; settings UI deferred.)
 
 ### 21.10 Cold-start & Direct Boot
 - [ ] Not direct-boot-aware (SQLCipher key requires user unlock). App waits for `ACTION_USER_UNLOCKED`.
@@ -2706,7 +2706,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Offline buffer in Room; flushes on connectivity + foreground.
 
 ### 32.3 Crash reporting
-- [ ] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table.
+- [~] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table. (`util/CrashReporter.kt` writes per-crash log file to `filesDir/crash-reports/` with thread + build + device + cause chain. Rotates to last 10. Room table + breadcrumbs deferred. Installed in `BizarreCrmApp.onCreate`.)
 - [ ] Upload on next launch via `POST /telemetry/crashes`.
 - [ ] Opt-in per user (Settings → Diagnostics).
 - [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.

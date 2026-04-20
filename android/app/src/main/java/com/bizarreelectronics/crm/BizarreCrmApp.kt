@@ -39,6 +39,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     @Inject
     lateinit var sessionRepository: com.bizarreelectronics.crm.data.repository.SessionRepository
 
+    @Inject
+    lateinit var crashReporter: com.bizarreelectronics.crm.util.CrashReporter
+
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
     // logic (no UI writes) — any UI-touching work must dispatch explicitly
@@ -53,6 +56,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     override fun onCreate() {
         System.loadLibrary("sqlcipher")
         super.onCreate()
+        // §32.3 — wire the uncaught-exception handler before anything else
+        // so init-path crashes are still captured.
+        crashReporter.install()
         createNotificationChannels()
         SyncWorker.schedule(this)
         observeReconnect()

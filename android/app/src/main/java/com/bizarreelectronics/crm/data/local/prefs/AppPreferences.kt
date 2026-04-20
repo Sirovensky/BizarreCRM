@@ -137,4 +137,36 @@ class AppPreferences @Inject constructor(
     var notifAppointmentReminderEnabled: Boolean
         get() = prefs.getBoolean("notif_appointment_reminder", true)
         set(value) = prefs.edit().putBoolean("notif_appointment_reminder", value).apply()
+
+    // --- §13.2 quiet hours --------------------------------------------------
+    //
+    // When [quietHoursEnabled] is true, FcmService consults
+    // [QuietHours.isInQuietWindow] before posting a non-critical notification
+    // and downgrades alert importance (no sound / no vibration) if the local
+    // clock is between [quietHoursStartMinutes] and [quietHoursEndMinutes].
+    //
+    // Times stored as minutes-from-midnight so the wrap-around case
+    // (e.g. start=22:00 end=07:00) doesn't need a separate "ends next day"
+    // flag — caller handles via modulo.
+
+    var quietHoursEnabled: Boolean
+        get() = prefs.getBoolean("quiet_hours_enabled", false)
+        set(value) = prefs.edit().putBoolean("quiet_hours_enabled", value).apply()
+
+    /** Minutes from midnight, 0..1439. Default 22:00 = 1320. */
+    var quietHoursStartMinutes: Int
+        get() = prefs.getInt("quiet_hours_start_min", 22 * 60)
+        set(value) = prefs.edit().putInt("quiet_hours_start_min", value.coerceIn(0, 1439)).apply()
+
+    /** Minutes from midnight, 0..1439. Default 07:00 = 420. */
+    var quietHoursEndMinutes: Int
+        get() = prefs.getInt("quiet_hours_end_min", 7 * 60)
+        set(value) = prefs.edit().putInt("quiet_hours_end_min", value.coerceIn(0, 1439)).apply()
+
+    /**
+     * §13.2 — channels that bypass quiet hours regardless of the user's
+     * preference. Security alerts and SLA breaches are urgent enough that
+     * silencing them risks customer-impact incidents.
+     */
+    val criticalChannelIds: Set<String> = setOf("sla_breach", "security_event")
 }
