@@ -15,8 +15,10 @@ import androidx.fragment.app.FragmentActivity
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.local.prefs.PinPreferences
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
+import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
 import com.bizarreelectronics.crm.util.DeepLinkBus
@@ -58,6 +60,9 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var biometricAuth: BiometricAuth
+
+    @Inject
+    lateinit var pinPreferences: PinPreferences
 
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
@@ -132,12 +137,32 @@ class MainActivity : FragmentActivity() {
             }
             BizarreCrmTheme(darkTheme = darkTheme) {
                 var locked by remember { mutableStateOf(isLocked) }
+                // AUDIT §2.5: PIN gate. Shown after biometric (or on devices
+                // without biometric) whenever the user has set a PIN and
+                // PinPreferences.shouldLock() decides the grace window has
+                // elapsed. A successful verify clears pinGated; Sign-out
+                // clears the full session, which drops the user on Login via
+                // AppNavGraph's own isLoggedIn observer.
+                val hasSessionForPin = authPreferences.accessToken != null ||
+                    authPreferences.refreshToken != null
+                var pinGated by remember {
+                    mutableStateOf(hasSessionForPin && pinPreferences.shouldLock())
+                }
 
                 if (locked) {
                     LaunchBiometricPrompt(
                         locked = locked,
                         onUnlocked = { locked = false },
                         onCancelled = { finish() },
+                    )
+                } else if (pinGated) {
+                    PinLockScreen(
+                        onUnlocked = { pinGated = false },
+                        onSignOut = {
+                            pinPreferences.reset()
+                            authPreferences.clear()
+                            pinGated = false
+                        },
                     )
                 } else {
                     AppNavGraph(

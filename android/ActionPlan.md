@@ -112,34 +112,34 @@ Baseline infra rest of app depends on. All of it ships before anything domain-sp
 > **Data-sovereignty principle (global).** App has **exactly one network egress target**: `ApiClient.baseUrl`, server user entered at login (e.g. `bizarrecrm.com` or self-hosted URL). **No third-party SDK may open network socket** — no Crashlytics, Firebase Analytics, Sentry, Mixpanel, Amplitude, Bugsnag, Datadog, New Relic, FullStory, Segment, etc. Telemetry, crash reports, experiment assignments, heartbeats, diagnostics all POST to tenant server only. Google Play Services FCM is single exception (push transport, payload opaque to Google). See §32 for enforcement (lint rule + Play Data-safety declaration audit).
 
 ### 1.1 API client & envelope
-- [ ] `ApiClient` (Retrofit + OkHttp) with dynamic base URL (`ApiClient.setBaseUrl`) — per-tenant.
-- [ ] `{ success, data, message }` envelope decoder via Retrofit `CallAdapter.Factory` → `ApiResponse<T>` sealed (`Ok<T> | Err(code, message, requestId)`).
-- [ ] Bearer-token Authenticator from EncryptedSharedPreferences — inject on every request.
-- [ ] **Token refresh on 401 with retry-of-original-request.** OkHttp `Authenticator` queues concurrent calls behind single refresh in-flight, replays original once, drops to Login only if refresh itself 401s. Backend: `POST /auth/refresh`.
-- [ ] **Typed endpoint namespaces** — Retrofit interface per domain (`TicketsApi`, `CustomersApi`, …). No ad-hoc string paths in repositories.
+- [x] `ApiClient` (Retrofit + OkHttp) with dynamic base URL (`ApiClient.setBaseUrl`) — per-tenant.
+- [x] `{ success, data, message }` envelope decoder via Retrofit `CallAdapter.Factory` → `ApiResponse<T>` sealed (`Ok<T> | Err(code, message, requestId)`).
+- [x] Bearer-token Authenticator from EncryptedSharedPreferences — inject on every request.
+- [x] **Token refresh on 401 with retry-of-original-request.** OkHttp `Authenticator` queues concurrent calls behind single refresh in-flight, replays original once, drops to Login only if refresh itself 401s. Backend: `POST /auth/refresh`.
+- [x] **Typed endpoint namespaces** — Retrofit interface per domain (`TicketsApi`, `CustomersApi`, …). No ad-hoc string paths in repositories.
 - [ ] **Multipart upload helper** (`ApiClient.upload(file, to, fields)`) for photos, receipts, avatars. Runs as WorkManager `Worker` so uploads survive app kill + Doze + OEM task killers.
-- [ ] **Retries with jitter** on transient network failures (5xx, SocketTimeout, UnknownHostException). Respect `Retry-After` on 429.
-- [ ] **Offline detection banner** driven by `ConnectivityManager.NetworkCallback` — sticky banner at top of scaffold with "Offline — showing cached data" copy + Retry button.
+- [~] **Retries with jitter** on transient network failures (5xx, SocketTimeout, UnknownHostException). Respect `Retry-After` on 429.
+- [~] **Offline detection banner** driven by `ConnectivityManager.NetworkCallback` — sticky banner at top of scaffold with "Offline — showing cached data" copy + Retry button.
 
 ### 1.2 Pinning & TLS
-- [ ] OkHttp `CertificatePinner` scaffold — empty pin set by default.
-- [ ] Decision: leave pins empty for Let's Encrypt on `bizarrecrm.com`, or pin to LE intermediates. Document decision in README and toggle per-build-variant.
-- [ ] Custom-server override (self-hosted tenants): user-trusted pins per base URL, stored encrypted via EncryptedSharedPreferences.
-- [ ] Network Security Config (`res/xml/network_security_config.xml`) — declare cleartext-denied except loopback for dev builds; pin anchors per tenant if enabled.
+- [x] OkHttp `CertificatePinner` scaffold — empty pin set by default.
+- [x] Decision: leave pins empty for Let's Encrypt on `bizarrecrm.com`, or pin to LE intermediates. Document decision in README and toggle per-build-variant.
+- [x] Custom-server override (self-hosted tenants): user-trusted pins per base URL, stored encrypted via EncryptedSharedPreferences.
+- [x] Network Security Config (`res/xml/network_security_config.xml`) — declare cleartext-denied except loopback for dev builds; pin anchors per tenant if enabled.
 
 ### 1.3 Persistence (Room + SQLCipher)
 
 Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundation. This subsection covers storage layer; §20 covers repository pattern, sync queue, cursor pagination, conflict resolution on top.
 
-- [ ] Room + SQLCipher wiring via `net.zetetic:sqlcipher-android` + `SupportFactory` with per-install passphrase.
-- [ ] **Per-domain DAO**: Tickets, Customers, Inventory, Invoices, Estimates, Leads, Appointments, Expenses, SMS threads, SMS messages, Notifications, Employees, Reports cache. Each DAO paired with `XyzRepository` required by §20.1.
-- [ ] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. Drives every list's `hasMore` decision. Mandatory before domain list PRs can merge.
-- [ ] **`sync_queue` table** (§20.2) — optimistic-write log feeding drain Worker. Every mutation ViewModel enqueues here instead of calling ApiClient directly.
-- [ ] **Migrations registry** — numbered Room `Migration` classes, each idempotent. Instrumented tests assert every migration on fresh DB replica.
-- [ ] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
-- [ ] **Encryption passphrase** — 32-byte random on first run, stored via Android Keystore-backed EncryptedSharedPreferences with `AES256_GCM` scheme.
+- [x] Room + SQLCipher wiring via `net.zetetic:sqlcipher-android` + `SupportFactory` with per-install passphrase.
+- [x] **Per-domain DAO**: Tickets, Customers, Inventory, Invoices, Estimates, Leads, Appointments, Expenses, SMS threads, SMS messages, Notifications, Employees, Reports cache. Each DAO paired with `XyzRepository` required by §20.1.
+- [~] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. Drives every list's `hasMore` decision. Mandatory before domain list PRs can merge.
+- [x] **`sync_queue` table** (§20.2) — optimistic-write log feeding drain Worker. Every mutation ViewModel enqueues here instead of calling ApiClient directly.
+- [x] **Migrations registry** — numbered Room `Migration` classes, each idempotent. Instrumented tests assert every migration on fresh DB replica.
+- [~] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
+- [x] **Encryption passphrase** — 32-byte random on first run, stored via Android Keystore-backed EncryptedSharedPreferences with `AES256_GCM` scheme.
 - [ ] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes zipped snapshot (without passphrase) to Storage Access Framework via `ACTION_CREATE_DOCUMENT`.
-- [ ] Opt out of Android Auto-Backup for the encrypted DB file (`android:allowBackup="false"` on Application or per-file `<exclude>` in `backup_rules.xml`). Tenant data must not land in user's Google Drive.
+- [x] Opt out of Android Auto-Backup for the encrypted DB file (`android:allowBackup="false"` on Application or per-file `<exclude>` in `backup_rules.xml`). Tenant data must not land in user's Google Drive.
 
 ### 1.4 Design System & Material 3 Expressive
 - [ ] `DesignSystemTheme` Composable wrapping `MaterialExpressiveTheme` (AndroidX Compose M3-Expressive).
@@ -161,11 +161,11 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`.
 
 ### 1.6 Environment & config
-- [ ] `AndroidManifest.xml` permission audit — declare only what's used; runtime-request each lazy.
-- [ ] `build.gradle.kts` `buildConfigField` for `BASE_DOMAIN`, `SERVER_URL` (seeded from repo `.env` / Gradle property / env var — already wired).
-- [ ] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`.
-- [ ] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF).
-- [ ] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
+- [x] `AndroidManifest.xml` permission audit — declare only what's used; runtime-request each lazy.
+- [x] `build.gradle.kts` `buildConfigField` for `BASE_DOMAIN`, `SERVER_URL` (seeded from repo `.env` / Gradle property / env var — already wired).
+- [~] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`.
+- [~] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF).
+- [~] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
 - [ ] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+).
 - [ ] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs.
 - [ ] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped.
@@ -175,7 +175,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Backup-before-migrate: copy encrypted DB to `cacheDir/pre-migration-<date>.db`; keep 7d or until next successful launch.
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
 - [ ] CI runs every migration against minimal + large fixture DBs.
-- [ ] Hilt DI `@InstallIn(SingletonComponent::class)` for ApiClient / Database / EncryptedSharedPreferences. ViewModels via `@HiltViewModel` + `@Inject`. Widgets + Workers get Hilt via `@HiltWorker` + `WorkerAssistedFactory`.
+- [x] Hilt DI `@InstallIn(SingletonComponent::class)` for ApiClient / Database / EncryptedSharedPreferences. ViewModels via `@HiltViewModel` + `@Inject`. Widgets + Workers get Hilt via `@HiltWorker` + `WorkerAssistedFactory`.
 - [ ] Test doubles: Hilt `@TestInstallIn` swaps per test class; no global-state leaks (assertions in `@Before`).
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
 - [ ] Widgets (Glance) + App-Actions shortcuts import `:core` module + register own Hilt sub-scope.
@@ -232,55 +232,55 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen.
 
 ### 2.2 Login — username + password (step 1)
-- [ ] Username + password form, dynamic server URL, token storage in EncryptedSharedPreferences.
-- [ ] **Response branches** `POST /auth/login` returns any of:
+- [x] Username + password form, dynamic server URL, token storage in EncryptedSharedPreferences.
+- [x] **Response branches** `POST /auth/login` returns any of:
   - `{ challengeToken, requiresFirstTimePassword: true }` → push SetPassword step.
   - `{ challengeToken, totpEnabled: true }` → push 2FA step.
   - `{ accessToken, user }` → happy path.
-- [ ] **Username not email** — server uses `username`, mirror that label. Support `@email` login fallback if server accepts it.
-- [ ] **Keyboard flow** — `ImeAction.Next` on username, `ImeAction.Go` on password; `FocusRequester.moveFocus(FocusDirection.Down)` auto-advance.
-- [ ] **"Show password" eye toggle** via `VisualTransformation` swap.
-- [ ] **Remember-me toggle** persists username in EncryptedSharedPreferences + flag to surface biometric prompt next launch.
-- [ ] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
-- [ ] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." banner with countdown.
+- [x] **Username not email** — server uses `username`, mirror that label. Support `@email` login fallback if server accepts it.
+- [x] **Keyboard flow** — `ImeAction.Next` on username, `ImeAction.Go` on password; `FocusRequester.moveFocus(FocusDirection.Down)` auto-advance.
+- [x] **"Show password" eye toggle** via `VisualTransformation` swap.
+- [x] **Remember-me toggle** persists username in EncryptedSharedPreferences + flag to surface biometric prompt next launch.
+- [x] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
+- [~] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." banner with countdown.
 - [ ] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
 
 ### 2.3 First-time password set
-- [ ] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
-- [ ] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass.
-- [ ] **UX:** M3 surface titled "Set your password to continue"; subtitle "Your admin requested a reset".
+- [x] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
+- [~] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass.
+- [x] **UX:** M3 surface titled "Set your password to continue"; subtitle "Your admin requested a reset".
 
 ### 2.4 2FA / TOTP
-- [ ] **Enroll during login** — `POST /auth/login/2fa-setup` → `{ qr, secret, manualEntry, challengeToken }`. Render QR via ZXing `BarcodeEncoder` + copyable secret with `SelectionContainer`. Detect installed authenticator apps via `PackageManager` query for `otpauth://` intent.
-- [ ] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
-- [ ] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
-- [ ] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
+- [~] **Enroll during login** — `POST /auth/login/2fa-setup` → `{ qr, secret, manualEntry, challengeToken }`. Render QR via ZXing `BarcodeEncoder` + copyable secret with `SelectionContainer`. Detect installed authenticator apps via `PackageManager` query for `otpauth://` intent.
+- [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
+- [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
+- [~] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [ ] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present.
 - [ ] **Paste-from-clipboard** auto-detect 6-digit string.
 - [ ] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
-- [ ] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in EncryptedSharedPreferences.
-- [ ] **Verify PIN** — `POST /auth/verify-pin` with `{ pin }` → `{ verified }`.
-- [ ] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`.
+- [~] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in EncryptedSharedPreferences. (Wired: `PinRepository.setInitialPin` + `PinSetupScreen`. Local hash mirror not stored — server is source of truth.)
+- [x] **Verify PIN** — `POST /auth/verify-pin` with `{ pin }` → `{ verified }`.
+- [~] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (Repository done; Settings UI pending.)
 - [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in top bar.
-- [ ] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action.
-- [ ] **Keypad UX** — custom numeric keypad Composable; `HapticFeedbackConstants.VIRTUAL_KEY` per tap, `HapticFeedbackConstants.REJECT` on wrong PIN, lockout after 5 wrong tries → full re-auth.
-- [ ] **Forgot PIN** → "Sign out and re-login" destructive action.
+- [~] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (Cold-start + timeout grace via `PinPreferences.shouldLock`; Settings slider + "Lock now" action pending.)
+- [x] **Keypad UX** — custom numeric keypad Composable; `HapticFeedbackConstants.VIRTUAL_KEY` per tap, `HapticFeedbackConstants.REJECT` on wrong PIN, lockout after 5 wrong tries → full re-auth.
+- [x] **Forgot PIN** → "Sign out and re-login" destructive action.
 - [ ] **Tablet layout** — keypad centered in `ElevatedCard`, not full-width.
 
 ### 2.6 Biometric (fingerprint / face)
-- [ ] **Manifest:** no permission required (BiometricPrompt handles).
+- [x] **Manifest:** no permission required (BiometricPrompt handles).
 - [ ] **Enable toggle** — Settings → Security (availability via `BiometricManager.canAuthenticate(BIOMETRIC_STRONG or BIOMETRIC_WEAK)`).
 - [ ] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth.
 - [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `BiometricPrompt.CryptoObject` (Android Keystore-backed AES256) and auto-POST `/auth/login`.
-- [ ] **Respect disabled biometry** gracefully — never crash, fall back to PIN silently.
+- [~] **Respect disabled biometry** gracefully — never crash, fall back to PIN silently.
 - [ ] **Re-enrollment detection** — Keystore invalidates key on new biometric enrollment when `setInvalidatedByBiometricEnrollment(true)`; catch `KeyPermanentlyInvalidatedException` → prompt user to re-enable biometric.
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
-- [ ] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
-- [ ] **Frontend:** multi-step form — Company (name, phone, address, timezone, shop type) → Owner (name, email, username, password) → Server URL (self-hosted vs managed) → Confirm & sign in.
-- [ ] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`).
+- [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
+- [~] **Frontend:** multi-step form — Company (name, phone, address, timezone, shop type) → Owner (name, email, username, password) → Server URL (self-hosted vs managed) → Confirm & sign in.
+- [~] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`).
 - [ ] **Timezone picker** — pre-selects device TZ (`ZoneId.systemDefault().id`).
 - [ ] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36).
 - [ ] **Setup token** (staff invite link) — captured from App Link `bizarrecrm.com/setup/:token`, passed on body.
@@ -292,7 +292,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
 
 ### 2.9 Change password (in-app)
-- [ ] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
+- [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
 - [ ] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option.
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
@@ -300,9 +300,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.11 Session management
 - [ ] 401 auto-logout via `SessionEvents` SharedFlow observed by root `NavHost`.
-- [ ] **Refresh-and-retry** on 401 — `POST /auth/refresh` with CSRF (`X-CSRF-Token`) + http-only refresh cookie stored via OkHttp `CookieJar` backed by `PersistentCookieJar` on encrypted storage; queue concurrent calls behind single in-flight refresh. Drop to login only if refresh itself 401s.
+- [x] **Refresh-and-retry** on 401 — `POST /auth/refresh` with CSRF (`X-CSRF-Token`) + http-only refresh cookie stored via OkHttp `CookieJar` backed by `PersistentCookieJar` on encrypted storage; queue concurrent calls behind single in-flight refresh. Drop to login only if refresh itself 401s.
 - [ ] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AuthState` DataStore.
-- [ ] **Logout** — `POST /auth/logout`; clear EncryptedSharedPreferences tokens; Room passphrase stays (DB persists across logins per tenant).
+- [x] **Logout** — `POST /auth/logout`; clear EncryptedSharedPreferences tokens; Room passphrase stays (DB persists across logins per tenant).
 - [ ] **Active sessions** (stretch) — if server exposes session list.
 - [ ] **Session-revoked banner** — sticky banner "Signed out — session was revoked on another device." with reason from `message`.
 
@@ -315,7 +315,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] TLS pin failure → red error dialog "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
 
 ### 2.13 Security polish
-- [ ] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
+- [x] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
 - [ ] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
 - [ ] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`.
 - [ ] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level).
@@ -442,13 +442,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [ ] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`.
-- [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
+- [~] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
 - [ ] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [ ] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
 - [ ] **Skeleton loaders** — shimmer via `placeholder-material3` Compose lib ≤300ms; cached value rendered immediately if present.
-- [ ] **Phone**: 2-column grid. **Tablet**: 3-column ≥600dp wide, 4-column ≥840dp, capped at 1200dp content width. **ChromeOS/desktop**: 4-column.
+- [~] **Phone**: 2-column grid. **Tablet**: 3-column ≥600dp wide, 4-column ≥840dp, capped at 1200dp content width. **ChromeOS/desktop**: 4-column.
 - [ ] **Customization sheet** — long-press tile → `ModalBottomSheet` with "Hide tile" / "Reorder tiles"; persisted in DataStore.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
@@ -470,8 +470,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
-- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
-- [ ] **Always visible to every signed-in user.** "Assigned to me" is universally useful — not gated by role or tenant flag. Shown on dashboard for admins, managers, techs, cashiers.
+- [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
+- [x] **Always visible to every signed-in user.** "Assigned to me" is universally useful — not gated by role or tenant flag. Shown on dashboard for admins, managers, techs, cashiers.
 - [ ] **Separate from tenant-wide visibility.** Two orthogonal controls:
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
   - **My Queue section** (this subsection) stays on dashboard for everyone; per-user shortcut, never affected by tenant setting.
@@ -495,18 +495,18 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Frontend:** sticky banner above KPI grid. Tap → full-screen reader Activity. "Dismiss" persists last-seen ID in DataStore.
 
 ### 3.8 Quick-action FAB / toolbar
-- [ ] **Phone:** native Material 3 `ExtendedFloatingActionButton` bottom-right (respects `WindowInsets.safeContent` + nav bar). Expands to SpeedDial via open-source `ExpandableFab` pattern: New ticket / New sale / New customer / Scan barcode / New SMS. `HapticFeedbackConstants.CONTEXT_CLICK` on expand. FAB is first-class Android idiom — keep it.
+- [x] **Phone:** native Material 3 `ExtendedFloatingActionButton` bottom-right (respects `WindowInsets.safeContent` + nav bar). Expands to SpeedDial via open-source `ExpandableFab` pattern: New ticket / New sale / New customer / Scan barcode / New SMS. `HapticFeedbackConstants.CONTEXT_CLICK` on expand. FAB is first-class Android idiom — keep it.
 - [ ] **Tablet/ChromeOS:** top-app-bar action row + `NavigationRail` header actions instead of FAB for space + precision input. Same five actions as menu items.
 - [ ] **Hardware-keyboard shortcuts** (tablet/ChromeOS): Ctrl+N → New ticket; Ctrl+Shift+N → New customer; Ctrl+Shift+S → Scan; Ctrl+Shift+M → New SMS. Registered via `onKeyEvent` modifier on root scaffold.
 
 ### 3.9 Greeting + operator identity
-- [ ] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}") using `LocalDateTime.now().hour`.
+- [x] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}") using `LocalDateTime.now().hour`.
 - [ ] Tap greeting → Settings → Profile.
 - [ ] Avatar in top-left top bar (phone) / leading nav-rail header (tablet); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge
-- [ ] Small pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
-- [ ] Tap → Settings → Data → Sync Issues.
+- [x] Small pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
+- [~] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
 - [ ] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)".
