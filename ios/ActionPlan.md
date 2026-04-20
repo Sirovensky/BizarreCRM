@@ -400,7 +400,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
 - [ ] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
-- [ ] **Share PDF / AirPrint** — render via `UIPrintInteractionController` using a SwiftUI → PDF renderer; share to customer via SMS or email.
+- [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§55); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [ ] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
 - [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
@@ -1191,15 +1191,17 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card.
 
 ### 16.7 Receipt & hand-off
-- [ ] **Receipt preview** — glass card with business logo, items, totals, payment method, footer (tenant-configured).
-- [ ] **Thermal print** — default printer from Settings → Printer; send ESC/POS via MFi SDK (§17); silent on success.
-- [ ] **AirPrint** — fallback for non-MFi printers; `UIPrintInteractionController`.
-- [ ] **Email** — autofill from customer; "Send" → server sends templated email.
-- [ ] **SMS** — short URL to `/receipts/:id`; role-gated ("SMS fees apply").
-- [ ] **Download PDF** — via `.fileExporter`; filename `Receipt-{id}-{date}.pdf`.
-- [ ] **QR code** — on printed receipt for self-service returns/tracking page.
-- [ ] **Signature print** — include captured signature if any.
-- [ ] **Gift receipt** — no prices; "With love" line printed.
+- [ ] **On-device rendering pipeline per §17.4.** Same `ReceiptView(model:)` drives preview / thermal / AirPrint / PDF export / email attachment / share sheet. Never hand the printer or share sheet a `https://…/print/…` URL (Android regression — auth wall).
+- [ ] **Receipt preview** — same SwiftUI `ReceiptView` rendered live inside a glass card. What you see is what prints.
+- [ ] **Thermal print** — `ImageRenderer(content: ReceiptView(...))` → bitmap → ESC/POS raster to MFi printer (§17).
+- [ ] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`.
+- [ ] **Email** — server sends templated email BUT attach the locally-rendered PDF so recipient sees the same artifact regardless of their auth state; plus inline HTML fallback.
+- [ ] **SMS** — sends the tracking-page short link for self-service lookups (public, tokenized — not the private print URL). Auth-free page by design (§55).
+- [ ] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`.
+- [ ] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient).
+- [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
+- [ ] **Gift receipt** — `GiftReceiptView` (price-hidden variant) uses same model.
+- [ ] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes.
 
 ### 16.8 Post-sale screen
 - [ ] **Confetti animation** (short, Reduce-Motion aware) + glass "Sale complete" card.
@@ -1320,24 +1322,75 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Network requirements doc** — setup wizard tells tenant: firewall must allow outbound `api.blockchyp.com:443` for cloud-relay. Local mode needs iPad + terminal on same subnet or routed LAN reachable on terminal's service port.
 
 ### 17.4 Receipt printer (MFi Star / Epson)
-- [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP (no MFi).
-- [ ] **Models targeted** — Star TSP100IV (USB/LAN/BT), Star mPOP (combo printer+drawer), Epson TM-m30II, Epson TM-T88VII.
-- [ ] **Discovery** — `StarIO10` framework: LAN scan + BT scan; list paired.
-- [ ] **Pair** — pick printer → save identifier (serialNumber) in settings.
-- [ ] **Test print** — Settings "Print test page" with logo + test data.
-- [ ] **Templates** — receipt, gift receipt, ticket label (name + ticket #), customer intake form, A/R statement, end-of-day Z-report.
-- [ ] **ESC/POS builder** — helpers for bold, large, centered, QR, barcode, cut, feed, drawer-kick.
-- [ ] **Cash-drawer kick** — via printer ESC command; fallback: warn "Manual drawer release".
-- [ ] **AirPrint** — `UIPrintInteractionController` with custom `UIPrintPageRenderer` for any IPP-capable printer.
-- [ ] **Fallback** — if no printer configured, receipt defaults to Email+SMS.
-- [ ] **Queue** — print jobs queued when printer offline; retry when reconnected; user alerted on failure.
-- [ ] **Multi-location** — per-location default printer selection.
+
+**Lesson from Android:** Android build "prints" by handing the system a `https://app.bizarrecrm.com/print/...` URL. Opening that URL requires an authenticated session the printer / share sheet doesn't have → blank page or login wall. **iOS must never do this.** All printable artifacts are rendered on-device from local model data.
+
+#### On-device rendering pipeline (mandatory)
+- [ ] **No URL-based printing.** Ban any code path that hands a `print://` / `https://…/print/…` intent to the system. Lint rule: forbid `UIPrintInteractionController.printingItem = URL(...)` unless URL is a file URL of a locally-rendered PDF.
+- [ ] **Canonical rendering**: SwiftUI `ImageRenderer(content: ReceiptView(model: ...))` produces the visual once, feeds every output channel.
+  - Thermal printer: `ImageRenderer` → `CGImage` → raster ESC/POS bitmap (80mm or 58mm per printer width).
+  - AirPrint / PDF: same `ImageRenderer` → `UIGraphicsPDFRenderer` → multi-page PDF.
+  - Share sheet: PDF file URL in `UIActivityViewController`.
+  - Email / SMS attachments: PDF.
+  - Preview in app: same `ReceiptView` rendered live in a scroll view.
+- [ ] **Single `ReceiptView` per document type** — `ReceiptView`, `GiftReceiptView`, `WorkOrderTicketView`, `IntakeFormView`, `ARStatementView`, `ZReportView`, `LabelView`. Each takes a strongly-typed model. Same view backs print + preview + PDF + email attachment.
+- [ ] **Model is self-contained** — `ReceiptModel` carries every value needed (business logo `Data`, shop name, address, line items, totals, payment auth last4, timestamp, tenant footer). Zero deferred network reads inside render. Offline-safe.
+- [ ] **Width-aware layout** — `@Environment(\.printMedium)` picks `.thermal80mm`, `.thermal58mm`, `.letter`, `.a4`, `.label2x4`, etc. Fonts + columns adapt; single SwiftUI view, media-specific modifiers.
+- [ ] **Rasterization** — thermal path goes through `ImageRenderer.scale = 2.0`, dithered to 1-bit for print head. Preview uses same image so what tenant sees is what prints.
+- [ ] **Cut + drawer-kick** — ESC/POS opcodes appended after the rasterized bitmap, not embedded in view. Keeps view pure visual.
+
+#### MFi / model support
+- [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP for web-printable models (no MFi); still renders our bitmap, not a URL.
+- [ ] **Models targeted** — Star TSP100IV (USB / LAN / BT), Star mPOP (combo printer + drawer), Epson TM-m30II, Epson TM-T88VII.
+- [ ] **Discovery** — `StarIO10` + `ePOS-Print` SDKs: LAN scan + BT scan + USB-C (iPad); list paired.
+- [ ] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§309).
+- [ ] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline.
+
+#### AirPrint path
+- [ ] **`UIPrintInteractionController`** with `printingItems: [localPdfURL]` — never a remote URL.
+- [ ] **Custom `UIPrintPageRenderer`** for label printers that want page-by-page rendering instead of a PDF (e.g., Dymo via AirPrint).
+
+#### Fallbacks + resilience
+- [ ] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed.
+- [ ] **Printer offline** — job queues in `print_queue` GRDB table (model payload + target printer). Retry on reconnect; alert on repeated failure.
+- [ ] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts.
+- [ ] **Re-print** — past receipts re-render from stored `ReceiptModel` snapshot (persisted at the time of sale). Guarantees byte-identical reprint even after tenant branding / template changes.
+
+#### Templates (the views)
+- [ ] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§114).
+
+#### ESC/POS builder
+- [ ] Helpers for bold / large / centered / QR / barcode / cut / feed / drawer-kick — used only for command sequences around the rasterized bitmap, never to draw text piecewise (text comes from SwiftUI render).
+
+#### Multi-location
+- [ ] Per-location default printer selection + per-station profile (§309).
+
+#### Acceptance criterion (copied from lesson)
+- [ ] Ship with a regression test: log out of the app, attempt to print a cached recent receipt (detail opened while online, then session ended) → printer must still produce correct output, because rendering is fully local and only the device-to-printer transport is needed.
 
 ### 17.5 NFC
+
+**Parity check (2026-04-20).** Server (`packages/server/src/`), web (`packages/web/src/`) and Android (`packages/android/`) have **zero** NFC implementation today. No `nfc_tag_id` column, no `/nfc/*` routes, no Android `NfcAdapter` usage. Building it in iOS first would create a feature that only works when an iPhone reads it, with nowhere on the server to store it and no way for web / Android to consume it. **Do not implement until cross-platform parity lands.** Cross-platform item tracked in root `TODO.md` as `NFC-PARITY-001`.
+
+**How iOS would read / write, for when parity is funded:**
+- **Reader is the iPhone itself** — `CoreNFC` framework. No external USB / BT reader needed.
+  - Hardware floor: iPhone 7+ can read NDEF; iPhone XS+ supports background tag reading ("Automatic"); `NFCTagReaderSession` (foreground) works on all iPhone 7+.
+  - iPad: only iPad Pro M4+ has an NFC antenna. Older iPads: feature gracefully disabled; button hidden.
+- **Entitlement** — `com.apple.developer.nfc.readersession.formats` with `TAG` (ISO7816 / MIFARE / FeliCa) or `NDEF`.
+- **Info.plist** — `NFCReaderUsageDescription` ("Scan your device tag to attach to a repair ticket.") + `com.apple.developer.nfc.readersession.iso7816.select-identifiers` for any ISO-7816 AIDs.
+- **Session types**: `NFCNDEFReaderSession` for NDEF-formatted tags (simple, preferred); `NFCTagReaderSession` for raw MIFARE / NTAG / FeliCa when NDEF insufficient.
+- **Write path** — `NFCNDEFReaderSession` with `connect(to:)` + `writeNDEF(_:)`. Tag must be writable (not locked).
+- **Not supported on iOS**: Host Card Emulation (receiving NFC from other phones), which rules out "tap customer's phone to our iPhone" flows. If we ever want that, Android is the required platform.
+
+**Tasks (blocked until parity):**
+- [ ] NFC-PARITY-001 (root TODO) resolved — server schema + web UX + Android implementation done first.
 - [ ] **Core NFC** read — scan tag with device serial → populate Ticket device-serial field.
 - [ ] **Core NFC write** (optional) — write tenant-issued tag to a customer device for warranty tracking.
-- [ ] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags.
-- [ ] **Apple Wallet pass** — customer loyalty card (see §40) added via `PKAddPassesViewController`.
+- [ ] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags if tenant requests.
+- [ ] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI.
+
+**Already unblocked (independent of parity):**
+- [ ] **Apple Wallet pass** — customer loyalty card (see §40, §117, §321) added via `PKAddPassesViewController`. This is `PassKit`, not `CoreNFC`. Works today.
 
 ### 17.6 Scale (Bluetooth)
 - [ ] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP); low priority unless tenant requests.
@@ -1354,10 +1407,11 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Handoff prompt** — "Customer: please sign" / "Tip amount" on external display.
 - [ ] **AirPlay** — fallback via AirPlay to Apple TV.
 
-### 17.9 Apple Watch companion (stretch)
-- [ ] **Clock in/out** complication on watch face.
-- [ ] **New-ticket / SMS notifications** delivered to watch.
-- [ ] **Reply via dictation** from watch.
+### 17.9 Apple Watch companion — MOVED TO ROOT TODO
+
+Not an iOS feature per se; separate product surface (own entitlements, TestFlight lane, App Store binary, review cycle). Tracked as `WATCH-COMPANION-001` in root `TODO.md` pending scope decision. iOS work on this section is blocked until that item resolves.
+
+Candidate scope when revisited (for reference): clock in / out complication, new-ticket / SMS push forwarding, reply-by-dictation. Non-goal: full CRM browsing on watch. See also §154 / §297 (merged).
 
 ### 17.10 Accessibility hardware
 - [ ] **Switch Control** — POS primary actions reachable.

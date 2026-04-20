@@ -959,3 +959,23 @@ Verified working. Not TODOs.
 - `/uploads` path traversal blocked 403 (`/uploads/%2e%2e%2f%2e%2e%2f.env` → 403).
 - `.env` not HTTP-reachable (all enumerated paths serve SPA fallback).
 - `/super-admin/*` localhostOnly fix shipped in commit 585a06c — BH-S002 / LIVE-03 mitigated, external requests 404 (see DONETODOS.md).
+
+## Cross-platform scope decisions (surfaced by ios/ActionPlan.md review, 2026-04-20)
+
+- [ ] **NFC-PARITY-001. Cross-platform NFC support — product decision + backend + parity.**
+  Surfaced from `ios/ActionPlan.md §17.5`. Today no package implements NFC: `packages/server/src/` has no `nfc_tag_id` column and no `/nfc/*` routes; `packages/web/src/` no Web NFC usage; `packages/android/` no `NfcAdapter` / `NdefRecord` usage. iOS would be a solo feature with nowhere to persist and no way for web / Android to consume. Decision needed: ship cross-platform or drop from iOS spec. If ship, scope:
+  1. Server: add `nfc_tag_id` to `tickets.device` + `inventory.item` + `customer.device` tables (tenant-scoped, indexed). Routes `POST /tickets/:id/nfc-tag`, `GET /tickets/by-nfc/:tagId`, parallel for inventory and customer device. Migration.
+  2. Android: `NfcAdapter` reader-mode in matching screens; same graceful-disable pattern on devices without NFC.
+  3. iOS: §17.5 tasks unblocked (`CoreNFC`, reader / writer, graceful-disable on iPad < M4 and iPhone 6 or earlier).
+  4. Web: no-op — no Web NFC on Safari; prompt "Use the phone app to scan".
+  5. Use cases to validate first: attach tag to customer device for warranty lookup; attach tag to loaner bin for §123 asset tracking; tag inventory for cycle-count speed.
+  Block iOS §17.5 implementation work until this item resolves.
+
+- [ ] **WATCH-COMPANION-001. Apple Watch companion — product scope decision.**
+  Surfaced from `ios/ActionPlan.md §17.9`. Separate product surface (not just another iOS task): own entitlements, TestFlight lane, App Store binary. Decision needed:
+  - Is the watch surface worth the maintenance for expected user volume?
+  - Minimum viable scope (candidate): clock in / clock out complication + push notifications forwarded + reply-by-dictation.
+  - Non-goals: no full CRM browsing on watch.
+  - Delivery: shares `Core` package with iOS; new `WatchCompanion` target in `ios/project.yml`; new provisioning profile; separate phased-rollout cohort; separate review cycle.
+  - Gate: revisit post iOS 1.0 GA + at least 3 tenants explicitly request the feature.
+  iOS `ActionPlan.md §17.9` points here instead of scheduling inside the iOS plan.
