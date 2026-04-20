@@ -84,6 +84,23 @@ BACKUP_ENCRYPTION_KEY=${backupKey}
     },
   },
   {
+    // SEC-H103: config encryption key. AES-256 over BlockChyp / SMTP / SMS
+    // credentials stored in the tenant DB. config.ts FATAL-exits in
+    // production when this is absent, so without this section the server
+    // pm2 restart-loops forever after an upgrade that introduces the
+    // requirement. Domain-separated from JWT / UPLOADS / BACKUP so a leak
+    // in one secret does not cascade into payment or messaging creds.
+    name: 'config-encryption',
+    detector: /^CONFIG_ENCRYPTION_KEY=/m,
+    block: () => {
+      const configKey = crypto.randomBytes(32).toString('hex');
+      return `# Config encryption key — AES-256 over API creds (BlockChyp, SMTP, SMS) in DB (SEC-H103)
+CONFIG_ENCRYPTION_KEY=${configKey}
+
+`;
+    },
+  },
+  {
     // SEC-M52 / PROD36: production CORS allowlist. Without this entry the
     // server rejects every browser fetch from an origin that isn't
     // `https://localhost:PORT` or a `BASE_DOMAIN` match — which includes
