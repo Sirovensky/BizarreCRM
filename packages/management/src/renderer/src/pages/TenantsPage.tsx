@@ -172,6 +172,46 @@ export function TenantsPage() {
         </div>
       </div>
 
+      {/* Aggregate stats — total / active / suspended / DB size */}
+      {tenants.length > 0 && (() => {
+        const active = tenants.filter((t) => t.status === 'active').length;
+        const suspended = tenants.length - active;
+        const totalBytes = tenants.reduce((a, t) => a + (t.db_size_bytes ?? 0), 0);
+        const planCounts = tenants.reduce<Record<string, number>>((acc, t) => {
+          acc[t.plan] = (acc[t.plan] ?? 0) + 1;
+          return acc;
+        }, {});
+        return (
+          <div className="grid grid-cols-4 gap-3">
+            <div className="stat-card">
+              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Tenants</div>
+              <div className="text-2xl font-bold text-surface-100">{tenants.length}</div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Active</div>
+              <div className="text-2xl font-bold text-emerald-300">
+                {active}<span className="text-xs text-surface-500"> / {tenants.length}</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Suspended</div>
+              <div className={cn('text-2xl font-bold', suspended > 0 ? 'text-amber-300' : 'text-surface-300')}>{suspended}</div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Total DB</div>
+              <div className="text-2xl font-bold text-surface-100">
+                {totalBytes > 0
+                  ? `${(totalBytes / 1024 / 1024).toFixed(1)} MB`
+                  : '—'}
+              </div>
+              <div className="text-[10px] text-surface-500 mt-1">
+                {Object.entries(planCounts).map(([p, n]) => `${n} ${p}`).join(' • ')}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
@@ -212,6 +252,7 @@ export function TenantsPage() {
                 <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Name</th>
                 <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Status</th>
                 <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Plan</th>
+                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">DB size</th>
                 <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Created</th>
                 <th className="text-right py-2 px-3 text-xs text-surface-500 font-medium">Actions</th>
               </tr>
@@ -230,6 +271,11 @@ export function TenantsPage() {
                     </span>
                   </td>
                   <td className="py-2.5 px-3 text-surface-400 text-xs">{t.plan}</td>
+                  <td className="py-2.5 px-3 text-surface-400 text-xs whitespace-nowrap">
+                    {t.db_size_bytes
+                      ? `${(t.db_size_bytes / 1024 / 1024).toFixed(1)} MB`
+                      : '—'}
+                  </td>
                   <td className="py-2.5 px-3 text-surface-500 text-xs">{formatDateTime(t.created_at)}</td>
                   <td className="py-2.5 px-3">
                     <div className="flex items-center justify-end gap-1">
