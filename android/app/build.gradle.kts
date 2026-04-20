@@ -4,7 +4,11 @@ fun quoteBuildConfig(value: String): String = "\"" + value.replace("\\", "\\\\")
 
 fun readRepoEnv(): Properties {
     val props = Properties()
-    val repoEnv = rootProject.projectDir.parentFile.parentFile.resolve(".env")
+    // rootProject.projectDir = bizarre-crm/android/. .env lives one level up
+    // at bizarre-crm/.env. (Older layouts had android at bizarre-crm/packages/
+    // android/ which needed parentFile.parentFile; that path was stale after
+    // the move and silently fell back to BASE_DOMAIN=localhost.)
+    val repoEnv = rootProject.projectDir.parentFile.resolve(".env")
     if (repoEnv.exists()) {
         repoEnv.inputStream().use { props.load(it) }
     }
@@ -19,14 +23,14 @@ fun normalizeBaseDomain(raw: String): String =
         .removePrefix("http://")
         .substringBefore("/")
         .trim()
-        .ifBlank { "localhost" }
+        .ifBlank { "bizarrecrm.com" }
 
 val repoEnv = readRepoEnv()
 val configuredBaseDomain = normalizeBaseDomain(
     providers.gradleProperty("BASE_DOMAIN").orNull
         ?: System.getenv("BASE_DOMAIN")
         ?: repoEnv.getProperty("BASE_DOMAIN")
-        ?: "localhost"
+        ?: "bizarrecrm.com"
 )
 val configuredServerUrl = "https://$configuredBaseDomain"
 
