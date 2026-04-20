@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, RefreshCw, Trash2, RotateCw } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { AlertTriangle, RefreshCw, Trash2, RotateCw, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { CrashEntry, CrashStats, DisabledRoute } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { Sparkline } from '@/components/Sparkline';
 import { formatDateTime, formatRelativeTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
@@ -14,6 +15,7 @@ export function CrashMonitorPage() {
   const [disabledRoutes, setDisabledRoutes] = useState<DisabledRoute[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -87,10 +89,36 @@ export function CrashMonitorPage() {
 
   const recentCrashes = [...crashes].reverse().slice(0, 50);
 
+  // Last 30 days crash rate — per-day bucket for a sparkline trend chart.
+  // Uses crashes rather than crashStats because we need the per-event timestamps.
+  const dailyCounts = useMemo(() => {
+    const now = Date.now();
+    const DAYS = 30;
+    const buckets = new Array<number>(DAYS).fill(0);
+    for (const c of crashes) {
+      const t = new Date(c.timestamp).getTime();
+      if (!isFinite(t)) continue;
+      const dayIdx = DAYS - 1 - Math.floor((now - t) / (24 * 60 * 60 * 1000));
+      if (dayIdx >= 0 && dayIdx < DAYS) buckets[dayIdx]++;
+    }
+    return buckets;
+  }, [crashes]);
+
+  // Group by route for the "top offending routes" bar — helps spot patterns.
+  const topRoutes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of crashes) {
+      counts.set(c.route, (counts.get(c.route) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [crashes]);
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 lg:space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-surface-100">Crash Monitor</h1>
+        <h1 className="text-base lg:text-lg font-bold text-surface-100">Crash Monitor</h1>
         <div className="flex items-center gap-2">
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors">
             <RefreshCw className="w-4 h-4" />
@@ -98,18 +126,60 @@ export function CrashMonitorPage() {
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row + per-day sparkline so the operator sees trend, not just
+          a snapshot. Hour bucketing would be too noisy at low volume; days
+          let a slow leak ("10 crashes/day for 2 weeks") be visible. */}
       {crashStats && (
-        <div className="flex gap-4">
-          <div className="stat-card flex-1">
-            <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Total Crashes</div>
-            <div className="text-2xl font-bold text-surface-100">{crashStats.totalCrashes}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3">
+          <div className="stat-card">
+            <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1">Total crashes</div>
+            <div className="text-lg lg:text-2xl font-bold text-surface-100">{crashStats.totalCrashes}</div>
           </div>
-          <div className="stat-card flex-1">
-            <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Disabled Routes</div>
-            <div className={cn('text-2xl font-bold', crashStats.disabledCount > 0 ? 'text-red-400' : 'text-surface-100')}>
+          <div className="stat-card">
+            <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1">Disabled routes</div>
+            <div className={cn('text-lg lg:text-2xl font-bold', crashStats.disabledCount > 0 ? 'text-red-400' : 'text-surface-100')}>
               {crashStats.disabledCount}
             </div>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider">Last 30 days</div>
+              <TrendingUp className="w-3 h-3 text-surface-500" />
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <span className="text-lg lg:text-2xl font-bold text-surface-100">
+                {dailyCounts.reduce((a, b) => a + b, 0)}
+              </span>
+              <div className="text-red-400/70 opacity-80">
+                <Sparkline data={dailyCounts} width={64} height={22} fill />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top offending routes — pattern-finding for repeated crashes. Skipped
+          when there are fewer than 2 distinct routes; one route's count is
+          already in the table below and the visualization wouldn't help. */}
+      {topRoutes.length >= 2 && (
+        <div>
+          <h2 className="text-sm font-semibold text-surface-300 mb-2">Top offending routes</h2>
+          <div className="space-y-1">
+            {(() => {
+              const maxCount = topRoutes[0][1];
+              return topRoutes.map(([route, count]) => (
+                <div key={route} className="flex items-center gap-2 text-xs">
+                  <code className="font-mono text-amber-400 w-48 truncate" title={route}>{route}</code>
+                  <div className="flex-1 h-5 bg-surface-900 border border-surface-800 rounded overflow-hidden">
+                    <div
+                      className="h-full bg-red-500/30 border-r border-red-500/60"
+                      style={{ width: `${Math.max(5, (count / maxCount) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-surface-300 w-10 text-right">{count}</span>
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -172,21 +242,49 @@ export function CrashMonitorPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentCrashes.map((c) => (
-                  <tr key={c.id} className="border-b border-surface-800/50 hover:bg-surface-800/30">
-                    <td className="py-2 px-3 text-surface-500 whitespace-nowrap">{formatDateTime(c.timestamp)}</td>
-                    <td className="py-2 px-3 font-mono text-amber-400">{c.route}</td>
-                    <td className="py-2 px-3 text-red-400 max-w-xs truncate" title={c.errorMessage}>{c.errorMessage}</td>
-                    <td className="py-2 px-3">
-                      <span className={cn(
-                        'px-1.5 py-0.5 rounded text-[10px] font-medium',
-                        c.type === 'uncaughtException' ? 'bg-red-900/40 text-red-300' : 'bg-amber-900/40 text-amber-300'
-                      )}>
-                        {c.type === 'uncaughtException' ? 'Exception' : 'Rejection'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {recentCrashes.map((c) => {
+                  const isOpen = expandedId === c.id;
+                  return (
+                    <>
+                      <tr
+                        key={c.id}
+                        className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                        onClick={() => setExpandedId(isOpen ? null : c.id)}
+                      >
+                        <td className="py-1.5 px-2 text-surface-500 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1">
+                            {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            {formatDateTime(c.timestamp)}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-2 font-mono text-amber-400">{c.route}</td>
+                        <td className="py-1.5 px-2 text-red-400 max-w-xs truncate" title={c.errorMessage}>{c.errorMessage}</td>
+                        <td className="py-1.5 px-2">
+                          <span className={cn(
+                            'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                            c.type === 'uncaughtException' ? 'bg-red-900/40 text-red-300' : 'bg-amber-900/40 text-amber-300'
+                          )}>
+                            {c.type === 'uncaughtException' ? 'Exception' : 'Rejection'}
+                          </span>
+                          {c.recovered && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-900/40 text-emerald-300">
+                              recovered
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr key={c.id + '-stack'} className="border-b border-surface-800">
+                          <td colSpan={4} className="px-2 pb-2 pt-0">
+                            <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
+                              {c.errorStack || c.errorMessage || '(no stack captured)'}
+                            </pre>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>
