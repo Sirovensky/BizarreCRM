@@ -316,8 +316,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.13 Security polish
 - [x] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
-- [ ] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
-- [ ] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`.
+- [x] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
+- [x] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`. (`util/ClipboardUtil.kt`: `copySensitive` auto-clear + `detectOtp` for paste).
 - [ ] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level).
 - [ ] Challenge token expires silently after 10min → prompt restart login.
 

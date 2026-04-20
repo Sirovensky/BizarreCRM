@@ -23,6 +23,7 @@ import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
 import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.rememberNotificationPermission
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -173,6 +174,10 @@ class MainActivity : FragmentActivity() {
                         },
                     )
                 } else {
+                    // §13.2: prompt for POST_NOTIFICATIONS on first unlock
+                    // (Android 13+ only — pre-T the permission didn't exist).
+                    // Runs here so it never fires behind the lock screen.
+                    rememberNotificationPermission(autoRequest = true)
                     AppNavGraph(
                         authPreferences = authPreferences,
                         serverReachabilityMonitor = serverReachabilityMonitor,
