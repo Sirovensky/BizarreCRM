@@ -14,6 +14,7 @@ import { SessionsPage } from '@/pages/SessionsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { AdminToolsPage } from '@/pages/AdminToolsPage';
 import { LogsPage } from '@/pages/LogsPage';
+import { ActivityPage } from '@/pages/ActivityPage';
 import { useAuthStore } from '@/stores/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -59,9 +60,11 @@ export default function App() {
         <Route path="backups" element={<BackupPage />} />
         <Route path="crashes" element={<CrashMonitorPage />} />
         <Route path="updates" element={<UpdatesPage />} />
-        <Route path="audit" element={<AuditLogPage />} />
-        <Route path="alerts" element={<SecurityAlertsPage />} />
-        <Route path="sessions" element={<SessionsPage />} />
+        <Route path="activity" element={<ActivityPage />} />
+        {/* Direct deep links from notifications/banners still resolve. */}
+        <Route path="audit" element={<Navigate to="/activity?tab=audit" replace />} />
+        <Route path="alerts" element={<Navigate to="/activity?tab=alerts" replace />} />
+        <Route path="sessions" element={<Navigate to="/activity?tab=sessions" replace />} />
         <Route path="tools" element={<AdminToolsPage />} />
         <Route path="logs" element={<LogsPage />} />
         <Route path="settings" element={<SettingsPage />} />

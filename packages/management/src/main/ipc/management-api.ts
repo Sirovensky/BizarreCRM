@@ -221,6 +221,14 @@ const SchemaResetRateLimits = z.object({
   all: z.boolean().optional(),
 }).strict();
 
+const SchemaTenantAuthEventsQuery = z.object({
+  tenant_slug: z.string().regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/).max(30).optional(),
+  ip: z.string().max(64).optional(),
+  event: z.string().max(64).optional(),
+  page: z.number().int().min(1).max(10_000).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+}).strict();
+
 // Log viewer: only whitelisted file names are accepted. The whitelist is
 // hard-coded to prevent path-traversal — even though `assertSafePath` would
 // normally guard fs reads, the log viewer never accepts an arbitrary path.
@@ -1074,6 +1082,23 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/super-admin/api/admin-tools/backfill-cloudflare-dns');
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:list-tenant-auth-events', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantAuthEventsQuery.safeParse(params ?? {});
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid query' };
+    }
+    const qp = new URLSearchParams();
+    if (parsed.data.tenant_slug) qp.set('tenant_slug', parsed.data.tenant_slug);
+    if (parsed.data.ip) qp.set('ip', parsed.data.ip);
+    if (parsed.data.event) qp.set('event', parsed.data.event);
+    if (parsed.data.page) qp.set('page', String(parsed.data.page));
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest('GET', `/super-admin/api/tenant-auth-events${qs ? '?' + qs : ''}`);
     return res.body;
   }));
 

@@ -525,7 +525,7 @@ export function OverviewPage() {
       {/* Security alerts banner — clicks through to /alerts page. */}
       {isOnline && stats?.unacknowledgedSecurityAlerts !== undefined && stats.unacknowledgedSecurityAlerts > 0 && (
         <Link
-          to="/alerts"
+          to="/activity?tab=alerts"
           className="flex items-center justify-between p-4 rounded-lg bg-orange-950/30 border border-orange-900/50 hover:bg-orange-950/50 hover:border-orange-900/80 transition-colors"
         >
           <div className="flex items-center gap-3">
