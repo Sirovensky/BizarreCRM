@@ -11,11 +11,14 @@ final class APIResponseTests: XCTestCase {
     }
 
     func test_decode_errorEnvelope() throws {
+        // Server envelope shape is `{ success, data, message }` per §1.1.
+        // No `error` nested object — a plain `message` string surfaces
+        // the failure.
         struct Payload: Decodable, Sendable {}
-        let json = #"{"success":false,"data":null,"error":{"code":"NOT_FOUND","message":"Ticket 42 not found"}}"#.data(using: .utf8)!
+        let json = #"{"success":false,"data":null,"message":"Ticket 42 not found"}"#.data(using: .utf8)!
         let env = try JSONDecoder.bizarre.decode(APIResponse<Payload>.self, from: json)
         XCTAssertFalse(env.success)
         XCTAssertNil(env.data)
-        XCTAssertEqual(env.error?.code, "NOT_FOUND")
+        XCTAssertEqual(env.message, "Ticket 42 not found")
     }
 }
