@@ -1603,6 +1603,71 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
   res.json({ success: true, data: { applied } });
 });
 
+// ─── Notification Queue (per-tenant outbound comms log) ────────────
+// Reads tenant-local notification_queue rows so the operator can see
+// what email/SMS/push the server attempted, succeeded, failed, or
+// queued. Useful for triaging "the customer didn't get the SMS"
+// reports without SSHing into the tenant DB.
+
+router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+  const masterDb = getMasterDb()!;
+  const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
+  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+
+  let tdb: import('better-sqlite3').Database;
+  try {
+    tdb = getTenantDb(slug);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+  }
+
+  // Pre-flight: notification_queue is created by migration 060; on a fresh
+  // template DB without it, return empty rather than 500.
+  const tableExists = tdb.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_queue'"
+  ).get();
+  if (!tableExists) {
+    return res.json({ success: true, data: { rows: [], summary: { total: 0, pending: 0, sent: 0, failed: 0, cancelled: 0 } } });
+  }
+
+  const status = req.query.status ? String(req.query.status) : '';
+  const type = req.query.type ? String(req.query.type) : '';
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (status && /^(pending|sent|failed|cancelled)$/.test(status)) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+  if (type && /^(sms|email|push)$/.test(type)) {
+    conditions.push('type = ?');
+    params.push(type);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const rows = tdb
+    .prepare(`SELECT id, type, recipient, subject, status, error, retry_count, scheduled_at, sent_at, created_at FROM notification_queue ${where} ORDER BY created_at DESC LIMIT ?`)
+    .all(...params, limit);
+
+  // Always return the unfiltered status counts so the UI badges stay accurate
+  // when the operator is filtering down to one status.
+  const summaryRow = tdb.prepare(
+    "SELECT COUNT(*) AS total, " +
+    "SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending, " +
+    "SUM(CASE WHEN status='sent'      THEN 1 ELSE 0 END) AS sent, " +
+    "SUM(CASE WHEN status='failed'    THEN 1 ELSE 0 END) AS failed, " +
+    "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled " +
+    "FROM notification_queue"
+  ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
+
+  res.json({ success: true, data: { rows, summary: summaryRow } });
+});
+
 // ─── Admin Tools ─────────────────────────────────────────────────────
 //
 // Operator-triggered maintenance scripts that previously required SSH +

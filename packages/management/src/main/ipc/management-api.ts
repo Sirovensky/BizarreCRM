@@ -221,6 +221,13 @@ const SchemaResetRateLimits = z.object({
   all: z.boolean().optional(),
 }).strict();
 
+const SchemaTenantNotificationsQuery = z.object({
+  slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  status: z.enum(['pending', 'sent', 'failed', 'cancelled']).optional(),
+  type: z.enum(['sms', 'email', 'push']).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+}).strict();
+
 const SchemaTenantAuthEventsQuery = z.object({
   tenant_slug: z.string().regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/).max(30).optional(),
   ip: z.string().max(64).optional(),
@@ -1099,6 +1106,24 @@ export function registerManagementIpc(): void {
     if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
     const qs = qp.toString();
     const res = await apiRequest('GET', `/super-admin/api/tenant-auth-events${qs ? '?' + qs : ''}`);
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:list-tenant-notifications', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantNotificationsQuery.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const qp = new URLSearchParams();
+    if (parsed.data.status) qp.set('status', parsed.data.status);
+    if (parsed.data.type) qp.set('type', parsed.data.type);
+    if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
+    const qs = qp.toString();
+    const res = await apiRequest(
+      'GET',
+      `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/notifications${qs ? '?' + qs : ''}`
+    );
     return res.body;
   }));
 

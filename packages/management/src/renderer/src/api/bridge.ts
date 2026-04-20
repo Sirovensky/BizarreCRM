@@ -272,6 +272,22 @@ interface ElectronAPI {
       events: Array<{ id: number; tenant_slug: string; event: string; ip_address: string; user_agent?: string; details?: string; created_at: string }>;
       pagination: { page: number; limit: number; total: number; total_pages: number };
     }>>;
+    /** Per-tenant outbound comms log (email/SMS/push queue). */
+    listTenantNotifications(params: { slug: string; status?: string; type?: string; limit?: number }): Promise<ApiResponse<{
+      rows: Array<{
+        id: number;
+        type: 'sms' | 'email' | 'push';
+        recipient: string;
+        subject: string | null;
+        status: 'pending' | 'sent' | 'failed' | 'cancelled';
+        error: string | null;
+        retry_count: number;
+        scheduled_at: string | null;
+        sent_at: string | null;
+        created_at: string;
+      }>;
+      summary: { total: number; pending: number; sent: number; failed: number; cancelled: number };
+    }>>;
   };
   admin: {
     getStatus(): Promise<ApiResponse>;

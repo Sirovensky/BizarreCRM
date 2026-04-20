@@ -68,6 +68,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:reset-rate-limits',
   'super-admin:backfill-cloudflare-dns',
   'super-admin:list-tenant-auth-events',
+  'super-admin:list-tenant-notifications',
   // admin:* (backup)
   'admin:get-status',
   'admin:list-drives',
@@ -178,6 +179,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     backfillCloudflareDns: () => safeInvoke('super-admin:backfill-cloudflare-dns'),
     listTenantAuthEvents: (params?: unknown) =>
       safeInvoke('super-admin:list-tenant-auth-events', params),
+    listTenantNotifications: (params: { slug: string; status?: string; type?: string; limit?: number }) =>
+      safeInvoke('super-admin:list-tenant-notifications', params),
   },
 
   // ── Admin (Backup + Signup-Captcha Toggle) ─────────────────────
