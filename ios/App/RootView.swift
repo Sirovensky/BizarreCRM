@@ -21,6 +21,11 @@ import Notifications
 import Employees
 import Search
 import Voice
+import CommandPalette
+import AuditLogs
+import Marketing
+import Setup
+import DataImport
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
@@ -101,14 +106,51 @@ private struct LaunchView: View {
 
 struct MainShellView: View {
     @State private var selectedTab: MainTab = .dashboard
+    @State private var showCmdPalette: Bool = false
     var onSignOut: (() -> Void)? = nil
 
     var body: some View {
-        if Platform.isCompact {
-            iPhoneTabs(selection: $selectedTab, onSignOut: onSignOut)
-        } else {
-            iPadSplit(selection: $selectedTab, onSignOut: onSignOut)
+        ZStack {
+            if Platform.isCompact {
+                iPhoneTabs(selection: $selectedTab, onSignOut: onSignOut)
+            } else {
+                iPadSplit(selection: $selectedTab, onSignOut: onSignOut)
+            }
+
+            // §52.1 — ⌘K opens Command Palette on iPad/Mac. Hidden button
+            // so the shortcut works anywhere in the app shell regardless
+            // of which tab is active.
+            Button { showCmdPalette.toggle() } label: { EmptyView() }
+                .keyboardShortcut("k", modifiers: .command)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
+        .sheet(isPresented: $showCmdPalette) {
+            CommandPaletteView(viewModel: makeCmdPaletteVM())
+        }
+    }
+
+    /// Build a fresh VM each time sheet opens so recent-usage state stays fresh.
+    private func makeCmdPaletteVM() -> CommandPaletteViewModel {
+        let actions = CommandCatalog.defaultActions(
+            newTicket:         { Task { @MainActor in selectedTab = .tickets;  showCmdPalette = false } },
+            newCustomer:       { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
+            findCustomerPhone: { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
+            findCustomerName:  { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
+            openDashboard:     { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
+            openPOS:           { Task { @MainActor in selectedTab = .pos;       showCmdPalette = false } },
+            clockIn:           { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
+            clockOut:          { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
+            openTickets:       { Task { @MainActor in selectedTab = .tickets;   showCmdPalette = false } },
+            openInventory:     { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
+            settingsTax:       { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
+            settingsHours:     { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
+            reportsRevenue:    { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
+            sendSMS:           { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
+            signOut:           { [onSignOut] in Task { @MainActor in showCmdPalette = false; onSignOut?() } }
+        )
+        return CommandPaletteViewModel(actions: actions, context: .none)
     }
 }
 
@@ -245,7 +287,19 @@ struct MoreMenuView: View {
                     NavigationLink("Appointments") { AppointmentListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Expenses") { ExpenseListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Payment links") { PaymentLinksListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Marketing") { CampaignListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Reports") { ReportsView() }
+                }
+                Section("Admin") {
+                    NavigationLink("Audit Logs") {
+                        AuditLogListView(api: AppServices.shared.apiClient)
+                    }
+                    NavigationLink("Data Import") {
+                        DataImportView(repository: LiveImportRepository(api: AppServices.shared.apiClient))
+                    }
+                    NavigationLink("Setup Wizard") {
+                        SetupWizardView(repository: SetupRepositoryLive(api: AppServices.shared.apiClient))
+                    }
                 }
                 Section("People") {
                     NavigationLink("Employees") { EmployeeListView(api: AppServices.shared.apiClient) }

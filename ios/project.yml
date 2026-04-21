@@ -55,6 +55,11 @@ packages:
   Voice:         { path: Packages/Voice }
   Loyalty:       { path: Packages/Loyalty }
   Timeclock:     { path: Packages/Timeclock }
+  CommandPalette: { path: Packages/CommandPalette }
+  AuditLogs:     { path: Packages/AuditLogs }
+  Marketing:     { path: Packages/Marketing }
+  Setup:         { path: Packages/Setup }
+  DataImport:    { path: Packages/DataImport }
 
 targets:
   BizarreCRM:
@@ -142,6 +147,16 @@ targets:
         product: Voice
       - package: Loyalty
         product: Loyalty
+      - package: CommandPalette
+        product: CommandPalette
+      - package: AuditLogs
+        product: AuditLogs
+      - package: Marketing
+        product: Marketing
+      - package: Setup
+        product: Setup
+      - package: DataImport
+        product: DataImport
 
   BizarreCRMTests:
     type: bundle.unit-test
