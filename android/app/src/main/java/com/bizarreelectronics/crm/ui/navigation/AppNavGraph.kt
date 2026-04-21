@@ -451,6 +451,18 @@ fun AppNavGraph(
                 isSyncing = isSyncing,
             )
 
+            // §17.10 — global hardware-keyboard shortcuts. Wraps the NavHost
+            // so the same key chord works on every screen. Only fires when a
+            // physical keyboard is attached + the focusable Box claims focus
+            // (no-op on phones).
+            com.bizarreelectronics.crm.util.KeyboardShortcutsHost(
+                onNewTicket = { navController.navigate(Screen.TicketCreate.route) },
+                onNewCustomer = { navController.navigate(Screen.CustomerCreate.route) },
+                onScanBarcode = { navController.navigate(Screen.Scanner.route) },
+                onNewSms = { navController.navigate(Screen.Messages.route) },
+                onGlobalSearch = { navController.navigate(Screen.GlobalSearch.route) },
+                onSettings = { navController.navigate(Screen.Settings.route) },
+            ) {
             NavHost(
                 navController = navController,
                 startDestination = if (authPreferences?.isLoggedIn == true && !authPreferences.serverUrl.isNullOrBlank())
@@ -1056,6 +1068,7 @@ fun AppNavGraph(
                 )
             }
         }
+        } // close §17.10 KeyboardShortcutsHost wrapper
         }
     }
 }

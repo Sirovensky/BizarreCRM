@@ -541,7 +541,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.8 Quick-action FAB / toolbar
 - [x] **Phone:** native Material 3 `ExtendedFloatingActionButton` bottom-right (respects `WindowInsets.safeContent` + nav bar). Expands to SpeedDial via open-source `ExpandableFab` pattern: New ticket / New sale / New customer / Scan barcode / New SMS. `HapticFeedbackConstants.CONTEXT_CLICK` on expand. FAB is first-class Android idiom — keep it.
 - [ ] **Tablet/ChromeOS:** top-app-bar action row + `NavigationRail` header actions instead of FAB for space + precision input. Same five actions as menu items.
-- [ ] **Hardware-keyboard shortcuts** (tablet/ChromeOS): Ctrl+N → New ticket; Ctrl+Shift+N → New customer; Ctrl+Shift+S → Scan; Ctrl+Shift+M → New SMS. Registered via `onKeyEvent` modifier on root scaffold.
+- [x] **Hardware-keyboard shortcuts** (tablet/ChromeOS): Ctrl+N → New ticket; Ctrl+Shift+N → New customer; Ctrl+Shift+S → Scan; Ctrl+Shift+M → New SMS. Registered via `onKeyEvent` modifier on root scaffold. (`util/KeyboardShortcutsHost` wraps NavHost in AppNavGraph with all six chords incl. Ctrl+F → search, Ctrl+, → settings.)
 
 ### 3.9 Greeting + operator identity
 - [x] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}") using `LocalDateTime.now().hour`.
