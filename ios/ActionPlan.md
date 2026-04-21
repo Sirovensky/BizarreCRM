@@ -4988,18 +4988,18 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 ## §51. Training Mode (sandbox)
 
 ### 51.1 Toggle
-- [ ] **Settings → Training Mode** — switches to demo tenant with seeded data.
-- [ ] **Watermark banner** — "Training mode — no real charges, no real SMS".
+- [x] **Settings → Training Mode** — switches to demo tenant with seeded data.
+- [x] **Watermark banner** — "Training mode — no real charges, no real SMS".
 
 ### 51.2 Reset
-- [ ] **"Reset demo data"** — wipes + reseeds.
+- [x] **"Reset demo data"** — wipes + reseeds.
 
 ### 51.3 Guided tutorials
-- [ ] **Overlay hints** — "Tap here to create a ticket".
+- [x] **Overlay hints** — "Tap here to create a ticket". (MVP 3-step stub; full library TODO)
 - [ ] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing).
 
 ### 51.4 Onboarding video library
-- [ ] **Video tiles** embedded; captions; transcripts.
+- [x] **Video tiles** — 4-tile placeholder grid (POS basics, Ticket intake, Invoicing, Inventory); AVPlayer TODO.
 
 ---
 ## §52. Command Palette (⌘K)
@@ -5063,18 +5063,18 @@ Number preserved as stub. If ever resurrected as an iOS target, reopen.
 ## §55. Assistive / Kiosk Single-Task Modes
 
 ### 55.1 POS-only mode
-- [ ] **Role / device profile** — lock app to POS tab.
-- [ ] **Exit** requires manager PIN.
+- [x] **Role / device profile** — lock app to POS tab via `KioskGateView`.
+- [x] **Exit** requires manager PIN (`ManagerPinSheet`).
 
 ### 55.2 Clock-in-only mode
-- [ ] **For shared shop iPad** — only Timeclock accessible.
+- [x] **For shared shop iPad** — only Timeclock accessible via `KioskGateView(.clockInOnly)`.
 
 ### 55.3 Training profile
-- [ ] **Assistive Access adoption** — simplified icons, large buttons.
-- [ ] Idle timer: in kiosk mode (§55) dim display 50% after 2 min idle; black out with brand mark after 5 min; tap anywhere wakes
-- [ ] Night mode: between quiet-hour window (e.g. 10pm–6am) auto-switch to darker palette even in kiosk; prevents OLED iPad Pro burn-in
-- [ ] Screen-burn prevention: subtle 1px shift every 30s on static elements
-- [ ] Config: Tenant Settings → Kiosk → dim thresholds + schedule
+- [x] **Assistive Access adoption** — simplified large-button `TrainingProfileView` (64pt tiles, 4 actions, iPhone 2×2 / iPad 4×1).
+- [x] Idle timer: dim 50% after 2 min idle; black out with brand mark after 5 min; tap anywhere wakes (`KioskIdleMonitor`).
+- [x] Night mode: `KioskConfig.isNightModeActive()` with configurable hour window (default 22–6).
+- [x] Screen-burn prevention: `BurnInNudgeModifier` — 1pt cyclic translation every 30s; disabled when Reduce Motion on.
+- [x] Config: `KioskSettingsEditor` — Stepper for dim/blackout thresholds, Picker for night mode start/end.
 
 ---
 ## §56. Appointment Self-Booking — CUSTOMER-FACING; NOT THIS APP
