@@ -1380,17 +1380,18 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 ### 10.3 Create
 - [x] Minimal — shipped.
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom), notes. `AppointmentCreateFullView` + `AppointmentCreateFullViewModel` + `AppointmentRepeatRuleSheet` + `AppointmentConflictResolver`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
-- [ ] **EventKit mirror** — "Add to my Calendar" toggle writes `EKEvent` to user's default calendar (requires `NSCalendarsUsageDescription`).
-- [ ] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time".
+- [x] **EventKit mirror** — `CalendarExportService` (actor) + `CalendarPermissionHelper`; `NSCalendarsFullAccessUsageDescription` in `scripts/write-info-plist.sh`. (`CalendarIntegration/` — feat(ios post-phase §10))
+- [x] **Conflict detection UX** — `AppointmentConflictAlertView` (Liquid Glass): change-tech, pick-slot (`AvailableSlotFinder` pure, 12 tests), admin-PIN override. (`ConflictResolver/` — feat(ios post-phase §10))
 - [ ] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
 - [ ] Drag-to-reschedule (iPad day/week views) with haptic `.medium` on drop.
 - [ ] Cancel — ask "Notify customer?" (SMS/email).
 - [ ] No-show — one-tap from detail; optional fee.
-- [ ] Recurring-event edits — "This event" / "This and following" / "All".
+- [x] Recurring-event edits — `RecurrenceEditOptionsSheet`: this occurrence / this+future / all. (`Recurring/` — feat(ios post-phase §10))
 
 ### 10.5 Reminders
+- [x] Per-tenant reminder policy — `AppointmentReminderSettings`, `AppointmentReminderSettingsView`, `ReminderScheduler` (pure, 10 tests), `PATCH /tenant/appointment-reminder-policy`. (`Reminders/` — feat(ios post-phase §10))
 - [ ] Server cron sends APNs N min before (per-user setting).
 - [ ] Silent APNs triggers local `UNUserNotificationCenter` alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" buttons.
 - [ ] Live Activity — "Next appt in 15 min" pulse on Lock Screen.
@@ -1398,6 +1399,21 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 ### 10.6 Check-in / check-out
 - [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket.
 - [ ] "Customer departed" on completion.
+
+### 10.7 Waitlist (post-phase §10)
+- [x] `WaitlistEntry` model — id, customerId, requestedServiceType, preferredWindows, note, createdAt, status. (`Waitlist/WaitlistEntry.swift`)
+- [x] `WaitlistListView` — admin list with iPhone/iPad layouts. (`Waitlist/WaitlistListView.swift`)
+- [x] `WaitlistAddSheet` — multi-window preference picker + note. (`Waitlist/WaitlistAddSheet.swift`)
+- [x] `WaitlistOfferFlowView` — ranked candidates on slot open; one-tap offer. (`Waitlist/WaitlistOfferFlowView.swift`)
+- [x] `WaitlistMatcher` pure — rank by preference-match + oldest-waiting; 9 XCTests. (`Waitlist/WaitlistMatcher.swift`)
+- [x] Endpoints `POST /waitlist`, `POST /waitlist/:id/offer`, `POST /waitlist/:id/cancel`. (`Waitlist/WaitlistEndpoints.swift`)
+
+### 10.8 Recurring rules deep (post-phase §10)
+- [x] `RecurrenceRule` — weekday multi-select, end-mode (untilDate/count/forever), monthlyMode, exceptionDates. (`Recurring/RecurrenceRule.swift`)
+- [x] `AppointmentRepeatRuleSheetDeep` — full UI for all recurrence dimensions. (`Recurring/AppointmentRepeatRuleSheetDeep.swift`)
+- [x] `RecurrenceExpander` pure — daily/weekly/monthly/yearly + exceptions + caps; 14 XCTests. (`Recurring/RecurrenceExpander.swift`)
+- [x] `RecurrenceConflictResolver` — expand all instances, check each against existing. (`Recurring/RecurrenceConflictResolver.swift`)
+- [x] `RecurrenceEditOptionsSheet` — scope: this / this+future / all. (`Recurring/RecurrenceEditOptionsSheet.swift`)
 
 - [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool).
 - [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.

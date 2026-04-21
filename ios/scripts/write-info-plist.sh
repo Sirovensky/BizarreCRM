@@ -116,6 +116,9 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <string>Verify you are at the shop when clocking in.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Discover your shop server and payment terminal on the local network.</string>
+    <!-- §10.9 Calendar integration — required iOS 17+ -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Add appointments directly to your iOS Calendar.</string>
 
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>

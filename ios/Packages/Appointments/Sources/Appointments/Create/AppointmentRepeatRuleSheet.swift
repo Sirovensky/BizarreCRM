@@ -1,13 +1,7 @@
 import SwiftUI
 import DesignSystem
 
-// MARK: - RecurrenceFrequency
-
-public enum RecurrenceFrequency: String, CaseIterable, Sendable {
-    case daily = "Daily"
-    case weekly = "Weekly"
-    case monthly = "Monthly"
-}
+// RecurrenceFrequency is declared in Recurring/RecurrenceRule.swift (canonical location).
 
 // MARK: - RepeatRule
 
