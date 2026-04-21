@@ -111,6 +111,10 @@ private struct LaunchView: View {
 struct MainShellView: View {
     @State private var selectedTab: MainTab = .dashboard
     @State private var showCmdPalette: Bool = false
+    /// §23 — ⌘/ toggles the keyboard shortcut cheat-sheet overlay.
+    @State private var showShortcutOverlay: Bool = false
+    /// §23 — hardware keyboard detector; drives ShortcutHintPill visibility.
+    @State private var keyboardDetector = HardwareKeyboardDetector()
     var onSignOut: (() -> Void)? = nil
 
     var body: some View {
@@ -129,10 +133,61 @@ struct MainShellView: View {
                 .opacity(0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+
+            // §23 — ⌘/ opens the keyboard shortcut overlay.
+            Button { showShortcutOverlay.toggle() } label: { EmptyView() }
+                .keyboardShortcut("/", modifiers: .command)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+            // §23 — Navigation shortcuts ⌘1–⌘6. Hidden buttons placed
+            // in the ZStack so they're active on every tab.
+            navShortcutButtons
+
+            // §23 — ShortcutHintPill when hardware keyboard is attached.
+            if keyboardDetector.isAttached && !showShortcutOverlay {
+                VStack {
+                    Spacer()
+                    ShortcutHintPill { showShortcutOverlay = true }
+                        .padding(.bottom, BrandSpacing.lg)
+                }
+                .allowsHitTesting(true)
+                .transition(.opacity)
+                .animation(BrandMotion.offlineBanner, value: keyboardDetector.isAttached)
+            }
         }
         .sheet(isPresented: $showCmdPalette) {
             CommandPaletteView(viewModel: makeCmdPaletteVM())
         }
+        // §23 — Shortcut overlay as a full-screen cover so it layers above
+        // tab bars and navigation chrome.
+        .fullScreenCover(isPresented: $showShortcutOverlay) {
+            KeyboardShortcutOverlayView { showShortcutOverlay = false }
+                .background(.clear)
+        }
+    }
+
+    /// Hidden buttons that wire ⌘1–⌘6 to tab navigation.
+    @ViewBuilder
+    private var navShortcutButtons: some View {
+        Group {
+            Button { selectedTab = .dashboard  } label: { EmptyView() }
+                .keyboardShortcut("1", modifiers: .command)
+            Button { selectedTab = .tickets    } label: { EmptyView() }
+                .keyboardShortcut("2", modifiers: .command)
+            Button { selectedTab = .customers  } label: { EmptyView() }
+                .keyboardShortcut("3", modifiers: .command)
+            Button { selectedTab = .pos        } label: { EmptyView() }
+                .keyboardShortcut("4", modifiers: .command)
+            Button { selectedTab = .more       } label: { EmptyView() }
+                .keyboardShortcut("5", modifiers: .command)
+            Button { selectedTab = .search     } label: { EmptyView() }
+                .keyboardShortcut("6", modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// Build a fresh VM each time sheet opens so recent-usage state stays fresh.
@@ -231,38 +286,50 @@ private struct iPadSplit: View {
     var onSignOut: (() -> Void)? = nil
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: Binding<MainTab?>(
-                get: { selection },
-                set: { if let new = $0 { selection = new } }
-            )) {
-                ForEach(MainTab.allCases) { tab in
-                    NavigationLink(value: tab) {
-                        Label(tab.title, systemImage: tab.systemImage)
+        // GeometryReader gives us the container width so we can adapt
+        // sidebar column widths per §22.2 (SidebarWidthCalculator).
+        GeometryReader { geo in
+            let category = SidebarWidthCalculator.width(for: geo.size.width)
+            let rec = SidebarWidthCalculator.recommendedSidebarWidth(for: category)
+
+            NavigationSplitView {
+                List(selection: Binding<MainTab?>(
+                    get: { selection },
+                    set: { if let new = $0 { selection = new } }
+                )) {
+                    ForEach(MainTab.allCases) { tab in
+                        NavigationLink(value: tab) {
+                            Label(tab.title, systemImage: tab.systemImage)
+                                .accessibilityLabel(tab.title)
+                        }
                     }
                 }
+                .navigationTitle("Bizarre CRM")
+                .navigationSplitViewColumnWidth(
+                    min: rec.min,
+                    ideal: rec.ideal,
+                    max: rec.max
+                )
+            } detail: {
+                switch selection {
+                case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
+                case .tickets:   TicketListView(
+                    repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient,
+                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
+                )
+                case .customers: CustomerListView(
+                    repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                    detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient
+                )
+                case .pos:       PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient))
+                case .more:      MoreMenuView(onSignOut: onSignOut)
+                case .search:    GlobalSearchView(api: AppServices.shared.apiClient)
+                }
             }
-            .navigationTitle("Bizarre CRM")
-            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
-        } detail: {
-            switch selection {
-            case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
-            case .tickets:   TicketListView(
-                repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient,
-                customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
-            )
-            case .customers: CustomerListView(
-                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient
-            )
-            case .pos:       PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient))
-            case .more:      MoreMenuView(onSignOut: onSignOut)
-            case .search:    GlobalSearchView(api: AppServices.shared.apiClient)
-            }
+            .navigationSplitViewStyle(.balanced)
         }
-        .navigationSplitViewStyle(.balanced)
     }
 }
 

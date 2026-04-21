@@ -706,7 +706,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Library picker** — `PhotosUI.PhotosPicker` with selection limit 10.
 - [ ] **Upload** — background `URLSession` surviving app exit; progress chip per photo.
 - [ ] **Retry failed upload** — dead-letter entry in Sync Issues.
-- [ ] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved).
+- [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [ ] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review.
 - [ ] **EXIF strip** — remove GPS + timestamp metadata on upload.
 - [ ] **Thumbnail cache** — Nuke with disk limit; full-size fetched on tap.
@@ -2102,7 +2102,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Palette: swatches as glass chips; tenant brand color auto-added.
 - [ ] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image.
 - [ ] Layers: base photo + annotation layer stored separately (revert-to-original possible); export flattens.
-- [ ] Apple Pencil: `PKCanvasView` / `PencilKit` pressure + tilt; palm rejection on iPad; double-tap Pencil toggles last tool.
+- [x] Apple Pencil: `PKCanvasView` / `PencilKit` pressure + tilt; palm rejection on iPad; double-tap Pencil toggles last tool. Squeeze toggles tool picker (Pencil Pro). `UIPencilInteraction` delegate wired. Commit `feat(ios phase-7 §4+§17.1)`.
 - [ ] Crop / rotate / auto-enhance (brightness / contrast).
 - [ ] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action.
 - [ ] AirPrint via `UIPrintInteractionController` handed a locally-rendered PDF file URL (never a web URL — Android regression lesson §17.4).
@@ -2881,10 +2881,10 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] **Menu bar** — iPad-specific `.commands` with grouped menu items (File / Edit / View / Actions / Window / Help).
 
 ### 22.4 Multi-window / Stage Manager
-- [ ] **Multiple scenes** — `UISceneConfiguration` supports N windows.
+- [x] **Multiple scenes** — `UISceneConfiguration` supports N windows. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [ ] **Scene state** restored per-window on relaunch.
-- [ ] **Open in new window** from context menu.
-- [ ] **Scene activities** — detail views become independent activities.
+- [x] **Open in new window** from context menu. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
+- [x] **Scene activities** — detail views become independent activities. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
 
 ### 22.5 Data presentation
@@ -2980,7 +2980,7 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [ ] **Continuity Camera** — scan barcode via iPhone as Mac camera; photo capture.
 - [ ] **Handoff** — start on Mac, continue on iPad.
 - [ ] **iCloud Drive** — photo / PDF attachments can live there.
-- [ ] **Universal clipboard** — copy ticket # on iPad, paste on Mac.
+- [x] **Universal clipboard** — copy ticket # on iPad, paste on Mac. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 
 ### 23.6 Missing on Mac (document)
 - [ ] Widgets (limited).
@@ -6708,3 +6708,4 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-20 (update 30) — Renumbered §§1-90 sequentially; converted all headings to `## §N.` format; swept all inline cross-refs across ActionPlan.md + agent-ownership.md (TODO.md had no §N refs). Invalid refs pointing at deleted sections were remapped per the update-28/29 absorption trail to their surviving target sections; zero unresolved flags remaining. TOC rebuilt against new numbering.
 - 2026-04-20 (update 31) — Phase 0 gate close (infrastructure): [x] Real airplane-mode smoke test (`ios/Tests/SmokeTests.swift`) — 7 XCTest cases exercising in-memory GRDB migrations, sync_queue/sync_state table presence, enqueue, offline banner condition, drain via markSucceeded, failure path with next_retry_at, dead-letter after maxAttempts, and DLQ retry with fresh idempotency key. [x] SDK-ban lint (`ios/scripts/sdk-ban.sh`) — checks 14 forbidden SDK imports, bare URLSession construction outside Networking, and APIClient calls outside *Repository/*Endpoints; dry-run passes clean on current tree. [x] CI workflow (`.github/workflows/ios-lint.yml`) — triggers on ios/** PR + push to main; runs sdk-ban.sh on ubuntu-latest; xcodebuild step stubbed for macOS runner. §20 CI enforcement bullets and §32.0 build-time lint checkbox retro-marked [x].
 - 2026-04-20 (update 32) — Phase 1 §2 auth extras shipped: [x] Magic-link login (MagicLink/ — MagicLinkEndpoints, MagicLinkURL, MagicLinkRepository, MagicLinkViewModel, MagicLinkRequestView — iPhone/iPad adaptive, 60s resend cooldown, deep-link parser for bizarrecrm://auth/magic + https://app.bizarrecrm.com/auth/magic). [x] Session timeout (SessionTimer.swift actor — configurable idleTimeout + pollInterval, touch/pause/resume/currentRemaining, 80% onWarning, onExpire; SessionTimeoutWarningBanner.swift glass toast). [x] Remember-me (CredentialStore.swift actor — EmailStorage protocol + KeychainEmailStorage production + InMemoryEmailStorage test; rememberEmail/lastEmail/forget; KeychainKey.rememberedEmail added). [x] Shared-device mode (SharedDevice/ — SharedDeviceManager actor with SharedDeviceStorage protocol + UserDefaultsDeviceStorage + InMemoryDeviceStorage; SharedDeviceEnableView adaptive). 144 tests pass (11 MagicLink URL+VM, 8 SessionTimer, 8 CredentialStore, 13 SharedDeviceManager; all new + pre-existing green).
+- 2026-04-20 (update 33) — Phase 7 §22.4 multi-window + Stage Manager + §22.2 adaptive sidebar + §25.3 Universal Clipboard shipped: [x] MultiWindowCoordinator (App/Scenes/) — openTicketDetail/openCustomerDetail/openInvoiceDetail via UIApplication.requestSceneSessionActivation + NSUserActivity route encoding. [x] SceneDelegate (App/Scenes/) — UIWindowSceneDelegate handling URL contexts + Handoff activities for secondary windows. [x] DetailWindowScene (App/Scenes/) — SwiftUI WindowGroup(id:"detail") root view with DeepLinkRoute dispatch + ContentUnavailableView fallback. [x] StageManagerDetector (App/Scenes/) — @Observable class watching UIScene notifications, connectedScenes.count > 1 heuristic, isStageManagerActive property. [x] SidebarWidthBehavior (App/Sidebar/) — SidebarWidth enum + SidebarWidthCalculator pure helper (compact/regular/expanded per §22.2 values). [x] RootView iPadSplit — wrapped in GeometryReader, navigationSplitViewColumnWidth fed from SidebarWidthCalculator.recommendedSidebarWidth, accessibilityLabel on sidebar items. [x] UniversalClipboardBridge (App/Clipboard/) — PasteboardProtocol abstraction + writePlainText/readPlainText async, UIPasteboard.general production, MockPasteboard for tests. 32 new tests: SidebarWidthCalculatorTests (12), StageManagerDetectorTests (8), UniversalClipboardBridgeTests (12). All branches covered ≥ 80%.
