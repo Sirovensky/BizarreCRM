@@ -977,6 +977,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.1 List
 - [x] Base list + filter chips + search — shipped.
+- [x] **CachedRepository + offline** — `InventoryCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InventoryListItem]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown when offline + cache empty. `Reachability.shared.isOnline` drives `vm.isOffline`. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
 - [ ] **Tabs** — All / Products / Parts. NOT SERVICES - as they are not inventorable. We should however have a settings menu for services to setup the devices types, manufacturers, etc. 
 - [ ] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
 - [ ] **Filters** (collapsible glass drawer): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock.
@@ -1127,6 +1128,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 ### 7.1 List
 - [x] Base list + filter chips + search — shipped.
 - [x] Row a11y — combined VoiceOver utterance `displayId. customerName. total. [Status X]. [Due $Y]`. Selectable order IDs, monospaced Due text.
+- [x] **CachedRepository + offline** — `InvoiceCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InvoiceSummary]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired. `OfflineEmptyStateView` shown when offline + cache empty. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
 - [ ] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void.
 - [ ] **Filters** — date range, customer, amount range, payment method, created-by.
 - [ ] **Sort** — date / amount / due date / status.
@@ -1228,6 +1230,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 ### 8.1 List
 - [x] Base list + is-expiring warning — shipped.
 - [x] Row a11y — combined utterance `orderId. customerName. total. [Status X]. [Expires in Nd | Valid until date]`. Selectable order IDs.
+- [x] **CachedRepository + offline** — `EstimateRepository` protocol + `EstimateRepositoryImpl` + `EstimateCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[Estimate]>`, `forceRefresh`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown offline + cache empty. `EstimateListViewModel` migrated from direct-API to repo pattern (legacy `api:` init preserved). Perf gate: 1000-row hot-read in < 15ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
 - [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
 - [ ] Filters — date range, customer, amount, validity.
 - [ ] Bulk actions — Send / Delete / Export.

@@ -3,6 +3,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
@@ -20,17 +21,24 @@ public struct InvoiceListView: View {
         Group {
             if Platform.isCompact { compactLayout } else { regularLayout }
         }
-        .task { await vm.load() }
+        .task {
+            vm.isOffline = !Reachability.shared.isOnline
+            await vm.load()
+        }
         .refreshable { await vm.refresh() }
     }
 
     private var compactLayout: some View {
         NavigationStack(path: $path) {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips.padding(.vertical, BrandSpacing.sm)
                     content
+                }
+                if vm.isOffline {
+                    OfflineBanner(isOffline: true)
+                        .padding(.top, BrandSpacing.xs)
                 }
             }
             .navigationTitle("Invoices")
@@ -39,17 +47,26 @@ public struct InvoiceListView: View {
             .navigationDestination(for: Int64.self) { id in
                 InvoiceDetailView(repo: detailRepo, invoiceId: id)
             }
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         }
     }
 
     private var regularLayout: some View {
         NavigationSplitView {
             NavigationStack(path: $path) {
-                ZStack {
+                ZStack(alignment: .top) {
                     Color.bizarreSurfaceBase.ignoresSafeArea()
                     VStack(spacing: 0) {
                         filterChips.padding(.vertical, BrandSpacing.sm)
                         content
+                    }
+                    if vm.isOffline {
+                        OfflineBanner(isOffline: true)
+                            .padding(.top, BrandSpacing.xs)
                     }
                 }
                 .navigationTitle("Invoices")
@@ -57,6 +74,11 @@ public struct InvoiceListView: View {
                 .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
                 .navigationDestination(for: Int64.self) { id in
                     InvoiceDetailView(repo: detailRepo, invoiceId: id)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .status) {
+                        StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                    }
                 }
             }
             .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 520)
@@ -94,6 +116,8 @@ public struct InvoiceListView: View {
                     .buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.invoices.isEmpty && vm.isOffline {
+            OfflineEmptyStateView(entityName: "invoices")
         } else if vm.invoices.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "doc.text").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)

@@ -3,6 +3,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 public struct InventoryListView: View {
     @State private var vm: InventoryListViewModel
@@ -34,18 +35,25 @@ public struct InventoryListView: View {
 
     private var compactLayout: some View {
         NavigationStack(path: $path) {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips
                         .padding(.vertical, BrandSpacing.sm)
                     listContent { id in path.append(id) }
                 }
+                if vm.isOffline {
+                    OfflineBanner(isOffline: true)
+                        .padding(.top, BrandSpacing.xs)
+                }
             }
             .navigationTitle("Inventory")
             .searchable(text: $searchText, prompt: "Search by name, SKU, UPC")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .task { await vm.load() }
+            .task {
+                vm.isOffline = !Reachability.shared.isOnline
+                await vm.load()
+            }
             .refreshable { await vm.refresh() }
             .navigationDestination(for: Int64.self) { id in
                 InventoryDetailView(repo: detailRepo, itemId: id, api: api)
@@ -68,18 +76,25 @@ public struct InventoryListView: View {
 
     private var regularLayout: some View {
         NavigationSplitView {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
                     filterChips
                         .padding(.vertical, BrandSpacing.sm)
                     listContent { id in selected = id }
                 }
+                if vm.isOffline {
+                    OfflineBanner(isOffline: true)
+                        .padding(.top, BrandSpacing.xs)
+                }
             }
             .navigationTitle("Inventory")
             .searchable(text: $searchText, prompt: "Search by name, SKU, UPC")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .task { await vm.load() }
+            .task {
+                vm.isOffline = !Reachability.shared.isOnline
+                await vm.load()
+            }
             .refreshable { await vm.refresh() }
             .toolbar { listToolbar }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
@@ -125,6 +140,9 @@ public struct InventoryListView: View {
             .accessibilityLabel("View low stock items")
             .disabled(api == nil)
         }
+        ToolbarItem(placement: .status) {
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
     }
 
     @ViewBuilder
@@ -133,6 +151,8 @@ public struct InventoryListView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
             InventoryErrorState(message: err) { Task { await vm.load() } }
+        } else if vm.items.isEmpty && vm.isOffline {
+            OfflineEmptyStateView(entityName: "inventory items")
         } else if vm.items.isEmpty {
             InventoryEmptyState(isSearching: !searchText.isEmpty)
         } else {

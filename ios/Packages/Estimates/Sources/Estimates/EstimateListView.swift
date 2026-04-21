@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -12,19 +13,26 @@ public final class EstimateListViewModel {
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
 
-    @ObservationIgnored private let api: APIClient
+    // Phase-3: staleness + offline
+    public private(set) var lastSyncedAt: Date?
+    public var isOffline: Bool = false
+
+    @ObservationIgnored private let repo: EstimateRepository
     @ObservationIgnored private var searchTask: Task<Void, Never>?
-    public init(api: APIClient) { self.api = api }
+
+    public init(repo: EstimateRepository) { self.repo = repo }
+
+    /// Legacy convenience init keeps existing call sites compiling.
+    public init(api: APIClient) { self.repo = EstimateRepositoryImpl(api: api) }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
-        errorMessage = nil
-        do { items = try await api.listEstimates(keyword: searchQuery.isEmpty ? nil : searchQuery) }
-        catch {
-            AppLog.ui.error("Estimates load failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
-        }
+        await fetch(forceRemote: false)
+    }
+
+    public func refresh() async {
+        await fetch(forceRemote: true)
     }
 
     public func onSearchChange(_ q: String) {
@@ -33,7 +41,32 @@ public final class EstimateListViewModel {
         searchTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
-            await load()
+            await fetch(forceRemote: false)
+        }
+    }
+
+    private func fetch(forceRemote: Bool) async {
+        errorMessage = nil
+        do {
+            if let cached = repo as? EstimateCachedRepositoryImpl {
+                let result: CachedResult<[Estimate]>
+                if forceRemote {
+                    result = try await cached.forceRefresh(
+                        keyword: searchQuery.isEmpty ? nil : searchQuery
+                    )
+                } else {
+                    result = try await cached.cachedList(
+                        keyword: searchQuery.isEmpty ? nil : searchQuery
+                    )
+                }
+                items = result.value
+                lastSyncedAt = result.lastSyncedAt
+            } else {
+                items = try await repo.list(keyword: searchQuery.isEmpty ? nil : searchQuery)
+            }
+        } catch {
+            AppLog.ui.error("Estimates load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 }
@@ -42,38 +75,62 @@ public struct EstimateListView: View {
     @State private var vm: EstimateListViewModel
     @State private var searchText: String = ""
 
+    public init(repo: EstimateRepository) { _vm = State(wrappedValue: EstimateListViewModel(repo: repo)) }
+
+    /// Legacy convenience init keeps existing call sites compiling.
     public init(api: APIClient) { _vm = State(wrappedValue: EstimateListViewModel(api: api)) }
 
     public var body: some View {
         Group {
             if Platform.isCompact { compactLayout } else { regularLayout }
         }
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .task {
+            vm.isOffline = !Reachability.shared.isOnline
+            await vm.load()
+        }
+        .refreshable { await vm.refresh() }
     }
 
     private var compactLayout: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 content
+                if vm.isOffline {
+                    OfflineBanner(isOffline: true)
+                        .padding(.top, BrandSpacing.xs)
+                }
             }
             .navigationTitle("Estimates")
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         }
     }
 
     private var regularLayout: some View {
         NavigationSplitView {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 content
+                if vm.isOffline {
+                    OfflineBanner(isOffline: true)
+                        .padding(.top, BrandSpacing.xs)
+                }
             }
             .navigationTitle("Estimates")
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -106,6 +163,8 @@ public struct EstimateListView: View {
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.items.isEmpty && vm.isOffline {
+            OfflineEmptyStateView(entityName: "estimates")
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
