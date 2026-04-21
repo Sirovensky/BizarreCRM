@@ -2047,6 +2047,33 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Navigation: Tab cycles cart → discount → tender
 - [ ] Navigation: arrow keys scroll catalog grid
 - [x] Discoverability: ⌘? shows overlay (§23.1) (feat(ios phase-7 §23): keyboard shortcut catalog + overlay + hardware keyboard detector)
+
+### 16.16 Split check (post-phase §16)
+- [x] **SplitCheckMode** — `.byLineItem` / `.evenly` / `.custom` enum. `CartLineID` + `PartyID` typealiases. `SplitError` cases. (feat(ios post-phase §16))
+- [x] **SplitCheckCalculator** — pure: `even(totalCents:parties:)` last-party remainder, `byLineItem(lines:assignments:)`, `validate`. Tests ≥80%. (feat(ios post-phase §16))
+- [x] **SplitCheckViewModel** — `@Observable`. Parties, assignments, custom amounts, payment progress, `allPartiesPaid`. (feat(ios post-phase §16))
+- [x] **SplitCheckView** — iPhone tabbed per party, iPad side-by-side columns. Liquid Glass column headers. Mode picker. A11y party announce. Reduce Motion. (feat(ios post-phase §16))
+
+### 16.17 Held carts (post-phase §16)
+- [x] **HeldCart** — `{ id, savedAt, cart: CartSnapshot, customerId?, ticketId?, note }`. Auto-expire 24 h. (feat(ios post-phase §16))
+- [x] **HeldCartStore** — actor. UserDefaults MVP. `save / loadAll / delete / deleteAll`. Auto-prune expired. Tests ≥80%. (feat(ios post-phase §16))
+- [x] **HoldCartSheet** — "Hold" button, optional note, snapshots to HeldCartStore. (feat(ios post-phase §16))
+- [x] **HeldCartsListView** — POS toolbar "Held", list sorted newest-first, tap to restore, swipe-to-delete. A11y. (feat(ios post-phase §16))
+
+### 16.18 Shift summary / Z-report (post-phase §16)
+- [x] **ShiftSummary** — struct: shiftId, dates, cashierId, cash floats, drift, saleCount, totalRevenue, tendersBreakdown, refunds, voids, avgTicket. (feat(ios post-phase §16))
+- [x] **ShiftSummaryCalculator** — pure aggregation from `[SaleRecord]`. Drift calc. Tests ≥80%. (feat(ios post-phase §16))
+- [x] **ShiftSummaryView** — metrics grid, tenders breakdown, variance card. Print deferred Phase 5A. (feat(ios post-phase §16))
+- [x] **ShiftSummaryEndpoints** — `POST /shifts/:id/close` returns canonical summary. (feat(ios post-phase §16))
+
+### 16.19 Quick-sale hotkeys (post-phase §16)
+- [x] **QuickSaleHotkeys** — 3-slot configurable struct. `QuickSaleHotkeyStore` actor (UserDefaults). (feat(ios post-phase §16))
+- [x] **QuickSaleButtonsView** — 3-tile row above cart; one-tap add. A11y. (feat(ios post-phase §16))
+- [x] **QuickSaleSettingsView** — admin picks 3 SKUs; inline editor; clear-slot action. (feat(ios post-phase §16))
+
+### 16.20 Split tender revision (post-phase §16)
+- [x] **AppliedTendersListView** — removable tenders; inline amount edit; manager PIN gate after checkout committed. (feat(ios post-phase §16))
+
 - [ ] Checkout sheet has "Gift receipt" switch
 - [ ] Content: item names + qty present; prices hidden; totals hidden
 - [ ] Return-by date + policy printed on gift receipt
