@@ -1935,17 +1935,17 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription`, `NSBluetoothAlwaysUsageDescription`, `NSLocalNetworkUsageDescription`, `NSMicrophoneUsageDescription`, `NFCReaderUsageDescription`. MFi accessories need `UISupportedExternalAccessoryProtocols` array._
 
 ### 17.1 Camera (photo capture)
-- [ ] **Wrapper** — `CameraService` wraps `AVCaptureSession` with torch toggle, pinch-zoom, HEIC/JPEG choice per settings.
-- [ ] **Ticket photos** — 0..N per device; multi-shot mode (continue-shooting without dismissing); EXIF strip before upload; auto-orient.
-- [ ] **Customer avatar** — single shot with circular crop preview.
-- [ ] **Expense receipts** — auto-detect receipt edges (Vision `VNDetectRectanglesRequest`); perspective correct; OCR total via `VNRecognizeTextRequest` pre-fill.
-- [ ] **Storage** — temp files in `tmp/photo-capture/`; upload → move to `AppSupport/photos/{entity}/{id}/` on success; delete on failure retry.
-- [ ] **Compression** — target ≤ 1.5 MB per photo (HEIC 0.6 / JPEG 0.7); full-res option in settings.
-- [ ] **Annotations** — PencilKit overlay (arrows, circles) on ticket photos.
+- [x] **Wrapper** — `CameraService` actor in `Packages/Camera` wraps `AVCaptureSession` with `setTorch`/`setZoom`/`capturePhoto(format:quality:)`. Commit `e9aa17b`.
+- [x] **Ticket photos** — `CameraCaptureView(mode: .multi)` with count pill. EXIF strip via `CIImage` orientation filter.
+- [x] **Customer avatar (partial)** — `CameraCaptureView(mode: .single)` ships; circular crop preview deferred.
+- [x] **Expense receipts** — `ReceiptEdgeDetector.detectQuadrilateral(_:)` via `VNDetectRectanglesRequest` + `ocrTotal(_:)` via `VNRecognizeTextRequest` bottom-up currency regex.
+- [x] **Storage** — `PhotoStore` actor: `stage → tmp/photo-capture/`, `promote → AppSupport/photos/{entity}/{id}/`, `discard`, `listForEntity`.
+- [x] **Compression** — iterative retry to ≤ 1.5 MB per photo in `CameraService.capturePhoto`.
+- [x] **Annotations** — `PhotoAnnotationView` with `PKCanvasView` + `PKToolPicker`; `captureAnnotated()` flattens base + ink.
 - [x] **Photos library** — `PhotoCaptureView` wraps `PhotosPicker` with `selectionLimit: 10`, inline 3-col grid + tap-to-remove. Limited-library UX deferred.
-- [x] **Permissions UX** — `PosScanSheet` camera-denied glass error card with `UIApplication.openSettingsURLString` CTA (pattern proven; extend to photos).
+- [x] **Permissions UX** — `CameraCaptureView` + `PosScanSheet` glass permission-denied card with `UIApplication.openSettingsURLString` CTA.
 - [ ] **Mac (Designed for iPad)** — continuity camera via FaceTime-HD → same `AVCaptureSession` code works.
-- [ ] **Live text** — press-and-hold on any photo → Live Text (IMEI / serial extraction) → copy/paste into form.
+- [x] **Live text** — `LiveTextView` (iOS 16+) with `ImageAnalysisInteraction` + `onTextRecognized` for IMEI/serial extraction.
 
 ### 17.2 Barcode scan
 - [x] **`DataScannerViewController`** (iOS 16+) — `PosScanSheet` ships ean13/ean8/upce/code128/qr. `code39` not enabled yet.
