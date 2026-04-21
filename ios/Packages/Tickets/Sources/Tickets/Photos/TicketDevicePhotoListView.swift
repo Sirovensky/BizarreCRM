@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 /// §4 — Gallery of photos attached to a ticket.
 /// Tap a photo to open full-screen preview.

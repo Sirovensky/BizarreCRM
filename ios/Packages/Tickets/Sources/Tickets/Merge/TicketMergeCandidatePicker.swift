@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 /// §4 — Search dialog for picking the secondary (duplicate) ticket to merge.
 public struct TicketMergeCandidatePicker: View {

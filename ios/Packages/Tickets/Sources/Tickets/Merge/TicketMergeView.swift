@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 /// §4 — Ticket merge UI.
 /// iPhone: sheet with sequential steps. iPad: 3-column NavigationSplitView.

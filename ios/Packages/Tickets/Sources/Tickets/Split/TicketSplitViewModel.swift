@@ -27,7 +27,7 @@ public struct TicketSplitResponse: Decodable, Sendable {
 @MainActor
 public final class TicketSplitViewModel: Sendable {
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case loading
         case loaded

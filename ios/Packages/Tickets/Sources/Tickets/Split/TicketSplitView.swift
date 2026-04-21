@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 /// §4 — Ticket split view.
 /// Shows all device lines with a checkbox per line. Staff selects devices to

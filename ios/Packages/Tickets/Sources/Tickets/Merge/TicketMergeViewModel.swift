@@ -44,7 +44,7 @@ public struct MergeResponse: Decodable, Sendable {
 @MainActor
 public final class TicketMergeViewModel: Sendable {
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case loading
         case loaded

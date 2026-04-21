@@ -32,7 +32,7 @@ public struct SignOffResponse: Decodable, Sendable {
 @MainActor
 public final class TicketSignOffViewModel: Sendable {
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case submitting
         case success(receiptId: String, pdfURL: URL?)

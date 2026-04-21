@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 /// §4 — Side-by-side "before intake" vs "after repair" photo comparison.
 public struct TicketPhotoBeforeAfterView: View {
