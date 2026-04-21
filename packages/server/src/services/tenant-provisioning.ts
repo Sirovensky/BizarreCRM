@@ -214,8 +214,8 @@ async function provisionTenantInner(opts: ProvisionOptions): Promise<ProvisionRe
   let tenantId: number;
   try {
     const result = masterDb.prepare(`
-      INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, trial_ends_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now', '+14 days'), datetime('now'), datetime('now'))
+      INSERT INTO tenants (slug, name, db_path, admin_email, plan, status, trial_started_at, trial_ends_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'provisioning', datetime('now'), datetime('now', '+14 days'), datetime('now'), datetime('now'))
     `).run(
       opts.slug,
       opts.name.trim(),

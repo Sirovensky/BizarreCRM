@@ -206,6 +206,7 @@ interface PlanCacheEntry {
   max_tickets_month: number | null;
   max_users: number | null;
   storage_limit_mb: number | null;
+  trial_started_at: string | null;
   trial_ends_at: string | null;
   cachedAt: number;
 }
@@ -419,10 +420,10 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   }
 
   // Look up tenant in master DB — wrapped in try-catch to prevent 500 JSON on DB errors
-  let tenant: { id: number; slug: string; status: string; db_path: string; plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_ends_at: string | null } | undefined;
+  let tenant: { id: number; slug: string; status: string; db_path: string; plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_started_at: string | null; trial_ends_at: string | null } | undefined;
   try {
     tenant = masterDb.prepare(
-      "SELECT id, slug, status, db_path, plan, max_tickets_month, max_users, storage_limit_mb, trial_ends_at FROM tenants WHERE slug = ?"
+      "SELECT id, slug, status, db_path, plan, max_tickets_month, max_users, storage_limit_mb, trial_started_at, trial_ends_at FROM tenants WHERE slug = ?"
     ).get(slug) as typeof tenant;
   } catch (err) {
     console.error('[TenantResolver] DB query failed for slug:', slug, err);
@@ -501,7 +502,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // Resolve effective plan (Pro during active trial) — check cache first
   const cached = planCache.get(tenant.id);
   const now = Date.now();
-  let planData: { plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_ends_at: string | null };
+  let planData: { plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_started_at: string | null; trial_ends_at: string | null };
 
   if (cached && (now - cached.cachedAt) < PLAN_CACHE_TTL_MS) {
     planData = cached;
@@ -511,6 +512,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       max_tickets_month: tenant.max_tickets_month,
       max_users: tenant.max_users,
       storage_limit_mb: tenant.storage_limit_mb,
+      trial_started_at: tenant.trial_started_at,
       trial_ends_at: tenant.trial_ends_at,
     };
     planCache.set(tenant.id, { ...planData, cachedAt: now });

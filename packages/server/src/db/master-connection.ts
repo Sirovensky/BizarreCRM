@@ -47,6 +47,8 @@ export function initMasterDb(): void {
       max_users INTEGER NOT NULL DEFAULT 5,
       max_tickets_month INTEGER NOT NULL DEFAULT 500,
       storage_limit_mb INTEGER NOT NULL DEFAULT 500,
+      trial_started_at TEXT,
+      trial_ends_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -178,11 +180,33 @@ export function initMasterDb(): void {
       }
     }
   };
+  tryAddColumn("ALTER TABLE tenants ADD COLUMN trial_started_at TEXT", 'trial_started_at');
   tryAddColumn("ALTER TABLE tenants ADD COLUMN trial_ends_at TEXT", 'trial_ends_at');
   tryAddColumn("ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT", 'stripe_customer_id');
   tryAddColumn("ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT", 'stripe_subscription_id');
   // Cloudflare DNS auto-provisioning — stores the record ID so deletion can target it
   tryAddColumn("ALTER TABLE tenants ADD COLUMN cloudflare_record_id TEXT", 'cloudflare_record_id');
+
+  // Back-fill trial_ends_at for any active/provisioning tenant that was created before
+  // the trial column was added to the INSERT statement. These rows have NULL trial_ends_at
+  // which makes isTrialActive() return false — the trial never kicks in. We grant a
+  // 14-day trial from created_at (capped to now+14 days so it is always in the future
+  // for very new tenants) when trial_ends_at is NULL and the tenant is not already on
+  // a paid plan. trial_started_at is stamped from created_at for historical accuracy.
+  try {
+    masterDb!.exec(`
+      UPDATE tenants
+      SET
+        trial_started_at = created_at,
+        trial_ends_at    = datetime(created_at, '+14 days')
+      WHERE
+        trial_ends_at IS NULL
+        AND status NOT IN ('deleted', 'pending_deletion', 'quarantined')
+        AND plan = 'free'
+    `);
+  } catch (err) {
+    console.warn('[MasterDb] trial back-fill skipped:', err instanceof Error ? err.message : String(err));
+  }
 
   // Rate-limits table (super-admin login, IP throttling, etc). Schema mirrors
   // migration 069_rate_limits.sql used by tenant DBs so the same checkWindowRate()

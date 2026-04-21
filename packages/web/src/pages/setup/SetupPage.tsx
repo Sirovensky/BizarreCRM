@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { settingsApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
+import { usePlanStore } from '@/stores/planStore';
 import type { ExtraCardId, PendingWrites, WizardPhase } from './wizardTypes';
 import { StepWelcome } from './steps/StepWelcome';
 import { StepStoreInfo } from './steps/StepStoreInfo';
@@ -38,6 +39,15 @@ export function SetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setTheme } = useUiStore();
+  const fetchPlan = usePlanStore((s) => s.fetchPlan);
+
+  // Populate planStore on mount so StepTrialInfo reflects the live trial status.
+  // SetupPage renders outside AppShell (which is the normal fetchPlan trigger),
+  // so without this call planStore stays at hasFetched=false / trialActive=false
+  // and the trial info step always shows the "inactive" warning.
+  useEffect(() => {
+    fetchPlan();
+  }, [fetchPlan]);
 
   // Short-circuit: if the wizard gate already decided this user doesn't belong here,
   // redirect them. This handles the case where someone manually navigates to /setup
