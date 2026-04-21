@@ -308,6 +308,18 @@ private struct TicketRow: View {
         .padding(.vertical, BrandSpacing.xs)
         .frame(minHeight: 56)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            RowAccessibilityFormatter.ticketRow(
+                id: ticket.orderId,
+                customer: ticket.customer?.displayName ?? "",
+                device: ticket.firstDevice?.deviceName ?? "",
+                status: ticket.status?.name ?? "",
+                dueAt: nil
+            )
+        )
+        .accessibilityHint(RowAccessibilityFormatter.ticketRowHint)
+        .accessibilityAddTraits(.isButton)
     }
 
     // Customer-first, falling back to device or order ID.

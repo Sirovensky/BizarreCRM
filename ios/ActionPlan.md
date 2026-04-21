@@ -3225,10 +3225,10 @@ _Baseline: `Accessibility Inspector` Audit passes on every screen. Run before PR
 ### 26.1 VoiceOver
 Always-on data (labels, hints, traits) — these cost nothing and only matter when VoiceOver is running, which iOS controls. We emit the metadata unconditionally; iOS decides when to speak it.
 
-- [ ] **Label + hint** on every interactive element — `.accessibilityLabel("Ticket 1234, iPhone repair")`, `.accessibilityHint("Double tap to open")`. Present in every build; iOS uses them only when VoiceOver is active.
-- [ ] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`.
+- [x] **Label + hint** on every interactive element — `.accessibilityLabel("Ticket 1234, iPhone repair")`, `.accessibilityHint("Double tap to open")`. Present in every build; iOS uses them only when VoiceOver is active. (feat(ios post-phase §26): A11y retrofit — Tickets/Customers/Inventory/Invoices list rows + RowAccessibilityFormatter helper)
+- [x] **Traits** — `.isButton`, `.isHeader`, `.isSelected`, `.isLink`. (Tickets/Customers/Inventory/Invoices rows: `.accessibilityAddTraits(.isButton)` — feat(ios post-phase §26))
 - [ ] **Rotor support** — on long lists: heading / form control / link rotors work.
-- [ ] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line.
+- [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
 - [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
 - [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
 - [ ] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise.

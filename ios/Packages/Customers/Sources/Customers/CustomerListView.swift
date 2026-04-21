@@ -295,6 +295,18 @@ private struct CustomerRow: View {
         .padding(.vertical, BrandSpacing.xs)
         .frame(minHeight: 56)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            RowAccessibilityFormatter.customerRow(
+                name: customer.displayName,
+                phone: customer.phone ?? customer.mobile,
+                openTicketCount: customer.ticketCount ?? 0,
+                ltvCents: nil,
+                lastVisitAt: nil
+            )
+        )
+        .accessibilityHint(RowAccessibilityFormatter.customerRowHint)
+        .accessibilityAddTraits(.isButton)
     }
 }
 

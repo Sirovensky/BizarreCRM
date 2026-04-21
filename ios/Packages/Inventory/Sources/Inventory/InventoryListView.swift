@@ -433,8 +433,16 @@ private struct InventoryRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(item.displayName)\(item.sku.map { ", SKU \($0)" } ?? ""). \(stockAccessibilityLabel)"
+            RowAccessibilityFormatter.inventoryRow(
+                sku: item.sku,
+                name: item.displayName,
+                stock: item.inStock ?? 0,
+                retailCents: item.priceCents,
+                isLowStock: item.isLowStock
+            )
         )
+        .accessibilityHint(RowAccessibilityFormatter.inventoryRowHint)
+        .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder
@@ -455,13 +463,6 @@ private struct InventoryRow: View {
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
-    }
-
-    private var stockAccessibilityLabel: String {
-        let stock = item.inStock ?? 0
-        if item.isLowStock { return "Low stock, \(stock) remaining" }
-        if stock > 0 { return "\(stock) in stock" }
-        return "Out of stock"
     }
 
     private func formatMoney(_ cents: Int) -> String {

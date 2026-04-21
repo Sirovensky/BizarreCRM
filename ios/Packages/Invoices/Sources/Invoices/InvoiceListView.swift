@@ -238,7 +238,9 @@ private struct InvoiceRow: View {
         .padding(.vertical, BrandSpacing.xs)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Self.a11y(for: invoice))
+        .accessibilityLabel(Self.a11yLabel(for: invoice))
+        .accessibilityHint(RowAccessibilityFormatter.invoiceRowHint)
+        .accessibilityAddTraits(.isButton)
     }
 
     private var statusBadge: some View {
@@ -252,14 +254,30 @@ private struct InvoiceRow: View {
             .accessibilityLabel("Status \(name)")
     }
 
-    static func a11y(for inv: InvoiceSummary) -> String {
-        var parts: [String] = [inv.displayId, inv.customerName]
-        let total = formatMoney(inv.total ?? 0)
-        parts.append(total)
-        if let status = inv.status, !status.isEmpty { parts.append("Status \(status.capitalized)") }
-        if let due = inv.amountDue, due > 0 { parts.append("Due \(formatMoney(due))") }
-        return parts.joined(separator: ". ")
+    static func a11yLabel(for inv: InvoiceSummary) -> String {
+        // InvoiceSummary.total is Double dollars; convert to cents for RowAccessibilityFormatter.
+        let totalCents = Int(((inv.total ?? 0) * 100).rounded())
+        // Use createdAt string; parse to Date or fall back to now.
+        let issuedDate: Date = {
+            guard let str = inv.createdAt else { return Date() }
+            let iso = ISO8601DateFormatter()
+            if let d = iso.date(from: str) { return d }
+            // Try date-only format "YYYY-MM-DD"
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            return df.date(from: String(str.prefix(10))) ?? Date()
+        }()
+        return RowAccessibilityFormatter.invoiceRow(
+            number: inv.displayId,
+            customer: inv.customerName,
+            totalCents: totalCents,
+            status: inv.status ?? "",
+            issuedAt: issuedDate
+        )
     }
+
+    /// Legacy alias kept for test callsites.
+    static func a11y(for inv: InvoiceSummary) -> String { a11yLabel(for: inv) }
 
     private static func formatMoney(_ dollars: Double) -> String {
         let f = NumberFormatter()
