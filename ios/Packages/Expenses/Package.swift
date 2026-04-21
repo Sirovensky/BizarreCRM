@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "Expenses", targets: ["Expenses"])
     ],
     dependencies: [
+        .package(path: "../Camera"),
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
@@ -16,7 +17,12 @@ let package = Package(
     targets: [
         .target(
             name: "Expenses",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+            dependencies: ["Camera", "Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "ExpensesTests",
+            dependencies: ["Expenses", "Core", "Networking"],
+            path: "Tests/ExpensesTests"
         )
     ]
 )

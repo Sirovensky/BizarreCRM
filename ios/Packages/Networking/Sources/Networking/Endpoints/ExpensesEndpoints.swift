@@ -25,9 +25,12 @@ public struct Expense: Decodable, Sendable, Identifiable, Hashable {
     public let amount: Double?
     public let description: String?
     public let date: String?
+    public let receiptPath: String?
+    public let userId: Int64?
     public let firstName: String?
     public let lastName: String?
     public let createdAt: String?
+    public let updatedAt: String?
 
     public var createdByName: String? {
         let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
@@ -36,9 +39,12 @@ public struct Expense: Decodable, Sendable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, category, amount, description, date
+        case receiptPath = "receipt_path"
+        case userId = "user_id"
         case firstName = "first_name"
         case lastName = "last_name"
         case createdAt = "created_at"
+        case updatedAt = "updated_at"
     }
 }
 
@@ -52,5 +58,10 @@ public extension APIClient {
         if let f = fromDate { items.append(URLQueryItem(name: "from_date", value: f)) }
         if let t = toDate { items.append(URLQueryItem(name: "to_date", value: t)) }
         return try await get("/api/v1/expenses", query: items, as: ExpensesListResponse.self)
+    }
+
+    /// `GET /api/v1/expenses/:id` — single expense with user name fields.
+    func getExpense(id: Int64) async throws -> Expense {
+        try await get("/api/v1/expenses/\(id)", as: Expense.self)
     }
 }

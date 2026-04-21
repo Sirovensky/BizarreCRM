@@ -74,6 +74,9 @@ public struct ExpenseListView: View {
             .searchable(text: $searchText, prompt: "Search expenses")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .toolbar { newButton }
+            .navigationDestination(for: Int64.self) { id in
+                ExpenseDetailView(api: api, id: id)
+            }
         }
     }
 
@@ -103,6 +106,9 @@ public struct ExpenseListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle("")
+            .navigationDestination(for: Int64.self) { id in
+                ExpenseDetailView(api: api, id: id)
+            }
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -159,12 +165,21 @@ public struct ExpenseListView: View {
                 }
                 Section {
                     ForEach(vm.items) { exp in
-                        Row(expense: exp)
-                            .listRowBackground(Color.bizarreSurface1)
+                        NavigationLink(value: exp.id) {
+                            Row(expense: exp)
+                        }
+                        .listRowBackground(Color.bizarreSurface1)
+                        #if canImport(UIKit)
+                        .hoverEffect(.highlight)
+                        #endif
                     }
                 }
             }
+            #if canImport(UIKit)
             .listStyle(.insetGrouped)
+            #else
+            .listStyle(.inset)
+            #endif
             .scrollContentBackground(.hidden)
         }
     }
