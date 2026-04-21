@@ -74,6 +74,11 @@ final class PosCustomerAttachTests: XCTestCase {
         XCTAssertTrue(cart.isEmpty)
     }
 
+    #if canImport(UIKit)
+    // `PosCustomerNameFormatter` + `PosCustomerMapper` live in files that
+    // are gated on UIKit (the picker / chrome are iOS/iPad only). Guard
+    // these tests the same way so the suite still compiles on macOS
+    // hosts (`swift test`).
     func test_nameFormatter_joinsFirstAndLast() {
         XCTAssertEqual(
             PosCustomerNameFormatter.displayName(firstName: "Ada", lastName: "Lovelace"),
@@ -112,4 +117,5 @@ final class PosCustomerAttachTests: XCTestCase {
         XCTAssertEqual(mapped.displayName, "Ada Lovelace")
         XCTAssertEqual(mapped.phone, "555")
     }
+    #endif
 }

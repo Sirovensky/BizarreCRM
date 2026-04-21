@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Hardware
 import Networking
 import Inventory
 import Customers
@@ -11,7 +12,8 @@ public struct PosView: View {
     @State private var cart = Cart()
     @State private var search: PosSearchViewModel
     @State private var showingCustomLine: Bool = false
-    @State private var showingCharge: Bool = false
+    @State private var postSale: PosPostSaleViewModel?
+    @State private var showingReturns: Bool = false
     @State private var editQuantityFor: CartItem?
     @State private var editPriceFor: CartItem?
     @State private var showingCartSheet: Bool = false
@@ -20,6 +22,11 @@ public struct PosView: View {
     @State private var showingCustomerPicker: Bool = false
     @State private var showingCreateCustomer: Bool = false
 
+    /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
+    /// post-sale receipt-send flow both need the live `APIClient`. Kept
+    /// optional so preview / Mac-designed-for-iPad builds without auth
+    /// still compile; both surfaces fall back to a typed "Coming soon"
+    /// message when `api` is nil.
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
@@ -45,8 +52,11 @@ public struct PosView: View {
         .sheet(isPresented: $showingCustomLine) {
             PosCustomLineSheet { item in cart.add(item) }
         }
-        .sheet(isPresented: $showingCharge) {
-            PosChargePlaceholderSheet(totalCents: cart.totalCents)
+        .sheet(item: $postSale) { vm in
+            PosPostSaleView(vm: vm)
+        }
+        .sheet(isPresented: $showingReturns) {
+            PosReturnsView(api: api)
         }
         .sheet(item: $editQuantityFor) { item in
             PosEditQuantitySheet(current: item.quantity) { qty in
@@ -194,6 +204,14 @@ public struct PosView: View {
                     .accessibilityLabel("Add custom line")
             }
             ToolbarItem(placement: .secondaryAction) {
+                Button { showingReturns = true } label: {
+                    Label("Process return", systemImage: "arrow.uturn.backward")
+                }
+                .keyboardShortcut("R", modifiers: [.command, .shift])
+                .accessibilityLabel("Process return")
+                .accessibilityIdentifier("pos.toolbar.returns")
+            }
+            ToolbarItem(placement: .secondaryAction) {
                 Button(role: .destructive) { cart.clear() } label: {
                     Label("Clear cart", systemImage: "trash")
                 }
@@ -213,7 +231,26 @@ public struct PosView: View {
     private func startCharge() {
         guard !cart.isEmpty else { return }
         BrandHaptics.tapMedium()
-        showingCharge = true
+        postSale = buildPostSaleViewModel()
+    }
+
+    /// Assemble the post-sale view model from the current cart. Snapshots
+    /// the render output so the sheet is immune to subsequent cart edits
+    /// (e.g. the Next-sale clear).
+    private func buildPostSaleViewModel() -> PosPostSaleViewModel {
+        let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
+        let text = PosReceiptRenderer.text(snapshot)
+        let html = PosReceiptRenderer.html(snapshot)
+        return PosPostSaleViewModel(
+            totalCents: cart.totalCents,
+            methodLabel: "Placeholder — pending §17.3",
+            receiptText: text,
+            receiptHtml: html,
+            defaultEmail: cart.customer?.email,
+            defaultPhone: cart.customer?.phone,
+            api: api,
+            nextSale: { [weak cart] in cart?.clear() }
+        )
     }
 
     private func openDrawer() { /* §17.4 stub */ }
