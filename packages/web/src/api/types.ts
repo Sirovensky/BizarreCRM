@@ -245,9 +245,12 @@ export interface UpdateUserInput {
 
 export interface UpdateNotificationTemplateInput {
   subject?: string;
-  body?: string;
-  sms_message?: string;
-  template_vars?: Record<string, string>;
+  email_body?: string;
+  sms_body?: string;
+  send_email_auto?: number;
+  send_sms_auto?: number;
+  is_active?: number;
+  show_in_canned?: number;
 }
 
 export interface CreateChecklistTemplateInput {

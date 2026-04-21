@@ -574,9 +574,15 @@ export function LeadListPage() {
                 <span className="text-xs text-surface-500 dark:text-surface-400">per page</span>
               </div>
               <p className="text-sm text-surface-500 dark:text-surface-400">
-                Showing {(page - 1) * pagination.per_page + 1}
-                &ndash;
-                {Math.min(page * pagination.per_page, pagination.total)} of {pagination.total}
+                {pagination.total === 0 ? (
+                  'No results'
+                ) : (
+                  <>
+                    Showing {(page - 1) * pagination.per_page + 1}
+                    &ndash;
+                    {Math.min(page * pagination.per_page, pagination.total)} of {pagination.total}
+                  </>
+                )}
               </p>
             </div>
             {pagination.total_pages > 1 && (

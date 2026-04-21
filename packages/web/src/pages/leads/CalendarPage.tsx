@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar, ChevronLeft, ChevronRight, Plus, X, Clock,
@@ -214,6 +214,10 @@ function CreateAppointmentModal({
             e.preventDefault();
             const startTime = `${form.start_date}T${form.start_hour}:${form.start_min}:00`;
             const endTime = `${form.start_date}T${form.end_hour}:${form.end_min}:00`;
+            if (endTime <= startTime) {
+              toast.error('End time must be after start time');
+              return;
+            }
             createMut.mutate({
               title: form.title,
               start_time: startTime,
@@ -559,8 +563,7 @@ function DayView({
   );
 }
 
-// Need Fragment for week view
-import { Fragment } from 'react';
+// Fragment is imported at the top of the file.
 
 // ─── Main Component ─────────────────────────────────────────────
 export function CalendarPage() {

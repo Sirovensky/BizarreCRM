@@ -191,6 +191,105 @@ router.patch(
 );
 
 // ---------------------------------------------------------------------------
+// POST /:id/dry-run – Evaluate trigger match without side-effects
+// ---------------------------------------------------------------------------
+// Accepts an optional context payload (ticket_id, invoice_id, customer_id)
+// and returns whether the rule would fire + what action would execute.
+// No SMS/email/status-change is performed.
+router.post(
+  '/:id/dry-run',
+  asyncHandler(async (req, res) => {
+    requireAutomationsFeature(req);
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const id = Number(req.params.id);
+    const automation = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
+    if (!automation) throw new AppError('Automation not found', 404);
+
+    const triggerConfig = safeParseJson(automation.trigger_config, {});
+    const actionConfig = safeParseJson(automation.action_config, {});
+
+    // Build context from optional payload identifiers
+    const { ticket_id, invoice_id, customer_id } = (req.body ?? {}) as {
+      ticket_id?: number;
+      invoice_id?: number;
+      customer_id?: number;
+    };
+
+    const context: Record<string, unknown> = {};
+
+    if (ticket_id) {
+      const ticket = await adb.get('SELECT * FROM tickets WHERE id = ?', Number(ticket_id)) as any;
+      if (ticket) context.ticket = ticket;
+    }
+
+    if (invoice_id) {
+      const invoice = await adb.get('SELECT * FROM invoices WHERE id = ?', Number(invoice_id)) as any;
+      if (invoice) context.invoice = invoice;
+    }
+
+    if (customer_id) {
+      const customer = await adb.get('SELECT id, first_name, last_name, email, phone, mobile FROM customers WHERE id = ?', Number(customer_id)) as any;
+      if (customer) context.customer = customer;
+    }
+
+    // Evaluate trigger match
+    let triggerWouldFire = true;
+    const { from_status_id, to_status_id } = triggerConfig as { from_status_id?: number; to_status_id?: number };
+
+    if (automation.trigger_type === 'ticket_status_changed') {
+      const ticket = context.ticket as Record<string, unknown> | undefined;
+      if (from_status_id !== undefined) {
+        const current = ticket ? Number(ticket.status_id) : null;
+        if (current !== Number(from_status_id)) triggerWouldFire = false;
+      }
+      if (to_status_id !== undefined) {
+        // No "new status" provided in context — flag it as "unknown"
+        if (!context.to_status_id && context.ticket) triggerWouldFire = false;
+      }
+    }
+
+    // Summarise what action would execute (template substitution preview)
+    let actionPreview: string | null = null;
+    if (triggerWouldFire) {
+      if (automation.action_type === 'send_sms' && actionConfig.template) {
+        const customer = context.customer as Record<string, unknown> | undefined;
+        const ticket = context.ticket as Record<string, unknown> | undefined;
+        actionPreview = String(actionConfig.template)
+          .replace(/\{customer_name\}/g, [customer?.first_name, customer?.last_name].filter(Boolean).join(' ') || '{customer_name}')
+          .replace(/\{ticket_id\}/g, String(ticket?.order_id ?? ticket?.id ?? '{ticket_id}'));
+      } else if (automation.action_type === 'send_email' && actionConfig.subject) {
+        actionPreview = `Subject: ${actionConfig.subject}`;
+      } else if (automation.action_type === 'change_status' && actionConfig.status_id) {
+        const status = await adb.get('SELECT name FROM ticket_statuses WHERE id = ?', Number(actionConfig.status_id)) as any;
+        actionPreview = `Change status → ${status?.name ?? actionConfig.status_id}`;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        automation_id: id,
+        automation_name: automation.name,
+        trigger_type: automation.trigger_type,
+        trigger_config: triggerConfig,
+        action_type: automation.action_type,
+        action_config: actionConfig,
+        is_active: !!automation.is_active,
+        trigger_would_fire: triggerWouldFire,
+        action_preview: actionPreview,
+        context_used: {
+          has_ticket: !!context.ticket,
+          has_invoice: !!context.invoice,
+          has_customer: !!context.customer,
+        },
+        note: 'Dry-run only — no side effects performed',
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function safeParseJson(val: any, fallback: any = {}): any {

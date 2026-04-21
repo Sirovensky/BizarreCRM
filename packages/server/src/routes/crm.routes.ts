@@ -812,4 +812,123 @@ export async function refreshSegmentMembership(
   return matched.length;
 }
 
+// ---------------------------------------------------------------------------
+// Customer review moderation — GET /crm/reviews, PATCH /crm/reviews/:id
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /crm/reviews
+ * List all customer_reviews (newest first), with customer + ticket context.
+ * Query params: page, pagesize (default 25), rating (1-5 filter), replied (true|false)
+ */
+router.get(
+  '/reviews',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const page = parsePage(req.query.page);
+    const pageSize = parsePageSize(req.query.pagesize, 25);
+    const ratingFilter = req.query.rating ? parseInt(req.query.rating as string, 10) : null;
+    const repliedFilter = req.query.replied as string | undefined;
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (ratingFilter !== null && Number.isInteger(ratingFilter) && ratingFilter >= 1 && ratingFilter <= 5) {
+      conditions.push('r.rating = ?');
+      params.push(ratingFilter);
+    }
+    if (repliedFilter === 'true') {
+      conditions.push('r.responded_at IS NOT NULL');
+    } else if (repliedFilter === 'false') {
+      conditions.push('r.responded_at IS NULL');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const { total } = await adb.get<{ total: number }>(
+      `SELECT COUNT(*) as total FROM customer_reviews r ${whereClause}`,
+      ...params,
+    ) as { total: number };
+
+    const offset = (page - 1) * pageSize;
+    const reviews = await adb.all<Record<string, unknown>>(
+      `SELECT r.*,
+         c.first_name AS customer_first_name, c.last_name AS customer_last_name,
+         t.order_id AS ticket_order_id
+       FROM customer_reviews r
+       LEFT JOIN customers c ON c.id = r.customer_id
+       LEFT JOIN tickets  t ON t.id = r.ticket_id
+       ${whereClause}
+       ORDER BY r.created_at DESC
+       LIMIT ? OFFSET ?`,
+      ...params,
+      pageSize,
+      offset,
+    );
+
+    res.json({
+      success: true,
+      data: {
+        reviews,
+        pagination: { page, per_page: pageSize, total, total_pages: Math.ceil(total / pageSize) },
+      },
+    });
+  }),
+);
+
+/**
+ * PATCH /crm/reviews/:id
+ * Reply to a review (sets `response` + `responded_at`) or mark it public_posted.
+ * Body: { response?: string; public_posted?: boolean }
+ */
+router.patch(
+  '/reviews/:id',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid review ID', 400);
+
+    const existing = await adb.get<Record<string, unknown>>(
+      'SELECT * FROM customer_reviews WHERE id = ?',
+      id,
+    );
+    if (!existing) throw new AppError('Review not found', 404);
+
+    const { response, public_posted } = req.body as { response?: unknown; public_posted?: unknown };
+
+    const updatedResponse = response !== undefined
+      ? validateTextLength(String(response), 2000, 'response')
+      : (existing.response as string | null);
+
+    const updatedPublicPosted = public_posted !== undefined
+      ? (public_posted ? 1 : 0)
+      : (existing.public_posted as number);
+
+    // Set responded_at only when a reply text is newly provided
+    const respondedAt = (response !== undefined && String(response).trim().length > 0)
+      ? "datetime('now')"
+      : null;
+
+    await adb.run(
+      `UPDATE customer_reviews
+          SET response = ?,
+              responded_at = ${respondedAt ?? 'responded_at'},
+              public_posted = ?
+        WHERE id = ?`,
+      updatedResponse,
+      updatedPublicPosted,
+      id,
+    );
+
+    audit(db, 'review_replied', req.user!.id, req.ip || 'unknown', { review_id: id });
+
+    const updated = await adb.get<Record<string, unknown>>(
+      'SELECT * FROM customer_reviews WHERE id = ?',
+      id,
+    );
+    res.json({ success: true, data: updated });
+  }),
+);
+
 export default router;

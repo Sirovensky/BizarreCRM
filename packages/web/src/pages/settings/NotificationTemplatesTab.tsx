@@ -237,7 +237,7 @@ export function NotificationTemplatesTab() {
 
   const filtered = data.filter((t) => subTab === 'customer' ? t.category === 'customer' : t.category === 'internal');
 
-  function handleToggle(template: NotificationTemplate, field: 'send_email_auto' | 'send_sms_auto', value: boolean) {
+  function handleToggle(template: NotificationTemplate, field: 'send_email_auto' | 'send_sms_auto' | 'show_in_canned', value: boolean) {
     updateMut.mutate({ id: template.id, data: { [field]: value ? 1 : 0 } });
   }
 
@@ -331,7 +331,7 @@ export function NotificationTemplatesTab() {
                       <div className="flex justify-center">
                         <ToggleSwitch
                           checked={!!(t as any).show_in_canned}
-                          onChange={(v) => handleToggle(t, 'show_in_canned' as any, v)}
+                          onChange={(v) => handleToggle(t, 'show_in_canned', v)}
                           disabled={updateMut.isPending}
                         />
                       </div>

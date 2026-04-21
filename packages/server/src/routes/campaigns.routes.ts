@@ -607,6 +607,22 @@ router.post(
         campaign.channel,
       );
       total = row?.total ?? 0;
+    } else {
+      // No segment = all customers; count them directly so the preview shows a
+      // real estimate rather than the misleading 0 it returned before this fix.
+      const row = await adb.get<{ total: number }>(
+        `SELECT COUNT(*) AS total
+           FROM customers c
+          WHERE (
+            (? = 'sms'   AND COALESCE(c.sms_opt_in,1) = 1) OR
+            (? = 'email' AND COALESCE(c.email_opt_in,1) = 1) OR
+            (? = 'both'  AND (COALESCE(c.sms_opt_in,1) = 1 OR COALESCE(c.email_opt_in,1) = 1))
+          )`,
+        campaign.channel,
+        campaign.channel,
+        campaign.channel,
+      );
+      total = row?.total ?? 0;
     }
 
     res.json({

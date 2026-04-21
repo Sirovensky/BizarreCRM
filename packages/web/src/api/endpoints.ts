@@ -442,6 +442,8 @@ export const automationsApi = {
     api.put(`/automations/${id}`, data),
   delete: (id: number) => api.delete(`/automations/${id}`),
   toggle: (id: number) => api.patch(`/automations/${id}/toggle`),
+  dryRun: (id: number, context?: { ticket_id?: number; invoice_id?: number; customer_id?: number }) =>
+    api.post(`/automations/${id}/dry-run`, context ?? {}),
 };
 
 // ==================== Search ====================
@@ -1134,6 +1136,12 @@ export const crmApi = {
   ) => api.post(`/crm/customers/${customerId}/subscription`, data),
   listSubscriptions: (customerId: number) =>
     api.get(`/crm/customers/${customerId}/subscriptions`),
+
+  // Customer review moderation
+  listReviews: (params?: { page?: number; pagesize?: number; rating?: number; replied?: 'true' | 'false' }) =>
+    api.get('/crm/reviews', { params }),
+  replyToReview: (id: number, data: { response?: string; public_posted?: boolean }) =>
+    api.patch(`/crm/reviews/${id}`, data),
 
   // Segments
   listSegments: () => api.get('/crm/segments'),

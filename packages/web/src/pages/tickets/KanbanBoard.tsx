@@ -150,9 +150,9 @@ export default function KanbanBoard() {
     onMutate: async ({ id, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['tickets-kanban'] });
       const prev = queryClient.getQueryData(['tickets-kanban']);
-      queryClient.setQueryData(['tickets-kanban'], (old: any) => {
+      queryClient.setQueryData(['tickets-kanban'], (old: unknown) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = JSON.parse(JSON.stringify(old)) as { data?: { data?: { columns?: KanbanColumn[] } } };
         const cols: KanbanColumn[] = clone?.data?.data?.columns || [];
         let moved: KanbanTicket | undefined;
         for (const col of cols) {
@@ -171,7 +171,7 @@ export default function KanbanBoard() {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx: any) => {
+    onError: (_err, _vars, ctx: { prev: unknown } | undefined) => {
       if (ctx?.prev) queryClient.setQueryData(['tickets-kanban'], ctx.prev);
       toast.error('Failed to update ticket status');
     },

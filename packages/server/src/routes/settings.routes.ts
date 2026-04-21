@@ -1435,7 +1435,7 @@ router.get('/notification-templates', async (req, res) => {
 
 router.put('/notification-templates/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active } = req.body;
+  const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active, show_in_canned } = req.body;
   const existing = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Notification template not found', 404);
 
@@ -1447,6 +1447,7 @@ router.put('/notification-templates/:id', adminOnly, async (req, res) => {
       send_email_auto = COALESCE(?, send_email_auto),
       send_sms_auto = COALESCE(?, send_sms_auto),
       is_active = COALESCE(?, is_active),
+      show_in_canned = COALESCE(?, show_in_canned),
       updated_at = datetime('now')
     WHERE id = ?
   `,
@@ -1456,6 +1457,7 @@ router.put('/notification-templates/:id', adminOnly, async (req, res) => {
     send_email_auto ?? null,
     send_sms_auto ?? null,
     is_active ?? null,
+    show_in_canned ?? null,
     req.params.id
   );
   const template = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);

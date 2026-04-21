@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { automationsApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -569,6 +569,25 @@ export function AutomationsTab() {
     onError: () => toast.error('Failed to delete rule'),
   });
 
+  const dryRunMut = useMutation({
+    mutationFn: (id: number) => automationsApi.dryRun(id),
+    onSuccess: (res) => {
+      const d = (res.data as any)?.data ?? {};
+      if (d.trigger_would_fire) {
+        toast.success(
+          `Would fire — ${d.action_preview ?? d.action_type}`,
+          { duration: 5000 },
+        );
+      } else {
+        toast(`Would NOT fire (trigger conditions not met)`, {
+          icon: '🔍',
+          duration: 5000,
+        });
+      }
+    },
+    onError: () => toast.error('Dry-run failed'),
+  });
+
   async function handleDelete(rule: AutomationRule) {
     const ok = await confirm(
       `Are you sure you want to delete "${rule.name}"? This action cannot be undone.`,
@@ -737,11 +756,21 @@ export function AutomationsTab() {
                         </p>
                       </div>
                     </div>
-                    <div className="text-surface-400 pt-1">
-                      Created: {new Date(rule.created_at.replace(' ', 'T')).toLocaleString()}
-                      {rule.updated_at !== rule.created_at && (
-                        <> | Updated: {new Date(rule.updated_at.replace(' ', 'T')).toLocaleString()}</>
-                      )}
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="text-surface-400">
+                        Created: {new Date(rule.created_at.replace(' ', 'T')).toLocaleString()}
+                        {rule.updated_at !== rule.created_at && (
+                          <> | Updated: {new Date(rule.updated_at.replace(' ', 'T')).toLocaleString()}</>
+                        )}
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); dryRunMut.mutate(rule.id); }}
+                        disabled={dryRunMut.isPending && dryRunMut.variables === rule.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-40 text-[10px] font-medium"
+                        title="Dry-run — check if this rule would fire (no side effects)"
+                      >
+                        <FlaskConical className="h-3 w-3" /> Dry-run
+                      </button>
                     </div>
                   </div>
                 )}

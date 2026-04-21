@@ -86,6 +86,8 @@ const AutomationsListPage = lazy(() => import('./pages/automations/AutomationsLi
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
 const VoiceCallsListPage = lazy(() => import('./pages/voice/VoiceCallsListPage').then(m => ({ default: m.VoiceCallsListPage })));
+// Customer review moderation
+const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 
 function NotFoundPage() {
   return (
@@ -423,6 +425,8 @@ export default function App() {
                     <Route path="/super-admin/tenants" element={<TenantsListPage />} />
                     {/* Voice calls list. */}
                     <Route path="/voice" element={<VoiceCallsListPage />} />
+                    {/* Customer review moderation. */}
+                    <Route path="/reviews" element={<ReviewsPage />} />
                     {/* Marketing / Growth enrichment (§54). */}
                     <Route path="/marketing/campaigns" element={<CampaignsPage />} />
                     <Route path="/marketing/segments" element={<SegmentsPage />} />
