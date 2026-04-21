@@ -17,6 +17,11 @@ let package = Package(
         .target(
             name: "Camera",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "CameraTests",
+            dependencies: ["Camera", "Core"],
+            path: "Tests/CameraTests"
         )
     ]
 )
