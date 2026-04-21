@@ -4941,47 +4941,47 @@ See §19.14 for settings entry. Deep features:
 Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins never see the audit UI; the Settings row is hidden, the deep link (`bizarrecrm://<slug>/settings/audit`) is rejected with a 403-style toast, and server authoritatively blocks `/audit-logs` on non-admin tokens. Own-history (`audit.view.self`) is a different, narrower surface — lives on §19.1 Profile as "My recent actions", reads the same endpoint scoped to actor_id = self.
 
 ### 50.1 List
-- [ ] **Server**: `GET /audit-logs?actor=&action=&entity=&since=&until=`.
-- [ ] **Columns** — when / actor / action / entity / diff.
-- [ ] **Expandable row** — shows full JSON diff.
+- [x] **Server**: `GET /audit-logs?actor=&action=&entity=&since=&until=`.
+- [x] **Columns** — when / actor / action / entity / diff.
+- [x] **Expandable row** — shows full JSON diff.
 
 ### 50.2 Filters
-- [ ] **Actor, action, entity, date range**.
-- [ ] **Saved filters** as chips.
-- [ ] Free-text search across data_diff via FTS5.
-- [ ] Chips: "Last 24h", "This week", "Custom".
+- [x] **Actor, action, entity, date range**.
+- [x] **Saved filters** as chips.
+- [x] Free-text search across data_diff via FTS5.
+- [x] Chips: "Last 24h", "This week", "Custom".
 
 ### 50.3 Export
-- [ ] **CSV / JSON / PDF for period**.
+- [ ] **CSV / JSON / PDF for period** — stubbed (TODO comment in toolbar); not implemented this PR.
 - [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
 ### 50.4 Alerts
-- [ ] **Sensitive action** (role change, bulk delete) → admin push.
+- [ ] **Sensitive action** (role change, bulk delete) → admin push. (server concern)
 
 ### 50.5 Scope
 - Every write operation logged: who, when, what, before/after.
 - Reads logged optionally (sensitive screens only).
 
 ### 50.6 Entry rendering
-- Before/after diff visually (red/green).
-- Actor avatar + role + device fingerprint.
-- Tap → navigate to affected entity (if exists).
+- [x] Before/after diff visually (red/green).
+- [x] Actor avatar + role + device fingerprint.
+- [x] Tap → navigate to affected entity (if exists).
 
 ### 50.7 Integrity
 - Entries immutable (server enforced).
-- SHA chain: each entry includes hash of previous → tamper-evident.
+- SHA chain: each entry includes hash of previous → tamper-evident. (server concern; stub returning `.unknown` deferred)
 - iOS verifies chain on export; flags tampered period.
 
 ### 50.8 Retention
-- Tenant policy: 1yr / 3yr / 7yr / forever.
+- Tenant policy: 1yr / 3yr / 7yr / forever. (server concern)
 - Auto-archive to cold storage beyond hot window.
 
 ### 50.9 Access control
-- Owner / compliance role only.
+- [x] Owner / compliance role only — `AuditLogAccessPolicy` + "Access denied" pane shipped.
 - Viewing logged (meta-audit).
 
 ### 50.10 Offline
-- Cached last 90d locally.
+- [ ] Cached last 90d locally — stubbed (`AuditLogRepository.cachedRecent()` returns empty; TODO comment).
 - Older pulled on demand.
 
 ---
