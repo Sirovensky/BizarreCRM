@@ -566,6 +566,10 @@ fun AppNavGraph(
                     // §3.1 — KPI tile taps deep-link to the filtered list.
                     onNavigateToAppointments = { navController.navigate(Screen.Appointments.route) },
                     onNavigateToInventory = { navController.navigate(Screen.Inventory.route) },
+                    // §3.9 — tap greeting → Settings → Profile so the user
+                    // has a one-tap path to edit their name / avatar from the
+                    // dashboard without drilling through Settings.
+                    onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
                 )
             }
             composable(Screen.Tickets.route) {

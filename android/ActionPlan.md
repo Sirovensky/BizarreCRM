@@ -545,7 +545,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.9 Greeting + operator identity
 - [x] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}") using `LocalDateTime.now().hour`.
-- [ ] Tap greeting → Settings → Profile.
+- [x] Tap greeting → Settings → Profile.
 - [ ] Avatar in top-left top bar (phone) / leading nav-rail header (tablet); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge

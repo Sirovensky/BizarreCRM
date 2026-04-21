@@ -15,6 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -254,6 +258,9 @@ fun DashboardScreen(
     // so previews / standalone dashboard tests can pass without a NavController.
     onNavigateToAppointments: (() -> Unit)? = null,
     onNavigateToInventory: (() -> Unit)? = null,
+    // §3.9 — tap greeting → Settings → Profile. Nullable keeps previews +
+    // isolated tests composable without a NavController.
+    onNavigateToProfile: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -338,6 +345,27 @@ fun DashboardScreen(
             Column {
                 BrandTopAppBar(
                     title = state.greeting.ifEmpty { "Dashboard" },
+                    // §3.9 — greeting itself is the profile shortcut. When
+                    // onNavigateToProfile is wired, render the title as a
+                    // clickable Text with role=Button so TalkBack announces
+                    // it as an action (the default titleContent is inert).
+                    // Null lets BrandTopAppBar fall back to the normal
+                    // heading-style Text.
+                    titleContent = onNavigateToProfile?.let { onProfile ->
+                        {
+                            Text(
+                                text = state.greeting.ifEmpty { "Dashboard" },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .semantics {
+                                        role = Role.Button
+                                        heading()
+                                    }
+                                    .clickable(onClick = onProfile),
+                            )
+                        }
+                    },
                     actions = {
                         // CROSS22 + CROSS22-badge: bell icon + unread count badge.
                         if (onNavigateToNotifications != null) {
