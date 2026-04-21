@@ -184,6 +184,12 @@ class LoginViewModel @Inject constructor(
         shopSlug = extractSlugFromUrl(authPreferences.serverUrl),
         useCustomServer = !isCloudUrl(authPreferences.serverUrl),
         step = if (authPreferences.serverUrl.isNullOrBlank()) SetupStep.SERVER else SetupStep.CREDENTIALS,
+        // §2.17 — pre-fill the username from the last successful login so the
+        // user only has to tap the Password field. Never pre-fills the
+        // password field (that stays biometric-gated) and never surfaces
+        // storage beyond the already-saved `username` in AuthPreferences, so
+        // no new persistence keys are introduced.
+        username = authPreferences.username.orEmpty(),
     ))
     val state = _state.asStateFlow()
 

@@ -403,7 +403,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Sovereignty: no server-side idle detection; purely device-local.
 
 ### 2.17 Remember-me scope
-- [ ] Remember email / username only (never password without biometric bind).
+- [x] Remember email / username only (never password without biometric bind).
 - [ ] Biometric-unlock stores passphrase in Keystore under biometric-gated key.
 - [ ] Device binding: stored creds tied to device ANDROID_ID + Play Integrity attestation (if available).
 - [ ] If user migrates device, re-auth required.
@@ -2299,8 +2299,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Signature capture surface sized proportionally to device DP.
 
 ### 23.5 Window insets
-- [ ] Edge-to-edge via `WindowCompat.setDecorFitsSystemWindows(window, false)`.
-- [ ] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently.
+- [x] Edge-to-edge via `WindowCompat.setDecorFitsSystemWindows(window, false)`.
+- [~] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently.
 - [ ] Respect 3-button vs gesture navigation.
 
 ### 23.6 Predictive back

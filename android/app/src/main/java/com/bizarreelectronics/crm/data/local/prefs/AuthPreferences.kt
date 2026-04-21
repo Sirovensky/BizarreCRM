@@ -220,6 +220,15 @@ class AuthPreferences @Inject constructor(
         val preservedUrlSig = prefs.getString(KEY_SERVER_URL_SIG, null)
         val preservedInstallId = prefs.getString(KEY_INSTALL_ID, null)
         val preservedInstallSecret = prefs.getString(KEY_INSTALL_SECRET, null)
+        // §2.17 — keep the last username around across server-forced clears
+        // (refresh failed / session revoked) so the user can log straight back
+        // in without retyping it. Explicit UserLogout wipes it because the
+        // next user at this device may be someone else entirely.
+        val preservedUsername = if (reason != ClearReason.UserLogout) {
+            prefs.getString(KEY_USERNAME, null)
+        } else {
+            null
+        }
 
         prefs.edit().clear().apply()
 
@@ -228,6 +237,7 @@ class AuthPreferences @Inject constructor(
         if (preservedUrlSig != null) restore.putString(KEY_SERVER_URL_SIG, preservedUrlSig)
         if (preservedInstallId != null) restore.putString(KEY_INSTALL_ID, preservedInstallId)
         if (preservedInstallSecret != null) restore.putString(KEY_INSTALL_SECRET, preservedInstallSecret)
+        if (preservedUsername != null) restore.putString(KEY_USERNAME, preservedUsername)
         restore.apply()
 
         _authCleared.tryEmit(reason)
