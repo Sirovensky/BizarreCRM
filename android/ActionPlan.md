@@ -1606,7 +1606,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `PUT /employees/{id}`, `POST /employees/{id}/clock-in`, `POST /employees/{id}/clock-out`, `GET /roles`, `POST /roles`, `GET /team`, `POST /team/shifts`, `GET /team-chat`, `POST /team-chat`, `GET /bench`._
 
 ### 14.1 List
-- [ ] Base list.
+- [x] Base list.
 - [ ] **Filters** — role / active-inactive / clocked-in-now.
 - [ ] **"Who's clocked in right now"** view — real-time via WebSocket presence events.
 - [ ] **Columns** (tablet/ChromeOS) — Name / Email / Role / Status / Has PIN / Hours this week / Commission.
@@ -1621,7 +1621,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] **Deactivate** — soft-delete; grey out future logins.
 
 ### 14.3 Timeclock
-- [ ] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`.
+- [x] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`.
 - [x] **PIN prompt** — custom numeric keypad with `HapticFeedbackConstants.VIRTUAL_KEY` per tap; `POST /auth/verify-pin`.
 - [ ] **Breaks** — start / end break with type (meal / rest); accumulates toward labor law compliance.
 - [ ] **Geofence** — optional; capture location on clock-in/out if `ACCESS_FINE_LOCATION` granted; server records inside/outside store geofence.
@@ -1718,7 +1718,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET /reports/aging`, `GET /reports/technician-performance`, `GET /reports/tax`, `GET /reports/inventory`, `GET /reports/scheduled`, `POST /reports/run-now`._
 
 ### 15.1 Tab shell
-- [ ] Phase-0 placeholder.
+- [x] Phase-0 placeholder.
 - [ ] **Sub-routes / `SegmentedButton`** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
 - [ ] **Date-range selector** with presets + custom; persists in DataStore.
 - [ ] **Export button** — CSV / PDF via SAF.
@@ -1972,27 +1972,27 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT /tenants/me`, `GET /account`, `GET /settings/payment`, `GET /settings/sms`, `GET /settings/statuses`, `GET /settings/templates`, `GET /settings/custom-fields`._
 
 ### 19.1 Shell
-- [ ] Settings screen — Material 3 grouped list.
+- [x] Settings screen — Material 3 grouped list.
 - [ ] Search-in-settings (`SearchBar`) indexing every setting key + metadata (mirror web `settingsMetadata.ts`).
 - [ ] Tablet/ChromeOS: list-detail pane so edit screen shows to the right of the list.
 - [ ] Deep-links into each setting supported via route.
 
 ### 19.2 Profile
 - [ ] Avatar upload / replace (PhotoPicker) via `POST /auth/avatar`.
-- [ ] Name, display name, email, phone.
+- [~] Name, display name, email, phone.
 - [ ] Password change (§2.9).
-- [ ] PIN change (§2.5).
-- [ ] Biometric toggle (§2.6).
-- [ ] Sign-out button.
+- [x] PIN change (§2.5).
+- [x] Biometric toggle (§2.6).
+- [x] Sign-out button.
 
 ### 19.3 Notifications
-- [ ] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut).
-- [ ] Quiet hours (start / end / days-of-week).
+- [~] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut).
+- [x] Quiet hours (start / end / days-of-week).
 - [ ] Per-event override matrix (§73).
 - [ ] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`.
 
 ### 19.4 Appearance
-- [ ] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`).
+- [~] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`).
 - [ ] Dynamic color on/off (Android 12+).
 - [ ] Tenant accent override color picker.
 - [ ] Density mode (§3.18).
