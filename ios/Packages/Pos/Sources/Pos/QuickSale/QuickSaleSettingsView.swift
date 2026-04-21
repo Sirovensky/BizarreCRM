@@ -49,8 +49,8 @@ public struct QuickSaleSettingsView: View {
                     }
                 }
             }
-            .sheet(item: $editingIdx.map(
-                get: { $0.map { QuickSaleEditIndex(index: $0) } },
+            .sheet(item: Binding<QuickSaleEditIndex?>(
+                get: { editingIdx.map { QuickSaleEditIndex(index: $0) } },
                 set: { editingIdx = $0?.index }
             )) { editIndex in
                 QuickSaleHotkeyEditorSheet(

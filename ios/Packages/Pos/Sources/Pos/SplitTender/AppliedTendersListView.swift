@@ -43,13 +43,21 @@ public struct AppliedTendersListView: View {
             }
         }
         .sheet(isPresented: $showManagerPin) {
-            ManagerPinSheet { approved in
-                if approved, let id = pendingRemoveId {
-                    cart.removeTender(id: id)
-                    onTenderRemoved(id)
+            ManagerPinSheet(
+                reason: "Remove applied tender",
+                onApproved: { _ in
+                    if let id = pendingRemoveId {
+                        cart.removeTender(id: id)
+                        onTenderRemoved(id)
+                    }
+                    pendingRemoveId = nil
+                    showManagerPin = false
+                },
+                onCancelled: {
+                    pendingRemoveId = nil
+                    showManagerPin = false
                 }
-                pendingRemoveId = nil
-            }
+            )
         }
         .accessibilityIdentifier("appliedTenders.list")
     }

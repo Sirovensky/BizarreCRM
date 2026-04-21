@@ -27,7 +27,7 @@ final class InstallmentPlanEditorViewModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let invoiceId: Int64
-    @ObservationIgnored private let totalCents: Int
+    @ObservationIgnored let totalCents: Int
 
     init(api: APIClient, invoiceId: Int64, totalCents: Int) {
         self.api = api
