@@ -59,7 +59,7 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~8% | **ReduceMotion util + Settings toggle + tests (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
+| 26 | Accessibility | ~12% | ReduceMotion util + Settings toggle + tests + **BrandTopAppBar heading() semantics (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
@@ -2388,7 +2388,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 26.1 TalkBack
 - [ ] `contentDescription` on every `Icon`, `IconButton`, tappable glyph.
-- [ ] `semantics { heading() }` on screen titles.
+- [x] `semantics { heading() }` on screen titles.
 - [ ] `semantics { stateDescription = ... }` on toggle-like rows.
 - [ ] Touch target ≥ 48dp.
 - [ ] Linear reading order: `mergeDescendants = true` on compound composables where parent has label.

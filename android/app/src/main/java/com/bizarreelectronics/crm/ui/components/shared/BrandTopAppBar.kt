@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 /**
  * Brand-aligned top app bar wrapper.
@@ -71,6 +73,11 @@ fun BrandTopAppBar(
 ) {
     TopAppBar(
         title = {
+            // §26.1 — every BrandTopAppBar title is a screen heading so
+            // TalkBack users hear "Heading: <title>" and can use the
+            // "headings" quick-nav to jump between screens without sliding
+            // focus through each action icon. Applied once here so callers
+            // never need to sprinkle semantics manually.
             if (titleContent != null) {
                 titleContent()
             } else {
@@ -78,6 +85,7 @@ fun BrandTopAppBar(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
         },
