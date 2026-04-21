@@ -413,6 +413,15 @@ router.post(
           );
         }
 
+        // Carry estimate notes over as the first ticket note so they aren't lost.
+        if (estimate.notes) {
+          await adb.run(
+            `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
+             VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+            ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+          );
+        }
+
         // Update estimate status
         await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
           ticketId, estId);
@@ -792,6 +801,15 @@ router.post(
       );
     }
 
+    // Carry estimate notes over as the first ticket note so they aren't lost.
+    if (estimate.notes) {
+      await adb.run(
+        `INSERT INTO ticket_notes (ticket_id, user_id, note, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+        ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+      );
+    }
+
     // Update estimate status
     await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
       ticketId, id);
@@ -880,7 +898,14 @@ router.post(
       tokenHash, expiresAt, 'sent', now, now, id,
     );
 
-    const { method = 'sms' } = req.body;
+    const rawMethod = (req.body.method as string | undefined) ?? 'sms';
+    // Only 'sms' is a supported delivery channel today. Reject 'email' and
+    // any other unknown value explicitly so callers get a clear error instead
+    // of a silent "sent: true" with nothing delivered.
+    if (rawMethod !== 'sms') {
+      throw new AppError(`Unsupported send method '${rawMethod}'. Only 'sms' is currently supported.`, 400);
+    }
+    const method = rawMethod;
     const phone = estimate.phone || estimate.mobile;
 
     // SC6: Track delivery outcome so we can surface failures rather than
@@ -908,7 +933,7 @@ router.post(
     }
 
     const responseData: Record<string, unknown> = {
-      sent: smsAttempted ? smsSent : true, // If no SMS requested, the token generation itself is the "send".
+      sent: smsAttempted ? smsSent : true,
       method,
       approval_token: token,
       token_expires_at: expiresAt,

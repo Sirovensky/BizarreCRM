@@ -907,6 +907,26 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>('/blockchyp/process-payment', { invoiceId, tip }),
 };
 
+// ==================== Gift Cards ====================
+export const giftCardApi = {
+  list: (params?: { keyword?: string; status?: string; page?: number; per_page?: number }) =>
+    api.get('/gift-cards', { params }),
+  get: (id: number) => api.get(`/gift-cards/${id}`),
+  issue: (data: {
+    amount: number;
+    customer_id?: number | null;
+    recipient_name?: string | null;
+    recipient_email?: string | null;
+    expires_at?: string | null;
+    notes?: string | null;
+  }) => api.post('/gift-cards', data),
+  lookup: (code: string) => api.get(`/gift-cards/lookup/${encodeURIComponent(code)}`),
+  redeem: (id: number, data: { amount: number; invoice_id?: number | null }) =>
+    api.post(`/gift-cards/${id}/redeem`, data),
+  reload: (id: number, data: { amount: number }) =>
+    api.post(`/gift-cards/${id}/reload`, data),
+};
+
 // ==================== Membership ====================
 // @audit-fixed: enum drift on `discount_applies_to`. createTier had a strict
 // `'labor' | 'all' | 'parts'` literal union but updateTier widened to bare

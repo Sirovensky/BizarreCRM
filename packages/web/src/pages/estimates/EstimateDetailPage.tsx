@@ -111,7 +111,7 @@ export function EstimateDetailPage() {
     <div>
       <Breadcrumb items={[
         { label: 'Estimates', href: '/estimates' },
-        { label: estimate.order_id ? `EST-${estimate.order_id}` : `Estimate #${id}` },
+        { label: estimate.order_id || `Estimate #${id}` },
       ]} />
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">

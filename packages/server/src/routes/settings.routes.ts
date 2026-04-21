@@ -30,8 +30,15 @@ import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage, MAX_PAGE_SIZE } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// SEC: Allowlist of valid user roles derived from the shared ROLE_PERMISSIONS
+// map. Any role string from req.body not in this set is rejected immediately
+// so callers cannot craft an arbitrary role string (e.g. "superadmin") that
+// bypasses authMiddleware / requirePermission checks downstream.
+const VALID_ROLES = new Set(Object.keys(ROLE_PERMISSIONS));
 
 // ─── TOTP secret decryption (P2FA4) ─────────────────────────────────────────
 // AES-256-GCM decryption for TOTP secrets. Keys are derived from JWT_SECRET
@@ -826,6 +833,8 @@ router.post('/users', adminOnly, async (req, res) => {
   const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+  // SEC: Reject any role value that is not in the shared allowlist.
+  if (!VALID_ROLES.has(role)) throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
 
   // Tier: enforce user limit (Free = 1 user, Pro = unlimited).
   // Only counts active users — deactivating a user frees up a seat.
@@ -879,6 +888,10 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+  // SEC: Reject any role value that is not in the shared allowlist.
+  if (role !== undefined && role !== null && !VALID_ROLES.has(role)) {
+    throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
+  }
 
   // Fetch the target user's current state — needed for A3 admin guard and
   // AL4 role-change audit.

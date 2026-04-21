@@ -795,8 +795,8 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
   const userId = consumeChallenge(challengeToken); // Consume immediately
   if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
-  if (!password || password.length < 8) {
-    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  if (!password || password.length < 8 || password.length > 128) {
+    res.status(400).json({ success: false, message: 'Password must be 8 to 128 characters' });
     return;
   }
 
@@ -882,18 +882,30 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
     return;
   }
 
-  // Get pending secret from challenge map (for first-time setup) before consuming
+  // Get pending secret from challenge map (for first-time setup) before consuming.
+  // Validate challenge existence WITHOUT consuming it so that if the TOTP rate
+  // limiter fires we can still issue a fresh challengeToken to the client.
   const challengeEntry = challenges.get(challengeToken);
   const pendingSecret = challengeEntry?.pendingTotpSecret;
 
-  const userId = consumeChallenge(challengeToken);
+  const userId = validateChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   const tenantSlug = (req as any).tenantSlug || null;
   if (!checkTotpRateLimit(db, tenantSlug, userId)) {
-    res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
+    // Do NOT consume the challenge — re-issue a new one so the client can show
+    // the correct "try again later" state without being permanently stranded.
+    const retryChallenge = createChallenge(userId, tenantSlug);
+    if (pendingSecret) {
+      const nc = challenges.get(retryChallenge);
+      if (nc) nc.pendingTotpSecret = pendingSecret;
+    }
+    res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.', data: { challengeToken: retryChallenge } });
     return;
   }
+
+  // Safe to consume now that all pre-checks have passed.
+  consumeChallenge(challengeToken);
 
   const user = await adb.get<any>(
     'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1',
@@ -1437,6 +1449,19 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     path: '/',
   });
 
+  // SEC-H89: Set the matching csrf_token cookie so POST /auth/refresh passes
+  // the double-submit CSRF check for this switch-user session.
+  // Without this, the first /refresh call from the switched session would fail
+  // with 403 "CSRF token invalid" and log out the user immediately.
+  const switchCsrfToken = crypto.randomBytes(24).toString('base64url');
+  res.cookie('csrf_token', switchCsrfToken, {
+    httpOnly: false,
+    secure: config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: 8 * 60 * 60 * 1000,
+    path: '/',
+  });
+
   res.json({
     success: true,
     data: { accessToken, user },
@@ -1626,8 +1651,8 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     res.status(400).json({ success: false, message: 'Invalid reset token' });
     return;
   }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    res.status(400).json({ success: false, message: 'Password must be 8 to 128 characters' });
     return;
   }
 
@@ -1897,8 +1922,8 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
     res.status(400).json({ success: false, message: 'Valid backup code is required' });
     return;
   }
-  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
-    res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+    res.status(400).json({ success: false, message: 'New password must be 8 to 128 characters' });
     return;
   }
 
