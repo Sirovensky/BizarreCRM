@@ -330,6 +330,27 @@ public struct PosView: View {
             // §16.3 — overflow "⋯" menu. Keeps the toolbar from crowding.
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
+                    // §16.14 — payment shortcut
+                    Section("Checkout") {
+                        Button {
+                            startCharge()
+                        } label: {
+                            Label("Charge cart", systemImage: "creditcard")
+                        }
+                        .keyboardShortcut("P", modifiers: .command)
+                        .disabled(cart.isEmpty)
+                        .accessibilityIdentifier("pos.toolbar.charge")
+
+                        if customerRepo != nil {
+                            Button {
+                                showingCustomerPicker = true
+                            } label: {
+                                Label("Attach customer", systemImage: "person.crop.circle.badge.plus")
+                            }
+                            .keyboardShortcut("K", modifiers: .command)
+                            .accessibilityIdentifier("pos.toolbar.attachCustomer")
+                        }
+                    }
                     // Adjustments group
                     Section("Cart adjustments") {
                         Button {
@@ -337,6 +358,7 @@ public struct PosView: View {
                         } label: {
                             Label("Add discount", systemImage: "tag")
                         }
+                        .keyboardShortcut("D", modifiers: [.command, .shift])
                         .disabled(cart.isEmpty)
                         .accessibilityIdentifier("pos.toolbar.discount")
 
@@ -345,6 +367,7 @@ public struct PosView: View {
                         } label: {
                             Label("Add tip", systemImage: "hand.thumbsup")
                         }
+                        .keyboardShortcut("T", modifiers: [.command, .shift])
                         .disabled(cart.isEmpty)
                         .accessibilityIdentifier("pos.toolbar.tip")
 
@@ -353,6 +376,7 @@ public struct PosView: View {
                         } label: {
                             Label("Add fee", systemImage: "plus.circle")
                         }
+                        .keyboardShortcut("F", modifiers: [.command, .shift])
                         .disabled(cart.isEmpty)
                         .accessibilityIdentifier("pos.toolbar.fees")
                     }
@@ -363,6 +387,7 @@ public struct PosView: View {
                         } label: {
                             Label("Hold cart", systemImage: "pause.circle")
                         }
+                        .keyboardShortcut("H", modifiers: .command)
                         .disabled(cart.isEmpty)
                         .accessibilityIdentifier("pos.toolbar.hold")
 
@@ -371,6 +396,7 @@ public struct PosView: View {
                         } label: {
                             Label("Resume holds", systemImage: "clock.arrow.circlepath")
                         }
+                        .keyboardShortcut("H", modifiers: [.command, .shift])
                         .accessibilityIdentifier("pos.toolbar.resumeHolds")
                     }
                     // §16.10 — Register management
