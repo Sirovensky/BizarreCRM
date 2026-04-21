@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import XCTest
 @testable import Pos
 import Networking
@@ -193,3 +194,4 @@ final class PosPaymentLinkTests: XCTestCase {
         XCTAssertGreaterThan(parsed.timeIntervalSinceNow, 86_400 - 30)
     }
 }
+#endif
