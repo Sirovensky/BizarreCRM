@@ -61,7 +61,7 @@ in-progress and lags the audit.
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
 | 26 | Accessibility | ~16% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + **BrandListItem mergeDescendants/Role.Button (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
-| 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
+| 28 | Security | ~72% | SQLCipher + EncryptedSharedPrefs + cert pinning + Network Security Config + FLAG_SECURE (partial) + setRecentsScreenshotEnabled + RedactingHttpLogger + ClipboardUtil sensitive-clear + OTP detect + SessionRevoked banner + Biometric STRONG + 401 remote sign-out + ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints, Blur-on-recents, Timber RedactorTree. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
 | 31 | Testing | ~19% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / RecentSearches / EmailValidator / **Formatters (PhoneFormatter + CurrencyFormatter) (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
@@ -2474,34 +2474,34 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 28. Security & Privacy
 
 ### 28.1 Data at rest
-- [ ] SQLCipher (§20.8) for the DB.
+- [x] SQLCipher (§20.8) for the DB.
 - [x] EncryptedSharedPreferences (§1) for tokens + PIN hash mirror + passphrase.
-- [ ] Android Keystore hardware-backed keys (StrongBox where available).
+- [~] Android Keystore hardware-backed keys (StrongBox where available).
 - [ ] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`.
-- [ ] Opt out of Auto-Backup for sensitive files.
+- [x] Opt out of Auto-Backup for sensitive files.
 
 ### 28.2 Data in transit
 - [x] HTTPS-only via Network Security Config.
-- [ ] Optional cert pinning (§1.2).
-- [ ] No cleartext endpoints ever; debug flavors allow loopback HTTP for dev.
+- [x] Optional cert pinning (§1.2).
+- [x] No cleartext endpoints ever; debug flavors allow loopback HTTP for dev.
 
 ### 28.3 Sensitive-screen protection
-- [ ] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals.
+- [~] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals.
 - [x] `Window.setRecentsScreenshotEnabled(false)` Android 12+.
 - [ ] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`).
 
 ### 28.4 Clipboard sensitivity
-- [ ] `ClipDescription.EXTRA_IS_SENSITIVE = true` on OTP / auth-token copies; prevents Android 13+ clipboard preview leak.
-- [ ] Auto-clear after 30s.
+- [x] `ClipDescription.EXTRA_IS_SENSITIVE = true` on OTP / auth-token copies; prevents Android 13+ clipboard preview leak.
+- [x] Auto-clear after 30s.
 
 ### 28.5 Permission minimization
-- [ ] Runtime-request only when feature invoked.
-- [ ] Explain-rationale sheet before request (especially Camera, Location, Contacts).
-- [ ] Handle "Deny" + "Deny + Don't ask again" gracefully with settings deep-link fallback.
+- [x] Runtime-request only when feature invoked.
+- [~] Explain-rationale sheet before request (especially Camera, Location, Contacts).
+- [~] Handle "Deny" + "Deny + Don't ask again" gracefully with settings deep-link fallback.
 
 ### 28.6 PII in logs
-- [ ] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit.
-- [ ] Production builds: no verbose logs; error logs redacted.
+- [~] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit.
+- [x] Production builds: no verbose logs; error logs redacted.
 - [ ] `StrictMode` only in debug.
 
 ### 28.7 Network sovereignty
@@ -2518,9 +2518,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Elevation of privilege: server authoritative RBAC; client double-check but trust server.
 
 ### 28.9 Incident response
-- [ ] Remote sign-out: `GET /auth/me` 401 handler clears local state immediately.
+- [x] Remote sign-out: `GET /auth/me` 401 handler clears local state immediately.
 - [ ] Server can force version upgrade via `min_supported_version` field → force-upgrade full-screen blocker.
-- [ ] Device wipe: Settings → Diagnostics → Wipe local data (destructive, confirm twice).
+- [~] Device wipe: Settings → Diagnostics → Wipe local data (destructive, confirm twice).
 
 ### 28.10 GDPR / CCPA
 - [ ] Export-my-data request → tenant server generates package; app surfaces download link.
@@ -2534,9 +2534,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Non-blocking: warning only unless tenant policy strict.
 
 ### 28.12 Biometric strength
-- [ ] Prefer `BIOMETRIC_STRONG` (Class 3) for unlock-store-secret.
-- [ ] `BIOMETRIC_WEAK` (Class 2) acceptable for screen-unlock only.
-- [ ] Reject device-credential-only biometrics for payment confirmation.
+- [x] Prefer `BIOMETRIC_STRONG` (Class 3) for unlock-store-secret.
+- [x] `BIOMETRIC_WEAK` (Class 2) acceptable for screen-unlock only.
+- [~] Reject device-credential-only biometrics for payment confirmation.
 
 ---
 ## 29. Performance Budget
@@ -2586,14 +2586,14 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 30. Design System & Motion (Material 3 Expressive)
 
 ### 30.1 Theme
-- [ ] `DesignSystemTheme` Composable wraps `MaterialExpressiveTheme`.
-- [ ] Color scheme:
+- [x] `DesignSystemTheme` Composable wraps `MaterialExpressiveTheme`.
+- [~] Color scheme:
   - Android 12+: dynamic color seeded from wallpaper when tenant allows.
   - Tenant brand: seed `ColorScheme` via `rememberDynamicColorScheme(seedColor = brand)`.
   - Dark mode: paired scheme; follows system by default, per-user override.
 
 ### 30.2 Shape tokens
-- [ ] `M3Shapes(extraSmall=4dp, small=8dp, medium=16dp, large=24dp, extraLarge=32dp)`.
+- [x] `M3Shapes(extraSmall=4dp, small=8dp, medium=16dp, large=24dp, extraLarge=32dp)`.
 - [ ] FAB + emphasis buttons use `roundedCornerShape(50%)` or expressive cut-corner shapes.
 
 ### 30.3 Typography
@@ -2614,15 +2614,15 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Tonal elevation (Material 3) — no drop shadows except on FABs.
 
 ### 30.6 Iconography
-- [ ] Material Symbols (rounded variant) via `androidx.compose.material.icons.*` + `androidx.compose.material:material-icons-extended`.
-- [ ] Brand-specific glyphs under `res/drawable-*` as vector drawables.
+- [x] Material Symbols (rounded variant) via `androidx.compose.material.icons.*` + `androidx.compose.material:material-icons-extended`.
+- [x] Brand-specific glyphs under `res/drawable-*` as vector drawables.
 
 ### 30.7 Component library
 - [ ] `CommonTextField` wrapper around `OutlinedTextField` with error / helper / prefix / suffix slots.
-- [ ] `StatusChip` / `UrgencyChip` / `CountBadge`.
-- [ ] `EmptyState(icon, title, subtitle, cta)`.
-- [ ] `ErrorState(title, message, retry)`.
-- [ ] `SkeletonRow` / `SkeletonCard` using `shimmer` plug-in.
+- [~] `StatusChip` / `UrgencyChip` / `CountBadge`.
+- [x] `EmptyState(icon, title, subtitle, cta)`.
+- [x] `ErrorState(title, message, retry)`.
+- [~] `SkeletonRow` / `SkeletonCard` using `shimmer` plug-in.
 
 ### 30.8 Dark mode polish
 - [ ] Dark mode defaults on after 7pm local time if user hasn't set (optional).
@@ -2751,12 +2751,12 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days.
 
 ### 33.2 Versioning
-- [ ] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number.
-- [ ] `versionName` = semver `MAJOR.MINOR.PATCH`.
-- [ ] Tagged release on main after CI green.
+- [~] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number.
+- [x] `versionName` = semver `MAJOR.MINOR.PATCH`.
+- [~] Tagged release on main after CI green.
 
 ### 33.3 Signing
-- [ ] Release signing via keystore at `~/.android-keystores/bizarrecrm-release.properties` (already wired in `build.gradle.kts`).
+- [x] Release signing via keystore at `~/.android-keystores/bizarrecrm-release.properties` (already wired in `build.gradle.kts`).
 - [ ] Play App Signing enrolled — Google manages upload key.
 - [ ] Backup keystore + password in 1Password team vault (off-device).
 
