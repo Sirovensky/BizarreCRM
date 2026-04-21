@@ -708,12 +708,41 @@ function readTrustedEnvFile():
 }
 
 /**
- * Atomic write: stage to `.env.tmp`, then rename. `fs.renameSync` on Windows
- * uses MoveFileExW with MOVEFILE_REPLACE_EXISTING (Node ≥10.8), so the swap
- * is atomic within the same filesystem. Prevents a mid-write crash from
- * leaving a truncated .env that breaks the next boot.
+ * Atomic write with rolling backup: snapshot `.env` → `.env.bak-<epoch>`
+ * before replacing, then stage to `.env.tmp` and rename. `fs.renameSync` on
+ * Windows uses MoveFileExW with MOVEFILE_REPLACE_EXISTING (Node ≥10.8), so
+ * the swap is atomic within the same filesystem. Prevents a mid-write crash
+ * from leaving a truncated .env that breaks the next boot — and lets an
+ * operator who just pasted a bad secret recover without SSH by renaming the
+ * newest `.env.bak-*` back to `.env`. Keeps at most `ENV_BACKUP_KEEP`
+ * timestamped backups; older ones are pruned so the worktree doesn't grow
+ * unboundedly as operators iterate.
  */
+const ENV_BACKUP_KEEP = 5;
 function writeEnvAtomic(envPath: string, content: string): void {
+  try {
+    if (fs.existsSync(envPath)) {
+      const dir = path.dirname(envPath);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const bakPath = path.join(dir, `.env.bak-${stamp}`);
+      fs.copyFileSync(envPath, bakPath);
+      // Prune old backups. Directory listing is cheap — a single .env location
+      // rarely has more than a handful of siblings.
+      const backups = fs
+        .readdirSync(dir)
+        .filter((f) => f.startsWith('.env.bak-'))
+        .map((f) => ({ f, full: path.join(dir, f) }))
+        .sort((a, b) => (a.f < b.f ? 1 : -1)); // newest first (ISO sorts lexically)
+      for (const { full } of backups.slice(ENV_BACKUP_KEEP)) {
+        try { fs.unlinkSync(full); } catch { /* best-effort */ }
+      }
+    }
+  } catch (err) {
+    // Backup is belt-and-suspenders — if it fails we still proceed with
+    // the atomic write because the main goal is not leaving the .env in a
+    // half-written state.
+    console.warn('[envAtomic] backup snapshot failed, continuing with write:', err instanceof Error ? err.message : err);
+  }
   const tmpPath = envPath + '.tmp';
   fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
   fs.renameSync(tmpPath, envPath);
