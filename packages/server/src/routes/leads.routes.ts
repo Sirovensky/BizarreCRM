@@ -29,9 +29,10 @@ const router = Router();
  * (custom tenant states) bypass the guard entirely (permissive fall-through).
  */
 const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
-  'new':       ['contacted', 'qualified', 'lost'],
-  'contacted': ['qualified', 'proposal', 'lost'],
-  'qualified': ['proposal', 'contacted', 'lost'],
+  'new':       ['contacted', 'scheduled', 'qualified', 'lost'],
+  'contacted': ['scheduled', 'qualified', 'proposal', 'lost'],
+  'scheduled': ['contacted', 'qualified', 'proposal', 'lost'],
+  'qualified': ['proposal', 'contacted', 'scheduled', 'lost'],
   'proposal':  ['converted', 'qualified', 'lost'],
   'lost':      ['new', 'contacted'],      // allow re-opening a lost lead
   'converted': [],                         // terminal — cannot un-convert
@@ -118,13 +119,40 @@ router.get(
       ORDER BY l.updated_at DESC
     `);
 
+    // ENR-LE3: compute lead_score for pipeline cards (same as list endpoint)
+    const leadIds = leads.map((l: any) => l.id);
+    const devicesByLead = new Map<number, any[]>();
+    const apptsByLead = new Map<number, any[]>();
+    if (leadIds.length > 0) {
+      const ph = leadIds.map(() => '?').join(',');
+      const [devices, appts] = await Promise.all([
+        adb.all<any>(`SELECT * FROM lead_devices WHERE lead_id IN (${ph})`, ...leadIds),
+        adb.all<any>(`SELECT * FROM appointments WHERE lead_id IN (${ph})`, ...leadIds),
+      ]);
+      for (const d of devices) {
+        if (!devicesByLead.has(d.lead_id)) devicesByLead.set(d.lead_id, []);
+        devicesByLead.get(d.lead_id)!.push(d);
+      }
+      for (const a of appts) {
+        if (!apptsByLead.has(a.lead_id)) apptsByLead.set(a.lead_id, []);
+        apptsByLead.get(a.lead_id)!.push(a);
+      }
+    }
+
     const pipeline: Record<string, any[]> = {};
     for (const lead of leads) {
       const status = lead.status || 'new';
       if (!pipeline[status]) {
         pipeline[status] = [];
       }
-      pipeline[status].push(lead);
+      const scored = {
+        ...lead,
+        lead_score: computeLeadScore(
+          { ...lead, devices: devicesByLead.get(lead.id) || [] },
+          apptsByLead.get(lead.id) || [],
+        ),
+      };
+      pipeline[status].push(scored);
     }
 
     res.json({ success: true, data: pipeline });

@@ -179,7 +179,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   ]);
 
   const splitTotal = useMemo(
-    () => splitPayments.reduce((sum, sp) => sum + (parseFloat(sp.amount) || 0), 0),
+    () => Math.round(
+      splitPayments.reduce((sum, sp) => sum + (Math.round((parseFloat(sp.amount) || 0) * 100)), 0)
+    ) / 100,
     [splitPayments],
   );
   const splitRemaining = Math.max(0, Math.round((totals.total - splitTotal) * 100) / 100);

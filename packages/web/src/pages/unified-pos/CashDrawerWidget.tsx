@@ -141,7 +141,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
 
   const submit = async () => {
     const parsed = centsFromInput(amount);
-    if (!parsed.ok || parsed.cents <= 0) {
+    if (!parsed.ok) {
       toast.error(parsed.reason ?? 'Enter a valid opening float');
       return;
     }

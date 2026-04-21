@@ -314,7 +314,7 @@ export async function voiceStatusWebhookHandler(req: Request, res: Response): Pr
 
     // Verify webhook signature (same pattern as SMS webhooks)
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-      console.warn('[Voice Webhook] Signature verification failed');
+      logger.warn('voice status webhook signature verification failed', { ip: req.ip, provider: provider.name ?? 'unknown' });
       res.status(403).json({ success: false, message: 'Invalid signature' });
       return;
     }
@@ -358,7 +358,7 @@ export async function voiceStatusWebhookHandler(req: Request, res: Response): Pr
 
     res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('[Voice Status Webhook] Error:', err.message);
+    logger.error('voice status webhook pipeline crashed', { error: err instanceof Error ? err.message : String(err) });
     res.status(200).json({ success: false });
   }
 }
@@ -371,7 +371,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
     const provider = getProviderForDb(db, (req as any).tenantSlug);
 
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-      console.warn('[Voice Webhook] Recording signature verification failed');
+      logger.warn('voice recording webhook signature verification failed', { ip: req.ip, provider: provider.name ?? 'unknown' });
       res.status(403).json({ success: false, message: 'Invalid signature' });
       return;
     }
@@ -424,7 +424,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
         if (resp.ok) {
           const contentLength = parseInt(resp.headers.get('content-length') || '0', 10);
           if (contentLength > MAX_RECORDING_SIZE) {
-            console.warn('[Voice] Recording too large (content-length), skipping:', downloadUrl, contentLength);
+            logger.warn('voice recording too large (content-length), skipping', { downloadUrl, contentLength, maxSize: MAX_RECORDING_SIZE });
           } else {
             const chunks: Buffer[] = [];
             let totalSize = 0;
@@ -437,7 +437,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
                 totalSize += value.byteLength;
                 if (totalSize > MAX_RECORDING_SIZE) {
                   reader.cancel();
-                  console.warn('[Voice] Recording exceeded 50MB during download, skipping:', downloadUrl);
+                  logger.warn('voice recording exceeded 50MB during download, skipping', { downloadUrl, totalSize, maxSize: MAX_RECORDING_SIZE });
                   oversize = true;
                   break;
                 }
@@ -465,7 +465,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
                       ? planDef.limits.storageLimitMb
                       : (tenantRow.storage_limit_mb ?? planDef.limits.storageLimitMb);
                     if (!reserveStorage(tenantRow.id, buffer.length, limitMb)) {
-                      console.warn(`[Voice] Tenant ${slug} storage limit reached — dropping recording (${buffer.length} bytes)`);
+                      logger.warn('voice recording dropped: tenant storage limit reached', { slug, bytes: buffer.length });
                       // Don't write the file. Skip transcription. Mark recording_url so the call log isn't broken.
                       localPath = null;
                       throw new Error('storage_limit_reached');
@@ -508,7 +508,7 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
     broadcast('voice:recording_ready', { callId: call.id, localPath }, req.tenantSlug || null);
     res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('[Voice Recording Webhook] Error:', err.message);
+    logger.error('voice recording webhook pipeline crashed', { error: err instanceof Error ? err.message : String(err) });
     res.status(200).json({ success: false });
   }
 }
@@ -520,7 +520,7 @@ export async function voiceTranscriptionWebhookHandler(req: Request, res: Respon
     const adb = req.asyncDb;
     const provider = getProviderForDb(db, (req as any).tenantSlug);
     if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-      console.warn('[Voice Webhook] Transcription signature verification failed');
+      logger.warn('voice transcription webhook signature verification failed', { ip: req.ip, provider: provider.name ?? 'unknown' });
       res.status(403).json({ success: false, message: 'Invalid signature' });
       return;
     }
@@ -560,7 +560,7 @@ export async function voiceTranscriptionWebhookHandler(req: Request, res: Respon
 
     res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('[Voice Transcription Webhook] Error:', err.message);
+    logger.error('voice transcription webhook pipeline crashed', { error: err instanceof Error ? err.message : String(err) });
     res.status(200).json({ success: false });
   }
 }
@@ -602,7 +602,7 @@ export async function voiceInboundWebhookHandler(req: Request, res: Response): P
 
   // Verify webhook signature
   if (provider.verifyWebhookSignature && !provider.verifyWebhookSignature(req)) {
-    console.warn('[Voice Webhook] Inbound signature verification failed');
+    logger.warn('voice inbound webhook signature verification failed', { ip: req.ip, provider: provider.name ?? 'unknown' });
     res.status(403).json({ success: false, message: 'Invalid signature' });
     return;
   }

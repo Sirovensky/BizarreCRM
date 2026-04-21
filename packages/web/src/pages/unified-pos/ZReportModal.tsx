@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { X, Printer, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { api } from '@/api/client';
 import { formatCents } from '@/utils/format';
 
@@ -105,7 +105,7 @@ function ZReportBody({ report }: ZReportBodyProps) {
       : variance > 0
         ? 'text-blue-600 dark:text-blue-400'
         : 'text-red-600 dark:text-red-400';
-  const VarianceIcon = variance === 0 ? TrendingUp : variance > 0 ? TrendingUp : TrendingDown;
+  const VarianceIcon = variance === 0 ? Minus : variance > 0 ? TrendingUp : TrendingDown;
 
   return (
     <>

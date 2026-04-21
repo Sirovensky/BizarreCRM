@@ -166,7 +166,7 @@ async function compressIfNeeded(filePath: string, mimeType: string): Promise<str
 
 // Substitute template variables
 function substituteVars(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '');
 }
 
 // ---------------------------------------------------------------------------

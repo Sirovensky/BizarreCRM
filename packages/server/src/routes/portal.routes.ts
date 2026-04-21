@@ -132,7 +132,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   // insert) is treated as 'never used' and passes through.
   const IDLE_LIMIT_MS = 4 * 60 * 60 * 1000;
   if (session.last_used_at) {
-    const lastUsedMs = Date.parse(String(session.last_used_at) + 'Z');
+    const lastUsedMs = Date.parse(String(session.last_used_at).replace(' ', 'T') + 'Z');
     if (Number.isFinite(lastUsedMs) && Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
       // Evict the stale session so reuse of the token still fails on
       // the next request even if the expiry hasn't hit.
