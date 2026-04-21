@@ -64,7 +64,7 @@ in-progress and lags the audit.
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
-| 31 | Testing | ~18% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / RecentSearches / **EmailValidator (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
+| 31 | Testing | ~19% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / RecentSearches / EmailValidator / **Formatters (PhoneFormatter + CurrencyFormatter) (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
 | 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
