@@ -17,6 +17,10 @@ let package = Package(
         .target(
             name: "Settings",
             dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
+        ),
+        .testTarget(
+            name: "SettingsTests",
+            dependencies: ["Settings", "Core", "Networking"]
         )
     ]
 )

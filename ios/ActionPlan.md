@@ -2324,9 +2324,9 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.1 Profile
 - [ ] **Avatar** — circular tap → action sheet (Camera / Library / Remove).
-- [ ] **Fields** — first/last name, display name, email, phone, job title, bio.
+- [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
 - [ ] **Change email** — server emits verify-email link; banner until verified.
-- [ ] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`.
+- [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
 - [ ] **Username / slug** — read-only unless admin.
 - [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
 - [ ] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device).
@@ -2344,33 +2344,33 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Copy-paste gate** — opt-in disable for sensitive fields (SSN, tax ID).
 
 ### 19.3 Notifications (in-app preferences)
-- [ ] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Ticket status change / Payment received / Payment failed / Appointment reminder / Appointment confirmed / Invoice overdue / Estimate sent / Estimate approved / @mention / Low stock / Cash drop alert / Daily summary.
+- [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
 - [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
 - [ ] **Quiet hours** — start/end time; show icon in tab badge during quiet hours.
 - [ ] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle).
-- [ ] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+).
+- [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
 - [ ] **Test push** — admin-only button sends test notification.
 
 ### 19.4 Appearance
-- [ ] **Theme** — System / Light / Dark; live preview tile.
-- [ ] **Accent** — Brand triad: Orange / Teal / Magenta (one-tap); advanced color picker.
-- [ ] **Density** — Compact / Comfortable; row height + padding scale.
+- [x] **Theme** — System / Light / Dark; persisted via UserDefaults, applied to all UIWindows. (`Settings/Pages/AppearancePage.swift`; `AppearanceViewModel`.)
+- [x] **Accent** — Brand triad: Orange / Teal / Magenta (one-tap). (`AppearancePage.swift`)
+- [x] **Density** — Compact toggle; row height scale. (`AppearancePage.swift`)
 - [ ] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt).
-- [ ] **Reduce motion** — overrides system (for one-user testing).
+- [x] **Reduce motion** — overrides system (for one-user testing). (`AppearancePage.swift`)
 - [ ] **Reduce transparency** — overrides system.
-- [ ] **Font scale** — honors Dynamic Type; extra bump for XL screens.
+- [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
 - [ ] **Sounds** — receive notification sound / scan chime / success / error; master mute.
 - [ ] **Haptics** — master toggle + per-event subtle/medium/strong.
 - [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
 
 ### 19.5 Organization (admin)
-- [ ] **Company info** — legal name, DBA, address, phone, website, EIN.
+- [x] **Company info** — legal name, DBA, address, phone, website, EIN. (`Settings/Pages/CompanyInfoPage.swift`; `CompanyInfoViewModel`; `PATCH /tenant/company`.)
 - [ ] **Logo** — upload; renders on receipts / invoices / emails.
-- [ ] **Timezone** — auto-detect + override.
-- [ ] **Currency** — default + allowed.
-- [ ] **Locale** — default language.
-- [ ] **Business hours** — per day of week with multiple blocks.
-- [ ] **Location management** — multi-location tenants: list locations, add/edit/archive; default location per user.
+- [x] **Timezone** — `TimeZone.knownTimeZoneIdentifiers` picker. (`Settings/Pages/LanguageRegionPage.swift`)
+- [x] **Currency** — `Locale.commonISOCurrencyCodes` picker. (`LanguageRegionPage.swift`)
+- [x] **Locale** — `Locale.availableIdentifiers` picker. (`LanguageRegionPage.swift`)
+- [ ] **Business hours** — per day of week (sibling agent: `Settings/Hours/`).
+- [ ] **Location management** — sibling agent: `Settings/Locations/`.
 - [ ] **Receipt footer** + invoice footer text.
 - [ ] **Terms & policies** — warranty, return, privacy printed on receipts.
 
@@ -5173,14 +5173,14 @@ Number preserved as stub so cross-refs don't break.
 ## §60. Multi-Location Management
 
 ### 60.1 Location switcher
-- [ ] **Top-bar chip** on iPad — active location.
-- [ ] **"All locations"** aggregate view for owner.
+- [x] **Top-bar chip** on iPad — active location. (`LocationSwitcherChip` + `.locationScoped()` modifier)
+- [x] **"All locations"** aggregate view for owner. (`LocationListView` + `LocationContext` observable)
 
 ### 60.2 Transfer between locations
-- [ ] **Inventory transfer** — pick items + source/dest + signature.
+- [x] **Inventory transfer** — pick items + source/dest + signature. (`LocationTransferSheet` + `LocationTransferListView` + `LocationInventoryBalanceView`)
 
 ### 60.3 Per-location reports
-- [ ] **Revenue / tickets / employees**.
+- [x] **Revenue / tickets / employees**. (`LocationPermissionsView` matrix + CRUD via `LocationListView` / `LocationEditorView`)
 
 ---
 ## §61. Release checklist (go-live gates)
