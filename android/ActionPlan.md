@@ -2108,7 +2108,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`.
 - [ ] Drain `SyncWorker` (`CoroutineWorker`, `unique + keepExisting`) picks oldest Queued, POSTs, on success: delete + apply server response to canonical table; on retryable failure: backoff + re-enqueue; on permanent failure: move to dead-letter.
 - [ ] WorkManager expedited when foreground; periodic (15min) when background; kicked on connectivity resume via `Constraints.Builder().setRequiredNetworkType(CONNECTED)`.
-- [ ] Idempotency-Key header = `sync_queue.idempotency_key` (UUIDv4 client-generated at enqueue time).
+- [~] Idempotency-Key header = `sync_queue.idempotency_key` (UUIDv4 client-generated at enqueue time). (`OfflineIdGenerator.newIdempotencyKey()` generates UUIDs + used in CustomerRepository as `clientRequestId` body field; HTTP-header variant still pending.)
 - [ ] Ordering: FIFO per entity; inter-entity dependencies tracked via `depends_on_queue_id`.
 
 ### 20.3 Conflict resolution
