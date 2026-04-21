@@ -1,0 +1,200 @@
+import SwiftUI
+import Observation
+import Core
+import DesignSystem
+
+// MARK: - Models
+
+public enum AppTheme: String, CaseIterable, Sendable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    public var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        }
+    }
+
+    #if canImport(UIKit)
+    public var colorScheme: UIUserInterfaceStyle {
+        switch self {
+        case .system: return .unspecified
+        case .light:  return .light
+        case .dark:   return .dark
+        }
+    }
+    #endif
+}
+
+public enum AccentColor: String, CaseIterable, Sendable {
+    case orange  = "orange"
+    case teal    = "teal"
+    case magenta = "magenta"
+
+    public var displayName: String {
+        switch self {
+        case .orange:  return "Orange"
+        case .teal:    return "Teal"
+        case .magenta: return "Magenta"
+        }
+    }
+
+    public var color: Color {
+        switch self {
+        case .orange:  return .bizarreOrange
+        case .teal:    return .bizarreTeal
+        case .magenta: return .bizarreMagenta
+        }
+    }
+}
+
+// MARK: - ViewModel
+
+@MainActor
+@Observable
+public final class AppearanceViewModel: Sendable {
+
+    var theme: AppTheme = .system
+    var accent: AccentColor = .orange
+    var isCompact: Bool = false
+    var fontScale: Double = 1.0
+    var reduceMotion: Bool = false
+
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        load()
+    }
+
+    func load() {
+        theme = AppTheme(rawValue: defaults.string(forKey: "appearance.theme") ?? "") ?? .system
+        accent = AccentColor(rawValue: defaults.string(forKey: "appearance.accent") ?? "") ?? .orange
+        isCompact = defaults.bool(forKey: "appearance.compact")
+        fontScale = defaults.object(forKey: "appearance.fontScale") as? Double ?? 1.0
+        reduceMotion = defaults.bool(forKey: "appearance.reduceMotion")
+    }
+
+    func save() {
+        defaults.set(theme.rawValue, forKey: "appearance.theme")
+        defaults.set(accent.rawValue, forKey: "appearance.accent")
+        defaults.set(isCompact, forKey: "appearance.compact")
+        defaults.set(fontScale, forKey: "appearance.fontScale")
+        defaults.set(reduceMotion, forKey: "appearance.reduceMotion")
+
+        #if canImport(UIKit)
+        applyTheme()
+        #endif
+    }
+
+    #if canImport(UIKit)
+    private func applyTheme() {
+        let style = theme.colorScheme
+        for scene in UIApplication.shared.connectedScenes {
+            if let windowScene = scene as? UIWindowScene {
+                for window in windowScene.windows {
+                    window.overrideUserInterfaceStyle = style
+                }
+            }
+        }
+    }
+    #endif
+}
+
+// MARK: - View
+
+public struct AppearancePage: View {
+    @State private var vm: AppearanceViewModel
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    public init(defaults: UserDefaults = .standard) {
+        _vm = State(initialValue: AppearanceViewModel(defaults: defaults))
+    }
+
+    public var body: some View {
+        Form {
+            Section("Theme") {
+                Picker("Theme", selection: $vm.theme) {
+                    ForEach(AppTheme.allCases, id: \.self) { t in
+                        Text(t.displayName).tag(t)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("App theme")
+                .accessibilityIdentifier("appearance.theme")
+            }
+
+            Section("Accent color") {
+                HStack(spacing: BrandSpacing.base) {
+                    ForEach(AccentColor.allCases, id: \.self) { color in
+                        Button {
+                            vm.accent = color
+                            vm.save()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(color.color)
+                                    .frame(width: 36, height: 36)
+                                if vm.accent == color {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .accessibilityLabel("\(color.displayName) accent\(vm.accent == color ? ", selected" : "")")
+                        .accessibilityIdentifier("appearance.accent.\(color.rawValue)")
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, BrandSpacing.xxs)
+            }
+
+            Section("Density") {
+                Toggle("Compact rows", isOn: $vm.isCompact)
+                    .accessibilityIdentifier("appearance.compact")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    HStack {
+                        Text("Font scale")
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        Text(String(format: "%.0f%%", vm.fontScale * 100))
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $vm.fontScale, in: 0.8...1.4, step: 0.1)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Font scale \(Int(vm.fontScale * 100)) percent")
+                        .accessibilityIdentifier("appearance.fontScale")
+                }
+            } header: {
+                Text("Font size")
+            }
+
+            Section("Motion") {
+                Toggle("Reduce motion (override system)", isOn: $vm.reduceMotion)
+                    .accessibilityIdentifier("appearance.reduceMotion")
+            }
+        }
+        .navigationTitle("Appearance")
+        #if canImport(UIKit)
+        .listStyle(.insetGrouped)
+        #endif
+        .scrollContentBackground(.hidden)
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Apply") { vm.save() }
+                    .accessibilityIdentifier("appearance.apply")
+            }
+        }
+        .onChange(of: vm.theme) { _, _ in vm.save() }
+    }
+}

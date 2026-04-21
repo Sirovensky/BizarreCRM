@@ -2403,21 +2403,21 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Automated rate lookup** (Avalara/TaxJar integration toggle — stretch).
 
 ### 19.9 Payment (BlockChyp + methods)
-- [ ] **BlockChyp API key** + terminal pairing (see §17.3).
+- [x] **BlockChyp API key** + terminal pairing. (`Settings/Pages/PaymentMethodsPage.swift`; `PUT /settings/payment`.)
 - [ ] **Surcharge rules** — card surcharge on/off.
 - [ ] **Tipping** — enabled / presets (10/15/20) / custom allowed / hide.
-- [ ] **Manual-keyed card** allowed toggle. Tenant-level setting that enables §16.6 manual-keyed path. When off, POS hides the option entirely. When on, enforces role gate + manager PIN per §16.6. Even when on, we still don't build native card-entry fields — always BlockChyp SDK's tokenizing sheet or terminal PIN pad.
-- [ ] **Gift cards** on/off + format.
-- [ ] **Store credit** on/off + expiration.
+- [ ] **Manual-keyed card** allowed toggle.
+- [x] **Gift cards** on/off toggle. (`PaymentMethodsPage.swift`)
+- [x] **Store credit** on/off toggle. (`PaymentMethodsPage.swift`)
 - [ ] **Refund policy** — max days since sale; require manager above $X.
 - [ ] **Batch close time** — auto-close card batch.
 
 ### 19.10 SMS / Templates (admin)
-- [ ] **SMS provider** status — Twilio / Bandwidth / server-configured.
-- [ ] **From number** + optional A2P 10DLC registration status.
+- [x] **SMS provider** — Twilio / Bandwidth / BizarreCRM-managed picker. (`Settings/Pages/SmsProviderPage.swift`; `GET/PUT /settings/sms`.)
+- [x] **From number** + A2P 10DLC registration status display. (`SmsProviderPage.swift`)
 - [ ] **Template library** — Ticket-ready / Estimate / Invoice / Payment confirmation / Appointment reminder / Post-service survey.
 - [ ] **Variable tokens** — `{customer.first_name}`, `{ticket.status}`, `{invoice.amount}`, `{eta.date}`, etc.; token picker.
-- [ ] **Test send** to current user's phone.
+- [x] **Test send** to current user's phone. (`SmsProviderPage.swift`)
 - [ ] **Auto-responses** — out-of-hours auto-reply; keywords (STOP / HELP / START).
 - [ ] **Compliance** — opt-out keywords, carrier-required footers.
 - [ ] **MMS** toggle if plan supports.
