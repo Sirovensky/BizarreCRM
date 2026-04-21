@@ -2396,7 +2396,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Fallback** to keyword search if NLQ unavailable.
 
 ### 18.7 Offline search
-- [ ] **Local index** — GRDB FTS5 virtual tables for customers, tickets, inventory.
+- [x] **Local index** — unified `search_index` FTS5 table (porter tokenizer); `FTSIndexStore` actor; `FTSReindexCoordinator` feeds on domain NC events. (feat(ios post-phase §18))
 - [ ] **Offline result** stale badge — indicate from-cache date.
 - [ ] **Merge** — online + offline results deduplicated by id.
 

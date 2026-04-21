@@ -12,16 +12,28 @@ let package = Package(
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
         .package(path: "../Persistence"),
-        .package(path: "../Sync")
+        .package(path: "../Sync"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.3")
     ],
     targets: [
         .target(
             name: "Search",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Sync"]
+            dependencies: [
+                "Core",
+                "DesignSystem",
+                "Networking",
+                "Persistence",
+                "Sync",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ]
         ),
         .testTarget(
             name: "SearchTests",
-            dependencies: ["Search", "Core"]
+            dependencies: [
+                "Search",
+                "Core",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ]
         )
     ]
 )

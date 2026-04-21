@@ -42,11 +42,17 @@ public struct SpotlightSettingsView: View {
                 domainSection
                 rebuildSection
             }
+            #if os(iOS)
             .listStyle(.insetGrouped)
+            #else
+            .listStyle(.plain)
+            #endif
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Spotlight")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: Sections
