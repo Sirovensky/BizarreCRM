@@ -24,6 +24,17 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
     public let createdAt: String?
     public let updatedAt: String?
 
+    // §44 — Health score (server-computed RFM) + LTV fields.
+    // Populated by GET /api/v1/customers/:id (lines 1142–1144 in customers.routes.ts).
+    // All optional; client falls back to heuristics when absent.
+    public let healthScore: Int?
+    public let healthLabel: String?
+    public let ltvCents: Int64?
+    public let lastVisitAt: String?
+    public let totalSpentCents: Int64?
+    public let openTicketCount: Int?
+    public let complaintCount: Int?
+
     public let phones: [CustomerPhoneRow]?
     public let emails: [CustomerEmailRow]?
 
@@ -80,6 +91,14 @@ public struct CustomerDetail: Decodable, Sendable, Identifiable, Hashable {
         case customerTags = "customer_tags"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        // §44
+        case healthScore = "health_score"
+        case healthLabel = "health_label"
+        case ltvCents = "ltv_cents"
+        case lastVisitAt = "last_visit_at"
+        case totalSpentCents = "total_spent_cents"
+        case openTicketCount = "open_ticket_count"
+        case complaintCount = "complaint_count"
     }
 }
 

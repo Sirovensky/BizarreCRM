@@ -60,7 +60,12 @@ public struct CustomerDetailView: View {
         } else if let detail = vm.snapshot.detail {
             ScrollView {
                 VStack(spacing: BrandSpacing.base) {
-                    Header(detail: detail)
+                    Header(detail: detail, analytics: vm.snapshot.analytics)
+
+                    let health = CustomerHealthScore.compute(detail: detail)
+                    if let rec = health.recommendation {
+                        RecommendationBanner(text: rec, detail: detail)
+                    }
 
                     if let stats = vm.snapshot.analytics {
                         QuickStatsRow(analytics: stats)
@@ -96,6 +101,7 @@ public struct CustomerDetailView: View {
 
 private struct Header: View {
     let detail: CustomerDetail
+    let analytics: CustomerAnalytics?
 
     var body: some View {
         VStack(spacing: BrandSpacing.sm) {
@@ -115,6 +121,18 @@ private struct Header: View {
                 Text(group)
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+
+            // §44 — health badge + LTV chip
+            let health = CustomerHealthScore.compute(detail: detail)
+            HStack(spacing: BrandSpacing.sm) {
+                CustomerHealthBadge(score: health)
+                // LTV from analytics (dollars) takes priority; fall back to detail cents.
+                if let ltv = analytics?.lifetimeValue, ltv > 0 {
+                    CustomerLTVChip(ltvDollars: ltv)
+                } else {
+                    CustomerLTVChip(ltvCents: detail.ltvCents)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -342,6 +360,60 @@ private struct NotesTimeline: View {
             }
         }
         .cardBackground()
+    }
+}
+
+// MARK: - §44 Recommendation banner
+
+/// Horizontal glass card shown when `CustomerHealthScore` produces a recommendation.
+/// The "Send follow-up" CTA deep-links to the native SMS compose sheet
+/// using the existing `sms:` URL scheme with the customer's phone pre-filled.
+private struct RecommendationBanner: View {
+    let text: String
+    let detail: CustomerDetail
+
+    private var smsURL: URL? {
+        let digits = [detail.mobile, detail.phone]
+            .compactMap { $0?.filter(\.isNumber) }
+            .first { !$0.isEmpty }
+        guard let digits else { return nil }
+        return URL(string: "sms:\(digits)")
+    }
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "lightbulb.fill")
+                .foregroundStyle(.bizarreWarning)
+                .font(.system(size: 18))
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            if let url = smsURL {
+                Link(destination: url) {
+                    Text("Send follow-up")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreTeal)
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, BrandSpacing.xs)
+                        .background(Color.bizarreTeal.opacity(0.12), in: Capsule())
+                }
+                .accessibilityLabel("Send follow-up SMS to \(detail.displayName)")
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 
