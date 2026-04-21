@@ -1,5 +1,8 @@
 import Foundation
 import Core
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - DiagnosticsBundle
 
@@ -130,8 +133,8 @@ public struct SystemDeviceInfoProvider: DeviceInfoProvider, Sendable {
 
     public func currentInfo() -> DeviceInfo {
         #if canImport(UIKit)
-        let iosVersion = UIKit.UIDevice.current.systemVersion
-        let deviceModel = UIKit.UIDevice.current.model
+        let iosVersion = UIDevice.current.systemVersion
+        let deviceModel = UIDevice.current.model
         #else
         let iosVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let deviceModel = "Mac"

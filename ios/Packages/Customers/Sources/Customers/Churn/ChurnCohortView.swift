@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
