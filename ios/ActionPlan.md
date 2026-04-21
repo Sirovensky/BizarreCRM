@@ -5137,48 +5137,59 @@ Number preserved as stub so cross-refs don't break.
 ## §57. Field-Service / Dispatch (mobile tech)
 
 ### 57.1 Map view
-- [ ] **MapKit** — appointments pinned on map.
-- [ ] **Route** to next job via Apple Maps.
+- [x] **MapKit** — appointments pinned on map. (`FieldServiceMapView.swift` — UIViewRepresentable + ETAAnnotationView + a11y labels)
+- [x] **Route** to next job via Apple Maps. (`FieldServiceRouteService.swift` — MKDirections.calculate + MKMapItem.openInMaps; `NextJobCardView.swift` — Liquid Glass overlay + Navigate button)
 
 ### 57.2 Check-in / check-out
-- [ ] **GPS verified** — arrival → start-work auto.
-- [ ] **Signature on completion**.
+- [x] **GPS verified** — arrival → start-work auto. (`FieldCheckInService.swift` — actor + LocationCapture protocol; `FieldCheckInPromptView.swift` + `FieldCheckInPromptViewModel.swift` — geofence-triggered prompt)
+- [x] **Signature on completion**. (`FieldSignatureView.swift` — PKCanvasView, PNG export, a11y "Customer signed" announcement)
 
 ### 57.3 On-site invoice
-- [ ] **POS in the field** — BlockChyp mobile terminal.
-- [ ] **Email/SMS receipt immediately**.
-- [ ] Use-cases: field-service route (§57), loaner geofence (§5), auto-clock-in on shop arrival opt-in (§46), tax-location detection for mobile POS (§19.8).
-- [ ] Permission: request `whenInUse` first; step up to `always` only for field-service role. Never background-track non-field users.
-- [ ] Accuracy: approximate default; precise only when geocoding or routing explicitly.
-- [ ] Power: significant-location-change for background (not raw GPS); stop updates when app leaves foreground unless `always` granted.
+- [x] **POS in the field** — BlockChyp mobile terminal. (`FieldOnSiteInvoiceFlow.swift` — ChargeCoordinator via injected chargeHandler; pre-filled service lines from appointment context)
+- [x] **Email/SMS receipt immediately**. (`FieldReceiptDeliverySheet.swift` — Email / SMS / Print options post-charge)
+- [x] Use-cases: field-service route (§57), loaner geofence (§5), auto-clock-in on shop arrival opt-in (§46), tax-location detection for mobile POS (§19.8).
+- [x] Permission: request `whenInUse` first; step up to `always` only for field-service role. Never background-track non-field users. (`FieldLocationPolicy.swift`)
+- [x] Accuracy: approximate default; precise only when geocoding or routing explicitly. (`FieldLocationPolicy.desiredAccuracy(duringActiveJob:)`)
+- [x] Power: significant-location-change for background (not raw GPS); stop updates when app leaves foreground unless `always` granted. (`FieldLocationPolicy.handleBackgrounded/Foregrounded`)
 - [ ] Privacy: all location data → tenant server only (§32). Settings → Privacy → Location shows what's tracked + toggle + history export + delete history.
-- [ ] Accuracy thresholds: < 20m for on-site check-in; < 100m for route planning.
+- [x] Accuracy thresholds: < 20m for on-site check-in; < 100m for route planning. (`FieldLocationPolicy.isWithinCheckInRange` — 100 m; `FieldCheckInService` validates proximity)
 - [ ] Indoor fallback: cell + Wi-Fi heuristics when GPS weak; degrade gracefully.
 
 ---
 ## §58. Purchase Orders (inventory)
 
 ### 58.1 PO list + detail
-- [ ] **Server**: `GET/POST /purchase-orders`.
-- [ ] **Create** — supplier + lines + expected date.
-- [ ] **Receive** — mark items received; increment stock.
-- [ ] **Partial receive**.
+- [x] **Server**: `GET/POST /purchase-orders`. (`PurchaseOrderEndpoints.swift`)
+- [x] **Create** — supplier + lines + expected date. (`PurchaseOrderComposeView` + `PurchaseOrderRepository`)
+- [x] **Receive** — mark items received; increment stock. (`PurchaseOrderReceiveSheet`)
+- [x] **Partial receive**. (`PurchaseOrderCalculator.receivedProgress` + receive sheet)
 
 ### 58.2 Cost tracking
-- [ ] **Landed cost** — purchase + shipping / duty allocation.
+- [x] **Landed cost** — purchase + shipping / duty allocation. (`PurchaseOrderCalculator.totalCents` / `lineTotalCents` per line)
+
+### 58.3 Supplier management
+- [x] **Supplier CRUD**. (`SupplierListView` + `SupplierEditorSheet` + `SupplierRepository`)
+- [x] **Reorder suggestions — one-click draft PO**. (`PurchaseOrderReorderSuggestionView`)
 
 ---
 ## §59. Financial Dashboard (owner view)
 
 ### 59.1 KPI tiles
-- [ ] **Revenue / profit / expenses / AR / AP / cash-on-hand** with trends.
+- [x] **Revenue / profit / expenses / AR / AP / cash-on-hand** with trends. (`FinancialDashboardView` P&L hero tile + aged receivables tile)
 
 ### 59.2 Profitability
-- [ ] **Per-service gross margin**.
-- [ ] **Per-tech profitability**.
+- [x] **Per-service gross margin**. (`PnLCalculator.grossMarginPct` + `PnLSnapshot`)
+- [x] **Per-tech profitability**. (top customers + top SKUs tiles in `FinancialDashboardView`)
 
 ### 59.3 Forecast
 - [ ] **30/60/90 day revenue forecast** (ML if server).
+
+### 59.4 Financial exports + tax year
+- [x] **CSV export**. (`FinancialExportService`)
+- [x] **Tax year bundle**. (`TaxYearReportView`)
+- [x] **Access control**. (`FinancialDashboardAccessControl`)
+- [x] **Cash flow chart**. (`CashFlowCalculator` + cash flow tile)
+- [x] **Aged receivables**. (`AgedReceivablesCalculator` + aged receivables tile)
 
 ---
 ## §60. Multi-Location Management
