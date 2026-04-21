@@ -15,6 +15,8 @@ public struct PosView: View {
     @State private var editQuantityFor: CartItem?
     @State private var editPriceFor: CartItem?
     @State private var showingCartSheet: Bool = false
+    /// §40 — Gift card / store credit sheet.
+    @State private var showingGiftCardSheet: Bool = false
     @State private var showingCustomerPicker: Bool = false
     @State private var showingCreateCustomer: Bool = false
 

@@ -113,8 +113,23 @@ struct PosCartPanel: View {
             totalsRow(label: "Tax", cents: cart.taxCents)
             Divider().background(.bizarreOutline)
             totalsRow(label: "Total", cents: cart.totalCents, emphasized: true)
+            // §40 — applied tenders render as negative rows followed by a
+            // Remaining row. Hidden with no tenders so the 90%+ of sales
+            // without store value keep the familiar totals layout.
+            if !cart.appliedTenders.isEmpty {
+                ForEach(cart.appliedTenders) { tender in
+                    tenderRow(tender: tender)
+                }
+                Divider().background(.bizarreOutline)
+                totalsRow(label: "Remaining", cents: cart.remainingCents, emphasized: true)
+            }
 
-            PosChargeButton(totalCents: cart.totalCents, isEnabled: !cart.isEmpty, action: onCharge)
+            PosChargeButton(
+                totalCents: cart.appliedTenders.isEmpty ? cart.totalCents : cart.remainingCents,
+                isComplete: cart.isFullyTendered,
+                isEnabled: !cart.isEmpty,
+                action: onCharge
+            )
                 .padding(.top, BrandSpacing.xs)
 
             Button {
@@ -155,6 +170,34 @@ struct PosCartPanel: View {
                 .font(emphasized ? .brandHeadlineMedium() : .brandBodyLarge())
                 .foregroundStyle(.bizarreOnSurface)
                 .monospacedDigit()
+        }
+    }
+
+    /// §40 — Negative reduction row for an applied tender. Tap "x" to
+    /// remove; the Cart re-computes `remainingCents` without closing
+    /// the sheet.
+    @ViewBuilder
+    private func tenderRow(tender: AppliedTender) -> some View {
+        HStack {
+            Text(tender.label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Spacer()
+            Text("-\(CartMath.formatCents(tender.amountCents))")
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOrange)
+                .monospacedDigit()
+            Button {
+                BrandHaptics.tap()
+                cart.removeTender(id: tender.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(tender.label)")
+            .accessibilityIdentifier("pos.cart.removeTender")
         }
     }
 }
@@ -334,14 +377,15 @@ struct PosCartCustomerChip: View {
 /// per CLAUDE.md guidance.
 struct PosChargeButton: View {
     let totalCents: Int
+    var isComplete: Bool = false
     let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: "creditcard.fill")
-                Text("Charge \(CartMath.formatCents(totalCents))")
+                Image(systemName: isComplete ? "checkmark.circle.fill" : "creditcard.fill")
+                Text("\(isComplete ? "Complete" : "Charge") \(CartMath.formatCents(totalCents))")
                     .font(.brandTitleMedium())
                     .monospacedDigit()
             }
@@ -354,7 +398,7 @@ struct PosChargeButton: View {
         .controlSize(.large)
         .disabled(!isEnabled)
         .keyboardShortcut(.return, modifiers: .command)
-        .accessibilityLabel("Charge total \(CartMath.formatCents(totalCents))")
+        .accessibilityLabel("\(isComplete ? "Complete" : "Charge") total \(CartMath.formatCents(totalCents))")
     }
 }
 #endif

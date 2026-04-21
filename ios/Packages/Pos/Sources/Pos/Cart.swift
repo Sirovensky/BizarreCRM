@@ -55,6 +55,19 @@ public final class Cart {
     /// empty-state CTAs surface walk-in / find / create).
     public private(set) var customer: PosCustomer?
 
+    // MARK: - Applied tenders (§40)
+    //
+    // Gift cards + store credit aren't payment rails — they're pre-charge
+    // reductions of the amount the customer still owes. We attach them to
+    // the cart so the totals footer can show `Total − tenders = Remaining`
+    // and the Charge CTA can flip to "Complete" once remaining hits zero.
+    //
+    // Order matters: tenders are appended in the order the cashier applied
+    // them so the receipt reconstructs the same sequence.
+
+    /// Tenders already applied to the cart. Each reduces `remainingCents`.
+    public private(set) var appliedTenders: [AppliedTender] = []
+
     // MARK: - Pending payment link (§41)
     //
     // When staff generates a public payment link for the current cart the
@@ -120,6 +133,7 @@ public final class Cart {
         customer = nil
         pendingPaymentLinkId = nil
         pendingPaymentLinkToken = nil
+        appliedTenders = []
     }
 
     // MARK: - Pending payment link (§41)
@@ -158,6 +172,48 @@ public final class Cart {
 
     /// `true` once the cashier has made an explicit pick (walk-in counts).
     public var hasCustomer: Bool { customer != nil }
+
+    // MARK: - Applied tenders (§40)
+
+    /// Append `tender` to the applied-tenders list. Zero-amount rows are
+    /// dropped so a buggy call site can't smuggle a no-op entry onto the
+    /// cart. No dedup — two different gift cards can tender one cart.
+    public func apply(tender: AppliedTender) {
+        guard tender.amountCents > 0 else { return }
+        appliedTenders = appliedTenders + [tender]
+    }
+
+    /// Remove a single tender by its client-side id. Silent no-op if the
+    /// id is unknown — the caller already saw the row disappear from the
+    /// UI, and logging here would be noise.
+    public func removeTender(id: UUID) {
+        appliedTenders = appliedTenders.filter { $0.id != id }
+    }
+
+    /// Drop every applied tender. Used when the cashier backs out of the
+    /// charge flow and wants to start the tender choice from scratch.
+    public func clearTenders() {
+        appliedTenders = []
+    }
+
+    /// Sum of applied tenders in cents. Never negative — the mutators
+    /// above guarantee each row is positive.
+    public var appliedTendersCents: Int {
+        appliedTenders.reduce(0) { $0 + $1.amountCents }
+    }
+
+    /// Amount the customer still owes after tenders are applied. Clamped
+    /// at zero so an over-tendered cart (server would reject) still
+    /// renders a sane "Remaining $0.00" row rather than a negative.
+    public var remainingCents: Int {
+        max(0, totalCents - appliedTendersCents)
+    }
+
+    /// `true` once tenders fully cover the cart — drives the Charge →
+    /// Complete CTA swap in `PosCartPanel`.
+    public var isFullyTendered: Bool {
+        !items.isEmpty && remainingCents == 0 && appliedTendersCents > 0
+    }
 
     // MARK: - Totals
 
