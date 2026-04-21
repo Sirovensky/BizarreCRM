@@ -1026,7 +1026,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.16 Contact import
 - [ ] Just-in-time `requestPermissions(READ_CONTACTS)` at "Import".
-- [x] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`.
+- [ ] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`.
 - [ ] vCard → customer field mapping: name, phones, emails, address, birthday.
 - [ ] Field selection UI when multiple values.
 - [ ] Duplicate handling: cross-check existing customers → merge / skip / create new.
@@ -2325,13 +2325,13 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Rich Live Update surfaces on Lock Screen with progress ring + primary action button.
 
 ### 24.3 App Shortcuts (launcher long-press)
-- [ ] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In.
+- [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In.
 - [ ] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction).
 - [ ] Pinned shortcuts supported.
 - [ ] Icon per shortcut; theme-aware variant.
 
 ### 24.4 Quick Settings Tiles
-- [ ] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now.
+- [~] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now.
 - [ ] Active state reflects current shift / session.
 - [ ] User adds via Settings → Notifications → Quick settings.
 
@@ -2363,9 +2363,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Inbound: our app advertises `ACTION_SEND` intent filter for `text/plain`, `image/*`, `application/pdf` — receiving dispatches to "Attach to ticket" / "New note" picker.
 
 ### 25.3 Clipboard
-- [ ] Copy IDs / invoice numbers / order numbers via `SelectionContainer` + `LocalClipboardManager`.
-- [ ] Sensitive copies (OTP, payment code) auto-clear after 30s; Android 13+ shows `IS_SENSITIVE` extras so system does not expose in clipboard preview.
-- [ ] Paste detect OTP on 2FA field (auto-fill hint).
+- [~] Copy IDs / invoice numbers / order numbers via `SelectionContainer` + `LocalClipboardManager`.
+- [x] Sensitive copies (OTP, payment code) auto-clear after 30s; Android 13+ shows `IS_SENSITIVE` extras so system does not expose in clipboard preview.
+- [x] Paste detect OTP on 2FA field (auto-fill hint).
 
 ### 25.4 Cross-device (nearby share / Quick Share)
 - [ ] Share any PDF / vCard to nearby Android device via Quick Share (system-provided; nothing to build).
