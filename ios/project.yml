@@ -178,13 +178,26 @@ targets:
     dependencies:
       - target: BizarreCRM
 
+  BizarreCRMUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/Performance
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm.uitests
+    dependencies:
+      - target: BizarreCRM
+
 schemes:
   BizarreCRM:
     build:
       targets:
         BizarreCRM: all
     test:
-      targets: [BizarreCRMTests]
+      targets:
+        - BizarreCRMTests
+        - BizarreCRMUITests
     run:
       config: Debug
     archive:

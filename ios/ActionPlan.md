@@ -3674,7 +3674,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Budget: never drop below 60fps on iPhone SE 3; 120fps on ProMotion iPad
 - [ ] Cell prep: row subviews lightweight; no heavy work in `onAppear`; expensive calcs in `.task` or ViewModel cache
 - [ ] Materials: glass materials expensive — group via `GlassEffectContainer`; limit ≤6 visible glass elements per screen
-- [ ] Measurement: Instruments Time Profiler + SwiftUI `_printChanges()` during dev; CI runs XCTMetric scrolling benchmark
+- [x] Measurement: Instruments Time Profiler + SwiftUI `_printChanges()` during dev; CI runs XCTMetric scrolling benchmark — harness scaffold shipped in `Tests/Performance/` + `scripts/bench.sh` (feat(ios phase-3): performance benchmark harness)
 - [ ] Lists > grids for long scrolls: `LazyVStack`/`List` for long lists; `LazyVGrid` OK for gallery but limits row-height flexibility
 - [ ] Image decode: off main thread via Nuke; no `UIImage(named:)` inside cell body
 - [ ] SwiftUI `List`: native virtualization — use where possible; custom row height via `.listRowSeparator`, `.listRowInsets`
@@ -3690,7 +3690,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Detection: observe `ProcessInfo.thermalState` — `.nominal`/`.fair` unchanged; `.serious` reduces animation intensity + defers background work; `.critical` shows banner "Device is hot — some features paused"
 - [ ] Pause tasks when thermal `.serious`+: photo batch uploads; FTS5 reindex; image decode to lower priority
 - [ ] POS continuity: checkout never paused (too disruptive); print/receipt/payment stay active
-- [ ] XCTMetric golden-path tests for launch / scroll / search / payment; baselines in repo; CI fails on > 10% regression.
+- [x] XCTMetric golden-path tests for launch / scroll / search / payment; baselines in repo; CI fails on > 10% regression — scroll tests shipped in `Tests/Performance/` (feat(ios phase-3): performance benchmark harness)
 - [ ] Instruments CLI automation: Time Profiler, Allocations, Animation Hitches; archive reports per build.
 - [ ] Benchmarks catalog: cold launch, warm launch, dashboard first paint, tickets list 1000-row scroll, inventory search 500 items, SMS thread 500-message scroll, POS add 20 items + checkout, photo attach 5 photos, sync 100 changes.
 - [ ] Device matrix: iPhone SE 3 (floor), iPhone 16 Pro, iPad 10 (low-end), iPad Pro 13" M4, Mac Mini M4 (Designed for iPad).
