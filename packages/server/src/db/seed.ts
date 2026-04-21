@@ -59,6 +59,21 @@ export function seedDatabase(db: any): void {
     // Flag: store setup not yet completed (triggers first-login setup wizard)
     insertConfig.run('setup_completed', 'false');
 
+    // Default workstation — ensures the POS checkout flow has at least one
+    // workstation to assign to new tickets. The table is created defensively
+    // here because it has not been extracted into a numbered migration yet.
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS workstations (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL UNIQUE,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_active  INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `).run();
+    db.prepare(`INSERT OR IGNORE INTO workstations (name, is_default) VALUES (?, 1)`).run('Main Workstation');
+
     // SMS Templates — generic, no shop-specific references
     const insertTpl = db.prepare(`INSERT OR IGNORE INTO sms_templates (name, content, category) VALUES (?, ?, ?)`);
     insertTpl.run('Device Ready for Pickup', 'Hi {{customer_name}}, your {{device_name}} is ready for pickup! Come by during business hours. Reply STOP to opt out.', 'status_update');

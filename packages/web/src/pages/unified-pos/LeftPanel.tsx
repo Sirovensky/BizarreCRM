@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { posApi, ticketApi, customerApi } from '@/api/endpoints';
+import { posApi, ticketApi, customerApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { CustomerSelector } from './CustomerSelector';
@@ -396,6 +396,47 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
   const partsTotal = item.parts.reduce((s, p) => s + p.quantity * p.price, 0);
   const lineTotal = item.laborPrice - item.lineDiscount + partsTotal;
 
+  // Inline "Add part" state
+  const [showPartSearch, setShowPartSearch] = useState(false);
+  const [partQuery, setPartQuery] = useState('');
+
+  const { data: partResults } = useQuery({
+    queryKey: ['part-search-inline', partQuery],
+    queryFn: async () => {
+      const res = await inventoryApi.list({ keyword: partQuery, pagesize: 8, item_type: 'part' });
+      return (res.data?.data?.items ?? []) as Array<{ id: number; name: string; sku?: string | null; retail_price?: number }>;
+    },
+    enabled: partQuery.length >= 2,
+    staleTime: 10_000,
+  });
+
+  const addPartToItem = (part: { id: number; name: string; sku?: string | null; retail_price?: number }) => {
+    const existing = item.parts.find((p) => p.inventory_item_id === part.id);
+    const newParts = existing
+      ? item.parts.map((p) =>
+          p.inventory_item_id === part.id ? { ...p, quantity: p.quantity + 1 } : p,
+        )
+      : [
+          ...item.parts,
+          {
+            _key: genId(),
+            inventory_item_id: part.id,
+            name: part.name,
+            sku: part.sku ?? null,
+            quantity: 1,
+            price: part.retail_price ?? 0,
+            taxable: true,
+            status: 'available' as const,
+          },
+        ];
+    updateCartItem(item.id, { parts: newParts } as Partial<RepairCartItem>);
+    // Advance checkout tutorial when a part is added.
+    window.dispatchEvent(new CustomEvent('pos:part-added'));
+    setPartQuery('');
+    setShowPartSearch(false);
+    toast.success(`Added: ${part.name}`);
+  };
+
   const toggleLaborTax = () => {
     updateCartItem(item.id, { taxable: !item.taxable } as Partial<RepairCartItem>);
   };
@@ -426,6 +467,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
         </div>
         <input
           type="text" inputMode="decimal" pattern="[0-9.]*"
+          data-tutorial-target="checkout:price-cell"
           value={item.laborPrice}
           onChange={(e) => updateCartItem(item.id, { laborPrice: parseFloat(e.target.value) || 0 } as Partial<RepairCartItem>)}
           className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -486,6 +528,63 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           ))}
         </div>
       )}
+
+      {/* Add part inline */}
+      <div className="ml-10 mt-1">
+        {!showPartSearch ? (
+          <button
+            type="button"
+            data-tutorial-target="checkout:add-part-button"
+            onClick={() => setShowPartSearch(true)}
+            className="flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            <Plus className="h-3 w-3" /> Add part
+          </button>
+        ) : (
+          <div className="mt-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm">
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-surface-100 dark:border-surface-700">
+              <Search className="h-3 w-3 text-surface-400 shrink-0" />
+              <input
+                type="text"
+                value={partQuery}
+                onChange={(e) => setPartQuery(e.target.value)}
+                placeholder="Search inventory parts…"
+                className="flex-1 text-xs bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => { setShowPartSearch(false); setPartQuery(''); }}
+                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            {partQuery.length >= 2 && (
+              <ul className="max-h-40 overflow-y-auto">
+                {(partResults ?? []).length === 0 ? (
+                  <li className="px-2 py-1.5 text-xs text-surface-400 text-center">No parts found</li>
+                ) : (
+                  (partResults ?? []).map((part) => (
+                    <li key={part.id}>
+                      <button
+                        type="button"
+                        onClick={() => addPartToItem(part)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface-50 dark:hover:bg-surface-700/50"
+                      >
+                        <span className="flex-1 text-xs text-surface-900 dark:text-surface-100 truncate">{part.name}</span>
+                        {part.retail_price != null && (
+                          <span className="text-xs text-surface-500 shrink-0">${part.retail_price.toFixed(2)}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

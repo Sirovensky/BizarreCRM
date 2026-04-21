@@ -24,7 +24,7 @@
  * are set, the card fades to a single congratulations line and then hides
  * itself permanently (via the same dismiss path as "Don't show again").
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -48,7 +48,7 @@ interface ChecklistStep {
   route: string;
   doneKey: keyof Pick<
     OnboardingState,
-    'first_ticket_at' | 'first_invoice_at' | 'first_payment_at'
+    'first_ticket_at' | 'first_invoice_at' | 'first_payment_at' | 'advanced_settings_unlocked'
   > | null;
 }
 
@@ -62,15 +62,15 @@ const STEPS: ReadonlyArray<ChecklistStep> = [
     title: 'Finish store setup',
     description: 'Tour advanced settings — tax, labels, notifications, printers.',
     icon: Settings,
-    route: '/settings?tutorial=1&step=settings',
-    doneKey: null,
+    route: '/settings?tutorial=settings&step=0',
+    doneKey: 'advanced_settings_unlocked',
   },
   {
     id: 'ticket',
     title: 'Create a ticket in POS',
     description: 'Pick a customer, pick a device, set a price.',
     icon: Ticket,
-    route: '/pos?tutorial=1&step=ticket',
+    route: '/pos?tutorial=ticket&step=0',
     doneKey: 'first_ticket_at',
   },
   {
@@ -78,7 +78,7 @@ const STEPS: ReadonlyArray<ChecklistStep> = [
     title: 'Edit a ticket and check out',
     description: 'Add a comment, change the price, add a part, then take payment.',
     icon: ShoppingCart,
-    route: '/pos?tutorial=1&step=checkout',
+    route: '/pos?tutorial=checkout&step=0',
     doneKey: 'first_payment_at',
   },
 ];
@@ -137,6 +137,54 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
   const trackableCount = STEPS.filter((s) => s.doneKey).length;
   const progressPct = Math.round((completedCount / trackableCount) * 100);
   const allDone = completedCount === trackableCount;
+
+  // Phase E2: fire confetti once and auto-dismiss 10 s after checklist completes.
+  const celebratedRef = useRef(false);
+  useEffect(() => {
+    if (!allDone || celebratedRef.current) return;
+    celebratedRef.current = true;
+
+    // Fire confetti via DOM injection (mirrors SuccessCelebration).
+    if (
+      typeof window !== 'undefined' &&
+      !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      const host = document.createElement('div');
+      host.setAttribute('aria-hidden', 'true');
+      host.style.cssText =
+        'position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999';
+      const colors = ['#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
+      for (let i = 0; i < 50; i++) {
+        const piece = document.createElement('div');
+        const left = Math.random() * 100;
+        const delay = Math.random() * 0.6;
+        const dur = 2.5 + Math.random() * 2;
+        const rot = Math.random() * 360;
+        const bg = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.cssText =
+          `position:absolute;top:-10px;left:${left}%;width:8px;height:14px;background:${bg};` +
+          `transform:rotate(${rot}deg);border-radius:2px;` +
+          `animation:gsw-confetti ${dur}s linear ${delay}s forwards`;
+        host.appendChild(piece);
+      }
+      const styleEl = document.createElement('style');
+      styleEl.textContent =
+        '@keyframes gsw-confetti {' +
+        '  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }' +
+        '  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }' +
+        '}';
+      host.appendChild(styleEl);
+      document.body.appendChild(host);
+      window.setTimeout(() => host.remove(), 4000);
+    }
+
+    // Auto-dismiss after 10 s.
+    const timer = window.setTimeout(() => {
+      dismissMutation.mutate();
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDone]);
 
   // Hide in any of these cases:
   //   - still loading (flicker-free first paint)

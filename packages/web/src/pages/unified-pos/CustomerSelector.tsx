@@ -65,6 +65,8 @@ export function CustomerSelector() {
     setQuery('');
     setResults([]);
     setIsOpen(false);
+    // Advance the ticket tutorial when a customer is selected.
+    window.dispatchEvent(new CustomEvent('pos:customer-selected'));
   };
 
   const clearCustomer = () => {
@@ -114,7 +116,7 @@ export function CustomerSelector() {
 
   // Search input + dropdown
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative" data-tutorial-target="ticket:customer-picker">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
         <input

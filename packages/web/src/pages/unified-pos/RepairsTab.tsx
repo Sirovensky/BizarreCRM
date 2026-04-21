@@ -81,7 +81,7 @@ function CategoryStep({ onSelect }: { onSelect: (category: string) => void }) {
   }, {});
 
   return (
-    <div className="grid grid-cols-3 gap-4 py-2">
+    <div className="grid grid-cols-3 gap-4 py-2" data-tutorial-target="ticket:device-template-button">
       {CATEGORY_TILES.map(({ value, label, icon: Icon }) => {
         const count = value === 'quick' ? null : (countByCategory[value] ?? 0);
         const isEmpty = count === 0;
@@ -255,6 +255,7 @@ function DeviceStep({ category, onSelect }: {
               return (
                 <button
                   key={d.id}
+                  data-tutorial-target="ticket:device-picker-option"
                   onClick={() => onSelect(d.id, `${d.manufacturer_name ?? ''} ${d.name}`.trim())}
                   className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
                 >
@@ -415,6 +416,8 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     }
 
     onSelect(selectedServiceId, service.name, laborPrice, gradeId, gradeParts);
+    // Advance the ticket tutorial when a service/template is applied.
+    window.dispatchEvent(new CustomEvent('pos:template-applied'));
   };
 
   if (loadingServices) {
@@ -543,7 +546,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <p className="mb-2 text-sm text-amber-600 dark:text-amber-400">
             No preset price for this device + service. Enter price manually:
           </p>
-          <div className="relative">
+          <div className="relative" data-tutorial-target="ticket:repair-price-input">
             <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
               type="text" inputMode="decimal" pattern="[0-9.]*"
@@ -564,7 +567,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <p className="mb-2 text-sm text-surface-400">
             Custom device - enter price manually:
           </p>
-          <div className="relative">
+          <div className="relative" data-tutorial-target="ticket:repair-price-input">
             <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
               type="text" inputMode="decimal" pattern="[0-9.]*"

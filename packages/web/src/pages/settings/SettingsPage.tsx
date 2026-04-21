@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi } from '@/api/endpoints';
+import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { RepairPricingTab } from './RepairPricingTab';
@@ -320,6 +321,7 @@ function StoreInfoTab() {
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">{f.label}</label>
             <input
               type={f.type}
+              {...(f.key === 'receipt_header' ? { 'data-tutorial-target': 'settings:receipt-header-input' } : {})}
               value={f.key === 'phone' ? formatStorePhone(form[f.key] || '') : (form[f.key] || '')}
               onChange={(e) => {
                 const val = f.key === 'phone' ? e.target.value.replace(/[^\d+\-() ]/g, '') : e.target.value;
@@ -340,10 +342,13 @@ function StoreInfoTab() {
         </div>
         <div className="px-4 pb-4">
           <div className="space-y-2">
-            {DAYS.map((day) => (
+            {DAYS.map((day, dayIdx) => (
               <div key={day} className="flex items-center gap-3">
                 <span className="w-24 text-sm font-medium text-surface-700 dark:text-surface-300">{DAY_LABELS[day]}</span>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label
+                  className="relative inline-flex items-center cursor-pointer"
+                  {...(dayIdx === 0 ? { 'data-tutorial-target': 'settings:business-hours-toggle' } : {})}
+                >
                   <input
                     type="checkbox"
                     checked={hours[day]?.open ?? false}
@@ -1188,7 +1193,7 @@ function TaxClassesTab() {
       {taxClasses.length === 0 ? (
         <EmptyState message="No tax classes configured" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-tutorial-target="settings:tax-class-editor">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-surface-100 dark:border-surface-800">
@@ -1431,18 +1436,50 @@ function UsersTab() {
     onError: () => toast.error('Failed to update user'),
   });
 
+  const currentUser = useAuthStore((s) => s.user);
+
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message="Failed to load users" />;
 
   const users = data || [];
   const roles = ['admin', 'manager', 'technician', 'cashier'];
 
+  // Show team nudge when shop owner is the only user
+  const isSoloOwner = users.length === 1 && currentUser && users[0]?.id === currentUser.id;
+
   return (
     <div className="space-y-4">
+      {/* Phase D4: add-team nudge for single-owner shops */}
+      {isSoloOwner && (
+        <div className="rounded-xl border border-primary-200 bg-gradient-to-br from-primary-50 to-white p-4 dark:border-primary-500/30 dark:from-primary-500/10 dark:to-surface-900">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-500/20">
+              <Users className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Add your team</p>
+              <ul className="mt-2 space-y-1 text-xs text-surface-600 dark:text-surface-400">
+                <li><span className="font-semibold text-surface-800 dark:text-surface-200">Admin</span> — full access, settings, billing</li>
+                <li><span className="font-semibold text-surface-800 dark:text-surface-200">Technician</span> — POS, tickets, customers (no settings)</li>
+                <li><span className="font-semibold text-surface-800 dark:text-surface-200">Cashier</span> — POS + customers only</li>
+              </ul>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-700"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add teammate
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
           <h3 className="font-semibold text-surface-900 dark:text-surface-100">Users</h3>
           <button
+            data-tutorial-target="settings:add-user-cta"
             onClick={() => setShowAdd(!showAdd)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >

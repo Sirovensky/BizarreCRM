@@ -14,6 +14,8 @@ import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, prefere
 import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
 import { SampleDataCard } from '@/components/onboarding/SampleDataCard';
 import { SuccessCelebration } from '@/components/onboarding/SuccessCelebration';
+import { DailyNudge } from '@/components/onboarding/DailyNudge';
+import { useMilestoneToasts } from '@/components/onboarding/useMilestoneToasts';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -1641,6 +1643,12 @@ export function DashboardPage() {
   });
   const onboardingState: OnboardingState | null = onboardingData?.data?.data ?? null;
 
+  // Phase B1: hide noisy BI widgets until shop has taken a real payment
+  const isDayOne = !onboardingState?.first_payment_at;
+
+  // Phase E1: fire milestone toasts on first_ticket_at / first_payment_at transitions
+  useMilestoneToasts(onboardingState);
+
   return (
     <div>
       {/* Confetti + toast on new milestones (audit section 42, idea 9) */}
@@ -1650,6 +1658,9 @@ export function DashboardPage() {
       {onboardingState && !onboardingState.checklist_dismissed && (
         <GettingStartedWidget preloadedState={onboardingState} />
       )}
+
+      {/* Phase B2: day-3/5/7 re-engagement nudges */}
+      <DailyNudge preloadedState={onboardingState} />
 
       {/* Sample data toggle (audit section 42, idea 3) */}
       {onboardingState && (
@@ -1686,10 +1697,45 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* ─── Phase B1: Day-1 Focus row — visible only before first payment ─── */}
+      {isDayOne && (
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/pos')}
+            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white">
+              <ShoppingCart className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Open POS</p>
+              <p className="text-xs text-surface-500 dark:text-surface-400">Check in your first customer</p>
+            </div>
+            <ArrowRight className="ml-auto h-4 w-4 text-primary-500" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/customers/new')}
+            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+              <Plus className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Add customer</p>
+              <p className="text-xs text-surface-500 dark:text-surface-400">Create your first customer record</p>
+            </div>
+            <ArrowRight className="ml-auto h-4 w-4 text-primary-500" />
+          </button>
+        </div>
+      )}
+
       {/* ─── Business Intelligence hero (audit 47) ────────────────────────
            Profit margin is the #1 thing owners should see. Rendered BEFORE
-           the date range filter so it is the first data on the page. */}
-      {showFinancials && (
+           the date range filter so it is the first data on the page.
+           Phase B1: gated behind first_payment_at (isDayOne = false). */}
+      {showFinancials && !isDayOne && (
         <div className="mb-6 space-y-4">
           <ProfitHeroCard />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

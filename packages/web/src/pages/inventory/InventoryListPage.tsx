@@ -568,14 +568,7 @@ export function InventoryListPage() {
             <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Package className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
-            <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No items found</h2>
-            <p className="text-sm text-surface-400 mt-1">Add your first inventory item to get started</p>
-            <Link to="/inventory/new" className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
-              <Plus className="h-4 w-4" /> Add First Item
-            </Link>
-          </div>
+          <InventoryEmptyState activeFilterCount={activeFilterCount} keyword={keyword} />
         ) : (
           <>
             {(reorderableFilter || lowStockFilter) && (
@@ -1590,6 +1583,48 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inventory Empty State ────────────────────────────────────────────────────
+
+interface InventoryEmptyStateProps {
+  activeFilterCount: number;
+  keyword: string;
+}
+
+function InventoryEmptyState({ activeFilterCount, keyword }: InventoryEmptyStateProps) {
+  const hasFilters = Boolean(keyword) || activeFilterCount > 0;
+
+  if (hasFilters) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Package className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
+        <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No items found</h2>
+        <p className="text-sm text-surface-400 mt-1">
+          {keyword ? `No results matching "${keyword}"` : 'No items match the active filters'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+      <Package className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
+      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">Nothing in your inventory yet</h2>
+      <p className="text-sm text-surface-400 mt-2 max-w-sm">
+        <strong>Products</strong> are things you sell.{' '}
+        <strong>Parts</strong> are consumables used on repair tickets — they auto-decrement stock when a ticket is paid.
+      </p>
+      <div className="mt-5 flex items-center gap-3">
+        <Link
+          to="/inventory/new"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Add an item
+        </Link>
       </div>
     </div>
   );

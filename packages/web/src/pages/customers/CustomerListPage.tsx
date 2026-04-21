@@ -36,7 +36,7 @@ import {
   Tag,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customerApi, settingsApi } from '@/api/endpoints';
+import { customerApi, settingsApi, onboardingApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
@@ -684,7 +684,7 @@ export function CustomerListPage() {
         ) : isLoading ? (
           <LoadingSkeleton />
         ) : customers.length === 0 ? (
-          <EmptyState keyword={keyword} />
+          <EmptyState keyword={keyword} activeFilterCount={activeFilterCount} />
         ) : (
           <>
             <div className="overflow-auto flex-1 min-h-0">
@@ -945,21 +945,55 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
   );
 }
 
-function EmptyState({ keyword }: { keyword: string }) {
+function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFilterCount: number }) {
+  const queryClient = useQueryClient();
+  const hasFilters = Boolean(keyword) || activeFilterCount > 0;
+
+  const sampleMutation = useMutation({
+    mutationFn: () => onboardingApi.loadSampleData(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Sample customers loaded');
+    },
+    onError: () => {
+      toast.error('Failed to load sample data');
+    },
+  });
+
+  if (hasFilters) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Users className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
+        <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers found</h2>
+        <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
+          {keyword ? `No results matching "${keyword}"` : 'No customers match the active filters'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <Users className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
-      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
-        {keyword ? 'No customers found' : 'No customers yet'}
-      </h2>
-      <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
-        {keyword ? `No results matching "${keyword}"` : 'Add your first customer to get started'}
-      </p>
-      {!keyword && (
-        <Link to="/customers/new" className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors">
-          <Plus className="h-4 w-4" /> New Customer
+      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers yet</h2>
+      <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">Add your first customer to get started</p>
+      <div className="mt-4 flex items-center gap-3">
+        <Link
+          to="/customers/new"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Add your first customer
         </Link>
-      )}
+        <button
+          type="button"
+          onClick={() => sampleMutation.mutate()}
+          disabled={sampleMutation.isPending}
+          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          {sampleMutation.isPending ? 'Loading…' : 'Load 5 sample customers'}
+        </button>
+      </div>
     </div>
   );
 }

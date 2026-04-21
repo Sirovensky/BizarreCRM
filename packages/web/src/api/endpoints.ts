@@ -732,6 +732,8 @@ export interface OnboardingState {
   nudge_day7_seen: boolean;
   advanced_settings_unlocked: boolean;
   intro_video_dismissed: boolean;
+  /** ISO timestamp when the onboarding row was created (i.e. tenant sign-up date). */
+  created_at: string | null;
 }
 
 export type OnboardingPatchableFlag =

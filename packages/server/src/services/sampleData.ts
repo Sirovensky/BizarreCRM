@@ -40,7 +40,7 @@ const logger = createLogger('sampleData');
 export const SAMPLE_TAG = '[Sample]';
 
 /** Discriminated union of things we inserted. */
-export type SampleEntityType = 'customer' | 'ticket' | 'ticket_device' | 'invoice';
+export type SampleEntityType = 'customer' | 'ticket' | 'ticket_device' | 'invoice' | 'inventory_item';
 
 export interface SampleEntity {
   type: SampleEntityType;
@@ -57,6 +57,7 @@ export interface SampleDataResult {
     customers: number;
     tickets: number;
     invoices: number;
+    parts: number;
   };
 }
 
@@ -153,6 +154,20 @@ export async function loadSampleData(adb: AsyncDb): Promise<SampleDataResult> {
   const ticketIds: number[] = [];
 
   try {
+    // ── Inventory item (sample part for POS checkout tutorial) ──
+    const partResult = await adb.run(
+      `INSERT INTO inventory_items
+        (sku, name, item_type, cost_price, retail_price, in_stock)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      'SAMPLE-SCREEN-001',
+      `Screen assembly ${SAMPLE_TAG}`,
+      'part',
+      45,    // cost_price in dollars (schema uses REAL)
+      120,   // retail_price in dollars
+      10,
+    );
+    entities.push({ type: 'inventory_item', id: Number(partResult.lastInsertRowid) });
+
     // ── Customers ──
     for (const c of SEED_CUSTOMERS) {
       const result = await adb.run(
@@ -238,7 +253,7 @@ export async function loadSampleData(adb: AsyncDb): Promise<SampleDataResult> {
       entities.push({ type: 'invoice', id: Number(invResult.lastInsertRowid) });
     }
 
-    logger.info('Sample data loaded', { customers: customerIds.length, tickets: ticketIds.length, invoices: INVOICED_TICKET_INDEXES.length });
+    logger.info('Sample data loaded', { customers: customerIds.length, tickets: ticketIds.length, invoices: INVOICED_TICKET_INDEXES.length, parts: 1 });
 
     return {
       entities,
@@ -246,6 +261,7 @@ export async function loadSampleData(adb: AsyncDb): Promise<SampleDataResult> {
         customers: customerIds.length,
         tickets: ticketIds.length,
         invoices: INVOICED_TICKET_INDEXES.length,
+        parts: 1,
       },
     };
   } catch (err) {
@@ -274,15 +290,21 @@ export async function removeSampleDataByEntities(
   if (!entities.length) return 0;
 
   // Group by type for batch deletes.
+  const inventoryItemIds = entities.filter((e) => e.type === 'inventory_item').map((e) => e.id);
   const ticketIds = entities.filter((e) => e.type === 'ticket').map((e) => e.id);
   const invoiceIds = entities.filter((e) => e.type === 'invoice').map((e) => e.id);
   const customerIds = entities.filter((e) => e.type === 'customer').map((e) => e.id);
 
-  // ticket_devices and ticket_device_parts cascade via FK ON DELETE CASCADE
-  // when their parent ticket is removed — so we only need to delete the
-  // invoices (which point at the ticket), then the tickets themselves, then
-  // the customers. If the schema ever drops the cascade, revisit this.
+  // Deletion order:
+  //   1. inventory_items — no FK dependents in the sample set
+  //   2. invoices — removed before tickets to avoid FK violations
+  //   3. tickets — ticket_devices/parts cascade via ON DELETE CASCADE
+  //   4. customers
   const queries: TxQuery[] = [];
+  if (inventoryItemIds.length) {
+    const placeholders = inventoryItemIds.map(() => '?').join(',');
+    queries.push({ sql: `DELETE FROM inventory_items WHERE id IN (${placeholders})`, params: inventoryItemIds });
+  }
   if (invoiceIds.length) {
     const placeholders = invoiceIds.map(() => '?').join(',');
     queries.push({ sql: `DELETE FROM invoices WHERE id IN (${placeholders})`, params: invoiceIds });
@@ -300,6 +322,6 @@ export async function removeSampleDataByEntities(
 
   const results = await adb.transaction(queries);
   const totalChanges = results.reduce((acc, r) => acc + (r.changes ?? 0), 0);
-  logger.info('Sample data removed', { totalRows: totalChanges, invoices: invoiceIds.length, tickets: ticketIds.length, customers: customerIds.length });
+  logger.info('Sample data removed', { totalRows: totalChanges, inventoryItems: inventoryItemIds.length, invoices: invoiceIds.length, tickets: ticketIds.length, customers: customerIds.length });
   return totalChanges;
 }

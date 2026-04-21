@@ -163,7 +163,7 @@ interface CheckoutModalProps {
 
 export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const store = useUnifiedPosStore;
-  const { setShowSuccess } = useUnifiedPosStore();
+  const { setShowSuccess, meta, setMeta } = useUnifiedPosStore();
   const totals = useCheckoutTotals();
 
   const [method, setMethod] = useState<PaymentMethod>('Cash');
@@ -342,6 +342,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       );
       const res = await posApi.checkoutWithTicket(payload);
       setShowSuccess({ ...res.data.data, mode: 'checkout' });
+      // Advance the checkout tutorial when payment is completed.
+      window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       onClose();
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Checkout failed';
@@ -422,6 +424,21 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               </div>
             </div>
           )}
+
+          {/* Internal Notes */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+              Internal Notes
+            </label>
+            <textarea
+              data-tutorial-target="checkout:internal-note-textarea"
+              value={meta.internalNotes}
+              onChange={(e) => setMeta({ internalNotes: e.target.value })}
+              placeholder="e.g. Replaced digitizer, tested touch, full charge cycle done"
+              rows={2}
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+            />
+          </div>
 
           {/* Payment Method */}
           <div>
@@ -622,6 +639,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         {/* Footer */}
         <div className="border-t border-surface-200 px-6 py-4 dark:border-surface-700">
           <button
+            data-tutorial-target="checkout:complete-payment-button"
             onClick={handleCompleteCheckout}
             disabled={!canComplete}
             className={cn(

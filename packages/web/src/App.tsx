@@ -7,6 +7,7 @@ import { extractApiError } from './utils/apiError';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
+import { SpotlightCoach } from './components/onboarding/SpotlightCoach';
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -339,6 +340,10 @@ export default function App() {
           element={
             <ProtectedRoute>
               <AppShell>
+                {/* SpotlightCoach is mounted globally so it persists across
+                    page navigation. It reads the URL itself and renders
+                    conditionally only when ?tutorial=... is present. */}
+                <SpotlightCoach />
                 <PageErrorBoundary>
                 <Suspense fallback={<PageLoader />}>
                   <Routes>

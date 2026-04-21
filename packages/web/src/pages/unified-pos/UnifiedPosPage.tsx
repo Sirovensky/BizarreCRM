@@ -12,8 +12,63 @@ import { InactivityTimer } from './InactivityTimer';
 import { TopFiveTiles } from './TopFiveTiles';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
-import { ticketApi, customerApi, posApi } from '@/api/endpoints';
+import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { X } from 'lucide-react';
+
+// ─── DeviceTemplateNudge ──────────────────────────────────────────────────────
+
+const DEVICE_NUDGE_KEY = 'pos.device_template_nudge_dismissed';
+
+function DeviceTemplateNudge() {
+  const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(DEVICE_NUDGE_KEY) === '1',
+  );
+  const [searchParams] = useSearchParams();
+  const tutorialActive = Boolean(searchParams.get('tutorial'));
+
+  const { data } = useQuery({
+    queryKey: ['device-templates-count'],
+    queryFn: () => deviceTemplateApi.list({ active: true }),
+    staleTime: 60_000,
+    enabled: !dismissed && !tutorialActive,
+  });
+
+  const templates: unknown[] = (data?.data as { data?: unknown[] } | undefined)?.data ?? [];
+  const hasTemplates = templates.length > 0;
+
+  if (dismissed || tutorialActive || hasTemplates) return null;
+
+  const handleDismiss = () => {
+    localStorage.setItem(DEVICE_NUDGE_KEY, '1');
+    setDismissed(true);
+  };
+
+  return (
+    <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-700/50 dark:bg-amber-900/20">
+      <p className="flex-1 text-sm text-amber-800 dark:text-amber-200">
+        No device templates yet — create templates in Settings to speed up future repair tickets
+      </p>
+      <button
+        type="button"
+        onClick={() => navigate('/settings?tab=device-templates')}
+        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+      >
+        Go to templates
+      </button>
+      <button
+        type="button"
+        onClick={handleDismiss}
+        className="rounded-md p-1 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-800/40"
+        aria-label="Skip for now"
+        title="Skip for now"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 import { genId } from './types';
 import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 
@@ -234,6 +289,8 @@ export function UnifiedPosPage() {
 
     // Clear the URL param so refresh doesn't re-hydrate
     setSearchParams({}, { replace: true });
+    // Advance the checkout tutorial when a ticket is loaded into POS.
+    window.dispatchEvent(new CustomEvent('pos:cart-loaded'));
   }, [ticketParam, ticketData, resetAll, setCustomer, addRepair, setSearchParams, setSourceTicketId]);
 
   // Hydrate POS from ?customer= param (pre-select customer for new ticket)
@@ -273,6 +330,8 @@ export function UnifiedPosPage() {
 
   return (
     <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
+      {/* Phase D2: device template nudge — dismissed per-session via localStorage */}
+      <DeviceTemplateNudge />
       {/* Barcode scan flash indicator */}
       {scanFlash && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg animate-pulse">

@@ -305,6 +305,8 @@ export function BottomActions() {
       const payload = buildTicketPayload(signatureFile);
       const res = await posApi.checkoutWithTicket(payload);
       setShowSuccess({ ...res.data.data, mode: 'create_ticket' });
+      // Advance the ticket tutorial when a ticket is successfully saved.
+      window.dispatchEvent(new CustomEvent('pos:ticket-saved'));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to create ticket');
     } finally {
@@ -382,6 +384,7 @@ export function BottomActions() {
         </div>
         <div className="flex items-center gap-4">
           <button
+            data-tutorial-target="ticket:save-ticket-button"
             onClick={() => {
               if (requirePinTicket) { setPinAction('ticket'); return; }
               handleCreateTicketFlow();
@@ -398,6 +401,7 @@ export function BottomActions() {
             {creatingTicket ? 'Creating...' : 'Create Ticket'}
           </button>
           <button
+            data-tutorial-target="checkout:checkout-button"
             onClick={() => {
               if (!customer?.id && cartItems.some(i => i.type === 'repair')) {
                 toast.error('Please select or create a customer first');

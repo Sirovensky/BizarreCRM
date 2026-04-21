@@ -43,7 +43,7 @@ interface OnboardingStateResponse {
   checklist_dismissed: boolean;
   shop_type: ShopType | null;
   sample_data_loaded: boolean;
-  sample_data_counts: { customers: number; tickets: number; invoices: number } | null;
+  sample_data_counts: { customers: number; tickets: number; invoices: number; parts: number } | null;
   first_customer_at: string | null;
   first_ticket_at: string | null;
   first_invoice_at: string | null;
@@ -153,6 +153,7 @@ function rowToResponse(row: OnboardingRow): OnboardingStateResponse {
         customers: entities.filter((e) => e.type === 'customer').length,
         tickets: entities.filter((e) => e.type === 'ticket').length,
         invoices: entities.filter((e) => e.type === 'invoice').length,
+        parts: entities.filter((e) => e.type === 'inventory_item').length,
       }
     : null;
   return {
@@ -311,6 +312,17 @@ router.patch(
     audit(req.db, 'onboarding_state_patched', req.user?.id ?? null, req.ip || 'unknown', {
       fields: updates.map((u) => u.field),
     });
+
+    // F1: emit fine-grained audit events for specific flag transitions.
+    for (const u of updates) {
+      if (u.value === 1 && u.field === 'checklist_dismissed') {
+        audit(req.db, 'onboarding.checklist_dismissed', req.user?.id ?? null, req.ip || 'unknown', {});
+      } else if (u.value === 1 && (u.field === 'nudge_day3_seen' || u.field === 'nudge_day5_seen' || u.field === 'nudge_day7_seen')) {
+        const day = u.field === 'nudge_day3_seen' ? 3 : u.field === 'nudge_day5_seen' ? 5 : 7;
+        audit(req.db, 'onboarding.nudge_dismissed', req.user?.id ?? null, req.ip || 'unknown', { day });
+      }
+    }
+
     res.json({ success: true, data: rowToResponse(updated) });
   }),
 );
