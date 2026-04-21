@@ -3669,12 +3669,12 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 - [ ] Generic Shopify-style e-commerce — we're repair shop POS, not general retail.
 
 ### 65.3 Not storing
-- [ ] Customer data beyond tenant server (no third-party analytics, no crash-reporters with data egress).
-- [ ] Location data unless tech-dispatch opts in per-session.
-- [ ] Biometric raw data (system Keystore only).
+- [x] Customer data beyond tenant server (no third-party analytics, no crash-reporters with data egress).
+- [x] Location data unless tech-dispatch opts in per-session.
+- [x] Biometric raw data (system Keystore only).
 
 ### 65.4 Not supporting
-- [ ] Pre-Android-8 devices (minSdk 26 final).
+- [x] Pre-Android-8 devices (minSdk 26 final).
 - [ ] 32-bit-only devices (armv7 build dropped Phase 3).
 - [ ] Rooted devices for payment flows (Play Integrity reject).
 
@@ -3692,7 +3692,7 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 - [ ] Never block entire UI; allow cancel where meaningful.
 
 ### 66.3 Error
-- [ ] `ErrorState(title, message, retry)` Composable with retry button.
+- [x] `ErrorState(title, message, retry)` Composable with retry button.
 - [ ] Network errors: cached data still shown where possible + banner.
 - [ ] 4xx errors: user-friendly copy from server `message`.
 - [ ] 5xx errors: "Something went wrong on our end. We're looking into it." + retry.
