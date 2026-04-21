@@ -1496,12 +1496,12 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Empty state** — "All caught up. Nothing new." illustration.
 
 ### 13.2 Push pipeline
-- [ ] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
-- [ ] **Token refresh** on rotation.
-- [ ] **Unregister on logout** — `DELETE /device-tokens/:token`.
-- [ ] **Silent push** (`content-available: 1`) triggers background sync tick.
+- [x] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
+- [x] **Token refresh** on rotation.
+- [x] **Unregister on logout** — `DELETE /device-tokens/:token`.
+- [x] **Silent push** (`content-available: 1`) triggers background sync tick.
 - [ ] **Rich push** — thumbnail images via Notification Service Extension (customer avatar / ticket photo).
-- [ ] **Notification categories** registered on launch:
+- [x] **Notification categories** registered on launch:
   - `SMS_INBOUND` → Reply inline / Call / Open.
   - `TICKET_ASSIGNED` → Start work / Decline / Open.
   - `PAYMENT_RECEIVED` → View receipt / Thank customer.
@@ -1515,7 +1515,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic.
 
 ### 13.4 Badge count
-- [ ] App icon badge = unread count across inbox + notifications + SMS.
+- [x] App icon badge = unread count across inbox + notifications + SMS.
 
 ---
 ## §14. Employees & Timeclock
@@ -2781,27 +2781,27 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ## §21. Background, Push, & Real-Time
 
 ### 21.1 APNs registration
-- [ ] **Register** — `UIApplication.shared.registerForRemoteNotifications()` after auth + user opt-in.
-- [ ] **Upload token** — `POST /device-tokens { token, bundle_id, model, ios_version, app_version, locale }` with tenant-id header.
+- [x] **Register** — `UIApplication.shared.registerForRemoteNotifications()` after auth + user opt-in.
+- [x] **Upload token** — `POST /device-tokens { token, bundle_id, model, ios_version, app_version, locale }` with tenant-id header.
 - [ ] **Token rotation** — on APNs delegate rotation, POST new; old implicitly invalidated server-side after 30 days silence.
-- [ ] **Unregister on logout** — `DELETE /device-tokens/:id`.
-- [ ] **Permission prompt** — deferred until after first login (not on launch); rationale sheet before system prompt.
+- [x] **Unregister on logout** — `DELETE /device-tokens/:id`.
+- [x] **Permission prompt** — deferred until after first login (not on launch); rationale sheet before system prompt.
 
 ### 21.2 Push categories & actions
-- [ ] **`SMS_INBOUND`** — Reply / Mark read / Call customer.
-- [ ] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
-- [ ] **`TICKET_STATUS_CHANGED`** — Open.
-- [ ] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
+- [x] **`SMS_INBOUND`** — Reply / Mark read / Call customer.
+- [x] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
+- [x] **`TICKET_STATUS_CHANGED`** — Open.
+- [x] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
 - [ ] **`PAYMENT_FAILED`** — Open / Retry charge.
-- [ ] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
-- [ ] **`MENTION`** — Reply.
-- [ ] **`LOW_STOCK`** — Reorder / Dismiss.
-- [ ] **`SHIFT_SWAP_REQUEST`** — Accept / Decline.
+- [x] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
+- [x] **`MENTION`** — Reply.
+- [x] **`LOW_STOCK`** — Reorder / Dismiss.
+- [x] **`SHIFT_SWAP_REQUEST`** — Accept / Decline.
 - [ ] **Rich push** — thumbnail (customer avatar, ticket photo) via `UNNotificationAttachment`.
 
 ### 21.3 Silent push
-- [ ] **`content-available: 1`** triggers sync delta; no banner.
-- [ ] **Events** — new SMS / ticket update / invoice payment / server-initiated refresh.
+- [x] **`content-available: 1`** triggers sync delta; no banner.
+- [x] **Events** — new SMS / ticket update / invoice payment / server-initiated refresh.
 - [ ] **Coalescing** — debounce multi-events in a window; single sync.
 
 ### 21.4 Background tasks
@@ -2829,7 +2829,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ### 21.7 Real-time UX
 - [ ] **Pulse animation** on list row when item updates via WS.
 - [ ] **Toast** — top-of-screen glass "New message from X" with tap → thread.
-- [ ] **Badge sync** — unread counts propagate to tab bar + icon badge.
+- [x] **Badge sync** — unread counts propagate to tab bar + icon badge.
 
 ### 21.8 Deep-link routing from push
 - [ ] **`userActivity`** dispatcher — Notification → entity URL → `NavigationStack.append(...)`.
