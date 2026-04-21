@@ -236,3 +236,35 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
+
+// §32.1 — data-sovereignty Gradle guard rail.
+//
+// FCM is the only Firebase module we permit (opaque push transport). Any
+// other Firebase dependency pulls in Google-side telemetry we explicitly
+// do not want (Crashlytics / Analytics / Performance / Remote Config /
+// App Check). Fail the build loudly if a rogue module slips in, so a
+// future dependency-upgrade script can't silently widen our egress.
+val forbiddenFirebaseModules = setOf(
+    "firebase-crashlytics",
+    "firebase-crashlytics-ktx",
+    "firebase-crashlytics-ndk",
+    "firebase-analytics",
+    "firebase-analytics-ktx",
+    "firebase-perf",
+    "firebase-perf-ktx",
+    "firebase-config",
+    "firebase-config-ktx",
+    "firebase-appcheck",
+    "firebase-appcheck-playintegrity",
+)
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "com.google.firebase" && requested.name in forbiddenFirebaseModules) {
+            throw GradleException(
+                "§32.1 violation — ${requested.group}:${requested.name} is banned. " +
+                "Only firebase-messaging is permitted (opaque push transport). " +
+                "Remove the dependency or add an explicit exception here.",
+            )
+        }
+    }
+}

@@ -2698,7 +2698,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 32.1 No third-party telemetry
 - [x] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
 - [~] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`.
-- [ ] Gradle dependency allowlist enforced by custom plugin.
+- [x] Gradle dependency allowlist enforced by custom plugin.
 
 ### 32.2 Tenant-server telemetry
 - [ ] `TelemetryClient` (Hilt, singleton) batches events → `POST /telemetry/events`.
