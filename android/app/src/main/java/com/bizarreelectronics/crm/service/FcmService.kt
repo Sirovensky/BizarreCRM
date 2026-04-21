@@ -29,6 +29,7 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var authPreferences: AuthPreferences
     @Inject lateinit var authApi: AuthApi
     @Inject lateinit var quietHours: com.bizarreelectronics.crm.util.QuietHours
+    @Inject lateinit var breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -79,6 +80,10 @@ class FcmService : FirebaseMessagingService() {
         super.onMessageReceived(message)
 
         val type = message.data["type"] ?: "system"
+        breadcrumbs.log(
+            com.bizarreelectronics.crm.util.Breadcrumbs.CAT_PUSH,
+            "type=$type entity=${message.data["entity_type"]} id=${message.data["entity_id"]}",
+        )
 
         // §13.2 / §21.3 — silent push: kick a one-shot delta sync via
         // WorkManager and skip posting any notification. The server uses

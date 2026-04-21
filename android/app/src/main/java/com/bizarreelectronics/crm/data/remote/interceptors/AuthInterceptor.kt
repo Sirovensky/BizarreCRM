@@ -38,7 +38,8 @@ import javax.net.ssl.X509TrustManager
 @Singleton
 class AuthInterceptor @Inject constructor(
     private val authPrefs: AuthPreferences,
-    private val gson: Gson
+    private val gson: Gson,
+    private val breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs? = null,
 ) : Interceptor {
 
     companion object {
@@ -251,6 +252,9 @@ class AuthInterceptor @Inject constructor(
         // login screen can show the "you've been signed out" banner instead
         // of treating it like an explicit user logout.
         authPrefs.clear(com.bizarreelectronics.crm.data.local.prefs.AuthPreferences.ClearReason.RefreshFailed)
+        // §32.5 — leave a breadcrumb so the next crash report shows the
+        // refresh-failed wipe in the user's path. Cheap; no PII (no token).
+        runCatching { breadcrumbs?.log(com.bizarreelectronics.crm.util.Breadcrumbs.CAT_AUTH, "refresh-failed wipe") }
     }
 
     // AUDIT-AND-015: LAN-host predicate — mirrors RetrofitClient.isDebugTrustedHost.

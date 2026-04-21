@@ -86,6 +86,7 @@ class SyncManager @Inject constructor(
     private val leadRepository: LeadRepository,
     private val estimateRepository: EstimateRepository,
     private val expenseRepository: ExpenseRepository,
+    private val breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -144,8 +145,13 @@ class SyncManager @Inject constructor(
                 appPreferences.lastFullSyncAt = java.time.Instant.now().toString().take(19).replace("T", " ")
             }
             Log.d(TAG, "Sync completed")
+            breadcrumbs.log(com.bizarreelectronics.crm.util.Breadcrumbs.CAT_SYNC, "completed")
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed [${e.javaClass.simpleName}]: ${e.message}")
+            breadcrumbs.log(
+                com.bizarreelectronics.crm.util.Breadcrumbs.CAT_SYNC,
+                "failed [${e.javaClass.simpleName}] ${e.message?.take(120)}",
+            )
         } finally {
             _isSyncing.value = false
             isSyncingGuard.set(false)
