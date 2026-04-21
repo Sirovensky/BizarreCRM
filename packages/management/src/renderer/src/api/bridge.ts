@@ -318,6 +318,11 @@ interface ElectronAPI {
       }>;
       summary: { total: number; byEvent: Array<{ event: string; count: number }> };
     }>>;
+    /** Operator-triggered retry of a single dead-lettered webhook delivery. */
+    retryTenantWebhookFailure(params: { slug: string; id: number }): Promise<ApiResponse<
+      | { ok: true; status: number | null }
+      | { ok: false; status: number | null; error: string; attempts: number }
+    >>;
     /** Per-tenant automation execution history. */
     listTenantAutomationRuns(params: { slug: string; status?: string; automationId?: number; limit?: number }): Promise<ApiResponse<{
       rows: Array<{

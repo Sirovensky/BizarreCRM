@@ -1727,6 +1727,44 @@ router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
   });
 });
 
+// POST retry on a single dead-lettered webhook delivery. Deletes the row on
+// success, bumps attempts + updates last_error on failure. Step-up TOTP gated
+// because the request can re-fire a payload that may contain customer PII to
+// the configured downstream URL — same threat model as the initial delivery.
+router.post(
+  '/tenants/:slug/webhook-failures/:id/retry',
+  requireStepUpTotpSuperAdmin('super_admin_webhook_retry'),
+  async (req: Request, res: Response) => {
+    const slug = String(req.params.slug);
+    if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+      return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
+    }
+    const failureId = parseInt(String(req.params.id), 10);
+    if (!failureId || isNaN(failureId)) {
+      return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid failure id' });
+    }
+    const masterDb = getMasterDb()!;
+    const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
+    if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
+
+    let tdb: import('better-sqlite3').Database;
+    try { tdb = getTenantDb(slug); }
+    catch (err) {
+      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+    }
+    const { retryDeliveryFailure } = await import('../services/webhooks.js');
+    const result = await retryDeliveryFailure(tdb, failureId);
+    auditLog('webhook_retry', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      tenant_slug: slug,
+      failure_id: failureId,
+      ok: result.ok,
+      status: result.status,
+      ...(result.ok ? {} : { attempts: result.attempts, error: result.error }),
+    });
+    res.json({ success: true, data: result });
+  }
+);
+
 // ─── Automation Run Log (per-tenant automation execution history) ─
 
 router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {

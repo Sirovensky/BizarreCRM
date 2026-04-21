@@ -491,3 +491,91 @@ export function fireWebhook(
     }
   })();
 }
+
+/**
+ * Operator-triggered retry of a single dead-lettered webhook delivery. Reads
+ * the failure row, reconstructs the signature against the ORIGINAL payload
+ * timestamp (so replay-window-enforcing receivers still accept it), makes a
+ * single POST attempt, and either deletes the row on success or bumps the
+ * attempt counter + last_error/last_status on failure.
+ *
+ * Only does one attempt — the operator knows they want to retry now, so the
+ * multi-attempt exponential backoff of the original pipeline would just
+ * make the dashboard feel unresponsive. For a repeated transient failure
+ * the row stays in place and can be retried again.
+ */
+export async function retryDeliveryFailure(
+  db: any,
+  failureId: number,
+): Promise<{ ok: true; status: number | null } | { ok: false; status: number | null; error: string; attempts: number }> {
+  const row = db
+    .prepare(
+      'SELECT id, endpoint, event, payload, attempts FROM webhook_delivery_failures WHERE id = ?',
+    )
+    .get(failureId) as
+    | { id: number; endpoint: string; event: string; payload: string; attempts: number }
+    | undefined;
+
+  if (!row) {
+    return { ok: false, status: null, error: 'Failure row not found', attempts: 0 };
+  }
+
+  // Payload stored in DB is the JSON-serialised WebhookPayload (including the
+  // original `timestamp` field). Reuse that timestamp so signature matches
+  // anything a receiver cached at original delivery time.
+  let timestamp: string;
+  try {
+    const parsed = JSON.parse(row.payload) as { timestamp?: string };
+    if (typeof parsed.timestamp !== 'string') {
+      return { ok: false, status: null, error: 'Stored payload missing timestamp', attempts: row.attempts };
+    }
+    timestamp = parsed.timestamp;
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      error: 'Stored payload is not valid JSON',
+      attempts: row.attempts,
+    };
+  }
+
+  const secret = getOrCreateWebhookSecret(db);
+  const signedInput = `${timestamp}.${row.payload}`;
+  const signature = crypto.createHmac('sha256', secret).update(signedInput).digest('hex');
+
+  const result = await attemptDelivery(row.endpoint, row.payload, signature, timestamp);
+  const newAttempts = row.attempts + 1;
+
+  if (result.ok) {
+    db.prepare('DELETE FROM webhook_delivery_failures WHERE id = ?').run(failureId);
+    logger.info('Webhook retry succeeded — row removed from dead-letter queue', {
+      failureId,
+      event: row.event,
+      endpoint: row.endpoint,
+      attempts: newAttempts,
+      status: result.status,
+    });
+    return { ok: true, status: result.status };
+  }
+
+  // Bump attempts + persist last error so the dashboard shows fresh context.
+  db.prepare(
+    'UPDATE webhook_delivery_failures SET attempts = ?, last_error = ?, last_status = ? WHERE id = ?',
+  ).run(newAttempts, result.error ?? null, result.status ?? null, failureId);
+
+  logger.warn('Webhook retry failed — row still in dead-letter queue', {
+    failureId,
+    event: row.event,
+    endpoint: row.endpoint,
+    attempts: newAttempts,
+    status: result.status,
+    error: result.error,
+  });
+
+  return {
+    ok: false,
+    status: result.status,
+    error: result.error ?? 'Delivery failed',
+    attempts: newAttempts,
+  };
+}

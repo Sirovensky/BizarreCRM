@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, ExternalLink, Filter, Download } from 'lucide-react';
+import { RefreshCw, AlertCircle, ExternalLink, Filter, Download, Repeat2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
@@ -36,6 +36,39 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
   const [eventFilter, setEventFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+
+  async function handleRetry(id: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setRetryingId(id);
+    try {
+      const res = await getAPI().superAdmin.retryTenantWebhookFailure({ slug, id });
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        const data = res.data;
+        if (data.ok) {
+          toast.success(`Retry succeeded (HTTP ${data.status ?? '2xx'}) — row removed`);
+          setRows((prev) => prev.filter((r) => r.id !== id));
+        } else {
+          toast.error(`Retry failed: ${data.error} (HTTP ${data.status ?? 'network'})`);
+          // Bump local attempts + last_error so UI reflects server-side state.
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === id
+                ? { ...r, attempts: data.attempts, last_error: data.error, last_status: data.status }
+                : r
+            )
+          );
+        }
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Retry request failed');
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   const refresh = useCallback(async () => {
     if (!slug) return;
@@ -139,9 +172,12 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
             const isOpen = expanded === r.id;
             return (
               <div key={r.id} className="rounded border border-surface-800 bg-surface-900/50">
-                <button
+                <div
                   onClick={() => setExpanded(isOpen ? null : r.id)}
-                  className="w-full flex items-center justify-between gap-2 p-2.5 text-left hover:bg-surface-800/30 transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(isOpen ? null : r.id); }}
+                  className="w-full flex items-center justify-between gap-2 p-2.5 text-left hover:bg-surface-800/30 transition-colors cursor-pointer"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -161,8 +197,19 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
                       </div>
                     )}
                   </div>
-                  <span className="text-[10px] text-surface-500 whitespace-nowrap">{formatDateTime(r.created_at)}</span>
-                </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[10px] text-surface-500 whitespace-nowrap">{formatDateTime(r.created_at)}</span>
+                    <button
+                      onClick={(e) => handleRetry(r.id, e)}
+                      disabled={retryingId === r.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-sky-300 bg-sky-950/40 border border-sky-900/60 rounded hover:bg-sky-950/60 disabled:opacity-50 transition-colors"
+                      title="Re-fire this webhook once. On success, row is removed from the dead-letter queue."
+                    >
+                      <Repeat2 className={`w-3 h-3 ${retryingId === r.id ? 'animate-spin' : ''}`} />
+                      {retryingId === r.id ? 'Retrying…' : 'Retry'}
+                    </button>
+                  </div>
+                </div>
                 {isOpen && r.last_error && (
                   <div className="px-3 pb-3">
                     <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{r.last_error}</pre>

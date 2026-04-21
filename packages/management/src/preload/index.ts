@@ -72,6 +72,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:list-tenant-auth-events',
   'super-admin:list-tenant-notifications',
   'super-admin:list-tenant-webhook-failures',
+  'super-admin:retry-tenant-webhook-failure',
   'super-admin:list-tenant-automation-runs',
   // admin:* (backup)
   'admin:get-status',
@@ -192,6 +193,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       safeInvoke('super-admin:list-tenant-notifications', params),
     listTenantWebhookFailures: (params: { slug: string; event?: string; limit?: number }) =>
       safeInvoke('super-admin:list-tenant-webhook-failures', params),
+    retryTenantWebhookFailure: (params: { slug: string; id: number }) =>
+      safeInvoke('super-admin:retry-tenant-webhook-failure', params),
     listTenantAutomationRuns: (params: { slug: string; status?: string; automationId?: number; limit?: number }) =>
       safeInvoke('super-admin:list-tenant-automation-runs', params),
   },

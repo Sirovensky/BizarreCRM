@@ -239,6 +239,11 @@ const SchemaTenantWebhookFailuresQuery = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 }).strict();
 
+const SchemaTenantWebhookRetry = z.object({
+  slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  id: z.number().int().positive(),
+}).strict();
+
 const SchemaTenantAutomationRunsQuery = z.object({
   slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
   status: z.enum(['success', 'failure', 'skipped', 'loop_rejected']).optional(),
@@ -1182,6 +1187,19 @@ export function registerManagementIpc(): void {
     const res = await apiRequest(
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/webhook-failures${qs ? '?' + qs : ''}`
+    );
+    return res.body;
+  }));
+
+  ipcMain.handle('super-admin:retry-tenant-webhook-failure', wrapHandler(async (event, params: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantWebhookRetry.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
+    }
+    const res = await apiRequest(
+      'POST',
+      `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/webhook-failures/${parsed.data.id}/retry`
     );
     return res.body;
   }));
