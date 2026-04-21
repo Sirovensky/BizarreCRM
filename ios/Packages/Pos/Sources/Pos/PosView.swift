@@ -6,12 +6,7 @@ import Networking
 import Inventory
 import Customers
 
-/// Point-of-Sale root screen. iPhone: single stacked column with the cart
-/// on top and the item picker under. iPad / Mac: balanced split view with
-/// the picker on the leading side and the cart on the trailing side.
-///
-/// §40 — "Gift card & store credit" opens from the toolbar.
-/// §41 — "Send payment link" opens from the toolbar.
+/// POS root screen. §16.4 wires the customer attach flow.
 public struct PosView: View {
     @State private var cart = Cart()
     @State private var search: PosSearchViewModel
@@ -20,18 +15,10 @@ public struct PosView: View {
     @State private var editQuantityFor: CartItem?
     @State private var editPriceFor: CartItem?
     @State private var showingCartSheet: Bool = false
-    /// §40 — when true, the Gift card / store credit sheet is presented.
-    @State private var showingGiftCardSheet: Bool = false
-    /// §41 — when true, the Send-payment-link sheet is presented.
-    @State private var showingPaymentLink: Bool = false
+    @State private var showingCustomerPicker: Bool = false
+    @State private var showingCreateCustomer: Bool = false
 
-    /// Optional — only non-nil when the host wires a real network stack.
-    /// The gift-card / payment-link sheets need an `APIClient`. When nil,
-    /// both toolbar entries are disabled so preview / no-net builds still
-    /// compile.
     private let api: APIClient?
-    /// Optional customer repository — reserved for the customer-pick
-    /// wiring on this screen.
     private let customerRepo: CustomerRepository?
 
     public init(
@@ -50,17 +37,11 @@ public struct PosView: View {
 
     public var body: some View {
         Group {
-            if Platform.isCompact {
-                compactLayout
-            } else {
-                regularLayout
-            }
+            if Platform.isCompact { compactLayout } else { regularLayout }
         }
         .task { await search.load() }
         .sheet(isPresented: $showingCustomLine) {
-            PosCustomLineSheet { item in
-                cart.add(item)
-            }
+            PosCustomLineSheet { item in cart.add(item) }
         }
         .sheet(isPresented: $showingCharge) {
             PosChargePlaceholderSheet(totalCents: cart.totalCents)
@@ -76,15 +57,48 @@ public struct PosView: View {
                 cart.update(id: item.id, unitPriceCents: newCents)
             }
         }
+        .sheet(isPresented: $showingCustomerPicker) {
+            if let customerRepo {
+                PosCustomerPickerSheet(
+                    repo: customerRepo,
+                    onPick: { picked in
+                        cart.attach(customer: picked)
+                        BrandHaptics.success()
+                    },
+                    onCreateNew: api == nil ? nil : { showingCreateCustomer = true }
+                )
+            } else {
+                PosCustomerPickerUnavailable { showingCustomerPicker = false }
+            }
+        }
+        .sheet(isPresented: $showingCreateCustomer) {
+            if let api {
+                CustomerCreateView(api: api) { id, vm in
+                    let attached = PosCustomerNameFormatter.attachPayload(
+                        id: id,
+                        firstName: vm.firstName,
+                        lastName: vm.lastName,
+                        email: vm.email,
+                        phone: vm.phone,
+                        mobile: vm.mobile,
+                        organization: vm.organization
+                    )
+                    cart.attach(customer: attached)
+                    BrandHaptics.success()
+                }
+            }
+        }
         .sheet(isPresented: $showingCartSheet) {
             NavigationStack {
                 PosCartPanel(
                     cart: cart,
-                    onCharge: {
-                        showingCartSheet = false
-                        startCharge()
-                    },
+                    onCharge: { showingCartSheet = false; startCharge() },
                     onOpenDrawer: openDrawer,
+                    onChangeCustomer: customerRepo == nil ? nil : {
+                        showingCartSheet = false
+                        showingCustomerPicker = true
+                    },
+                    onRemoveCustomer: { cart.detachCustomer() },
                     editQuantityFor: $editQuantityFor,
                     editPriceFor: $editPriceFor
                 )
@@ -96,8 +110,7 @@ public struct PosView: View {
                     }
                     ToolbarItem(placement: .destructiveAction) {
                         Button(role: .destructive) {
-                            cart.clear()
-                            showingCartSheet = false
+                            cart.clear(); showingCartSheet = false
                         } label: {
                             Label("Clear", systemImage: "trash")
                         }
@@ -108,34 +121,7 @@ public struct PosView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showingGiftCardSheet) {
-            if let api {
-                PosGiftCardSheet(cart: cart, api: api)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
-        }
-        .sheet(isPresented: $showingPaymentLink) {
-            if let api {
-                PosPaymentLinkSheet(
-                    api: api,
-                    amountCents: cart.totalCents,
-                    customerEmail: cart.customer?.email ?? "",
-                    customerPhone: cart.customer?.phone ?? "",
-                    customerId: cart.customer?.id,
-                    onLinkCreated: { link in
-                        cart.markPendingPaymentLink(id: link.id, token: link.shortId ?? "")
-                    },
-                    onPaid: { _ in
-                        cart.clearPendingPaymentLink()
-                        cart.clear()
-                    }
-                )
-            }
-        }
     }
-
-    // MARK: - iPhone (compact)
 
     private var compactLayout: some View {
         NavigationStack {
@@ -145,8 +131,8 @@ public struct PosView: View {
                 onAddCustom: { showingCustomLine = true },
                 showsCustomerCTAs: !cart.hasCustomer,
                 onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
-                onCreateCustomer: nil,
-                onFindCustomer: nil
+                onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
+                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
             )
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
@@ -156,6 +142,7 @@ public struct PosView: View {
                     CartPill(
                         itemCount: cart.items.reduce(0) { $0 + $1.quantity },
                         totalCents: cart.totalCents,
+                        customer: cart.customer,
                         onExpand: { showingCartSheet = true }
                     )
                     .padding(.horizontal, BrandSpacing.base)
@@ -165,8 +152,6 @@ public struct PosView: View {
         }
     }
 
-    // MARK: - iPad (regular)
-
     private var regularLayout: some View {
         NavigationSplitView {
             PosSearchPanel(
@@ -175,8 +160,8 @@ public struct PosView: View {
                 onAddCustom: { showingCustomLine = true },
                 showsCustomerCTAs: !cart.hasCustomer,
                 onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
-                onCreateCustomer: nil,
-                onFindCustomer: nil
+                onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
+                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
             )
             .navigationTitle("Items")
             .navigationSplitViewColumnWidth(min: 320, ideal: 420, max: 540)
@@ -186,6 +171,8 @@ public struct PosView: View {
                     cart: cart,
                     onCharge: startCharge,
                     onOpenDrawer: openDrawer,
+                    onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                    onRemoveCustomer: { cart.detachCustomer() },
                     editQuantityFor: $editQuantityFor,
                     editPriceFor: $editPriceFor
                 )
@@ -197,44 +184,15 @@ public struct PosView: View {
         .navigationSplitViewStyle(.balanced)
     }
 
-    // MARK: - Shared toolbar
-
     private var posToolbar: some ToolbarContent {
         Group {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingCustomLine = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .keyboardShortcut("N", modifiers: .command)
-                .accessibilityLabel("Add custom line")
-            }
-            // §40 — gift card / store credit.
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingGiftCardSheet = true
-                } label: {
-                    Label("Gift card / credit", systemImage: "giftcard")
-                }
-                .disabled(api == nil || cart.isEmpty)
-                .accessibilityIdentifier("pos.toolbar.giftCard")
-            }
-            // §41 — send payment link. Disabled when total is zero or no
-            // API client is wired (previews / no-net builds).
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingPaymentLink = true
-                } label: {
-                    Label("Send payment link", systemImage: "link.badge.plus")
-                }
-                .disabled(api == nil || cart.totalCents == 0)
-                .accessibilityIdentifier("pos.toolbar.paymentLink")
+                Button { showingCustomLine = true } label: { Image(systemName: "plus") }
+                    .keyboardShortcut("N", modifiers: .command)
+                    .accessibilityLabel("Add custom line")
             }
             ToolbarItem(placement: .secondaryAction) {
-                Button(role: .destructive) {
-                    cart.clear()
-                } label: {
+                Button(role: .destructive) { cart.clear() } label: {
                     Label("Clear cart", systemImage: "trash")
                 }
                 .keyboardShortcut(.delete, modifiers: [.command, .shift])
@@ -243,8 +201,6 @@ public struct PosView: View {
             }
         }
     }
-
-    // MARK: - Actions
 
     private func pick(_ item: Networking.InventoryListItem) {
         let line = PosCartMapper.cartItem(from: item)
@@ -258,20 +214,18 @@ public struct PosView: View {
         showingCharge = true
     }
 
-    private func openDrawer() {
-        // Stub: §17.4 pulses the MFi printer kick opcode.
-    }
+    private func openDrawer() { /* §17.4 stub */ }
 }
 
-/// Compact cart pill anchored to the bottom-safe-area on iPhone.
 private struct CartPill: View {
     let itemCount: Int
     let totalCents: Int
+    let customer: PosCustomer?
     let onExpand: () -> Void
 
     var body: some View {
         Button(action: onExpand) {
-            HStack(spacing: BrandSpacing.md) {
+            HStack(spacing: BrandSpacing.sm) {
                 HStack(spacing: BrandSpacing.xs) {
                     Image(systemName: "cart.fill")
                         .foregroundStyle(.bizarreOnOrange)
@@ -284,6 +238,8 @@ private struct CartPill: View {
                 .padding(.horizontal, BrandSpacing.sm)
                 .padding(.vertical, BrandSpacing.xxs)
                 .background(Color.bizarreOrange, in: Capsule())
+
+                if let customer { CartPillCustomerChip(customer: customer) }
 
                 Spacer(minLength: 0)
 
@@ -306,17 +262,21 @@ private struct CartPill: View {
             .padding(.vertical, BrandSpacing.sm)
             .frame(maxWidth: .infinity)
             .background(Color.bizarreSurface1.opacity(0.95), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-            )
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
             .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(itemCount) \(itemCount == 1 ? "item" : "items") in cart. Total \(Self.format(cents: totalCents)).")
+        .accessibilityLabel(accessibilityText)
         .accessibilityHint("Double tap to review and charge.")
         .accessibilityIdentifier("pos.cartPill")
+    }
+
+    private var accessibilityText: String {
+        let items = "\(itemCount) \(itemCount == 1 ? "item" : "items")"
+        let total = "Total \(Self.format(cents: totalCents))"
+        if let customer { return "\(items), customer \(customer.displayName). \(total)." }
+        return "\(items) in cart. \(total)."
     }
 
     static func format(cents: Int) -> String {
@@ -327,21 +287,43 @@ private struct CartPill: View {
     }
 }
 
-#Preview("iPhone") {
-    PosView()
-        .preferredColorScheme(.dark)
-}
+private struct CartPillCustomerChip: View {
+    let customer: PosCustomer
 
-#Preview("iPad") {
-    PosView()
-        .preferredColorScheme(.dark)
-        .previewInterfaceOrientation(.landscapeLeft)
-}
+    var body: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            ZStack {
+                Circle().fill(Color.bizarreOrangeContainer)
+                if customer.isWalkIn {
+                    Image(systemName: "person.fill.questionmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.bizarreOnOrange)
+                } else {
+                    Text(customer.initials)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnOrange)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .accessibilityHidden(true)
 
-/// Null-object repository used for previews / no-network builds.
-private struct PosDisabledRepository: InventoryRepository {
-    func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] {
-        []
+            Text(customer.isWalkIn ? "Walk-in" : customer.displayName)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(Color.bizarreSurface2.opacity(0.8), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+        .accessibilityIdentifier("pos.cartPill.customerChip")
     }
+}
+
+#Preview("iPhone") { PosView().preferredColorScheme(.dark) }
+#Preview("iPad") { PosView().preferredColorScheme(.dark).previewInterfaceOrientation(.landscapeLeft) }
+
+private struct PosDisabledRepository: InventoryRepository {
+    func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
 }
 #endif

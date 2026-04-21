@@ -3,10 +3,6 @@ import Observation
 import Core
 import Networking
 
-/// Sentinel id returned by `CustomerCreateViewModel` when the create was
-/// queued for offline sync instead of persisted server-side. Callers that
-/// navigate immediately to detail should not use this id — it will resolve
-/// to a real server id once the drain loop succeeds.
 public let PendingSyncCustomerId: Int64 = -1
 
 @MainActor
@@ -107,7 +103,23 @@ public struct CustomerCreateView: View {
     @State private var vm: CustomerCreateViewModel
     @State private var pendingBanner: String?
 
-    public init(api: APIClient) { _vm = State(wrappedValue: CustomerCreateViewModel(api: api)) }
+    /// Optional hook fired before dismiss after a successful create.
+    /// §16.4 POS cart attach uses this to attach the new customer
+    /// without re-querying.
+    private let onCreated: ((Int64, CustomerCreateViewModel) -> Void)?
+
+    public init(api: APIClient) {
+        _vm = State(wrappedValue: CustomerCreateViewModel(api: api))
+        self.onCreated = nil
+    }
+
+    public init(
+        api: APIClient,
+        onCreated: @escaping (Int64, CustomerCreateViewModel) -> Void
+    ) {
+        _vm = State(wrappedValue: CustomerCreateViewModel(api: api))
+        self.onCreated = onCreated
+    }
 
     public var body: some View {
         NavigationStack {
@@ -137,9 +149,11 @@ public struct CustomerCreateView: View {
                             await vm.submit()
                             if vm.queuedOffline {
                                 pendingBanner = "Saved — will sync when online"
+                                if let id = vm.createdId { onCreated?(id, vm) }
                                 try? await Task.sleep(nanoseconds: 900_000_000)
                                 dismiss()
-                            } else if vm.createdId != nil {
+                            } else if let id = vm.createdId {
+                                onCreated?(id, vm)
                                 dismiss()
                             }
                         }
@@ -158,8 +172,6 @@ public struct CustomerCreateView: View {
     }
 }
 
-/// Small glass banner for "Saved — will sync" — chrome only, per the
-/// Liquid-Glass rule (not a row or card).
 struct PendingSyncBanner: View {
     let text: String
 
