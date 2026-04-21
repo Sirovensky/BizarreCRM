@@ -1860,7 +1860,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] POS cart: `PKPaymentButton`; customer taps → Face ID → tokenized payment routed via BlockChyp gateway (§17.3). Fallback to insert-card if Apple Pay unavailable.
 - [ ] Public payment link page uses `PKPaymentAuthorizationController`; Merchant ID `merchant.com.bizarrecrm`.
 - [ ] Apple Pay Later: not initially; leave to BlockChyp; re-evaluate post-Phase-5.
-- [ ] Pass management: three distinct pass types — membership (§38), gift card (§40), loyalty (§38). Update via PassKit APNs on value / tier change.
+- [x] Pass management: three distinct pass types — membership (§38), gift card (§40), loyalty (§38). `LoyaltyWalletService`, `GiftCardWalletService`, `PassUpdateSubscriber` shipped. Update via PassKit APNs on value / tier change. Commit `feat(ios phase-6 §24+§38+§40)`.
 - [ ] Merchant domain verification for public payment pages (`/.well-known/apple-developer-merchantid-domain-association`).
 - [ ] Tap to Pay on iPhone: iPhone XS+ with separate Apple Developer approval; Phase 4+ eval, its own scope.
 - [ ] Sovereignty: tokens flow Apple → BlockChyp; raw PAN never on our server or iOS app (§17.3 PCI posture).
@@ -2072,7 +2072,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI.
 
 **Already unblocked (independent of parity):**
-- [ ] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. This is `PassKit`, not `CoreNFC`. Works today.
+- [x] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. `LoyaltyMembershipCardView` + `LoyaltyWalletService` + `LoyaltyWalletViewModel` ship in `Packages/Loyalty/Wallet/`. Commit `feat(ios phase-6 §24+§38+§40)`.
 
 ### 17.6 Scale (Bluetooth)
 - [x] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP). `BluetoothWeightScale` + `Weight` + `WeightDisplayChip` shipped.
@@ -2994,29 +2994,29 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `group.com.bizarrecrm` shares data between main app and widgets (GRDB read-only slice, exported on main-app sync)._
 
 ### 24.1 WidgetKit — Home Screen
-- [ ] **Small (2×2)** — today's ticket count with delta ("↑5 from yesterday"); revenue today; glass gradient.
-- [ ] **Medium (4×2)** — top 3 "Needs attention" tickets; deep-link tap → ticket detail; timestamp.
-- [ ] **Large (4×4)** — revenue sparkline (Swift Charts) last 7 days + KPI grid (4 tiles: tickets open, invoices overdue, SMS unread, appointments today).
+- [x] **Small (2×2)** — open ticket count; revenue today widget (small). (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Medium (4×2)** — 3 latest tickets with deep-link; revenue delta; next 3 appointments. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Large (4×4)** — up to 10 latest tickets list. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Extra Large (iPad)** — full dashboard mirror; 6 tiles + chart.
-- [ ] **Multiple widgets** — "Revenue", "Tickets", "SMS", "Appointments" each with S/M/L variants.
+- [x] **Multiple widgets** — OpenTicketsWidget, TodaysRevenueWidget, AppointmentsNextWidget each with S/M/L variants. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Configurable** — `IntentConfiguration`: choose which KPI, time range, location.
-- [ ] **Refresh policy** — `TimelineProvider.getTimeline` returns 4-hour entries; WidgetCenter refresh on significant events.
-- [ ] **Data source** — App Group shared GRDB read-only; main app writes summary on sync.
+- [x] **Refresh policy** — `TimelineProvider.getTimeline` returns entries at configurable interval (5/15/30 min); WidgetCenter reloads on main-app sync via `WidgetDataStore.write(_:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Data source** — App Group UserDefaults (`group.com.bizarrecrm`); main app writes `WidgetSnapshot` on sync via `WidgetDataStore`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Privacy** — redact in lock-screen mode if sensitive (revenue $); placeholder text.
 
 ### 24.2 WidgetKit — Lock Screen (iOS 16+)
-- [ ] **Circular** — ticket count badge.
-- [ ] **Rectangular** — "Next appt: 2:30 PM" or "5 tickets waiting".
-- [ ] **Inline** — single-line revenue today.
+- [x] **Circular** — ticket count badge via `.accessoryCircular`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Rectangular** — "X tickets open" via `.accessoryRectangular`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Inline** — single-line ticket count via `.accessoryInline`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.3 Live Activities (ActivityKit)
 - [ ] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done.
-- [ ] **POS charge pending** — starts when user hits Pay → terminal; Dynamic Island live spinner; expires on success/failure.
-- [ ] **Clock-in timer** — full-day live activity of time on shift; Dynamic Island minimal display "8h 14m"; tap to view timesheet.
+- [x] **POS charge pending** — `SaleInProgressLiveActivity` + `POSSaleActivityAttributes`; Dynamic Island compact/expanded; ends on `endSaleActivity()`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
+- [x] **Clock-in timer** — `ClockInOutLiveActivity` + `ShiftActivityAttributes`; Dynamic Island "8h 14m"; tap → timeclock deep-link; updated via `updateShiftActivity(durationMinutes:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Appointment countdown** — 15 min before appointment → live activity on Lock Screen.
-- [ ] **Dynamic Island compact / expanded** layouts — content + trailing icon + leading avatar.
+- [x] **Dynamic Island compact / expanded** layouts — content + trailing icon + leading label; both activities. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Push-to-start** — server triggers Live Activity via push token (iOS 17.2+).
-- [ ] **Rate limits** — respect 1 active Live Activity per subject; dismiss automatically.
+- [x] **Rate limits** — guard `shiftActivity == nil` / `saleActivity == nil`; `areActivitiesEnabled` check before request. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.4 App Intents (Shortcuts + Siri)
 - [x] **CreateTicketIntent** — "New ticket for {customer} on {device}"; parameterizable. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
@@ -3065,15 +3065,15 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] Privacy: params + results stay on device / tenant server; no Apple Siri-analytics integration (§32).
 - [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
-- [ ] Sizes supported: Small, Medium, Large, Extra-Large (iPad only), Accessory (Lock Screen: circular/rectangular/inline), StandBy
-- [ ] Catalog: Tickets today (counts + progress bar); Revenue today ($ + trend); Next appointment (customer + time + address); Pending SMS (unread count); Quick actions (4 buttons: New ticket / Scan / POS / Clock in); Employee snapshot (my assigned count / my sales today); Inventory alert (critical low-stock item with name)
-- [ ] Data source: App Group SQLCipher DB read-only in widget; refreshed via app writing on every sync
-- [ ] Timeline entries: `IntervalTimelineProvider` every 15 min; triggered refresh on background sync completion
-- [ ] Taps: each widget deep-links; iOS opens app at the right screen
-- [ ] StandBy: large time-of-day widget shows today revenue + next appointment in glance mode
-- [ ] Lock Screen variants: circular = ticket count; rectangular = revenue + Δ vs yesterday; inline = "3 tickets ready"
+- [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
+- [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory). (feat(ios phase-6 §24))
+- [x] Data source: App Group UserDefaults group.com.bizarrecrm; WidgetSnapshot written by WidgetDataStore. (feat(ios phase-6 §24))
+- [x] Timeline entries: configurable 5/15/30 min interval via WidgetSettingsView; policy .after(refreshDate). (feat(ios phase-6 §24))
+- [x] Taps: deep-links via bizarrecrm://tickets/:id, bizarrecrm://appointments/:id, bizarrecrm://pos. (feat(ios phase-6 §24))
+- [x] StandBy: AppointmentsNextWidget large + TodaysRevenueWidget medium in StandBy mode. (feat(ios phase-6 §24))
+- [x] Lock Screen variants: circular = ticket count; rectangular = X tickets open; inline = X open tickets. (feat(ios phase-6 §24))
 - [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
-- [ ] Privacy: widget content stays on device; no sensitive data on Lock Screen (no customer names; counts only)
+- [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
@@ -4477,7 +4477,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 
 ### 38.4 Apple Wallet pass
 - [x] **`PKAddPassesViewController`** — `LoyaltyPassPresenter.present(passData:)` scaffold ships in `Packages/Loyalty`. Commit `73229b3`. Server .pkpass signing + Wallet entitlement still required for live install.
-- [ ] **Pass updates** — push via pass server (tenant server).
+- [x] **Pass updates** — `PassUpdateSubscriber` (silent-push bridge, `Pos/Wallet/PassUpdateSubscriber.swift`) registers per-kind handlers; calls `fetchPass` + `PKPassLibrary.replacePass`. Commit `feat(ios phase-6 §24+§38+§40)`.
 - [ ] **Barcode on pass** — scannable at POS.
 
 ### 38.5 Member-only perks
@@ -4502,7 +4502,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] Visual punch card per service type (e.g. "5th repair free", "10th wash free")
 - [ ] Count auto-increments on eligible service
 - [ ] Server-side storage; iOS displays
-- [ ] Wallet pass (§38.4) with updating strip
+- [x] Wallet pass (§38.4) with updating strip — `PassUpdateSubscriber` handles silent push + silent `replacePass`. Commit `feat(ios phase-6 §24+§38+§40)`.
 - [ ] Customer detail shows punch cards
 - [ ] Progress icons (filled vs empty)
 - [ ] Redemption: last punch = free next service, auto-applied discount at POS

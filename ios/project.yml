@@ -166,6 +166,29 @@ targets:
         product: KioskMode
       - package: RolesEditor
         product: RolesEditor
+      - target: BizarreCRMWidgets
+        embed: true
+
+  BizarreCRMWidgets:
+    type: app-extension.widget-extension
+    platform: iOS
+    sources:
+      - path: BizarreCRMWidgets
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm.widgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: BizarreCRMWidgets/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+    entitlements:
+      path: App/Resources/BizarreCRM.entitlements
+    dependencies:
+      - package: Core
+        product: Core
+      - package: DesignSystem
+        product: DesignSystem
 
   BizarreCRMTests:
     type: bundle.unit-test

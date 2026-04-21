@@ -150,6 +150,13 @@ cat > "${PLIST}" <<'PLIST_EOF'
         <string>JetBrainsMono-Medium.ttf</string>
     </array>
 
+    <!-- §24 Live Activities — required for ActivityKit -->
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <!-- §24 Live Activities push-to-start (iOS 17.2+) -->
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
+
     <key>BZ_API_BASE_URL</key>
     <string>$(BZ_API_BASE_URL)</string>
     <key>BZ_SPKI_PINS</key>
