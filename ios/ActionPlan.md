@@ -507,8 +507,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS).
 
 ### 3.9 Greeting + operator identity
-- [ ] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}").
-- [ ] Tap greeting → Settings → Profile.
+- [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
+- [ ] Tap greeting → Settings → Profile. (Needs `/auth/me` for firstName; deferred.)
 - [ ] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge
