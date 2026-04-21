@@ -4693,11 +4693,35 @@ See §16.10 for core flow. Additional items:
 - [x] **Networking** — `PaymentLinksEndpoints.swift`: `createPaymentLink` / `getPaymentLink` / `listPaymentLinks` / `cancelPaymentLink` + `makePaymentLinkURL`.
 - [x] **Share** — `UIActivityViewController` with URL for SMS/email/AirDrop + Copy button. QR display deferred.
 
-### 41.2 Public pay page (tracked by iOS)
-- [ ] **Webview preview** — admin can see what customer sees.
-- [x] **List view** — `PaymentLinksListView` in More menu with status chips + swipe-cancel. `SFSafariViewController` open-external + webhook hook deferred.
+### 41.2 Branding customization
+- [x] **Webview preview** — `PaymentLinkBrandingSettingsView` + `PaymentLinkBrandingViewModel`. WKWebView preview. `GET /settings/payment-link-branding`, `PATCH /settings/payment-link-branding`. `PaymentLinkBranding` + `PaymentLinkBrandingPatch` models.
+- [x] **List view** — `PaymentLinksListView` in More menu with status chips + swipe-cancel.
 
-### 41.3 Webhooks
+### 41.3 Follow-ups
+- [x] **Model** — `PaymentLinkFollowUp` `{ id, paymentLinkId, triggerAfterHours, templateId, channel, sentAt?, deliveredAt?, status }`. `POST /payment-links/:id/followups`, `GET /payment-links/:id/followups`.
+- [x] **Policy editor** — `FollowUpPolicyEditorSheet` + `FollowUpPolicyEditorViewModel`: multi-rule schedule (24h→72h→7d).
+- [x] **Schedule view** — `FollowUpScheduleView` + `FollowUpScheduleViewModel`: per-link planned + sent follow-ups with a11y labels.
+
+### 41.4 Partial payments
+- [x] **Toggle** — `PartialPaymentSupport` model + `PATCH /payment-links/:id` with `allow_partial` flag.
+- [x] **Tracker** — `PartialPaymentTracker` + `PartialPaymentTrackerViewModel`: payment history, remaining balance, overdue banner. `GET /payment-links/:id/payments`.
+
+### 41.5 Refund from link
+- [x] **Refund sheet** — `PaymentLinkRefundSheet` + `PaymentLinkRefundViewModel`: admin refund with reason picker. `POST /payment-links/:id/refund`.
+
+### 41.6 QR code with logo
+- [x] **Branded QR** — `BrandedQRGenerator`: CoreImage + CoreGraphics, error-correction H, logo overlay (25 % center), foreground/background color.
+- [x] **Printable view** — `PaymentLinkPrintableView`: flyer with logo + QR + amount + expiry + footer. ShareLink + `⌘P` shortcut.
+
+### 41.7 Expiry policies
+- [x] **Enum** — `PaymentLinkExpiryPolicy`: 7d/14d/30d/never. `expiresAt(from:)` helper. `expiredMessage` constant. Codable round-trip.
+- [x] **Admin editor** — `PaymentLinkExpiryEditorView` + `PaymentLinkExpiryEditorViewModel`. `GET/PATCH /settings/payment-link-expiry`.
+
+### 41.8 Analytics
+- [x] **Models** — `PaymentLinkAnalytics` (per-link), `PaymentLinksAggregate` (tenant-wide), `PaymentLinksAnalyticsResponse`. `GET /payment-links/analytics`.
+- [x] **Dashboard** — `PaymentLinksDashboardView` + `PaymentLinksDashboardViewModel`: funnel bar chart (Charts), aggregate KPIs, per-link table. iPhone/iPad layouts.
+
+### 41.9 Webhooks
 - [ ] On payment complete, server pushes WS event → invoice updates in-app in real time.
 - [ ] See §16 for the full list.
 
