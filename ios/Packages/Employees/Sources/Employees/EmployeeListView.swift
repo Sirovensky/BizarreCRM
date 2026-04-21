@@ -58,8 +58,11 @@ public final class EmployeeListViewModel {
 
 public struct EmployeeListView: View {
     @State private var vm: EmployeeListViewModel
+    @State private var showCommissionRules: Bool = false
+    private let api: APIClient
 
     public init(api: APIClient, cachedRepo: EmployeeCachedRepository? = nil) {
+        self.api = api
         _vm = State(wrappedValue: EmployeeListViewModel(api: api, cachedRepo: cachedRepo))
     }
 
@@ -70,9 +73,20 @@ public struct EmployeeListView: View {
         }
         .navigationTitle("Employees")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showCommissionRules = true
+                } label: {
+                    Image(systemName: "percent")
+                }
+                .accessibilityLabel("Commission Rules (admin)")
+            }
             ToolbarItem(placement: .automatic) {
                 StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
             }
+        }
+        .sheet(isPresented: $showCommissionRules) {
+            CommissionRulesListView(api: api)
         }
         .task { await vm.load() }
         .refreshable { await vm.forceRefresh() }

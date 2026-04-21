@@ -4,6 +4,10 @@ import Foundation
 /// Envelope: `{ appointments: [...], pagination: {...} }`.
 public struct AppointmentsListResponse: Decodable, Sendable {
     public let appointments: [Appointment]
+
+    public init(appointments: [Appointment]) {
+        self.appointments = appointments
+    }
 }
 
 public struct Appointment: Decodable, Sendable, Identifiable, Hashable {

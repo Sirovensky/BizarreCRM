@@ -8,10 +8,13 @@ public struct SmsListView: View {
     @State private var vm: SmsListViewModel
     @State private var searchText: String = ""
     @State private var path: [String] = []
+    @State private var showTemplates: Bool = false
     private let threadRepo: SmsThreadRepository
+    private let api: APIClient
 
-    public init(repo: SmsRepository, threadRepo: SmsThreadRepository) {
+    public init(repo: SmsRepository, threadRepo: SmsThreadRepository, api: APIClient) {
         self.threadRepo = threadRepo
+        self.api = api
         _vm = State(wrappedValue: SmsListViewModel(repo: repo))
     }
 
@@ -30,9 +33,20 @@ public struct SmsListView: View {
                 SmsThreadView(repo: threadRepo, phoneNumber: phone)
             }
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showTemplates = true
+                    } label: {
+                        Image(systemName: "text.bubble.badge.clock")
+                    }
+                    .accessibilityLabel("Message Templates")
+                }
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
                 }
+            }
+            .sheet(isPresented: $showTemplates) {
+                MessageTemplateListView(api: api)
             }
         }
     }

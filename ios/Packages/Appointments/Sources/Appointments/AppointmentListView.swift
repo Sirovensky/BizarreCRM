@@ -77,7 +77,8 @@ public struct AppointmentListView: View {
         .task { await vm.load() }
         .refreshable { await vm.forceRefresh() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
-            AppointmentCreateView(api: api)
+            // Phase 4: use full scheduling engine view with availability + conflict detection.
+            AppointmentCreateFullView(api: api)
         }
     }
 

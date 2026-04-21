@@ -1443,7 +1443,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Read receipts** (if server supports).
 - [ ] **Typing indicator** (if supported).
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload.
-- [ ] **Canned responses / templates** (from `GET /settings/templates`) surfaced as chips above composer; hotkeys Alt+1..9 (Mac/iPad keyboard).
+- [x] **Canned responses / templates** — `MessageTemplateListView` + `MessageTemplateEditorView` (CRUD: `GET/POST/PATCH/DELETE /message-templates`); `TemplateRenderer` pure substitution helper; `{first_name}` / `{ticket_no}` / `{amount}` / `{date}` / `{company}` variable chips; live preview; channel (SMS/Email) + category filters; injectable picker closure for future in-composer surfacing. In-composer chips + hotkeys remain `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
 - [ ] **Emoji picker**.
 - [ ] **Schedule send** — date/time picker for future delivery.
@@ -1533,7 +1533,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 ### 14.2 Detail
 - [ ] Role, wage/salary (admin-only), contact, schedule.
 - [ ] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers.
-- [ ] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin).
+- [x] **Commissions** — `CommissionRulesListView` + `CommissionRuleEditorSheet` (admin CRUD: `GET/POST/PATCH/DELETE /commissions/rules`; percentage/flat, cap, minTicketValue + tenure conditions); `CommissionReportView` (employee-facing, `GET /commissions/reports/:employeeId`); `CommissionCalculator` pure engine (percentage, flat, capped, min-threshold, tenure gate). Lock-period (admin) remains `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [ ] **Schedule** — upcoming shifts + time-off.
 - [ ] **PIN management** — view (as set?) / change / clear.
 - [ ] **Deactivate** — soft-delete; grey out future logins.
