@@ -174,4 +174,15 @@ class AppPreferences @Inject constructor(
     var onboardingDismissed: Boolean
         get() = prefs.getBoolean("onboarding_dismissed", false)
         set(value) = prefs.edit().putBoolean("onboarding_dismissed", value).apply()
+
+    /**
+     * §26.4 — in-app Reduce Motion override. Defaults OFF; when ON, UI code
+     * consults [com.bizarreelectronics.crm.util.ReduceMotion.isReduceMotion]
+     * which forces animation-skip regardless of the system
+     * `ANIMATOR_DURATION_SCALE` value. Gives users on OEMs that hide the
+     * system toggle a reliable way to opt out of motion in-app.
+     */
+    var reduceMotionEnabled: Boolean
+        get() = prefs.getBoolean("reduce_motion_enabled", false)
+        set(value) = prefs.edit().putBoolean("reduce_motion_enabled", value).apply()
 }

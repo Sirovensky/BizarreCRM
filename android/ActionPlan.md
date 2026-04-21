@@ -59,10 +59,10 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~5% | Basic Material widgets only. Missing: full contentDescription sweep, fontScale, Reduce Motion. |
+| 26 | Accessibility | ~8% | **ReduceMotion util + Settings toggle + tests (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
-| 29 | Performance | ~10% | minifyEnabled true. Missing: Macrobenchmark, JankStats, baseline profiles. |
+| 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
 | 31 | Testing | ~12% | Schema guard rail + **JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
 | 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
@@ -2409,8 +2409,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Color-blind safe palette variant in Settings.
 
 ### 26.4 Motion
-- [ ] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations.
-- [ ] In-app Reduce Motion toggle overrides regardless of system.
+- [~] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations.
+- [x] In-app Reduce Motion toggle overrides regardless of system.
 - [ ] Critical feedback (shake on error) replaced with static red outline when reduced.
 
 ### 26.5 Captions / audio
@@ -2548,7 +2548,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 29.2 Frame rate
 - [ ] 120 Hz where supported; sustained 60fps minimum.
-- [ ] Jank detection via JankStats in debug; CI fails if % janky > 5% in baseline scenario.
+- [~] Jank detection via JankStats in debug; CI fails if % janky > 5% in baseline scenario.
 - [x] Scroll perf: `LazyColumn` with stable keys + `contentType`.
 
 ### 29.3 APK size

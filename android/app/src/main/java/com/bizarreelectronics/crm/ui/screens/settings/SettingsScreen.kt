@@ -123,6 +123,11 @@ class SettingsViewModel @Inject constructor(
     private val _darkModeEnabled = MutableStateFlow(appPreferences.darkMode == "dark")
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
+    // §26.4 — in-app Reduce Motion override. Mirrors AppPreferences.reduceMotionEnabled
+    // so composables observing this StateFlow re-render when the user flips it.
+    private val _reduceMotionEnabled = MutableStateFlow(appPreferences.reduceMotionEnabled)
+    val reduceMotionEnabled: StateFlow<Boolean> = _reduceMotionEnabled.asStateFlow()
+
     fun setBiometricEnabled(enabled: Boolean) {
         appPreferences.biometricEnabled = enabled
         _biometricEnabled.value = enabled
@@ -145,6 +150,11 @@ class SettingsViewModel @Inject constructor(
     fun setDarkModeEnabled(enabled: Boolean) {
         appPreferences.darkMode = if (enabled) "dark" else "light"
         _darkModeEnabled.value = enabled
+    }
+
+    fun setReduceMotionEnabled(enabled: Boolean) {
+        appPreferences.reduceMotionEnabled = enabled
+        _reduceMotionEnabled.value = enabled
     }
 
     fun syncNow() {
@@ -450,6 +460,25 @@ fun SettingsScreen(
                         subtitle = "Use dark theme (default on)",
                         checked = darkModeEnabled,
                         onCheckedChange = { viewModel.setDarkModeEnabled(it) },
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                    )
+
+                    // §26.4 — Reduce Motion. Opt-in override for users whose
+                    // OEM hides the system ANIMATOR_DURATION_SCALE lever or
+                    // who want app-only motion-off without disabling motion
+                    // everywhere on the device.
+                    val reduceMotionEnabled by viewModel.reduceMotionEnabled.collectAsState()
+                    PreferenceRow(
+                        icon = Icons.Default.SlowMotionVideo,
+                        iconDescription = "Reduce motion",
+                        title = "Reduce motion",
+                        subtitle = "Skip non-essential animations and transitions",
+                        checked = reduceMotionEnabled,
+                        onCheckedChange = { viewModel.setReduceMotionEnabled(it) },
                     )
                 }
             }
