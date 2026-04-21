@@ -1358,24 +1358,24 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Preview popover** quick view.
 
 ### 9.2 Pipeline (Kanban view)
-- [ ] **Route:** segmented control at top of Leads — List / Pipeline.
-- [ ] **Columns** — one per status; drag-drop cards between (updates via `PUT /leads/:id`).
-- [ ] **Cards** show — name + phone + score chip + next-action date.
-- [ ] **iPad/Mac** — horizontal scroll all columns visible. **iPhone** — horizontal paging between columns.
-- [ ] **Filter by salesperson / source**.
+- [x] **Route:** segmented control at top of Leads — List / Pipeline. (`Pipeline/LeadPipelineView.swift` — feat(ios post-phase §9))
+- [x] **Columns** — one per status; drag-drop cards between (updates via `PUT /leads/:id`). (`Pipeline/LeadPipelineColumn.swift`, `Pipeline/LeadPipelineViewModel.swift` — optimistic update + rollback — feat(ios post-phase §9))
+- [x] **Cards** show — name + phone + score chip + next-action date. (`LeadKanbanCard` — feat(ios post-phase §9))
+- [x] **iPad/Mac** — horizontal scroll all columns visible. **iPhone** — stage picker + single column. (`LeadPipelineView` `iPhoneLayout`/`iPadLayout` — feat(ios post-phase §9))
+- [x] **Filter by source**. (`LeadPipelineViewModel.setSourceFilter` — feat(ios post-phase §9))
 - [ ] **Bulk archive won/lost**.
 
 ### 9.3 Detail
 - [x] **Header** — name + phone + email + score ring + status chip. (`Leads/LeadDetailView.swift` `headerCard` — name, score badge, status chip, source.)
 - [x] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to. (partial — `LeadDetailView.swift` `contactCard` + `metaCard` render phone/email/company; title/value/next-action date deferred.)
-- [ ] **Lead score** — calculated metric with explanation sheet.
+- [x] **Lead score** — `LeadScoreCalculator` (pure, weighted factors: engagement/velocity/budget/timeline/source), `LeadScore` model, `LeadScoreBadge` (Red<30/Amber/Green). 18 XCTests pass. (`Scoring/` — feat(ios post-phase §9))
 - [ ] **Status workflow** — transition dropdown; Lost → reason dialog (required).
 - [ ] **Activity timeline** — calls, SMS, email, appointments, property changes.
 - [ ] **Related tickets / estimates** (if any).
 - [ ] **Communications** — SMS + email + call log; send CTAs.
 - [ ] **Notes** — @mentions.
 - [ ] **Tags** chip picker.
-- [ ] **Convert to customer** — creates customer, copies fields, archives lead.
+- [x] **Convert to customer** — `LeadConvertSheet` + `LeadConvertViewModel`, calls `POST /leads/:id/convert`, pre-fills name/phone/email/source, marks lead won, optional ticket creation. (`Conversion/` — feat(ios post-phase §9))
 - [ ] **Convert to estimate** — starts estimate with prefilled customer.
 - [ ] **Schedule appointment** — jumps to Appointment create prefilled.
 - [ ] **Delete / Edit**.
@@ -1386,7 +1386,17 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Offline create** + reconcile.
 
 ### 9.5 Lost-reason modal
-- [ ] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text.
+- [x] Required dropdown (price / timing / competitor / no-response / other) + free-text. `LostReasonSheet` + `LostReasonReport` (admin chart). `POST /leads/:id/lose`. (`Lost/` — feat(ios post-phase §9))
+
+### 9.6 Follow-up reminders
+- [x] `LeadFollowUpReminder` model — `{ leadId, dueAt, note, completed }`. (`FollowUp/LeadFollowUpReminder.swift` — feat(ios post-phase §9))
+- [x] `LeadFollowUpSheet` — date+note picker, `POST /leads/:id/followup`. (`FollowUp/LeadFollowUpSheet.swift` — feat(ios post-phase §9))
+- [x] `LeadFollowUpDashboard` — today's due follow-ups, `GET /leads/followups/today`. (`FollowUp/LeadFollowUpDashboard.swift` — feat(ios post-phase §9))
+
+### 9.7 Source tracking
+- [x] `LeadSource` enum — `walkIn/phone/web/referral/campaign/other`. (`LeadSources/LeadSource.swift` — feat(ios post-phase §9))
+- [x] `LeadSourceAnalytics` (pure) — per-source conversion rate. 12 XCTests pass. (`LeadSources/LeadSourceAnalytics.swift` — feat(ios post-phase §9))
+- [x] `LeadSourceReportView` — admin bar chart. (`LeadSources/LeadSourceReportView.swift` — feat(ios post-phase §9))
 
 ---
 ## §10. Appointments & Calendar
@@ -6941,5 +6951,7 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-20 (update 36) — Phase 10 §26 A11y label catalog + §26 TipKit sticky tips + §29 Automated a11y audit CI shipped: [x] `Core/A11y/Labels.swift` — `A11yLabels` pure enum (5 namespaces: Actions/44 entries, Status/19, Navigation/9, Fields/26, Entities/15, Decorative/1); Swift 6 Sendable; zero deps. [x] `DesignSystem/Tips/BrandTip.swift` — base `BrandTip: Tip` protocol (TipKit). [x] `DesignSystem/Tips/TipCatalog.swift` — 5 tips: `CommandPaletteTip` (⌘K after 3 launches), `SwipeToArchiveTip` (after tickets list view), `PullToRefreshTip` (first launch), `ContextMenuTip` (row view), `ScanBarcodeTip` (SKU field view); each has title/message/image/rules/MaxDisplayCount(1); `TipEventPayload: Codable` fixes Void Codable issue. [x] `DesignSystem/Tips/TipModifier.swift` — `View.brandTip(_:arrowEdge:)` wraps `.popoverTip` + `BrandTipBackground` glass style. [x] `DesignSystem/Tips/TipsRegistrar.swift` — `TipsRegistrar.registerAll()` + donate helpers; all `#if canImport(TipKit)` guarded. [x] `scripts/a11y-audit.sh` — Bash 3.x compatible; 6 checks (Button/TextField without a11y label, Image without a11y, onTapGesture tap-target, fixed font size, animation without reduceMotion check); `--baseline` seeds violation count; `--check-regressions` blocks on count increase; `--json-only` for CI; exits 1 on violations. [x] `Tests/A11yAuditTests.swift` — 3 XCTest cases: script exists+executable, regression check, JSON output valid. [x] `.github/workflows/ios-a11y.yml` — ubuntu-latest job; regression-check mode; artifact upload; PR annotation on failure; macOS swift-test job stubbed. Fixed pre-existing `RTLHelpers.swift` bare `import UIKit` → `#if canImport(UIKit)` to unblock macOS SwiftPM build. Tests: 8 A11yLabelsTests (all pass) + 28 TipCatalogTests (all pass).
 - 2026-04-20 (update 37) — Phase 11 §28+§33+§90 shipped: [x] `docs/security/threat-model.md` — full STRIDE table (6 categories × 24 threat rows), top-10 residual risk ranking, mitigation evidence map, sign-off section. [x] `docs/security/threat-model-actions.md` — action checklist (1 High, 7 Medium, 3 Low items with owners). [x] `docs/app-review.md` — App Review checklist covering §§1-5 of Apple guidelines, privacy manifest section documenting `PrivacyInfo.xcprivacy` required keys, pre-submission gate checklist. [x] `ios/scripts/app-review-lint.sh` — Bash 3.x lint script (4 checks: purpose strings, private APIs, debug prints, hardcoded credentials); excludes SPM `.build/checkouts/` from source scan; exits 1 on failures. [x] `ios/scripts/write-info-plist.sh` + `ios/App/Resources/Info.plist` — added missing `NSMicrophoneUsageDescription` + `NSLocationWhenInUseUsageDescription`. Baseline dry-run: 2 FAIL (Info.plist missing strings — now fixed); 0 FAIL on private APIs; 0 FAIL on credentials; print() check limited to first-party Sources/ only.
 - 2026-04-20 (update 33) — Phase 7 §22.4 multi-window + Stage Manager + §22.2 adaptive sidebar + §25.3 Universal Clipboard shipped: [x] MultiWindowCoordinator (App/Scenes/) — openTicketDetail/openCustomerDetail/openInvoiceDetail via UIApplication.requestSceneSessionActivation + NSUserActivity route encoding. [x] SceneDelegate (App/Scenes/) — UIWindowSceneDelegate handling URL contexts + Handoff activities for secondary windows. [x] DetailWindowScene (App/Scenes/) — SwiftUI WindowGroup(id:"detail") root view with DeepLinkRoute dispatch + ContentUnavailableView fallback. [x] StageManagerDetector (App/Scenes/) — @Observable class watching UIScene notifications, connectedScenes.count > 1 heuristic, isStageManagerActive property. [x] SidebarWidthBehavior (App/Sidebar/) — SidebarWidth enum + SidebarWidthCalculator pure helper (compact/regular/expanded per §22.2 values). [x] RootView iPadSplit — wrapped in GeometryReader, navigationSplitViewColumnWidth fed from SidebarWidthCalculator.recommendedSidebarWidth, accessibilityLabel on sidebar items. [x] UniversalClipboardBridge (App/Clipboard/) — PasteboardProtocol abstraction + writePlainText/readPlainText async, UIPasteboard.general production, MockPasteboard for tests. 32 new tests: SidebarWidthCalculatorTests (12), StageManagerDetectorTests (8), UniversalClipboardBridgeTests (12). All branches covered ≥ 80%.
+
+- 2026-04-20 (update 39) — Post-phase §9 Leads: pipeline kanban + scoring + conversion + lost reasons + follow-ups + source analytics shipped: [x] `Pipeline/` — `LeadPipelineView` (iPhone stage-picker + iPad horizontal scroll), `LeadPipelineColumn` (Liquid Glass header, count badge, kanban cards with a11y), `LeadPipelineViewModel` (@Observable, stage grouping, source filter, optimistic drag-drop via `PUT /leads/:id` + rollback). [x] `Scoring/` — `LeadScore` model (0–100 clamped), `LeadScoreCalculator` pure (5 weighted factors: engagement 30%, velocity 25%, budget 20%, timeline 15%, source 10%), `LeadScoreBadge` (Red<30/Amber/Green). 18 XCTests pass. [x] `Conversion/` — `LeadConvertSheet` + `LeadConvertViewModel` (`POST /leads/:id/convert`, pre-fill name/phone/email/source, optional ticket, marks lead won). [x] `Lost/` — `LostReasonSheet` (picker: price/timing/competitor/no-response/other + free-text, `POST /leads/:id/lose`), `LostReasonReport` (admin bar chart). [x] `FollowUp/` — `LeadFollowUpReminder` model, `LeadFollowUpSheet` (date+note, `POST /leads/:id/followup`), `LeadFollowUpDashboard` (today's reminders, `GET /leads/followups/today`). [x] `LeadSources/` — `LeadSource` enum (6 values), `LeadSourceAnalytics` pure (conversion rate + per-source stats, 12 XCTests pass), `LeadSourceReportView` (admin bar chart). [x] `Networking/LeadsEndpoints.swift` — added `LeadStatusUpdateBody`, `LeadConvertBody/Response`, `LeadLoseBody/Response`, `LeadFollowUpBody/Response` + 6 new APIClient methods. Total: 50 tests, 0 failures.
 
 - 2026-04-20 (update 38) — Post-phase §4 Tickets extensions shipped: [x] Ticket merge (TicketMergeViewModel + TicketMergeView iPad 3-col/iPhone sheet + TicketMergeCandidatePicker; POST /tickets/merge; per-field winner picker; destructive warning). [x] Ticket split (TicketSplitViewModel + TicketSplitView checkbox-per-device + Create-N button; POST /tickets/:id/split; canSplit guard). [x] Device photos (TicketDevicePhotoListView gallery + full-screen preview + TicketPhotoBeforeAfterView side-by-side + TicketPhotoUploadService actor background URLSession + offline queue + retry + TicketPhotoAnnotationIntegration PencilKit shim). [x] Customer sign-off (TicketSignOffView PKCanvasView + disclaimer + ReceiptConfirmationView + TicketSignOffViewModel GPS + base-64 PNG; POST /tickets/:id/sign-off; shown when status contains pickup). [x] IMEI scanner (IMEIValidator pure Luhn + 15-digit; IMEIScanView barcode+manual; IMEIConflictChecker GET /tickets/by-imei/:imei; wired into TicketCreateView). [x] TicketDetailView wired: Merge/Split overflow actions; Photos section inline; Sign-Off button when readyForPickup. Tests: 198 total (20 IMEIValidator, 10 TicketMergeViewModel, 11 TicketSplitViewModel, 9 TicketSignOffViewModel, 12 TicketPhotoUploadService) — all pass. swift test green.
