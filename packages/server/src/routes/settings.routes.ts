@@ -13,6 +13,7 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { clearEmailCache } from '../services/email.js';
+import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -440,6 +441,14 @@ router.put('/config', adminOnly, async (req, res) => {
   const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'from_email'];
   if (smtpKeys.some(k => k in req.body)) {
     clearEmailCache();
+  }
+
+  // BL-CRED: Evict the BlockChyp client cache when credentials change so the
+  // next terminal call uses the new keys immediately rather than after the
+  // 5-minute TTL. Mirrors the clearEmailCache() pattern for SMTP.
+  const blockchypCredKeys = ['blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key', 'blockchyp_test_mode'];
+  if (blockchypCredKeys.some(k => k in req.body)) {
+    refreshBlockChypClient();
   }
 
   // Return all config (decrypt sensitive values for admin response)
@@ -2004,6 +2013,68 @@ router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, async (req,
   audit(db, 'api_key_revoked', req.user!.id, req.ip || 'unknown', { api_key_id: id });
 
   res.json({ success: true, data: { message: 'API key revoked' } });
+});
+
+// ─── ENR-A6: Tenant-admin webhook dead-letter endpoints ──────────────────────
+// Super-admin already has read + retry via super-admin.routes.ts. These routes
+// give the tenant admin the same visibility into their own dead-letter queue
+// without needing to contact support, and add a test-delivery action missing
+// entirely (BUG: no test-delivery existed for any role before this).
+
+// GET /webhook-failures — list this tenant's dead-lettered deliveries
+router.get('/webhook-failures', adminOnly, async (req: Request, res: Response) => {
+  const db = req.db;
+  const tableExists = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'")
+    .get();
+  if (!tableExists) {
+    res.json({ success: true, data: { failures: [], total: 0 } });
+    return;
+  }
+  const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 200);
+  const rows = db
+    .prepare(
+      'SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ORDER BY created_at DESC LIMIT ?'
+    )
+    .all(limit) as Array<{
+      id: number; endpoint: string; event: string;
+      attempts: number; last_error: string | null; last_status: number | null; created_at: string;
+    }>;
+  const totalRow = db
+    .prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures')
+    .get() as { c: number };
+  res.json({ success: true, data: { failures: rows, total: totalRow.c } });
+});
+
+// POST /webhook-failures/:id/retry — operator retry of a single dead-lettered delivery
+router.post('/webhook-failures/:id/retry', adminOnly, async (req: Request, res: Response) => {
+  const failureId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(failureId)) {
+    throw new AppError('Invalid failure id', 400);
+  }
+  const { retryDeliveryFailure } = await import('../services/webhooks.js');
+  const result = await retryDeliveryFailure(req.db, failureId);
+  audit(req.db, 'webhook_retry', req.user!.id, req.ip || 'unknown', { failure_id: failureId, ok: result.ok });
+  res.json({ success: true, data: result });
+});
+
+// POST /webhook-test — fire a synthetic test delivery to the configured URL
+router.post('/webhook-test', adminOnly, async (req: Request, res: Response) => {
+  const db = req.db;
+  const urlRow = db
+    .prepare("SELECT value FROM store_config WHERE key = 'webhook_url'")
+    .get() as { value?: string } | undefined;
+  if (!urlRow?.value) {
+    throw new AppError('No webhook URL configured', 400);
+  }
+  const { fireWebhook } = await import('../services/webhooks.js');
+  fireWebhook(db, 'ticket_created', {
+    test: true,
+    initiated_by: req.user!.id,
+    message: 'This is a test delivery from BizarreCRM webhook settings.',
+  });
+  audit(db, 'webhook_test', req.user!.id, req.ip || 'unknown', { url: urlRow.value });
+  res.json({ success: true, data: { message: 'Test delivery queued — check dead-letter queue if it does not arrive.' } });
 });
 
 export default router;

@@ -903,8 +903,15 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-checkin-signature'),
   captureSignature: (ticketId: number) =>
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-signature', { ticketId }),
-  processPayment: (invoiceId: number, tip?: number) =>
-    api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>('/blockchyp/process-payment', { invoiceId, tip }),
+  processPayment: (invoiceId: number, tip?: number) => {
+    const idempotencyKey =
+      globalThis.crypto?.randomUUID?.() ??
+      `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>(
+      '/blockchyp/process-payment',
+      { invoiceId, tip, idempotency_key: idempotencyKey },
+    );
+  },
 };
 
 // ==================== Gift Cards ====================

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, DollarSign, CreditCard, Smartphone, MoreHorizontal, Loader2, CheckCircle2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
+import { X, DollarSign, CreditCard, MoreHorizontal, Loader2, PenTool, Plus, Trash2, SplitSquareHorizontal, Crown, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, membershipApi, settingsApi, blockchypApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -169,7 +169,6 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>('Cash');
   const [cashGiven, setCashGiven] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [cardApproved, setCardApproved] = useState(false);
   const [signature, setSignature] = useState('');
   const [showSignature, setShowSignature] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
@@ -332,6 +331,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       return;
     }
 
+    setProcessing(true);
     try {
       const validSplits = splitMode
         ? splitPayments.filter((sp) => parseFloat(sp.amount) > 0)
@@ -343,19 +343,47 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         validSplits,
       );
       const res = await posApi.checkoutWithTicket(payload);
+
+      // For Card payments, run the terminal charge against the newly-created
+      // invoice. The checkout creates the invoice record first; BlockChyp then
+      // captures the card. On terminal failure we still show the success screen
+      // (invoice is created) and surface a warning so the cashier can retry
+      // the charge from the invoice detail page.
+      if (!splitMode && method === 'Card' && blockchypConfigured) {
+        const invoiceId: number | undefined = res.data?.data?.invoice?.id;
+        if (invoiceId) {
+          try {
+            const terminalRes = await blockchypApi.processPayment(invoiceId);
+            const terminalResult = terminalRes.data?.data;
+            if (!terminalResult?.success) {
+              toast.error(
+                `Invoice created but terminal declined: ${terminalResult?.error || terminalResult?.responseDescription || 'Payment declined'}. Retry from the invoice page.`,
+                { duration: 8000 },
+              );
+            }
+          } catch (terminalErr: unknown) {
+            const msg = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+            toast.error(`Invoice created but terminal charge failed: ${msg}. Retry from the invoice page.`, { duration: 8000 });
+          }
+        }
+      }
+
       setShowSuccess({ ...res.data.data, mode: 'checkout' });
       // Advance the checkout tutorial when payment is completed.
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       onClose();
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Checkout failed';
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || (err instanceof Error ? err.message : 'Checkout failed');
       toast.error(msg);
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const canComplete = splitMode
+  const canComplete = !processing && (splitMode
     ? splitTotal >= totals.total
-    : method === 'Cash' ? cashAmount >= totals.total : method === 'Card' ? cardApproved : true;
+    : method === 'Cash' ? cashAmount >= totals.total : true);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
@@ -471,7 +499,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       key={key}
                       disabled={isCardDisabled}
                       title={isCardDisabled ? 'Terminal not configured — go to Settings → Payments to pair a BlockChyp terminal' : undefined}
-                      onClick={() => { if (!isCardDisabled) { setMethod(key); setCardApproved(false); setProcessing(false); } }}
+                      onClick={() => { if (!isCardDisabled) { setMethod(key); setProcessing(false); } }}
                       className={cn(
                         'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
                         isCardDisabled
@@ -594,30 +622,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             </div>
           )}
 
-          {/* Card processing UI — AUDIT-WEB-003: only shown when BlockChyp is
-              configured. No simulation: the terminal handles the transaction. */}
-          {!splitMode && method === 'Card' && blockchypConfigured && !cardApproved && (
-            <div className="flex flex-col items-center gap-3 py-4">
-              {processing ? (
-                <>
-                  <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-                  <p className="text-sm text-surface-600 dark:text-surface-300">Processing payment on terminal…</p>
-                </>
-              ) : (
-                <button
-                  onClick={() => setProcessing(true)}
-                  className="rounded-lg bg-teal-600 px-6 py-2 text-sm font-medium text-white hover:bg-teal-700"
-                >
-                  Process ${totals.total.toFixed(2)} on Terminal
-                </button>
-              )}
-            </div>
-          )}
-
-          {!splitMode && method === 'Card' && blockchypConfigured && cardApproved && (
-            <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 py-3 dark:bg-green-500/10">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-semibold text-green-700 dark:text-green-400">Approved!</span>
+          {/* Card processing — AUDIT-WEB-003: BlockChyp terminal charge fires
+              during handleCompleteCheckout after the invoice is created. */}
+          {!splitMode && method === 'Card' && blockchypConfigured && (
+            <div className="rounded-lg bg-teal-50 px-4 py-3 text-center dark:bg-teal-500/10">
+              <p className="text-sm font-medium text-teal-700 dark:text-teal-300">
+                Card will be charged on the terminal when you click "Complete Checkout".
+              </p>
             </div>
           )}
         </div>

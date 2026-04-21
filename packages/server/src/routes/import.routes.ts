@@ -746,12 +746,24 @@ router.get(
       };
     }
 
+    // SA7-1: include per-entity checkpoint state from import_job_state so
+    // callers can see fine-grained progress (step/total/cursor) for the
+    // long-running ticket-import which checkpoints on every ticket.
+    const db = req.db;
+    const tenantSlug = (req as any).tenantSlug || 'default';
+    const checkpoints: Record<string, ReturnType<typeof readJobState>> = {};
+    for (const entity of ['customers', 'inventory', 'tickets', 'invoices']) {
+      const jobId = buildJobId('repairshopr', entity, tenantSlug);
+      checkpoints[entity] = readJobState(db, jobId);
+    }
+
     res.json({
       success: true,
       data: {
         is_active: !!activeRun,
         overall,
         runs: parsed,
+        checkpoints,
       },
     });
   }),
@@ -1062,12 +1074,24 @@ router.get(
       };
     }
 
+    // SA7-1: include per-entity checkpoint state from import_job_state so
+    // callers can see fine-grained progress (step/total/cursor) for the
+    // long-running ticket-import which checkpoints on every ticket.
+    const db = req.db;
+    const tenantSlug = (req as any).tenantSlug || 'default';
+    const checkpoints: Record<string, ReturnType<typeof readJobState>> = {};
+    for (const entity of ['customers', 'inventory', 'tickets', 'invoices']) {
+      const jobId = buildJobId('myrepairapp', entity, tenantSlug);
+      checkpoints[entity] = readJobState(db, jobId);
+    }
+
     res.json({
       success: true,
       data: {
         is_active: !!activeRun,
         overall,
         runs: parsed,
+        checkpoints,
       },
     });
   }),
@@ -1331,7 +1355,7 @@ router.post(
 
     try {
       await db.backup(backupPath);
-      console.log(`[SelectiveWipe] Pre-wipe backup created: ${backupPath}`);
+      logger.info('Pre-wipe backup created', { module: 'import', file: backupPath });
     } catch (e: any) {
       throw new AppError(`Backup failed — wipe ABORTED. Reason: ${e.message}`, 500);
     }
@@ -1450,7 +1474,7 @@ router.get(
     await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, rdRefreshToken || '');
     await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`, String(rdTokenExpiresAt));
 
-    console.log('[OAuth] RepairDesk access token obtained successfully');
+    logger.info('RepairDesk OAuth token obtained', { module: 'import' });
 
     // Redirect to settings page with success message
     res.send(`

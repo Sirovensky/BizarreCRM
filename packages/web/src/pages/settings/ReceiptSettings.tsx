@@ -269,9 +269,9 @@ export function ReceiptSettings() {
               footer={val('receipt_thermal_footer') || val('receipt_footer')}
               terms={val('receipt_thermal_terms') || val('receipt_terms')}
               logoUrl={val('receipt_logo')}
-              size={val('receipt_default_size', 'thermal_80') === 'receipt58'
+              size={val('receipt_default_size', 'receipt80') === 'receipt58'
                 ? 'thermal_58'
-                : val('receipt_default_size', 'thermal_80') === 'letter'
+                : val('receipt_default_size', 'receipt80') === 'letter'
                   ? 'letter'
                   : 'thermal_80'}
             />
