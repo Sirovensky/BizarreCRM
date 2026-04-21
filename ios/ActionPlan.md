@@ -4369,21 +4369,21 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 ## §37. Marketing & Growth
 
 ### 37.1 Campaigns (SMS blast)
-- [ ] **Server endpoints** — `GET/POST /marketing/campaigns`, `POST /marketing/campaigns/{id}/send`.
-- [ ] **List** — campaigns sorted by created; status (draft / scheduled / sending / sent / failed).
-- [ ] **Create** — name + audience (segment) + template + schedule + A/B variants.
-- [ ] **Audience picker** — customer segment (see §37.2).
-- [ ] **Scheduled send** — pick date/time; tenant-TZ aware.
-- [ ] **Estimated cost** — "Will send to 342 customers, ~$8.55 in SMS fees".
-- [ ] **Approval gate** — requires manager if > N recipients.
-- [ ] **Post-send report** — delivered / failed / opted-out / replies.
+- [x] **Server endpoints** — `GET/POST /marketing/campaigns`, `POST /marketing/campaigns/{id}/send`.
+- [x] **List** — campaigns sorted by created; status (draft / scheduled / sending / sent / failed).
+- [x] **Create** — name + audience (segment) + template + schedule + A/B variants.
+- [x] **Audience picker** — customer segment (see §37.2).
+- [x] **Scheduled send** — pick date/time; tenant-TZ aware.
+- [x] **Estimated cost** — "Will send to 342 customers, ~$8.55 in SMS fees".
+- [x] **Approval gate** — requires manager if > N recipients.
+- [x] **Post-send report** — delivered / failed / opted-out / replies.
 
 ### 37.2 Segments
-- [ ] **Server endpoints** — `GET/POST /segments`.
-- [ ] **Rule builder** — AND/OR tree: "spent > $500 AND last-visit > 90 days".
-- [ ] **Live count** — refreshes as rules change.
-- [ ] **Saved segments** — reusable in campaigns.
-- [ ] **Presets** — VIPs / Dormant / New / High-LTV / Repeat / At-risk.
+- [x] **Server endpoints** — `GET/POST /segments`.
+- [x] **Rule builder** — AND/OR tree: "spent > $500 AND last-visit > 90 days".
+- [x] **Live count** — refreshes as rules change.
+- [x] **Saved segments** — reusable in campaigns.
+- [x] **Presets** — VIPs / Dormant / New / High-LTV / Repeat / At-risk.
 
 ### 37.3 NPS / Surveys
 - [ ] **Post-service SMS survey** — "Rate us 1–10".
