@@ -1065,6 +1065,15 @@ app.use(cors({
 
 // SEC-H7: Production guard — reject Origin-less requests on sensitive routes.
 // Runs AFTER cors() so preflight still works; only the actual request is policed.
+//
+// Origin header is a CSRF defense: browsers set it on state-changing requests
+// (POST/PUT/PATCH/DELETE) and on cross-origin GETs. Some browsers OMIT it on
+// same-origin GETs (seen in Firefox 149 + HTTP/3 via Cloudflare), which used
+// to trip this guard and loop the SPA on /api/v1/settings/setup-status with
+// 403. Policy now matches the actual threat model: only block Origin-less
+// state-changing API requests. GETs without Origin are safe to serve — a
+// drive-by <img src> or <script src> can read the response only if the
+// browser is already same-origin, which a real attacker cannot assume.
 if (config.nodeEnv === 'production') {
   app.use((req, res, next) => {
     // Always let OPTIONS through — the cors() middleware above handled preflight.
@@ -1072,14 +1081,23 @@ if (config.nodeEnv === 'production') {
     const origin = req.headers.origin;
     if (origin) return next();
     if (isPathNoOriginExempt(req.path) || isPathWebhook(req.path)) return next();
-    // GETs to static assets and the SPA are fine without Origin.
-    if (req.method === 'GET' && !req.path.startsWith('/api/')) return next();
+    // Any GET is safe without Origin — CSRF is not a GET-read concern.
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    // Non-API paths (SPA bundle, static) were already allow-listed by the
+    // cors() pass above; keep the explicit skip here for defence-in-depth.
+    if (!req.path.startsWith('/api/')) return next();
     log.warn('Rejected request without Origin header', {
       method: req.method,
       path: req.path,
       ua: req.headers['user-agent'],
+      requestId: res.locals.requestId,
     });
-    return res.status(403).json({ success: false, message: 'Origin header required' });
+    return res.status(403).json({
+      success: false,
+      code: 'ERR_ORIGIN_MISSING',
+      message: 'Origin header required for state-changing requests.',
+      request_id: res.locals.requestId,
+    });
   });
 }
 app.use(cookieParser());
@@ -1195,7 +1213,12 @@ app.use((req, res, next) => {
       return next();
     }
     // Block non-JSON state-changing requests
-    return res.status(403).json({ success: false, message: 'Invalid content type' });
+    return res.status(403).json({
+      success: false,
+      code: 'ERR_CONTENT_TYPE',
+      message: 'State-changing requests must use application/json or multipart/form-data.',
+      request_id: res.locals.requestId,
+    });
   }
   next();
 });
