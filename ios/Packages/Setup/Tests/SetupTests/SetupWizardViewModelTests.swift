@@ -164,8 +164,10 @@ final class SetupWizardViewModelTests: XCTestCase {
     }
 
     func testProgress_lastStep_isOne() async {
+        let lastStep = SetupStep.complete.rawValue
+        let prevSteps = Array(1..<lastStep)
         await repo.setFetchStatus(.success(
-            SetupStatusResponse(currentStep: 13, completed: Array(1...12), totalSteps: 13)
+            SetupStatusResponse(currentStep: lastStep, completed: prevSteps, totalSteps: SetupStep.totalCount)
         ))
         await vm.loadServerState()
         XCTAssertEqual(vm.progress, 1.0, accuracy: 0.001)
@@ -205,8 +207,10 @@ final class SetupWizardViewModelTests: XCTestCase {
     // MARK: - Completion
 
     func testFinishWizard_callsComplete() async {
+        let lastStep = SetupStep.complete.rawValue
+        let prevSteps = Array(1..<lastStep)
         await repo.setFetchStatus(.success(
-            SetupStatusResponse(currentStep: 13, completed: Array(1...12), totalSteps: 13)
+            SetupStatusResponse(currentStep: lastStep, completed: prevSteps, totalSteps: SetupStep.totalCount)
         ))
         await vm.loadServerState()
         await vm.goNext()
@@ -215,8 +219,10 @@ final class SetupWizardViewModelTests: XCTestCase {
     }
 
     func testFinishWizard_success_dismisses() async {
+        let lastStep = SetupStep.complete.rawValue
+        let prevSteps = Array(1..<lastStep)
         await repo.setFetchStatus(.success(
-            SetupStatusResponse(currentStep: 13, completed: Array(1...12), totalSteps: 13)
+            SetupStatusResponse(currentStep: lastStep, completed: prevSteps, totalSteps: SetupStep.totalCount)
         ))
         await vm.loadServerState()
         await vm.goNext()
@@ -225,8 +231,10 @@ final class SetupWizardViewModelTests: XCTestCase {
     }
 
     func testFinishWizard_failure_showsError() async {
+        let lastStep = SetupStep.complete.rawValue
+        let prevSteps = Array(1..<lastStep)
         await repo.setFetchStatus(.success(
-            SetupStatusResponse(currentStep: 13, completed: Array(1...12), totalSteps: 13)
+            SetupStatusResponse(currentStep: lastStep, completed: prevSteps, totalSteps: SetupStep.totalCount)
         ))
         await vm.loadServerState()
         await repo.setCompleteSetup(.failure(URLError(.badServerResponse)))

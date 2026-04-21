@@ -115,12 +115,17 @@ public final class SetupWizardViewModel {
     /// typed `wizardPayload` fields with any legacy `pendingPayload` entries.
     private func resolvedPayload(for step: SetupStep) -> [String: String] {
         switch step {
-        case .timezoneLocale: return wizardPayload.timezoneLocalePayload()
-        case .businessHours:  return wizardPayload.businessHoursPayload()
-        case .taxSetup:       return wizardPayload.taxRatePayload()
-        case .paymentMethods: return wizardPayload.paymentMethodsPayload()
-        case .firstLocation:  return wizardPayload.firstLocationPayload()
-        default:              return pendingPayload
+        case .timezoneLocale:  return wizardPayload.timezoneLocalePayload()
+        case .businessHours:   return wizardPayload.businessHoursPayload()
+        case .taxSetup:        return wizardPayload.taxRatePayload()
+        case .paymentMethods:  return wizardPayload.paymentMethodsPayload()
+        case .firstLocation:   return wizardPayload.firstLocationPayload()
+        case .teammates:       return wizardPayload.inviteesPayload()
+        case .smsSetup:        return wizardPayload.smsPayload()
+        case .deviceTemplates: return wizardPayload.deviceFamiliesPayload()
+        case .dataImport:      return wizardPayload.importPayload()
+        case .theme:           return wizardPayload.themePayload()
+        default:               return pendingPayload
         }
     }
 

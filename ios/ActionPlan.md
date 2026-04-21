@@ -4379,12 +4379,12 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
 - [x] **7. Payment methods** — enable cash, card (BlockChyp link), gift card, store credit, check.
 - [x] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
-- [ ] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
-- [ ] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
-- [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§43).
-- [ ] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§48).
-- [ ] **12a. Theme** — `System (recommended)` / `Dark` / `Light` (§30.12 — setup wizard asks, Settings lets them change later).
-- [ ] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
+- [x] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
+- [x] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
+- [x] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§43).
+- [x] **12. Import data** — offer CSV / RepairDesk / Shopr / Skip (§48).
+- [x] **12a. Theme** — `System (recommended)` / `Dark` / `Light` (§30.12 — setup wizard asks, Settings lets them change later).
+- [x] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
 ### 36.3 Persistence
 - [ ] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard.

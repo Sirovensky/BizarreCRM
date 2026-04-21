@@ -28,6 +28,23 @@ public struct SetupPayload: Sendable {
     // MARK: Step 8 — First Location
     public var firstLocation: SetupLocation? = nil
 
+    // MARK: Step 9 — Invite Teammates
+    public var invitees: [InvitePayload] = []
+
+    // MARK: Step 10 — SMS Setup
+    public var smsProvider: String? = nil
+    public var smsFromNumber: String? = nil
+
+    // MARK: Step 11 — Device Templates
+    public var enabledDeviceFamilies: Set<String> = []
+
+    // MARK: Step 12 — Import Data
+    public var importSource: String? = nil
+    public var skipImport: Bool = false
+
+    // MARK: Step 12a — Theme
+    public var theme: String = "system"
+
     public init() {}
 }
 
@@ -195,5 +212,37 @@ public extension SetupPayload {
         var d: [String: String] = ["location_name": loc.name, "location_address": loc.address]
         if !loc.phone.isEmpty { d["location_phone"] = loc.phone }
         return d
+    }
+
+    func inviteesPayload() -> [String: String] {
+        var d: [String: String] = [:]
+        for (idx, invite) in invitees.enumerated() {
+            d["invitee_\(idx)_email"]   = invite.email
+            d["invitee_\(idx)_role"]    = invite.role.rawValue
+            d["invitee_\(idx)_sendSMS"] = invite.sendSMS ? "1" : "0"
+        }
+        d["invitee_count"] = "\(invitees.count)"
+        return d
+    }
+
+    func smsPayload() -> [String: String] {
+        var d: [String: String] = [:]
+        if let provider = smsProvider { d["sms_provider"] = provider }
+        if let number = smsFromNumber  { d["sms_from_number"] = number }
+        return d
+    }
+
+    func deviceFamiliesPayload() -> [String: String] {
+        ["device_families": enabledDeviceFamilies.sorted().joined(separator: ",")]
+    }
+
+    func importPayload() -> [String: String] {
+        if skipImport { return ["import_skip": "1"] }
+        guard let src = importSource else { return ["import_skip": "1"] }
+        return ["import_source": src]
+    }
+
+    func themePayload() -> [String: String] {
+        ["theme": theme]
     }
 }

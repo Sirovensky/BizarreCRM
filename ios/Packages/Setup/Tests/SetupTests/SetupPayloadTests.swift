@@ -193,4 +193,126 @@ final class SetupPayloadTests: XCTestCase {
         let b = TaxRate(name: "Tax", ratePct: 8.0, applyTo: .allItems)
         XCTAssertEqual(a, b)
     }
+
+    // MARK: - Steps 9-13 new payload fields
+
+    func testDefaultPayload_invitees_empty() {
+        XCTAssertTrue(SetupPayload().invitees.isEmpty)
+    }
+
+    func testDefaultPayload_smsProvider_nil() {
+        XCTAssertNil(SetupPayload().smsProvider)
+    }
+
+    func testDefaultPayload_smsFromNumber_nil() {
+        XCTAssertNil(SetupPayload().smsFromNumber)
+    }
+
+    func testDefaultPayload_enabledDeviceFamilies_empty() {
+        XCTAssertTrue(SetupPayload().enabledDeviceFamilies.isEmpty)
+    }
+
+    func testDefaultPayload_importSource_nil() {
+        XCTAssertNil(SetupPayload().importSource)
+    }
+
+    func testDefaultPayload_skipImport_false() {
+        XCTAssertFalse(SetupPayload().skipImport)
+    }
+
+    func testDefaultPayload_theme_isSystem() {
+        XCTAssertEqual(SetupPayload().theme, "system")
+    }
+
+    // MARK: - inviteesPayload serialisation
+
+    func testInviteesPayload_empty_hasCountZero() {
+        let encoded = SetupPayload().inviteesPayload()
+        XCTAssertEqual(encoded["invitee_count"], "0")
+    }
+
+    func testInviteesPayload_singleInvitee_encodesEmailRoleAndSMS() {
+        var payload = SetupPayload()
+        payload.invitees = [InvitePayload(email: "alice@x.com", role: .manager, sendSMS: true)]
+        let encoded = payload.inviteesPayload()
+        XCTAssertEqual(encoded["invitee_0_email"],   "alice@x.com")
+        XCTAssertEqual(encoded["invitee_0_role"],    "manager")
+        XCTAssertEqual(encoded["invitee_0_sendSMS"], "1")
+        XCTAssertEqual(encoded["invitee_count"],     "1")
+    }
+
+    func testInviteesPayload_twoInvitees_encodedCorrectly() {
+        var payload = SetupPayload()
+        payload.invitees = [
+            InvitePayload(email: "a@x.com", role: .manager, sendSMS: false),
+            InvitePayload(email: "b@x.com", role: .technician, sendSMS: false)
+        ]
+        let encoded = payload.inviteesPayload()
+        XCTAssertEqual(encoded["invitee_count"], "2")
+        XCTAssertEqual(encoded["invitee_1_role"], "technician")
+    }
+
+    // MARK: - smsPayload serialisation
+
+    func testSmsPayload_bothSet_encodes() {
+        var payload = SetupPayload()
+        payload.smsProvider   = "twilio"
+        payload.smsFromNumber = "+15005550006"
+        let encoded = payload.smsPayload()
+        XCTAssertEqual(encoded["sms_provider"],    "twilio")
+        XCTAssertEqual(encoded["sms_from_number"], "+15005550006")
+    }
+
+    func testSmsPayload_neitherSet_isEmpty() {
+        XCTAssertTrue(SetupPayload().smsPayload().isEmpty)
+    }
+
+    // MARK: - deviceFamiliesPayload serialisation
+
+    func testDeviceFamiliesPayload_empty_emptyString() {
+        let encoded = SetupPayload().deviceFamiliesPayload()
+        XCTAssertEqual(encoded["device_families"], "")
+    }
+
+    func testDeviceFamiliesPayload_twoFamilies_sortedAndJoined() {
+        var payload = SetupPayload()
+        payload.enabledDeviceFamilies = ["iphone", "ipad"]
+        let encoded = payload.deviceFamiliesPayload()
+        XCTAssertEqual(encoded["device_families"], "ipad,iphone")
+    }
+
+    // MARK: - importPayload serialisation
+
+    func testImportPayload_skipTrue_encodesSkip() {
+        var payload = SetupPayload()
+        payload.skipImport = true
+        XCTAssertEqual(payload.importPayload()["import_skip"], "1")
+    }
+
+    func testImportPayload_withSource_encodesSource() {
+        var payload = SetupPayload()
+        payload.skipImport   = false
+        payload.importSource = "repairdesk"
+        XCTAssertEqual(payload.importPayload()["import_source"], "repairdesk")
+    }
+
+    func testImportPayload_nilSource_fallbackToSkip() {
+        var payload = SetupPayload()
+        payload.skipImport   = false
+        payload.importSource = nil
+        XCTAssertEqual(payload.importPayload()["import_skip"], "1")
+    }
+
+    // MARK: - themePayload serialisation
+
+    func testThemePayload_system_encodesSystem() {
+        let p = SetupPayload()
+        XCTAssertEqual(p.themePayload()["theme"], "system")
+    }
+
+    func testThemePayload_dark_encodesDark() {
+        var p = SetupPayload()
+        p.theme = "dark"
+        XCTAssertEqual(p.themePayload()["theme"], "dark")
+    }
 }

@@ -185,8 +185,65 @@ public struct SetupWizardView: View {
                 }
             )
 
-        default:
-            PlaceholderStepView(step: vm.currentStep)
+        case .teammates:
+            InviteTeammatesStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { invitees in
+                    vm.wizardPayload.invitees = invitees
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .smsSetup:
+            SmsSetupStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { provider, fromNumber in
+                    vm.wizardPayload.smsProvider    = provider == .skip ? nil : provider.rawValue
+                    vm.wizardPayload.smsFromNumber  = fromNumber
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .deviceTemplates:
+            DeviceTemplatesStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { families in
+                    vm.wizardPayload.enabledDeviceFamilies = Set(families.map(\.rawValue))
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .dataImport:
+            ImportDataStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { source in
+                    if source == .skip {
+                        vm.wizardPayload.skipImport  = true
+                        vm.wizardPayload.importSource = nil
+                    } else {
+                        vm.wizardPayload.skipImport  = false
+                        vm.wizardPayload.importSource = source.rawValue
+                    }
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .theme:
+            ThemeStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { themeChoice in
+                    vm.wizardPayload.theme = themeChoice.rawValue
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .complete:
+            DoneStepView(
+                completedSteps: vm.completedSteps,
+                onOpenDashboard: {
+                    Task { await vm.goNext() }
+                }
+            )
         }
     }
 
