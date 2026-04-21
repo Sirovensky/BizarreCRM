@@ -2029,12 +2029,12 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline.
 
 #### AirPrint path
-- [ ] **`UIPrintInteractionController`** with `printingItems: [localPdfURL]` — never a remote URL.
+- [x] **`UIPrintInteractionController`** with `printingItems: [localPdfURL]` — never a remote URL. `AirPrintEngine` + `LabelPrintEngine` both render to temp PDF and pass file URL only. Commit: phase-5-§17.
 - [ ] **Custom `UIPrintPageRenderer`** for label printers that want page-by-page rendering instead of a PDF (e.g., Dymo via AirPrint).
 
 #### Fallbacks + resilience
 - [ ] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed.
-- [ ] **Printer offline** — job queues in `print_queue` GRDB table (model payload + target printer). Retry on reconnect; alert on repeated failure.
+- [x] **Printer offline** — job queues in `PrintJobQueue` actor (model payload + target printer). Retry with exponential backoff (3 attempts); dead-letter after threshold. GRDB persistence TODO §17. Commit: phase-5-§17.
 - [ ] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. _(Phase-2 scaffold: disabled button with "Pair a receipt printer first" hint is live under the POS totals footer; no ESC opcode wired yet.)_
 - [ ] **Re-print** — past receipts re-render from stored `ReceiptModel` snapshot (persisted at the time of sale). Guarantees byte-identical reprint even after tenant branding / template changes.
 
@@ -2042,7 +2042,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§17).
 
 #### ESC/POS builder
-- [ ] Helpers for bold / large / centered / QR / barcode / cut / feed / drawer-kick — used only for command sequences around the rasterized bitmap, never to draw text piecewise (text comes from SwiftUI render).
+- [x] Helpers for bold / large / centered / QR / barcode / cut / feed / drawer-kick — `EscPosCommandBuilder` ships all commands; tests ≥80%. Commit: phase-5-§17.
 
 #### Multi-location
 - [ ] Per-location default printer selection + per-station profile (§17).
@@ -2075,13 +2075,13 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. This is `PassKit`, not `CoreNFC`. Works today.
 
 ### 17.6 Scale (Bluetooth)
-- [ ] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP); low priority unless tenant requests.
-- [ ] **Read weight** — stream via CoreBluetooth → cart line "Weighted item" accepts reading.
+- [x] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP). `BluetoothWeightScale` + `Weight` + `WeightDisplayChip` shipped.
+- [x] **Read weight** — `BluetoothWeightScale.stream()` / `read()` + characteristic 0x2A9D parser. Cart wiring deferred to §16.
 - [ ] **Tare / zero** — button in POS when scale selected.
 
 ### 17.7 Bluetooth / peripherals shell
-- [ ] **Permissions** — Bluetooth request with rationale copy.
-- [ ] **Device shelf** — Settings → Devices shows all paired (scanner, printer, terminal, scale, customer display) with status dots.
+- [x] **Permissions** — `NSBluetoothAlwaysUsageDescription` documented; written by `scripts/write-info-plist.sh`.
+- [x] **Device shelf** — `BluetoothSettingsView` + `HardwareSettingsView` aggregator shipped.
 - [ ] **Reconnect** — auto-reconnect on launch; surface failures in status bar glass.
 
 ### 17.8 Customer-facing display
@@ -2191,9 +2191,9 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Tenant chooses unit system
 - [ ] Rate-by-weight pricing rule ("$/lb") with auto-computed total
 - [ ] Note: NTEP-certified scale required for commercial US sales (tenant responsibility)
-- [ ] Primary path: fire "kick" command via thermal receipt printer's RJ11 cash-drawer port
+- [x] Primary path: fire "kick" command via thermal receipt printer's RJ11 cash-drawer port. `EscPosDrawerKick` + `EscPosSender` protocol shipped.
 - [ ] Fire on specific tenders (cash / checks)
-- [ ] Settings → Hardware → Cash drawer → enable + choose printer binding
+- [x] Settings → Hardware → Cash drawer → enable + choose printer binding. `HardwareSettingsView` aggregator wires navigation link.
 - [ ] Test "Open drawer" button
 - [ ] Alternate path: USB-connected direct-to-iPad via adapter (less common)
 - [ ] Manager override: open drawer without sale (reconciliation)
