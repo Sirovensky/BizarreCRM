@@ -11,6 +11,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -79,10 +81,14 @@ fun BrandListItem(
                     // composable individually and reading them as unrelated
                     // pieces. clickable() is still applied on top so the
                     // ripple / tap target keeps working.
+                    // §22.3 — tablet / ChromeOS / desktop-mode cursor
+                    // affordance: hovering shows the hand pointer on any
+                    // clickable list row. No-op on phones with no cursor.
                     Modifier
                         .semantics(mergeDescendants = true) {
                             role = Role.Button
                         }
+                        .pointerHoverIcon(PointerIcon.Hand)
                         .clickable(
                             interactionSource = interactionSource,
                             indication = ripple(),

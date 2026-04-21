@@ -2243,7 +2243,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 22.3 Keyboard & mouse
 - [~] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape. (Ctrl+N, Shift+N/S/M, Ctrl+F, Ctrl+H, Ctrl+",", Ctrl+/, Esc DONE; Ctrl+P/K/S/Z pending)
 - [x] Shortcut overlay (Ctrl+/) lists every shortcut for current screen.
-- [ ] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons.
+- [~] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons.
 - [ ] Right-click: `Modifier.onPointerEvent(Release) { ... if (button.isSecondary) showDropdown }`.
 
 ### 22.4 Split-screen / multi-window
