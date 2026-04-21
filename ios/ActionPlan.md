@@ -2496,9 +2496,9 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Tone rewrite via Writing Tools on eligible devices (§12).
 - [ ] A/B variants: 50/50 split with open / reply / revenue-attribution tracking.
 - [ ] TCPA / CAN-SPAM: marketing templates inject unsubscribe link automatically; server blocks send if absent.
-- [ ] Location: Settings → Diagnostics → Dead-letter queue (+ exposed in §19.25 debug-drawer panel).
-- [ ] Item row: action type (create-ticket / update-inventory / …), failure reason, first-attempted-at, last-attempt-at, attempt count, last-error.
-- [ ] Actions per row: Retry now / Retry later / Edit payload (advanced) / Discard (confirm required).
+- [x] Location: Settings → Diagnostics → Dead-letter queue (+ exposed in §19.25 debug-drawer panel). (`Sync/DeadLetter/DeadLetterListView.swift`)
+- [x] Item row: action type (create-ticket / update-inventory / …), failure reason, first-attempted-at, last-attempt-at, attempt count, last-error. (`DeadLetterListView` row shows entity, op, attempts, error, relative timestamp.)
+- [x] Actions per row: Retry now / Retry later / Edit payload (advanced) / Discard (confirm required). (`DeadLetterDetailView` — Retry re-enqueues via `SyncQueueStore.retryDeadLetter`; Discard via `discardDeadLetter`; full JSON payload displayed with `textSelection`; destructive confirm alert.)
 - [ ] App-root banner if DLQ count > 0: "3 changes couldn't sync — open to fix."
 - [ ] Auto-escalation at > 24h: server emails tenant admin (not iOS-sent).
 - [ ] Before discard, offer "Export JSON" so user can manually reapply elsewhere.
@@ -2683,16 +2683,16 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 
 ### 20.1 Read-through cache architecture
 - [ ] **Every read** lands in a GRDB table; SwiftUI views observe GRDB via `@FetchRequest` equivalent (`ValueObservation`).
-- [ ] **Repository pattern** — `TicketRepository.observeList(filters:)` emits from GRDB; `sync()` refreshes from server.
+- [x] **Repository pattern** — `CachedRepository` protocol + `AbstractCachedRepository<Entity, ListFilter>` generic helper: `list(filter:maxAgeSeconds:)` returns `CachedResult<[Entity]>` (cache-first, background remote refresh when stale); `create`/`update`/`delete` persist locally then enqueue `SyncOp`. (`Sync/CachedRepository.swift`)
 - [ ] **Read strategies** — `networkOnly` (force) / `cacheOnly` (offline) / `cacheFirst` (default) / `cacheThenNetwork` (stale-while-revalidate).
 - [ ] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min.
-- [ ] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago".
+- [x] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago". (`Sync/StalenessIndicator.swift` + `StalenessLogic`; color thresholds: < 1h green, < 4h amber, >= 4h red; Liquid Glass capsule; a11y label; Reduce Motion respected.)
 
 ### 20.2 Write queue architecture
 - [x] **`sync_queue` table** — columns: `id, op, entity, entity_local_id, entity_server_id, payload, idempotency_key, status, attempt_count, last_error, enqueued_at, next_retry_at`.
 - [x] **Ops** — `create`, `update`, `delete` wired for customer + inventory; ticket update pending merge. `upload_photo` / `charge` deferred to §20.4 / POS.
 - [x] **Optimistic write** — create VMs set `createdId = -1` sentinel (PendingSync) + dismiss immediately; row inserted to sync_queue.
-- [x] **Drain loop** — `SyncFlusher.flush()` triggered by `SyncOrchestrator` on connectivity restored, app foreground, 60s periodic tick when pendingCount > 0.
+- [x] **Drain loop** — `SyncManager.syncNow()` real implementation: pulls `SyncQueueStore.due(limit:20)`, calls `SyncOpExecutor`, marks `.succeeded`/`.failed`/dead-letter; `autoStart()` via `NWPathMonitor`; `SyncOpExecutor` protocol keeps Sync pkg domain-free. (`Sync/SyncManager.swift`)
 - [x] **Idempotency keys** — UUID per mutation; INSERT OR IGNORE on idempotency_key silently dedupes UI retries.
 - [ ] **Per-entity ordering** — current drain is serial across all entities; revisit when queue size grows beyond tens of rows.
 - [x] **Exponential backoff** — 1s → 2s → 4s → 8s → 16s → 32s → 60s cap; jitter ±10%. SyncQueueStoreTests locks the formula.
@@ -2731,7 +2731,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Per-parent sub-lists use the same contract.** Ticket history timeline (§4.6), ticket notes + photos, customer notes (§5), customer timeline, SMS thread messages (§6 / §12), inventory movement history (§6.2), audit log (§50), activity feed (§50), team-chat messages (§45) — all follow the cursor / `sync_state` pattern, scoped per-parent. Each gets its own `<entity>_sync_state` row keyed by `(parent_type, parent_id, filter?)`. Never client-side slices, never `total_pages`.
 
 ### 20.6 Connectivity detection
-- [ ] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive).
+- [x] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive). (`SyncManager.autoStart()` subscribes and triggers `syncNow()` on reconnect.)
 - [ ] **Offline banner** — glass chip at top of every screen when path == none.
 - [ ] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override).
 - [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
