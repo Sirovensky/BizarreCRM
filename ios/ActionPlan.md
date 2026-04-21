@@ -4782,49 +4782,49 @@ Content below kept as the iOS implementation spec for when those gates open.
 ## §46. Goals, Performance Reviews & Time Off
 
 ### 46.1 Goals (per-user + per-team)
-- [ ] **Goal types**: daily revenue / weekly ticket-count / monthly avg-ticket-value / personal commission / per-role custom.
+- [x] **Goal types**: daily revenue / weekly ticket-count / monthly avg-ticket-value / personal commission / per-role custom.
 - [ ] **Configured by manager** — Settings → Team → Goals → set target per employee or shared team goal.
-- [ ] **Progress ring** on personal dashboard tile + team-aggregate ring on manager dashboard.
+- [x] **Progress ring** on personal dashboard tile + team-aggregate ring on manager dashboard.
 - [ ] **Trajectory line** — historical vs target vs forecast curve.
-- [ ] **Milestone toasts** — 50% / 75% / 100% (respect Reduce Motion; confetti only on 100% with `BrandMotion` fallback).
-- [ ] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §46 gamification guardrails.
+- [x] **Milestone toasts** — 50% / 75% / 100% (respect Reduce Motion; confetti only on 100% with `BrandMotion` fallback).
+- [x] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §46 gamification guardrails.
 - [ ] **Miss handling** — supportive copy ("Tomorrow's a new day"); no guilt language; no daily push notifications about missed goals.
 - [ ] **Tenant can disable goals entirely** (some shops don't run sales culture).
 
 ### 46.2 Performance reviews
-- [ ] **Manager composes review**: numeric ratings per competency (1-5 with descriptors) + strengths + growth areas + next-period goals.
-- [ ] **Employee self-review** — separate form completed before manager session; both surface in review meeting helper.
-- [ ] **Peer feedback intake** (§46.5) aggregated by manager into final review.
-- [ ] **Meeting helper** — "Prepare review" action compiles scorecard (§46.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
-- [ ] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
+- [x] **Manager composes review**: numeric ratings per competency (1-5 with descriptors) + strengths + growth areas + next-period goals.
+- [x] **Employee self-review** — separate form completed before manager session; both surface in review meeting helper.
+- [x] **Peer feedback intake** (§46.5) aggregated by manager into final review.
+- [x] **Meeting helper** — "Prepare review" action compiles scorecard (§46.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
+- [x] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
 - [ ] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file.
 - [ ] **Cadence** — quarterly / semi-annual / annual tenant-configurable.
 
 ### 46.3 Time off (PTO)
-- [ ] **Request PTO** — date range + type (vacation / sick / personal / unpaid) + reason; optional note.
-- [ ] **Manager approve / deny** — push notification to requester (§70); audit log entry.
-- [ ] **Team calendar view** — month grid showing who's out when; conflicts highlighted.
-- [ ] **Balance tracking** — accrual rate per type (configured in Settings); usage deducted on approval; warnings when requesting over balance.
-- [ ] **Coverage prompt** — when approving PTO that affects schedule, manager sees conflicts with scheduled shifts + suggested swap partner.
+- [x] **Request PTO** — date range + type (vacation / sick / personal / unpaid) + reason; optional note.
+- [x] **Manager approve / deny** — push notification to requester (§70); audit log entry.
+- [x] **Team calendar view** — month grid showing who's out when; conflicts highlighted.
+- [x] **Balance tracking** — accrual rate per type (configured in Settings); usage deducted on approval; warnings when requesting over balance.
+- [x] **Coverage prompt** — when approving PTO that affects schedule, manager sees conflicts with scheduled shifts + suggested swap partner.
 - [ ] **Carry-over + expiry policy** — tenant-configured; "X days expire Dec 31" banner.
 
 ### 46.4 Employee scorecards (private by default)
 Covers what §46 specified. Lives here.
 
-- [ ] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §4), avg customer rating (§15), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
-- [ ] **Rolling windows** — 30 / 90 / 365-day charts.
+- [x] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §4), avg customer rating (§15), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
+- [x] **Rolling windows** — 30 / 90 / 365-day charts.
 - [ ] **Private by default** — only self + direct manager see; owner sees all.
-- [ ] **Manager annotations** — notes + praise / coaching signals visible to employee.
+- [x] **Manager annotations** — notes + praise / coaching signals visible to employee.
 - [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §46.2 review.
-- [ ] **Export** — scorecard PDF for HR file.
+- [x] **Export** — scorecard PDF for HR file.
 
 ### 46.5 Peer feedback
 Covers what §46 specified.
 
-- [ ] **Request** — employee requests feedback from 1–3 peers during review cycle.
-- [ ] **Form** — 4 prompts: what's going well / what to improve / one strength / one blind spot.
-- [ ] **Anonymous by default**; optional peer attribution.
-- [ ] **Delivery gated through manager** — manager curates before sharing with subject; prevents rumor / hostility.
+- [x] **Request** — employee requests feedback from 1–3 peers during review cycle.
+- [x] **Form** — 4 prompts: what's going well / what to improve / one strength / one blind spot.
+- [x] **Anonymous by default**; optional peer attribution.
+- [x] **Delivery gated through manager** — manager curates before sharing with subject; prevents rumor / hostility.
 - [ ] **Frequency cap** — max 1 request per peer per quarter; prevents feedback fatigue.
 - [ ] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`.
 
