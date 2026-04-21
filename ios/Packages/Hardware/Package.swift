@@ -8,10 +8,11 @@ let package = Package(
         .library(name: "Hardware", targets: ["Hardware"])
     ],
     dependencies: [
-        .package(path: "../Core")
+        .package(path: "../Core"),
+        .package(path: "../Persistence")
     ],
     targets: [
-        .target(name: "Hardware", dependencies: ["Core"]),
+        .target(name: "Hardware", dependencies: ["Core", "Persistence"]),
         .testTarget(name: "HardwareTests", dependencies: ["Hardware"])
     ]
 )
