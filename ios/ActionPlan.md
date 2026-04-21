@@ -1527,7 +1527,38 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] Mark read — `PATCH /sms/messages/:id { read: true }` (verify endpoint).
 - [ ] Flag / pin — `PATCH /sms/conversations/:id { flagged, pinned }`.
 
-### 12.4 Voice / calls (if VoIP tenant)
+### 12.4 MMS media — `Mms/`
+- [x] **`MmsAttachment`** — `{ id, kind (.image/.video/.audio/.file), url, sizeBytes, mimeType, thumbnail? }`. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`MmsAttachmentPickerSheet`** — photo library / camera / file picker. Compresses images to 1 MB max. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`MmsAttachmentBubbleView`** — inline media in SMS thread bubble. Tap → full-screen preview. A11y label on all media. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`MmsSizeEstimator`** — pure; estimates total send cost + warns if > carrier limit (1.6 MB). 10 tests. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.5 Group messaging — `Group/`
+- [x] **`GroupMessageComposer`** — compose once, send to N recipients individually. iPhone full-screen / iPad split. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`GroupRecipientPickerView`** — customer segment presets + manual add. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`GroupSendConfirmAlert`** — shows recipient count + estimated cost + "Send to all" button. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`GroupSendViewModel`** — batch POST with progress bar. `POST /sms/group-send`. 9 tests. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.6 Delivery status tracking — `Delivery/`
+- [x] **`DeliveryStatus`** — `{ sent, delivered, failed, opted_out, no_response }`. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`DeliveryStatusBadge`** — reusable Liquid Glass–styled badge on message bubble. Reduce Transparency respected. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`DeliveryStatusPoller`** — polls `GET /sms/messages/:id/status` every 5s for 30s, stops on terminal status. 5 tests. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`DeliveryReportView`** — per-message detail: timestamp, carrier, failure reason. iPhone sheet / iPad inline. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.7 Auto-responders — `AutoResponder/`
+- [x] **`AutoResponderRule`** — `{ id, triggers (keyword list), reply, enabled, startTime?, endTime? (quiet hours) }`. Validation + `matches(message:)` + `isActive(at:)`. 11 tests. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`AutoResponderListView`** — admin CRUD with toggle + delete swipe. iPad hover + context menu. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`AutoResponderEditorSheet`** — keyword input + reply body + quiet-hours schedule. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.8 Thread search — `ThreadSearch/`
+- [x] **`ThreadSearchView`** — search within a thread's messages (local + server). Highlighted matches. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] **`ThreadSearchViewModel`** — debounced 300ms. Local in-memory FTS (§18 GRDB FTS5 ready). Server fallback. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.9 Pinned / starred messages — `Pinned/`
+- [x] **`MessagePinnedCollectionView`** — "Starred" tab shows all starred messages across threads. iPhone list / iPad 2-col grid. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+- [x] Star toggle via long-press context menu; `POST /sms/messages/:id/star`, `DELETE` to unstar. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
+
+### 12.10 Voice / calls (if VoIP tenant)
 - [ ] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available.
 - [ ] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → CallKit integration (`CXProvider`).
 - [ ] **Recording playback** — `GET /voice/calls/:id/recording` → `AVAudioPlayer`.
@@ -1535,19 +1566,19 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Transcription display** — if server provides.
 - [ ] **Incoming call push** (PushKit VoIP) → CallKit UI.
 
-### 12.5 Push → deep link
+### 12.11 Push → deep link
 - [ ] Push notification on new inbound SMS with category `SMS_INBOUND`.
 - [ ] Actions: Reply (inline text input via `UNTextInputNotificationAction`), Open, Call.
 - [ ] Tap → SMS thread.
 
-### 12.6 Bulk SMS / campaigns (cross-links §37)
+### 12.12 Bulk SMS / campaigns (cross-links §37)
 - [ ] Compose campaign to a segment; TCPA compliance check; preview.
 
-### 12.7 Empty / error states
+### 12.13 Empty / error states
 - [ ] No threads → "Start a conversation" CTA → compose new.
 - [ ] Send failed → red bubble with "Retry" chip; retried sends queued offline.
 
-### 12.8 Email templates (§64 in agent-ownership Phase 8)
+### 12.14 Email templates (§64 in agent-ownership Phase 8)
 - [x] **`EmailTemplate` model** — `{ id, name, subject, htmlBody, plainBody, category, dynamicVars }` in `Communications/Email/`. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [x] **`EmailRenderer` pure** — `static func render(template:context:) → (subject, html, plain)`; HTML-to-plain stripping via `NSAttributedString`; missing-var fallback; `sampleContext`. 12 tests. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [x] **`EmailTemplateListView`** — admin CRUD; category filter chips; search; context menu (Edit / Delete); picker closure for compose. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
@@ -2317,10 +2348,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
-- [ ] **Scope chips** — All / Customers / Tickets / Inventory / Invoices / Estimates / Leads / Appointments / SMS / Employees / Expenses / Notes.
+- [x] **Scope chips** — EntityFilter chip bar (All / Tickets / Customers / Inventory / Invoices / Estimates / Appointments) wired into GlobalSearchView + EntitySearchView. (feat(ios post-phase §18))
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
-- [ ] **Recent searches** — persisted per user in GRDB; cleared from settings.
-- [ ] **Saved / pinned searches** — name a search + save query JSON; surfaces as chip in empty state.
+- [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
+- [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
 - [ ] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable.
 - [ ] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone."
 - [ ] **Loading state** — skeleton rows in glass cards.
@@ -2350,8 +2381,8 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`.
 - [ ] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts).
 
-### 18.4 Saved searches / smart lists
-- [ ] **Create smart list** — from any filter state, "Save as smart list" → name + color.
+### 18.4 Entity-scoped search
+- [x] **`EntitySearchView`** — search scoped to one entity type via chip selector. `EntitySearchViewModel` (@Observable, 200ms debounce). (feat(ios post-phase §18))
 - [ ] **Smart list chip row** — above main list, pinned smart lists as chips.
 - [ ] **Auto-count** — smart list shows live count badge (updated on sync).
 - [ ] **Share smart list** — share JSON filter to another staff member via deep link.
