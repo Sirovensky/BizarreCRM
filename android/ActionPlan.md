@@ -189,19 +189,19 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] `DesignSystemTheme` Composable wrapping `MaterialExpressiveTheme` (AndroidX Compose M3-Expressive).
 - [ ] **Dynamic color**: on Android 12+, seed color scheme from `dynamicLightColorScheme(LocalContext.current)` / `dynamicDarkColorScheme`. Fallback to tenant brand palette on pre-12 / when tenant forces brand colors.
 - [ ] **Shape tokens**: soft / medium / large / extra-large corner families (4 / 8 / 16 / 28dp), rotating / concave cut corners on FAB + emphasis buttons via `AbsoluteSmoothCornerShape`-equivalent.
-- [ ] **Typography**: Material 3 `Typography` with brand font stack — Bebas Neue (display), League Spartan (headline), Roboto (body/UI), Roboto Mono (IDs). Loaded via `res/font/` XML fontFamily + `rememberFontFamily` fallbacks.
+- [x] **Typography**: Material 3 `Typography` with brand font stack — Bebas Neue (display), League Spartan (headline), Roboto (body/UI), Roboto Mono (IDs). Loaded via `res/font/` XML fontFamily + `rememberFontFamily` fallbacks.
 - [ ] **Motion**: Material 3 Expressive spring motion tokens (`MotionScheme.expressive()` / `.standard()`); per-user Reduce Motion override honors `ACCESSIBILITY_DISPLAY_ANIMATION_SCALE` + in-app toggle.
-- [ ] **Surfaces / elevation**: Material 3 tonal elevation (no drop shadows except on FABs). Max 3 elevation levels per screen.
+- [x] **Surfaces / elevation**: Material 3 tonal elevation (no drop shadows except on FABs). Max 3 elevation levels per screen.
 - [ ] **Tenant accent** — `BrandAccent` color layered via `LocalContentColor` + `primary` swap; increase-contrast mode bumps to AA 7:1 palette.
 - [ ] No glassmorphism. No translucent blurred nav bars. That is iOS Liquid Glass; Android stays on tonal M3 surfaces to keep the platform voice distinct.
 
 ### 1.5 Navigation shell
 - [ ] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+).
 - [ ] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`.
-- [ ] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
+- [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
 - [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
 - [ ] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag.
-- [ ] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
+- [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
 - [ ] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`.
 
 ### 1.6 Environment & config
@@ -234,7 +234,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Redo: Ctrl+Shift+Z.
 - [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed".
 - [ ] Audit integration: each undo creates audit entry (not silent).
-- [ ] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
+- [x] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
 - [~] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (`BizarreCrmApp` registers `ProcessLifecycleOwner` observer; ON_START re-bootstraps the session, runs `SyncWorker.syncNow`, and reconnects WebSocket if dropped. Push-token refresh + lock-gate re-eval still pending.)
 - [ ] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required.
 - [ ] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy.
@@ -244,8 +244,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact.
 - [ ] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`.
 - [x] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR. (`FcmService.onMessageReceived` short-circuits when `type=silent_sync` / `data.sync=true` / no notification + no body, calls `SyncWorker.syncNow(this)`, and skips notification-post.)
-- [ ] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
-- [ ] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
+- [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
+- [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
 - [ ] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min.
 - [ ] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings.
@@ -287,7 +287,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Remember-me toggle** persists username in EncryptedSharedPreferences + flag to surface biometric prompt next launch.
 - [x] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
 - [~] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." banner with countdown.
-- [ ] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
+- [x] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
 
 ### 2.3 First-time password set
 - [x] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
@@ -351,7 +351,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Session-revoked banner** — sticky banner "Signed out — session was revoked on another device." with reason from `message`. (`AuthPreferences.ClearReason` enum + AuthInterceptor sets `RefreshFailed`; NavGraph observer propagates reason to LoginScreen via savedStateHandle; Surface banner in LoginScreen with Dismiss button.)
 
 ### 2.12 Error / empty states
-- [ ] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
+- [x] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
 - [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address.
 - [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
 - [ ] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`).
@@ -376,7 +376,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Current POS cart bound to current user; user switch parks cart.
 - [ ] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry.
 - [ ] Shared-device mode hides biometric (avoid confusion between staff bio enrollments).
-- [ ] EncryptedSharedPreferences scoped per staff via per-user prefs file namespace.
+- [x] EncryptedSharedPreferences scoped per staff via per-user prefs file namespace.
 
 ### 2.15 PIN (quick-switch)
 - [ ] Staff enters 4–6 digit PIN during onboarding.
@@ -490,8 +490,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
-- [ ] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
-- [ ] **Skeleton loaders** — shimmer via `placeholder-material3` Compose lib ≤300ms; cached value rendered immediately if present.
+- [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
+- [x] **Skeleton loaders** — shimmer via `placeholder-material3` Compose lib ≤300ms; cached value rendered immediately if present.
 - [~] **Phone**: 2-column grid. **Tablet**: 3-column ≥600dp wide, 4-column ≥840dp, capped at 1200dp content width. **ChromeOS/desktop**: 4-column.
 - [ ] **Customization sheet** — long-press tile → `ModalBottomSheet` with "Hide tile" / "Reorder tiles"; persisted in DataStore.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
@@ -508,7 +508,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.3 Needs-attention surface
 - [ ] Base card with row-level chips — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week".
-- [ ] **Swipe actions** (phone): `SwipeToDismissBox` leading = snooze, trailing = dismiss; `HapticFeedbackConstants.GESTURE_END` on dismiss.
+- [x] **Swipe actions** (phone): `SwipeToDismissBox` leading = snooze, trailing = dismiss; `HapticFeedbackConstants.GESTURE_END` on dismiss.
 - [ ] **Context menu** (tablet/ChromeOS) via long-press + right-click — `DropdownMenu` with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local Room mirror so dismissed stays dismissed across devices.
 - [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
@@ -629,7 +629,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 _Tickets are the largest surface. Parity means creating a ticket on phone in under a minute with all power of web. Server endpoints: `GET /tickets`, `GET /tickets/my-queue`, `GET /tickets/{id}`, `POST /tickets`, `PUT /tickets/{id}`, `DELETE /tickets/{id}`, `PATCH /tickets/{id}/status`, `POST /tickets/{id}/notes`, `POST /tickets/{id}/photos`, `POST /tickets/{id}/devices`, `PUT /tickets/devices/{deviceId}`, `POST /tickets/devices/{deviceId}/parts`, `PUT /tickets/devices/{deviceId}/checklist`, `POST /tickets/{id}/convert-to-invoice`, `GET /tickets/export`, `POST /tickets/bulk-action`, `GET /tickets/device-history`, `GET /tickets/warranty-lookup`, `GET /settings/statuses`._
 
 ### 4.1 List
-- [ ] Base list + filter chips + search via `LazyColumn` + Paging3.
+- [x] Base list + filter chips + search via `LazyColumn` + Paging3.
 - [ ] **Cursor-based pagination (offline-first)** — list reads from Room via `Flow<PagingData<Ticket>>`. `RemoteMediator` drives `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into Room; list auto-refreshes. Offline: no-op (or un-archive older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from `total_pages`.
 - [ ] **Room cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via Room predicates on `(status_group, assignee, urgency, updated_at)` rather than server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
 - [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
@@ -703,7 +703,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [ ] **Offline create** — Room temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [ ] **Autosave draft** — every field change writes to `tickets_draft` Room table; "Resume draft" banner on list when present; discard confirmation.
 - [ ] **Validation** — per-step inline error helper text; block next until required fields valid.
-- [ ] **Hardware-keyboard shortcuts** — Ctrl+Enter create, Ctrl+. cancel, Ctrl+→ / Ctrl+← next/prev step.
+- [x] **Hardware-keyboard shortcuts** — Ctrl+Enter create, Ctrl+. cancel, Ctrl+→ / Ctrl+← next/prev step.
 - [ ] **Haptic** — `CONFIRM` on create; `REJECT` on validation fail.
 - [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
 
@@ -870,7 +870,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{id}`, `POST /customers`, `PUT /customers/{id}`, `DELETE /customers/{id}`, `GET /customers/{id}/tickets`, `GET /customers/{id}/invoices`, `GET /customers/{id}/communications`, `GET /customers/{id}/assets`, `POST /customers/{id}/assets`, `GET /customers/{id}/analytics`, `POST /customers/bulk-tag`, `POST /customers/merge`, `GET /crm/customers/{id}/health-score`, `POST /crm/customers/{id}/health-score/recalculate`, `GET /crm/customers/{id}/ltv-tier`._
 
 ### 5.1 List
-- [ ] Base list + search via LazyColumn + Paging3.
+- [x] Base list + search via LazyColumn + Paging3.
 - [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. Room `Flow<PagingData>` + `RemoteMediator`; `GET /customers?cursor=&limit=50` online only; offline no-op. Footer states: loading / more-available / end-of-list / offline-with-cached-count.
 - [ ] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit.
 - [ ] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state.
@@ -891,7 +891,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star.
 - [ ] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`. Auto-recalc on open if last calc > 24h; daily refresh worker at 4am local time.
 - [ ] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk); tap → explanation.
-- [ ] **Photo mementos** — recent repair photos gallery (`LazyRow` horizontal scroll).
+- [x] **Photo mementos** — recent repair photos gallery (`LazyRow` horizontal scroll).
 - [ ] **Contact card** — phones (multi, labeled), emails (multi), address (tap → `ACTION_VIEW` `geo:` URI opens Maps), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields.
 - [ ] **Quick-action row** — chips: Call · SMS · Email · New ticket · New invoice · Share · Merge · Delete.
 - [ ] **Tickets tab** — `GET /customers/:id/tickets`; infinite scroll; status chips; tap → ticket detail.
@@ -1026,7 +1026,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.16 Contact import
 - [ ] Just-in-time `requestPermissions(READ_CONTACTS)` at "Import".
-- [ ] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`.
+- [x] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`.
 - [ ] vCard → customer field mapping: name, phones, emails, address, birthday.
 - [ ] Field selection UI when multiple values.
 - [ ] Duplicate handling: cross-check existing customers → merge / skip / create new.
@@ -1101,7 +1101,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 ### 6.5 Scan to lookup
 - [ ] **Bottom-nav quick scan** / Dashboard FAB scan → CameraX + ML Kit → resolves barcode → item detail. If POS session open → add to cart.
 - [ ] **HID-scanner support** — accept external Bluetooth scanner input via hidden focused `TextField` + IME-send detection. Detect rapid keystrokes (intra-key <50ms) → buffer until `KeyEvent.KEYCODE_ENTER` → submit.
-- [ ] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
+- [x] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
 
 ### 6.6 Stocktake / audit
 - [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary.
@@ -1213,7 +1213,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.1 List
 - [ ] Base list + filter chips + search.
-- [ ] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void via `ScrollableTabRow`.
+- [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void via `ScrollableTabRow`.
 - [ ] **Filters** — date range, customer, amount range, payment method, created-by.
 - [ ] **Sort** — date / amount / due date / status.
 - [ ] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through).
@@ -1274,7 +1274,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.6 Aging report
 - [ ] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days).
-- [ ] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
+- [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
 - [ ] Row actions: Send reminder / Record payment / Write off.
 
 ### 7.7 Returns & refunds
@@ -1371,7 +1371,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 ### 9.1 List
 - [ ] Base list.
 - [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 `LinearProgressIndicator`) / Status / Source / Value / Next Action.
-- [ ] **Status filter** (multi-select `FilterChip` row) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
+- [x] **Status filter** (multi-select `FilterChip` row) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
 - [ ] **Sort** — name / created / lead score / last activity / next action.
 - [ ] **Bulk delete** with undo Snackbar.
 - [ ] **Swipe** — advance / drop stage.
@@ -1439,7 +1439,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
-- [ ] Drag-to-reschedule (tablet day/week views) with `HapticFeedbackConstants.GESTURE_END` on drop.
+- [x] Drag-to-reschedule (tablet day/week views) with `HapticFeedbackConstants.GESTURE_END` on drop.
 - [ ] Cancel — ask "Notify customer?" (SMS/email).
 - [ ] No-show — one-tap from detail; optional fee.
 - [ ] Recurring-event edits — "This event" / "This and following" / "All".
@@ -1502,7 +1502,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/conversations/{id}/messages`, `POST /sms/send`, `GET /inbox`, `POST /inbox/{id}/assign`, `POST /voice/call`, `GET /voice/calls`, `GET /voice/calls/{id}`, `GET /voice/calls/{id}/recording`, `POST /voice/call/{id}/hangup`. WS topic: `sms:received`, `call:started`, `call:ended`._
 
 ### 12.1 Thread list
-- [ ] Threads list via `LazyColumn`.
+- [x] Threads list via `LazyColumn`.
 - [ ] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row.
 - [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
 - [ ] **Search** — across all messages + phone numbers.
@@ -1567,7 +1567,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Mark all read** action (top-bar button).
 - [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
 - [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
-- [ ] **Group by day** (sticky day-header via `stickyHeader` in `LazyColumn`).
+- [x] **Group by day** (sticky day-header via `stickyHeader` in `LazyColumn`).
 - [ ] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
 - [ ] **Empty state** — "All caught up. Nothing new." illustration.
 
@@ -1577,7 +1577,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`.
 - [ ] **Data-only FCM** triggers background expedited Worker for delta sync.
 - [ ] **Rich push** — Big-picture / big-text style via `NotificationCompat.BigPictureStyle`; thumbnails (customer avatar / ticket photo) downloaded via Coil before posting.
-- [ ] **NotificationChannels registered on launch** (Android 8+ mandatory):
+- [x] **NotificationChannels registered on launch** (Android 8+ mandatory):
   - `sms_inbound` (High importance) → Reply inline / Call / Open.
   - `ticket_assigned` (Default) → Start work / Decline / Open.
   - `payment_received` (Default) → View receipt / Thank customer.
@@ -1592,10 +1592,10 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
 - [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (`util/QuietHours.kt` + Settings → Notifications → Quiet hours card with toggle + start/end TimePicker rows. SLA breach + security alerts allow-listed. System DND check still pending.)
 - [ ] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach.
-- [ ] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
+- [x] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
 
 ### 13.3 In-app toast
-- [ ] Foreground message on a different screen → in-app banner (Compose `Snackbar` at top via `SnackbarHost` or custom `Popup`) with tap-to-open; auto-dismiss 4s; `HapticFeedbackConstants.CLOCK_TICK`.
+- [x] Foreground message on a different screen → in-app banner (Compose `Snackbar` at top via `SnackbarHost` or custom `Popup`) with tap-to-open; auto-dismiss 4s; `HapticFeedbackConstants.CLOCK_TICK`.
 
 ### 13.4 Badge count
 - [ ] Launcher icon badge = unread count across inbox + notifications + SMS via NotificationChannel posting (Android auto-aggregates). Fallback via `ShortcutBadger` for Samsung / Xiaomi launchers that don't auto-badge.
@@ -1622,7 +1622,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.3 Timeclock
 - [ ] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`.
-- [ ] **PIN prompt** — custom numeric keypad with `HapticFeedbackConstants.VIRTUAL_KEY` per tap; `POST /auth/verify-pin`.
+- [x] **PIN prompt** — custom numeric keypad with `HapticFeedbackConstants.VIRTUAL_KEY` per tap; `POST /auth/verify-pin`.
 - [ ] **Breaks** — start / end break with type (meal / rest); accumulates toward labor law compliance.
 - [ ] **Geofence** — optional; capture location on clock-in/out if `ACCESS_FINE_LOCATION` granted; server records inside/outside store geofence.
 - [ ] **Edit entries** (admin only, audit log).
@@ -2144,8 +2144,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 20.8 Database encryption
 - [ ] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
-- [ ] Passphrase: 32-byte random at first-run, stored in EncryptedSharedPreferences with Android Keystore-backed AES256_GCM scheme.
-- [ ] Opt out of Android Auto-Backup on encrypted DB file.
+- [x] Passphrase: 32-byte random at first-run, stored in EncryptedSharedPreferences with Android Keystore-backed AES256_GCM scheme.
+- [x] Opt out of Android Auto-Backup on encrypted DB file.
 
 ### 20.9 Cache eviction
 - [ ] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk).
@@ -2198,7 +2198,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Respect `shortService` 3min cap; fall back to WorkManager expedited if exceeded.
 
 ### 21.5 WorkManager
-- [ ] Hilt-injected `@HiltWorker`s.
+- [x] Hilt-injected `@HiltWorker`s.
 - [ ] Periodic: Delta sync (15m), Cache purge (24h), Drafts purge (24h), Token refresh (7d).
 - [ ] Expedited (when needed & allowed): Sync drain, Photo upload, Silent-push delta.
 - [ ] Unique work names so duplicate kicks coalesce.
@@ -2475,19 +2475,19 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 28.1 Data at rest
 - [ ] SQLCipher (§20.8) for the DB.
-- [ ] EncryptedSharedPreferences (§1) for tokens + PIN hash mirror + passphrase.
+- [x] EncryptedSharedPreferences (§1) for tokens + PIN hash mirror + passphrase.
 - [ ] Android Keystore hardware-backed keys (StrongBox where available).
 - [ ] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`.
 - [ ] Opt out of Auto-Backup for sensitive files.
 
 ### 28.2 Data in transit
-- [ ] HTTPS-only via Network Security Config.
+- [x] HTTPS-only via Network Security Config.
 - [ ] Optional cert pinning (§1.2).
 - [ ] No cleartext endpoints ever; debug flavors allow loopback HTTP for dev.
 
 ### 28.3 Sensitive-screen protection
 - [ ] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals.
-- [ ] `Window.setRecentsScreenshotEnabled(false)` Android 12+.
+- [x] `Window.setRecentsScreenshotEnabled(false)` Android 12+.
 - [ ] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`).
 
 ### 28.4 Clipboard sensitivity
@@ -2549,7 +2549,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 29.2 Frame rate
 - [ ] 120 Hz where supported; sustained 60fps minimum.
 - [ ] Jank detection via JankStats in debug; CI fails if % janky > 5% in baseline scenario.
-- [ ] Scroll perf: `LazyColumn` with stable keys + `contentType`.
+- [x] Scroll perf: `LazyColumn` with stable keys + `contentType`.
 
 ### 29.3 APK size
 - [ ] Target < 25 MB download (via Play Feature Delivery split per-ABI / density / language).
@@ -3626,7 +3626,7 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 ## 64. Release checklist (go-live gates)
 
 ### 64.1 Phase gates
-- [ ] Phase 0 Skeleton done: Android Studio project builds, Hilt DI, Compose theme, login shippable, ApiClient envelope works, token storage.
+- [x] Phase 0 Skeleton done: Android Studio project builds, Hilt DI, Compose theme, login shippable, ApiClient envelope works, token storage.
 - [ ] Phase 1 Read-only parity: all lists + detail views render from Room; TalkBack traversal passes; Internal track TestFlight-equivalent shared with team.
 - [ ] Phase 2 Writes + POS: full CRUD + POS cash tender + BlockChyp; sync queue operating; closed testing begins.
 - [ ] Phase 3 Hardware + platform: barcode / photo / signature / printer / cash drawer; FCM; Glance widgets; App Shortcuts; adaptive layouts.
@@ -4046,7 +4046,7 @@ All events target tenant server (§32).
 - [ ] Jump-to-top on bottom-nav re-select.
 
 ### 75.6 Pull-to-refresh
-- [ ] Material 3 `PullToRefreshBox` on every list + Dashboard.
+- [x] Material 3 `PullToRefreshBox` on every list + Dashboard.
 
 ### 75.7 Selection + multi-select
 - [ ] Long-press enters edit mode on lists.
