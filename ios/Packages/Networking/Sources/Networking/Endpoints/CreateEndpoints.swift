@@ -285,4 +285,65 @@ public extension APIClient {
     func updateTicket(id: Int64, _ req: UpdateTicketRequest) async throws -> CreatedResource {
         try await put("/api/v1/tickets/\(id)", body: req, as: CreatedResource.self)
     }
+
+    // §63 ext — Invoice + Estimate create (Phase 2)
+
+    func createInvoice(_ req: CreateInvoiceRequest) async throws -> CreatedResource {
+        try await post("/api/v1/invoices", body: req, as: CreatedResource.self)
+    }
+
+    func createEstimate(_ req: CreateEstimateRequest) async throws -> CreatedResource {
+        try await post("/api/v1/estimates", body: req, as: CreatedResource.self)
+    }
+}
+
+// MARK: — Invoice create
+
+/// `POST /api/v1/invoices` — minimal required fields.
+/// Server: packages/server/src/routes/invoices.routes.ts.
+public struct CreateInvoiceRequest: Encodable, Sendable {
+    public let customerId: Int64
+    public let ticketId: Int64?
+    public let notes: String?
+    public let dueOn: String?    // YYYY-MM-DD
+
+    public init(customerId: Int64, ticketId: Int64? = nil,
+                notes: String? = nil, dueOn: String? = nil) {
+        self.customerId = customerId
+        self.ticketId = ticketId
+        self.notes = notes
+        self.dueOn = dueOn
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case notes
+        case customerId = "customer_id"
+        case ticketId   = "ticket_id"
+        case dueOn      = "due_on"
+    }
+}
+
+// MARK: — Estimate create
+
+/// `POST /api/v1/estimates` — minimal required fields.
+/// Server: packages/server/src/routes/estimates.routes.ts.
+public struct CreateEstimateRequest: Encodable, Sendable {
+    public let customerId: Int64
+    public let subject: String?
+    public let notes: String?
+    public let validUntil: String?   // YYYY-MM-DD
+
+    public init(customerId: Int64, subject: String? = nil,
+                notes: String? = nil, validUntil: String? = nil) {
+        self.customerId = customerId
+        self.subject = subject
+        self.notes = notes
+        self.validUntil = validUntil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case subject, notes
+        case customerId  = "customer_id"
+        case validUntil  = "valid_until"
+    }
 }

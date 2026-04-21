@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -326,3 +327,4 @@ private func formatMoney(_ v: Double) -> String {
     f.currencyCode = "USD"
     return f.string(from: NSNumber(value: v)) ?? "$\(v)"
 }
+#endif

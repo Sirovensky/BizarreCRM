@@ -20,10 +20,19 @@ public final class CustomerCreateViewModel {
     public var postcode: String = ""
     public var notes: String = ""
 
-    public private(set) var isSubmitting: Bool = false
-    public private(set) var errorMessage: String?
-    public private(set) var createdId: Int64?
-    public private(set) var queuedOffline: Bool = false
+    public internal(set) var isSubmitting: Bool = false
+    public internal(set) var errorMessage: String?
+    public internal(set) var createdId: Int64?
+    public internal(set) var queuedOffline: Bool = false
+
+    // §63 ext — draft recovery
+    public internal(set) var _draftRecord: DraftRecord?
+    public internal(set) var _pendingDraft: CustomerDraft?
+    public internal(set) var validationErrors: [String: String] = [:]
+
+    @ObservationIgnored internal let _draftStoreValue: DraftStore = DraftStore()
+    @ObservationIgnored internal lazy var _draftAutoSaverValue: DraftAutoSaver<CustomerDraft> =
+        DraftAutoSaver(screen: "customer.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
 
@@ -49,12 +58,17 @@ public final class CustomerCreateViewModel {
         do {
             let created = try await api.createCustomer(req)
             createdId = created.id
+            await _draftAutoSaverValue.clear()
         } catch {
-            if CustomerOfflineQueue.isNetworkError(error) {
+            let appError = AppError.from(error)
+            if case .offline = appError {
+                await enqueueOffline(req)
+                await handleAppError(appError)
+            } else if CustomerOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
             } else {
                 AppLog.ui.error("Customer create failed: \(error.localizedDescription, privacy: .public)")
-                errorMessage = error.localizedDescription
+                await handleAppError(appError)
             }
         }
     }
@@ -123,20 +137,36 @@ public struct CustomerCreateView: View {
 
     public var body: some View {
         NavigationStack {
-            CustomerFormView(
-                firstName: $vm.firstName,
-                lastName: $vm.lastName,
-                email: $vm.email,
-                phone: $vm.phone,
-                mobile: $vm.mobile,
-                organization: $vm.organization,
-                address1: $vm.address1,
-                city: $vm.city,
-                state: $vm.state,
-                postcode: $vm.postcode,
-                notes: $vm.notes,
-                errorMessage: vm.errorMessage
-            )
+            VStack(spacing: 0) {
+                // §63 ext — draft recovery banner
+                if let record = vm._draftRecord {
+                    DraftRecoveryBanner(record: record) {
+                        vm.restoreDraft()
+                    } onDiscard: {
+                        vm.discardDraft()
+                    }
+                }
+
+                CustomerFormView(
+                    firstName: $vm.firstName,
+                    lastName: $vm.lastName,
+                    email: $vm.email,
+                    phone: $vm.phone,
+                    mobile: $vm.mobile,
+                    organization: $vm.organization,
+                    address1: $vm.address1,
+                    city: $vm.city,
+                    state: $vm.state,
+                    postcode: $vm.postcode,
+                    notes: $vm.notes,
+                    errorMessage: vm.errorMessage
+                )
+                .onChange(of: vm.firstName)      { _, _ in vm.scheduleAutoSave() }
+                .onChange(of: vm.lastName)       { _, _ in vm.scheduleAutoSave() }
+                .onChange(of: vm.email)          { _, _ in vm.scheduleAutoSave() }
+                .onChange(of: vm.phone)          { _, _ in vm.scheduleAutoSave() }
+                .onChange(of: vm.notes)          { _, _ in vm.scheduleAutoSave() }
+            }
             .navigationTitle("New customer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -168,6 +198,7 @@ public struct CustomerCreateView: View {
                         .padding(.top, BrandSpacing.sm)
                 }
             }
+            .task { await vm.onAppear() }
         }
     }
 }

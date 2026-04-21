@@ -19,49 +19,69 @@ public struct TicketCreateView: View {
 
     public var body: some View {
         NavigationStack {
-            Form {
-                Section("Customer") {
-                    Button {
-                        showingCustomerPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "person.circle")
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                            if let customer = vm.selectedCustomer {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(customer.displayName)
-                                        .foregroundStyle(.bizarreOnSurface)
-                                    if let line = customer.contactLine {
-                                        Text(line).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-                                    }
-                                }
-                            } else {
-                                Text("Choose customer").foregroundStyle(.bizarreOnSurfaceMuted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
+            VStack(spacing: 0) {
+                // §63 ext — draft recovery banner
+                if let record = vm.draftRecord {
+                    DraftRecoveryBanner(record: record) {
+                        vm.restoreDraft()
+                    } onDiscard: {
+                        vm.discardDraft()
                     }
-                    .buttonStyle(.plain)
                 }
 
-                Section("Device") {
-                    TextField("Device (e.g. iPhone 14 Pro)", text: $vm.deviceName)
-                    TextField("IMEI", text: $vm.imei).keyboardType(.numbersAndPunctuation)
-                    TextField("Serial", text: $vm.serial).autocorrectionDisabled()
-                    TextField("Price (USD)", text: $vm.priceText).keyboardType(.decimalPad)
-                }
+                Form {
+                    Section("Customer") {
+                        Button {
+                            showingCustomerPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.circle")
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                                if let customer = vm.selectedCustomer {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(customer.displayName)
+                                            .foregroundStyle(.bizarreOnSurface)
+                                        if let line = customer.contactLine {
+                                            Text(line).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+                                        }
+                                    }
+                                } else {
+                                    Text("Choose customer").foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
 
-                Section("Notes") {
-                    TextField("What's wrong / customer said…", text: $vm.additionalNotes, axis: .vertical)
-                        .lineLimit(3...6)
-                }
+                    Section("Device") {
+                        TextField("Device (e.g. iPhone 14 Pro)", text: $vm.deviceName)
+                            .onChange(of: vm.deviceName) { _, _ in vm.scheduleAutoSave() }
+                        TextField("IMEI", text: $vm.imei)
+                            .keyboardType(.numbersAndPunctuation)
+                            .onChange(of: vm.imei) { _, _ in vm.scheduleAutoSave() }
+                        TextField("Serial", text: $vm.serial)
+                            .autocorrectionDisabled()
+                            .onChange(of: vm.serial) { _, _ in vm.scheduleAutoSave() }
+                        TextField("Price (USD)", text: $vm.priceText)
+                            .keyboardType(.decimalPad)
+                            .onChange(of: vm.priceText) { _, _ in vm.scheduleAutoSave() }
+                    }
 
-                if let err = vm.errorMessage {
-                    Section { Text(err).foregroundStyle(.bizarreError) }
+                    Section("Notes") {
+                        TextField("What's wrong / customer said…", text: $vm.additionalNotes, axis: .vertical)
+                            .lineLimit(3...6)
+                            .onChange(of: vm.additionalNotes) { _, _ in vm.scheduleAutoSave() }
+                    }
+
+                    if let err = vm.errorMessage {
+                        Section { Text(err).foregroundStyle(.bizarreError) }
+                    }
                 }
+                .scrollContentBackground(.hidden)
+                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
-            .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .navigationTitle("New ticket")
             .navigationBarTitleDisplayMode(.inline)
@@ -86,6 +106,7 @@ public struct TicketCreateView: View {
             .sheet(isPresented: $showingCustomerPicker) {
                 CustomerPickerSheet(repo: customerRepo) { customer in
                     vm.selectedCustomer = customer
+                    vm.scheduleAutoSave()
                     showingCustomerPicker = false
                 }
             }
@@ -96,6 +117,7 @@ public struct TicketCreateView: View {
                         .padding(.top, BrandSpacing.sm)
                 }
             }
+            .task { await vm.onAppear() }
         }
     }
 }

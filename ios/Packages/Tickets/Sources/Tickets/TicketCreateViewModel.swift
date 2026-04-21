@@ -21,10 +21,19 @@ public final class TicketCreateViewModel {
     public var additionalNotes: String = ""
     public var priceText: String = ""
 
-    public private(set) var isSubmitting = false
-    public private(set) var errorMessage: String?
-    public private(set) var createdId: Int64?
-    public private(set) var queuedOffline: Bool = false
+    public internal(set) var isSubmitting = false
+    public internal(set) var errorMessage: String?
+    public internal(set) var createdId: Int64?
+    public internal(set) var queuedOffline: Bool = false
+
+    // §63 ext — draft recovery
+    public internal(set) var _draftRecord: DraftRecord?
+    public internal(set) var _pendingDraft: TicketDraft?
+    public internal(set) var validationErrors: [String: String] = [:]
+
+    @ObservationIgnored internal let _draftStoreValue: DraftStore = DraftStore()
+    @ObservationIgnored internal lazy var _draftAutoSaverValue: DraftAutoSaver<TicketDraft> =
+        DraftAutoSaver(screen: "ticket.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
 
@@ -52,12 +61,17 @@ public final class TicketCreateViewModel {
         do {
             let created = try await api.createTicket(req)
             createdId = created.id
+            await clearDraftAfterSubmit()
         } catch {
-            if TicketOfflineQueue.isNetworkError(error) {
+            let appError = AppError.from(error)
+            if case .offline = appError {
+                await enqueueOffline(req)
+                await handleAppError(appError)
+            } else if TicketOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
             } else {
                 AppLog.ui.error("Ticket create failed: \(error.localizedDescription, privacy: .public)")
-                errorMessage = error.localizedDescription
+                await handleAppError(appError)
             }
         }
     }

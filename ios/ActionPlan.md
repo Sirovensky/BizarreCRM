@@ -190,11 +190,11 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Test doubles: test bundle swaps registrations via `Container.mock { ... }` per test; no global-state leaks (assertions in `setUp`).
 - [ ] SwiftLint rule bans `static shared = ...` except for `Container` itself.
 - [ ] Widgets / App Intents targets import `Core` + register their own Container sub-scope.
-- [ ] `AppError` enum with cases: `.network(Underlying)`, `.server(status, message, requestID)`, `.auth(AuthReason)`, `.validation([FieldError])`, `.notFound(entity, id)`, `.permission(required: Capability)`, `.conflict(ConflictInfo)`, `.storage(StorageReason)`, `.hardware(HardwareReason)`, `.cancelled`, `.unknown(Error)`.
-- [ ] Each case exposes `title`, `message`, `suggestedActions: [AppErrorAction]` (retry / open-settings / contact-support / dismiss).
+- [x] `AppError` enum with cases: `.network(Underlying)`, `.server(status, message, requestID)`, `.auth(AuthReason)`, `.validation([FieldError])`, `.notFound(entity, id)`, `.permission(required: Capability)`, `.conflict(ConflictInfo)`, `.storage(StorageReason)`, `.hardware(HardwareReason)`, `.cancelled`, `.unknown(Error)`.
+- [x] Each case exposes `title`, `message`, `suggestedActions: [AppErrorAction]` (retry / open-settings / contact-support / dismiss).
 - [ ] Errors logged with category + code + request ID; no PII per §32.6 Redactor.
 - [ ] User-facing strings in `Localizable.strings` (§27 / §64).
-- [ ] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §63-equivalent (dropped — handled inline per screen).
+- [x] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §63-equivalent (dropped — handled inline per screen).
 - [ ] `UndoManager` attached per scene; each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)`
 - [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove
 - [ ] Undo trigger: ⌘Z on iPad hardware keyboard; iPhone `.accessibilityAction(.undo)` + shake-to-undo if enabled; context-menu button for non-keyboard users
@@ -228,13 +228,13 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] UI: silent unless sustained; show "Slow down" banner if queue > 10.
 - [ ] Debug drawer exposes current bucket state per endpoint.
 - [ ] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead).
-- [ ] Auto-save drafts every 2s to SQLCipher for ticket-create, customer-create, SMS-compose; never lost on crash/background.
-- [ ] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview.
-- [ ] Age indicator on draft ("Saved 3h ago").
-- [ ] One draft per type (not multi); explicit discard required before starting new.
+- [x] Auto-save drafts every 2s to SQLCipher for ticket-create, customer-create, SMS-compose; never lost on crash/background.
+- [x] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview.
+- [x] Age indicator on draft ("Saved 3h ago").
+- [x] One draft per type (not multi); explicit discard required before starting new.
 - [ ] Sensitive: drafts encrypted at rest; PIN/password fields never drafted.
-- [ ] Drafts stay on device (no cross-device sync — avoid confusion).
-- [ ] Auto-delete drafts older than 30 days.
+- [x] Drafts stay on device (no cross-device sync — avoid confusion).
+- [x] Auto-delete drafts older than 30 days.
 
 ---
 ## §2. Authentication & Onboarding
@@ -656,7 +656,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Review screen** — summary card with all fields; "Edit" jumps back to step; Big `.brandGlassProminent` "Create ticket" CTA.
 - [ ] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry.
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
-- [ ] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
+- [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
 - [ ] **Validation** — per-step inline glass error toasts; block next until required fields valid.
 - [ ] **Keyboard shortcuts** — ⌘↩ create, ⌘. cancel, ⌘→ / ⌘← next/prev step.
 - [ ] **Haptic** — `.success` on create; `.error` on validation fail.
@@ -1167,7 +1167,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`.
 - [ ] **Convert from estimate**.
 - [ ] **Idempotency key** — server requires for POST /invoices.
-- [ ] **Draft** autosave.
+- [x] **Draft** autosave.
 - [ ] **Send now** checkbox — email/SMS on create.
 
 ### 7.4 Record payment
@@ -1247,7 +1247,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] **Customer-facing PDF preview** — "See what customer sees" button.
 
 ### 8.3 Create
-- [ ] Same structure as invoice + validity window.
+- [x] Same structure as invoice + validity window.
 - [ ] Convert from lead (prefill).
 - [ ] Line items from repair-pricing services + inventory parts + free-form.
 - [ ] Idempotency key.

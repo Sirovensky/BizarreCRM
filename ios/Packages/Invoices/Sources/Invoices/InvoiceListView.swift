@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
@@ -227,3 +228,4 @@ private struct FilterChip: View {
         .buttonStyle(.plain)
     }
 }
+#endif
