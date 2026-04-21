@@ -839,6 +839,14 @@ app.use((req, res, next) => {
 import compression from 'compression';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { errorEnvelopeMiddleware } from './middleware/errorEnvelope.js';
+
+// Error-envelope enricher — monkey-patches res.json so every 4xx/5xx body
+// carries code + request_id even if the individual route handler wrote a
+// bare `{success:false,message:'x'}` envelope. Must run AFTER the request-id
+// middleware above (so res.locals.requestId is populated) but BEFORE any
+// route handler (so the patch is in place when handlers call res.json).
+app.use(errorEnvelopeMiddleware);
 
 // ENR-MW: Response compression (gzip/brotli) — reduces bandwidth for JSON API responses and static assets
 app.use(compression({
