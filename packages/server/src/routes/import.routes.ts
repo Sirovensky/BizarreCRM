@@ -26,6 +26,7 @@ import path from 'path';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('import');
@@ -200,7 +201,7 @@ function recordImportRateLimit(db: any, source: string, userId: number | null, i
 router.post(
   '/repairdesk/test-connection',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     // API key must be passed in the request body — it is never persisted on
     // the server. It only lives in memory for the duration of this request.
     const apiKey = (req.body?.api_key as string || '').trim();
@@ -221,7 +222,7 @@ router.post(
 router.post(
   '/repairdesk/start',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     const { entities } = req.body;
@@ -388,7 +389,7 @@ router.get(
 router.post(
   '/repairdesk/cancel',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     // Signal the background import to stop (per-tenant)
@@ -573,7 +574,7 @@ router.post(
 router.post(
   '/repairshopr/test-connection',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const { api_key, subdomain } = req.body;
     if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
       throw new AppError('api_key is required');
@@ -597,7 +598,7 @@ router.post(
 router.post(
   '/repairshopr/start',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     const { api_key, subdomain, entities } = req.body;
@@ -749,7 +750,7 @@ router.get(
 router.post(
   '/repairshopr/cancel',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     requestCancelRS((req as any).tenantSlug || undefined);
@@ -896,7 +897,7 @@ router.post(
 router.post(
   '/myrepairapp/test-connection',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const { api_key } = req.body;
     if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
       throw new AppError('api_key is required');
@@ -917,7 +918,7 @@ router.post(
 router.post(
   '/myrepairapp/start',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     const { api_key, entities } = req.body;
@@ -1065,7 +1066,7 @@ router.get(
 router.post(
   '/myrepairapp/cancel',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const db = req.db;
     const adb = req.asyncDb;
     requestCancelMRA((req as any).tenantSlug || undefined);

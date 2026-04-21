@@ -43,6 +43,7 @@ import {
 } from '../utils/validate.js';
 import { normalizePhone } from '../utils/phone.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import {
   sendSmsTenant,
   getSmsProvider,
@@ -91,7 +92,7 @@ function guardInboxRate(
  */
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
-    throw new AppError('Admin access required', 403);
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
 }
 

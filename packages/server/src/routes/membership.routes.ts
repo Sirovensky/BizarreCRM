@@ -10,6 +10,7 @@ import { enrollCard, createPaymentLink } from '../services/blockchyp.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { config } from '../config.js';
 import { isFeatureAllowed } from '@bizarre-crm/shared';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -24,7 +25,7 @@ function now(): string {
 // creation / subscription lifecycle / payment-link generation to clerks.
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
-    throw new AppError('Admin access required', 403);
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
 }
 

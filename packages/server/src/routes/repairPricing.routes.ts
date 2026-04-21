@@ -3,12 +3,13 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 
 // Admin-only middleware for mutating global pricing adjustments
 function adminOnly(req: Request, _res: Response, next: NextFunction) {
-  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   next();
 }
 

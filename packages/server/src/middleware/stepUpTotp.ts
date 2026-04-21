@@ -38,6 +38,7 @@ import { config } from '../config.js';
 import { audit } from '../utils/audit.js';
 import { sendEmail } from '../services/email.js';
 import { createLogger } from '../utils/logger.js';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 const log = createLogger('step-up-totp');
 
@@ -142,9 +143,10 @@ export function requireStepUpTotp(endpointLabel: string) {
     res: Response,
     next: NextFunction,
   ): Promise<void> {
+    const rid = res.locals.requestId as string | undefined;
     const user = req.user;
     if (!user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'Not authenticated', rid));
       return;
     }
 
@@ -159,17 +161,18 @@ export function requireStepUpTotp(endpointLabel: string) {
       .get(user.id) as { email: string | null; totp_secret: string | null; totp_enabled: number } | undefined;
 
     if (!dbUser) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_USER_NOT_FOUND, 'Not authenticated', rid));
       return;
     }
 
     // ── 2. 2FA not enrolled → hard gate ────────────────────────────────────
     if (!dbUser.totp_enabled || !dbUser.totp_secret) {
-      res.status(403).json({
-        success: false,
-        message: 'Step-up auth requires 2FA enrollment',
-        hint: 'Enable two-factor authentication in your account settings before using PII export.',
-      });
+      res.status(403).json(errorBody(
+        ERROR_CODES.ERR_PERM_STEP_UP_NO_2FA,
+        'Step-up auth requires 2FA enrollment',
+        rid,
+        { hint: 'Enable two-factor authentication in your account settings before using PII export.' },
+      ));
       return;
     }
 
@@ -178,13 +181,13 @@ export function requireStepUpTotp(endpointLabel: string) {
     const totpCode = typeof rawCode === 'string' ? rawCode.trim() : '';
 
     if (!totpCode) {
-      res.status(401).json({ success: false, message: 'Step-up TOTP required' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_PERM_STEP_UP_REQUIRED, 'Step-up TOTP required', rid));
       return;
     }
 
     // ── 4. Validate format ──────────────────────────────────────────────────
     if (!/^\d{6}$/.test(totpCode)) {
-      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'Invalid TOTP', rid));
       return;
     }
 
@@ -200,7 +203,7 @@ export function requireStepUpTotp(endpointLabel: string) {
 
     if (!valid) {
       audit(db, 'pii_export_totp_failed', user.id, ip, { endpoint: endpointLabel, user_agent: userAgent });
-      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'Invalid TOTP', rid));
       return;
     }
 
@@ -269,16 +272,17 @@ export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
     res: Response,
     next: NextFunction,
   ): Promise<void> {
+    const rid = res.locals.requestId as string | undefined;
     const superAdmin = req.superAdmin;
     if (!superAdmin) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'Not authenticated', rid));
       return;
     }
 
     const { getMasterDb } = await import('../db/master-connection.js');
     const masterDb = getMasterDb();
     if (!masterDb) {
-      res.status(500).json({ success: false, message: 'Master DB unavailable' });
+      res.status(500).json(errorBody(ERROR_CODES.ERR_INT_DB_UNAVAILABLE, 'Master DB unavailable', rid));
       return;
     }
 
@@ -293,17 +297,18 @@ export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
       | undefined;
 
     if (!dbAdmin) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_USER_NOT_FOUND, 'Not authenticated', rid));
       return;
     }
 
     // ── 2. 2FA not enrolled → hard gate ────────────────────────────────────
     if (!dbAdmin.totp_secret || !dbAdmin.totp_iv || !dbAdmin.totp_tag) {
-      res.status(403).json({
-        success: false,
-        message: 'Step-up auth requires 2FA enrollment',
-        hint: 'Enable two-factor authentication on your super-admin account before using destructive endpoints.',
-      });
+      res.status(403).json(errorBody(
+        ERROR_CODES.ERR_PERM_STEP_UP_NO_2FA,
+        'Step-up auth requires 2FA enrollment',
+        rid,
+        { hint: 'Enable two-factor authentication on your super-admin account before using destructive endpoints.' },
+      ));
       return;
     }
 
@@ -314,13 +319,13 @@ export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
     const totpCode = typeof rawCode === 'string' ? rawCode.trim() : '';
 
     if (!totpCode) {
-      res.status(401).json({ success: false, message: 'Step-up TOTP required' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_PERM_STEP_UP_REQUIRED, 'Step-up TOTP required', rid));
       return;
     }
 
     // ── 4. Validate format ──────────────────────────────────────────────────
     if (!/^\d{6}$/.test(totpCode)) {
-      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'Invalid TOTP', rid));
       return;
     }
 
@@ -359,7 +364,7 @@ export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
       } catch (auditErr) {
         log.error('Failed to write super_admin_totp_failed audit row', { error: auditErr });
       }
-      res.status(401).json({ success: false, message: 'Invalid TOTP' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'Invalid TOTP', rid));
       return;
     }
 

@@ -39,6 +39,7 @@ import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import {
   startExport,
   getExportJob,
@@ -70,7 +71,7 @@ const ExportRequestSchema = z.object({
 
 function adminOnly(req: Request, _res: Response, next: NextFunction): void {
   if (req.user?.role !== 'admin') {
-    throw new AppError('Admin access required', 403);
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
   next();
 }

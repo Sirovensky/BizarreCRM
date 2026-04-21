@@ -20,6 +20,7 @@ import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize } from '../utils/pagination.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const logger = createLogger('inventory');
 
@@ -319,7 +320,7 @@ router.get('/categories', async (req, res) => {
 // The inline role check below is kept as defence-in-depth.
 router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   const adb: AsyncDb = req.asyncDb;
 
   // Find all items needing reorder: in_stock <= reorder_level, reorder_level > 0, is_reorderable = 1

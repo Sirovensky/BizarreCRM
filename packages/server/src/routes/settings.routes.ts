@@ -29,6 +29,7 @@ import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage, MAX_PAGE_SIZE } from '../utils/pagination.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
@@ -85,7 +86,7 @@ const logoUpload = multer({
 
 // Admin-only middleware for mutating settings
 function adminOnly(req: Request, _res: Response, next: NextFunction) {
-  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   next();
 }
 

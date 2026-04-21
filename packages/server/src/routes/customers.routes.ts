@@ -23,6 +23,7 @@ import { escapeLike } from '../utils/query.js';
 import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 type AnyRow = Record<string, any>;
 
@@ -457,7 +458,7 @@ router.post(
   requirePermission('customers.merge'),
   asyncHandler(async (req, res) => {
     // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
 
@@ -658,7 +659,7 @@ router.post(
   requirePermission('customers.archive'),
   asyncHandler(async (req, res) => {
     // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { months } = req.body;
 
@@ -1831,7 +1832,7 @@ router.delete(
   requirePermission('customers.gdpr_erase'),
   asyncHandler(async (req, res) => {
     // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403);
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     const { password } = req.body;

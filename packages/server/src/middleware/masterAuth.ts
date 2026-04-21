@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt, { VerifyOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 export interface MasterAuthPayload {
   superAdminId: number;
@@ -22,9 +23,10 @@ const MASTER_JWT_VERIFY_OPTIONS: VerifyOptions = {
  * Uses a SEPARATE JWT secret from tenant auth to prevent cross-contamination.
  */
 export function masterAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const rid = res.locals.requestId as string | undefined;
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Master admin authentication required' });
+    res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'Master admin authentication required', rid));
     return;
   }
 
@@ -37,12 +39,12 @@ export function masterAuthMiddleware(req: Request, res: Response, next: NextFunc
     // @audit-fixed: Explicitly re-check the role after verify — a verified
     // but unexpected payload shape should never grant access.
     if (!decoded || typeof decoded !== 'object' || decoded.role !== 'super_admin') {
-      res.status(403).json({ success: false, message: 'Super admin access required' });
+      res.status(403).json(errorBody(ERROR_CODES.ERR_PERM_ADMIN_REQUIRED, 'Super admin access required', rid));
       return;
     }
     req.superAdmin = decoded;
     next();
   } catch {
-    res.status(401).json({ success: false, message: 'Invalid or expired master admin token' });
+    res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid or expired master admin token', rid));
   }
 }

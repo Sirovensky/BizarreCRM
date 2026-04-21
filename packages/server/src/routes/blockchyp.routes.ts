@@ -17,6 +17,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const logger = createLogger('blockchyp.routes');
 const router = Router();
@@ -44,7 +45,7 @@ interface IdempotencyRow {
 router.post('/test-connection', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
   if (req.user?.role !== 'admin') {
-    throw new AppError('Admin access required', 403);
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
 
   const { terminalName } = req.body;
@@ -460,7 +461,7 @@ router.post('/void-payment', asyncHandler(async (req: Request, res: Response) =>
     throw new AppError('paymentId is required', 400);
   }
   if (req.user?.role !== 'admin') {
-    throw new AppError('Admin access required to void a payment', 403);
+    throw new AppError('Admin access required to void a payment', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
 
   const payment = await adb.get<{
