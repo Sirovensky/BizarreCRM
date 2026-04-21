@@ -1132,7 +1132,13 @@ app.use('/api/v1', (req, res, next) => {
   const result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
-    return res.status(429).json({ success: false, message: 'Too many requests' });
+    return res.status(429).json({
+      success: false,
+      code: 'ERR_RATE_API',
+      message: 'Too many requests',
+      request_id: res.locals.requestId,
+      retry_after_seconds: result.retryAfterSeconds,
+    });
   }
   next();
 });
@@ -1422,7 +1428,13 @@ function webhookRateLimit(req: any, res: any, next: any) {
   const result = consumeWindowRate(db, 'webhook', ip, WEBHOOK_RATE_LIMIT, WEBHOOK_RATE_WINDOW);
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
-    return res.status(429).json({ success: false, message: 'Too many webhook requests' });
+    return res.status(429).json({
+      success: false,
+      code: 'ERR_RATE_WEBHOOK',
+      message: 'Too many webhook requests',
+      request_id: res.locals.requestId,
+      retry_after_seconds: result.retryAfterSeconds,
+    });
   }
   next();
 }

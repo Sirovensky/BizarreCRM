@@ -6,6 +6,7 @@ import { getTenantDb } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import { createLogger } from '../utils/logger.js';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 const log = createLogger('tenantResolver');
 
@@ -342,13 +343,19 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // tenants. Re-resolve host after the bare-IP rewrite above so the
   // dev flow passes the allow-list as a tenant subdomain.
   const effectiveHost = isBareIp ? resolveEffectiveHost(req) : host;
+  const rid = res.locals.requestId as string | undefined;
   if (!isAllowedHostname(effectiveHost, baseDomain)) {
     log.warn('rejected request with unexpected Host header', {
       host: effectiveHost || '(empty)',
       ip: req.socket?.remoteAddress || 'unknown',
       path: req.path,
+      requestId: rid,
     });
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_HOST_INVALID,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
@@ -373,10 +380,11 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       || allowedBareDomainPrefixes.some(p => req.path.startsWith(p));
 
     if (!isAllowedPath && req.path.startsWith('/api/v1/')) {
-      res.status(404).json({
-        success: false,
-        message: `Please access your shop via its subdomain (e.g., yourshop.${baseDomain}).`,
-      });
+      res.status(404).json(errorBody(
+        ERROR_CODES.ERR_TENANT_BARE_DOMAIN,
+        `Please access your shop via its subdomain (e.g., yourshop.${baseDomain}).`,
+        rid,
+      ));
       return;
     }
 
@@ -392,13 +400,21 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
 
   // Validate slug format (strict: lowercase alphanumeric + hyphens, 3-30 chars)
   if (!slug || slug.length < 3 || slug.length > 30 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug)) {
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_NOT_FOUND,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
   // Skip reserved subdomains — these are infrastructure, not tenant shops
   if (RESERVED_SLUGS.has(slug)) {
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_NOT_FOUND,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
@@ -419,27 +435,43 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // so outsiders can't discriminate between "shop never existed" and "shop
   // was suspended" via a simple probing loop. Log the real status for ops.
   if (!tenant) {
-    log.info('tenant not found', { slug, ip: req.socket?.remoteAddress || 'unknown' });
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    log.info('tenant not found', { slug, ip: req.socket?.remoteAddress || 'unknown', requestId: rid });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_NOT_FOUND,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
   if (tenant.status === 'suspended') {
-    log.warn('request to suspended tenant', { slug, ip: req.socket?.remoteAddress || 'unknown' });
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    log.warn('request to suspended tenant', { slug, ip: req.socket?.remoteAddress || 'unknown', requestId: rid });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_NOT_FOUND,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
   if (tenant.status === 'provisioning') {
     // Provisioning is a transient legitimate state — distinct 503 is OK
     // because the tenant DID just sign up in this browser session.
-    res.status(503).json({ success: false, message: 'This shop is still being set up. Please try again in a moment.' });
+    res.status(503).json(errorBody(
+      ERROR_CODES.ERR_TENANT_PROVISIONING,
+      'This shop is still being set up. Please try again in a moment.',
+      rid,
+    ));
     return;
   }
 
   if (tenant.status !== 'active') {
-    log.warn('tenant in unknown status', { slug, status: tenant.status });
-    res.status(404).json({ success: false, message: 'Shop not found. Check the URL and try again.' });
+    log.warn('tenant in unknown status', { slug, status: tenant.status, requestId: rid });
+    res.status(404).json(errorBody(
+      ERROR_CODES.ERR_TENANT_NOT_FOUND,
+      'Shop not found. Check the URL and try again.',
+      rid,
+    ));
     return;
   }
 
@@ -458,7 +490,11 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     console.error(`[Tenant] Failed to open DB for ${tenant.slug}:`, err);
     // Invalidate cached plan so next request retries fresh
     planCache.delete(tenant.id);
-    res.status(500).json({ success: false, message: 'Failed to connect to shop database.' });
+    res.status(500).json(errorBody(
+      ERROR_CODES.ERR_TENANT_DB_FAILED,
+      'Failed to connect to shop database.',
+      rid,
+    ));
     return;
   }
 

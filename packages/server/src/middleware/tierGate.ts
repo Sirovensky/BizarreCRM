@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import { isFeatureAllowed, FEATURE_NAMES, type PlanFeatures } from '@bizarre-crm/shared';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 /** Middleware factory: gates access to Pro-only features based on tenant plan. */
 export function requireFeature(feature: keyof PlanFeatures) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    const rid = res.locals.requestId as string | undefined;
     // Single-tenant mode bypasses all tier checks
     if (!config.multiTenant) { next(); return; }
 
@@ -13,22 +15,22 @@ export function requireFeature(feature: keyof PlanFeatures) {
     // silently defaulting to 'free' which could mask bugs.
     if (!req.tenantPlan) {
       console.warn(`[tierGate] Missing tenantPlan on ${req.method} ${req.path} — middleware chain issue? Rejecting.`);
-      res.status(500).json({
-        success: false,
-        message: 'Tenant context not initialized. Please try again.',
-      });
+      res.status(500).json(errorBody(
+        ERROR_CODES.ERR_TENANT_CONTEXT_MISSING,
+        'Tenant context not initialized. Please try again.',
+        rid,
+      ));
       return;
     }
 
     if (isFeatureAllowed(req.tenantPlan, feature)) { next(); return; }
 
     console.warn(`[tierGate] Feature "${feature}" blocked for plan "${req.tenantPlan}" on tenant ${req.tenantId} (${req.tenantSlug})`);
-    res.status(403).json({
-      success: false,
-      upgrade_required: true,
-      feature,
-      feature_name: FEATURE_NAMES[feature],
-      message: `${FEATURE_NAMES[feature]} requires a Pro plan. Upgrade to unlock this feature.`,
-    });
+    res.status(403).json(errorBody(
+      ERROR_CODES.ERR_PERM_FEATURE_GATED,
+      `${FEATURE_NAMES[feature]} requires a Pro plan. Upgrade to unlock this feature.`,
+      rid,
+      { upgrade_required: true, feature, feature_name: FEATURE_NAMES[feature] },
+    ));
   };
 }

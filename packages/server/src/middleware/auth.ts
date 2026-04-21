@@ -3,6 +3,7 @@ import { SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 // SEC (A6/A10): Centralize JWT signing & verification options so both
 // auth.routes.ts and middleware/auth.ts use the exact same algorithm,
@@ -50,9 +51,10 @@ declare global {
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const rid = res.locals.requestId as string | undefined;
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'No token provided' });
+    res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'No token provided', rid));
     return;
   }
 
@@ -78,11 +80,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     // Require an explicit `type === 'access'` marker AND a valid sessionId /
     // userId shape to slip through — any unknown token type is rejected.
     if (payload.type !== undefined && payload.type !== 'access') {
-      res.status(401).json({ success: false, message: 'Invalid token type' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN_TYPE, 'Invalid token type', rid));
       return;
     }
     if (typeof payload.sessionId !== 'string' || typeof payload.userId !== 'number') {
-      res.status(401).json({ success: false, message: 'Invalid token payload' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_PAYLOAD, 'Invalid token payload', rid));
       return;
     }
 
@@ -92,11 +94,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       // SECURITY: In multi-tenant mode, requests without a resolved tenant (req.tenantSlug undefined)
       // must NOT be serviced with tenant auth — only master admin routes should work without a tenant.
       if (!req.tenantSlug) {
-        res.status(401).json({ success: false, message: 'Tenant context required' });
+        res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_TENANT_REQUIRED, 'Tenant context required', rid));
         return;
       }
       if (payload.tenantSlug !== req.tenantSlug) {
-        res.status(401).json({ success: false, message: 'Token not valid for this tenant' });
+        res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_TENANT_MISMATCH, 'Token not valid for this tenant', rid));
         return;
       }
     }
@@ -119,11 +121,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       ),
     ]).then(async ([session, user, customRole]) => {
       if (!session) {
-        res.status(401).json({ success: false, message: 'Session expired' });
+        res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_EXPIRED, 'Session expired', rid));
         return;
       }
       if (!user) {
-        res.status(401).json({ success: false, message: 'User not found' });
+        res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_USER_NOT_FOUND, 'User not found', rid));
         return;
       }
 
@@ -139,7 +141,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
             try {
               await req.asyncDb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
             } catch { /* audit-log best-effort */ }
-            res.status(401).json({ success: false, message: 'Session idle timeout' });
+            res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_IDLE, 'Session idle timeout', rid));
             return;
           }
         }
@@ -179,17 +181,18 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       res.setHeader('Cache-Control', 'no-store');
       next();
     }).catch(() => {
-      res.status(401).json({ success: false, message: 'Invalid token' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));
     });
   } catch (err) {
-    res.status(401).json({ success: false, message: 'Invalid token' });
+    res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));
   }
 }
 
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    const rid = res.locals.requestId as string | undefined;
     if (!req.user) {
-      res.status(401).json({ success: false, message: 'Not authenticated' });
+      res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'Not authenticated', rid));
       return;
     }
 
@@ -212,7 +215,7 @@ export function requirePermission(permission: string) {
         next();
         return;
       }
-      res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      res.status(403).json(errorBody(ERROR_CODES.ERR_PERM_INSUFFICIENT, 'Insufficient permissions', rid, { permission }));
       return;
     }
 

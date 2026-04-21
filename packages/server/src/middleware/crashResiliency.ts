@@ -7,6 +7,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import { isRouteDisabled, resetRouteCrashCount } from '../services/crashTracker.js';
+import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 
 /**
  * Module-level variable tracking the route currently being processed.
@@ -20,10 +21,12 @@ export function crashGuardMiddleware(req: Request, res: Response, next: NextFunc
 
   // Check if this route has been auto-disabled due to repeated crashes
   if (isRouteDisabled(routeId)) {
-    res.status(503).json({
-      success: false,
-      message: 'This endpoint has been temporarily disabled due to repeated errors. Contact your administrator.',
-    });
+    res.status(503).json(errorBody(
+      ERROR_CODES.ERR_ROUTE_DISABLED,
+      'This endpoint has been temporarily disabled due to repeated errors. Contact your administrator.',
+      res.locals.requestId as string | undefined,
+      { route: routeId },
+    ));
     return;
   }
 
