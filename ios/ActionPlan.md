@@ -1695,7 +1695,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Architecture** — PosViewModel owning cart state (current scaffold uses `Cart` @Observable directly); PosRepository + GRDB catalog/holds caches still TBD.
 - [x] **Tab replaces**: POS tab in iPhone TabView + POS entry in iPad sidebar (wired via `RootView`).
 - [ ] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA.
-- [ ] **Drawer lock** — if cash register not opened for this shift, show blocking sheet "Open register to start selling" with starting balance input (see §16.11). Current scaffold stubs "Open drawer" as a disabled button.
+- [x] **Drawer lock** — POS renders "Register closed" placeholder when no open session; `OpenRegisterSheet` via fullScreenCover on mount. Cancel dismisses to placeholder (no sales possible). "Close register" / "View Z-report" entries in overflow ⋯ toolbar. Cashier ID plumbing via `/auth/me` deferred.
 
 ### 16.2 Catalog browse (left pane)
 - [x] **Layout** — iPhone: single-column full screen; iPad/Mac: `NavigationSplitView(.balanced)` — search/inventory picker leading, cart trailing.
@@ -1798,10 +1798,10 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Receipt** — "RETURN" printed; refund amount; signature if required.
 
 ### 16.10 Cash register (open/close)
-- [ ] **Open shift** — starting balance input per denomination (1, 5, 10, 20, 50, 100, coins); total auto-calc; employee PIN; `POST /cash-register/open`.
+- [x] **Open shift** — `OpenRegisterSheet` presented on POS mount when no session via fullScreenCover. Opening float input (single aggregate cents, per-denomination deferred). Local-first via `CashRegisterStore`. Employee PIN + server sync deferred.
 - [ ] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature.
-- [ ] **Close shift** — count by denomination → server computes expected from sales + starting - drops; shows over/short with color; require comment if off by > $X.
-- [ ] **Z-report** — `GET /cash-register/z-report` → PDF with sales by tender, taxes, tips, refunds, voids, discounts; auto-printed; emailed to manager.
+- [x] **Close shift** — `CloseRegisterSheet` with counted/expected/notes + `CashVariance` band. Over/short color coded. Per-denomination count + mandatory note threshold deferred.
+- [x] **Z-report** — `ZReportView` renders tiles + variance card. Auto-print/email-to-manager deferred to §17.4 pipeline.
 - [ ] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition.
 - [ ] **Blind-count mode** — cashier doesn't see expected total until after count (loss prevention).
 - [ ] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN.
