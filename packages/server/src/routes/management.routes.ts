@@ -54,6 +54,7 @@ import { allClients } from '../ws/server.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getMetricsHistory } from '../services/metricsCollector.js';
 import { createLogger } from '../utils/logger.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('management');
@@ -156,14 +157,14 @@ router.post('/setup', async (req: Request, res: Response) => {
 
   const masterDb = getMasterDb();
   if (!masterDb) {
-    res.status(500).json({ success: false, message: 'Master DB unavailable' });
+    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
     return;
   }
 
   // Block if any super admin already exists
   const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();
   if (existing) {
-    res.status(403).json({ success: false, message: 'Setup already completed' });
+    res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Setup already completed' });
     return;
   }
 
@@ -250,12 +251,12 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
   if (!token) {
-    res.status(401).json({ success: false, message: 'Super admin authentication required' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_NO_TOKEN, message: 'Super admin authentication required' });
     return;
   }
 
   if (!config.superAdminSecret) {
-    res.status(503).json({ success: false, message: 'Super admin secret not configured' });
+    res.status(503).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Super admin secret not configured' });
     return;
   }
 
@@ -299,7 +300,7 @@ function managementAuth(req: Request, res: Response, next: NextFunction): void {
 
     next();
   } catch {
-    res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_TOKEN, message: 'Invalid or expired token' });
   }
 }
 
@@ -456,7 +457,7 @@ router.post('/reenable-route', (req: Request, res: Response) => {
     managementAudit('route_reenabled', req.socket?.remoteAddress || 'unknown', { route });
     res.json({ success: true, message: `Route ${route} re-enabled` });
   } else {
-    res.status(404).json({ success: false, message: 'Route not found in disabled list' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Route not found in disabled list' });
   }
 });
 
@@ -484,7 +485,7 @@ router.post('/check-updates', async (_req: Request, res: Response) => {
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
-    res.status(500).json({ success: false, message: 'Update check failed' });
+    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Update check failed' });
   }
 });
 
@@ -606,7 +607,7 @@ router.post('/perform-update', async (req: Request, res: Response) => {
       before_sha: beforeSha,
     });
     // E3: Generic message to client — never leak paths or stack traces.
-    res.status(500).json({ success: false, message: 'Update failed' });
+    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Update failed' });
   }
 });
 
@@ -772,12 +773,12 @@ function disconnectTenantWebSockets(slug: string): number {
 
 router.post('/tenants/:slug/suspend', async (req: Request, res: Response) => {
   const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
+  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
   const slug = validateSlugParam(req, res);
   if (!slug) return;
   const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
   if (!before) {
-    res.status(404).json({ success: false, message: 'Tenant not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
     return;
   }
   // Lazy-import the canonical helper so we share state with super-admin routes.
@@ -803,12 +804,12 @@ router.post('/tenants/:slug/suspend', async (req: Request, res: Response) => {
 
 router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
   const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
+  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
   const slug = validateSlugParam(req, res);
   if (!slug) return;
   const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
   if (!before) {
-    res.status(404).json({ success: false, message: 'Tenant not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
     return;
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
@@ -831,12 +832,12 @@ router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
 
 router.delete('/tenants/:slug', async (req: Request, res: Response) => {
   const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB not available' }); return; }
+  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
   const slug = validateSlugParam(req, res);
   if (!slug) return;
   const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
   if (!before) {
-    res.status(404).json({ success: false, message: 'Tenant not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
     return;
   }
   // Route through deleteTenant() so we get the 30-day grace period, the

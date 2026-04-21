@@ -30,6 +30,7 @@ const adminTokens = new Map<string, { user: string; expires: number }>();
 const TOKEN_TTL = 30 * 60 * 1000; // 30 minutes
 
 import crypto from 'crypto';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -362,7 +363,7 @@ router.get('/backups/:filename/download', (req: Request, res: Response) => {
 
   // Reject path traversal
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    res.status(400).json({ success: false, message: 'Invalid filename' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid filename' });
     return;
   }
 
@@ -398,7 +399,7 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    res.status(400).json({ success: false, message: 'Invalid filename' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid filename' });
     return;
   }
   if (restoreInProgress) {
@@ -509,7 +510,7 @@ router.delete('/backups/:filename', (req, res) => {
   const filename = req.params.filename;
   // Prevent path traversal
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    res.status(400).json({ success: false, message: 'Invalid filename' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid filename' });
     return;
   }
   deleteBackup(db, filename);

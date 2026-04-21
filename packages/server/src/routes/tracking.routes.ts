@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('tracking');
@@ -212,7 +213,7 @@ router.get('/:orderId', asyncHandler(async (req: Request, res: Response) => {
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -239,7 +240,7 @@ router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
   const { phone, order_id } = req.body as { phone?: string; order_id?: string };
 
   if (!phone || phone.trim().length < 4) {
-    res.status(400).json({ success: false, message: 'Phone number (min 4 digits) is required' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Phone number (min 4 digits) is required' });
     return;
   }
 
@@ -337,7 +338,7 @@ router.get('/token/:token', asyncHandler(async (req: Request, res: Response) => 
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -405,7 +406,7 @@ router.get('/portal/:orderId', asyncHandler(async (req: Request, res: Response) 
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -533,7 +534,7 @@ router.get('/portal/:orderId/history', asyncHandler(async (req: Request, res: Re
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -697,7 +698,7 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -710,7 +711,7 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
   const trimmedContent = rawContent.trim();
   if (trimmedContent.length === 0) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(400).json({ success: false, message: 'Message content is required' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Message content is required' });
     return;
   }
 
@@ -771,7 +772,7 @@ router.get('/portal/:orderId/invoice', asyncHandler(async (req: Request, res: Re
 
   if (!ticket) {
     await enforceTimingFloor(startedAt, TOKEN_LOOKUP_FLOOR_MS);
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
