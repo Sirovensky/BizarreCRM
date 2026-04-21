@@ -64,7 +64,7 @@ in-progress and lags the audit.
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~10% | minifyEnabled true. Missing: Macrobenchmark, JankStats, baseline profiles. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
-| 31 | Testing | ~5% | Schema guard rail only. Missing: unit, integration, UI, E2E, perf, a11y, security tests. |
+| 31 | Testing | ~12% | Schema guard rail + **JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
 | 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
