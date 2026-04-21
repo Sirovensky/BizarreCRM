@@ -151,7 +151,15 @@ export function AuditLogPage() {
               {filtered.map((e) => (
                 <tr key={e.id} className="border-b border-surface-800/50 hover:bg-surface-800/30">
                   <td className="py-1.5 px-2 text-surface-500 whitespace-nowrap">{formatDateTime(e.created_at)}</td>
-                  <td className="py-1.5 px-2 text-surface-300 font-medium">{e.admin_username}</td>
+                  <td className="py-1.5 px-2 text-surface-300 font-medium">
+                    <button
+                      onClick={() => setTextFilter(e.admin_username)}
+                      className="hover:underline underline-offset-2"
+                      title={`Filter to ${e.admin_username}`}
+                    >
+                      {e.admin_username}
+                    </button>
+                  </td>
                   <td className="py-1.5 px-2 font-mono text-accent-400">
                     <button
                       onClick={() => setActionFilter(e.action)}

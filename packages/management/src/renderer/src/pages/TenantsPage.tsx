@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
@@ -35,6 +35,8 @@ export function TenantsPage() {
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [planFilter, setPlanFilter] = useState<string>('');
 
   // Create form state
   const [newSlug, setNewSlug] = useState('');
@@ -92,9 +94,21 @@ export function TenantsPage() {
   }
 
   const filteredTenants = tenants.filter(
-    (t) =>
-      t.slug.toLowerCase().includes(search.toLowerCase()) ||
-      t.name.toLowerCase().includes(search.toLowerCase())
+    (t) => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+      if (planFilter && t.plan !== planFilter) return false;
+      const q = search.toLowerCase();
+      if (!q) return true;
+      return (
+        t.slug.toLowerCase().includes(q) ||
+        t.name.toLowerCase().includes(q)
+      );
+    }
+  );
+
+  const planOptions = useMemo(
+    () => Array.from(new Set(tenants.map((t) => t.plan))).sort(),
+    [tenants]
   );
 
   const handleCreate = async () => {
@@ -252,14 +266,41 @@ export function TenantsPage() {
         );
       })()}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-        <input
-          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tenants..."
-          className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none"
-        />
+      {/* Search + filter chips */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+          <input
+            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenants..."
+            className="w-full pl-10 pr-4 py-2 bg-surface-900 border border-surface-700 rounded-lg text-sm text-surface-200 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          {(['all', 'active', 'suspended'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1 rounded border transition-colors ${
+                statusFilter === s
+                  ? 'bg-accent-600/20 border-accent-600 text-accent-300'
+                  : 'border-surface-700 text-surface-400 hover:text-surface-200 hover:border-surface-600'
+              }`}
+            >
+              {s[0].toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        {planOptions.length > 1 && (
+          <select
+            value={planFilter}
+            onChange={(e) => setPlanFilter(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200"
+          >
+            <option value="">Any plan</option>
+            {planOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
       </div>
 
       {lastCreated?.setup_url ? (
