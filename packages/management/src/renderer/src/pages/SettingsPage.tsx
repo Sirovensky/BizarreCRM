@@ -4,6 +4,7 @@ import {
   CreditCard, Cloud, Globe, PowerOff, Save, Eye, EyeOff, Sliders, Search,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
+import { useUiStore } from '@/stores/uiStore';
 import type {
   SystemInfo, DiskDrive, EnvSettingField, EnvFieldCategory, PlatformConfigField,
 } from '@/api/bridge';
@@ -333,15 +334,20 @@ export function SettingsPage() {
         Settings
       </h1>
 
-      {/* Theme */}
+      {/* Theme + density */}
       <section>
         <h2 className="text-sm font-semibold text-surface-300 mb-3">Appearance</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border bg-accent-600/15 border-accent-600 text-accent-400">
             <Moon className="w-4 h-4" />
             Dark
           </div>
           <span className="text-xs text-surface-600">Dark mode only</span>
+          <div className="ml-auto flex items-center gap-1 text-xs">
+            <span className="text-surface-500 mr-1">Density:</span>
+            <DensityOption value="default" label="Default" />
+            <DensityOption value="compact" label="Compact" />
+          </div>
         </div>
       </section>
 
@@ -596,5 +602,23 @@ export function SettingsPage() {
         </section>
       )}
     </div>
+  );
+}
+
+function DensityOption({ value, label }: { value: 'default' | 'compact'; label: string }) {
+  const density = useUiStore((s) => s.density);
+  const setDensity = useUiStore((s) => s.setDensity);
+  const active = density === value;
+  return (
+    <button
+      onClick={() => setDensity(value)}
+      className={`px-2 py-1 rounded border transition-colors ${
+        active
+          ? 'bg-accent-600/20 border-accent-600 text-accent-300'
+          : 'border-surface-700 text-surface-400 hover:text-surface-200 hover:border-surface-600'
+      }`}
+    >
+      {label}
+    </button>
   );
 }

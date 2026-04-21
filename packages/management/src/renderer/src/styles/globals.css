@@ -70,6 +70,19 @@
     @apply relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700;
   }
 
+  /* Compact mode — operator opt-in. Ratchets stat-card and table padding
+     tighter still for shops that want more rows visible at once on RDP
+     or small windows. Applied via data-density="compact" on <html>. */
+  [data-density='compact'] .stat-card {
+    @apply p-2 lg:p-2.5;
+  }
+  [data-density='compact'] table td {
+    @apply py-1 px-1.5;
+  }
+  [data-density='compact'] table th {
+    @apply py-1 px-1.5;
+  }
+
   /* Status dot animation */
   .status-dot-online {
     @apply relative h-2.5 w-2.5 rounded-full bg-green-500;

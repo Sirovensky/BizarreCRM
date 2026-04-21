@@ -17,28 +17,58 @@ function initialCollapsed(): boolean {
   return window.innerWidth < AUTO_COLLAPSE_THRESHOLD;
 }
 
+type Density = 'default' | 'compact';
+
+const DENSITY_KEY = 'bizarrecrm-dashboard-density';
+
+function initialDensity(): Density {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'default';
+  const stored = localStorage.getItem(DENSITY_KEY);
+  return stored === 'compact' ? 'compact' : 'default';
+}
+
+function applyDensityToDom(d: Density): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (d === 'compact') root.dataset.density = 'compact';
+  else delete root.dataset.density;
+}
+
 interface UiState {
   sidebarCollapsed: boolean;
   theme: 'dark' | 'light';
+  density: Density;
 
   toggleSidebar: () => void;
   setTheme: (theme: 'dark' | 'light') => void;
+  setDensity: (d: Density) => void;
 }
 
-export const useUiStore = create<UiState>((set) => ({
-  sidebarCollapsed: initialCollapsed(),
-  theme: 'dark',
+export const useUiStore = create<UiState>((set) => {
+  const density = initialDensity();
+  applyDensityToDom(density);
+  return {
+    sidebarCollapsed: initialCollapsed(),
+    theme: 'dark',
+    density,
 
-  toggleSidebar: () =>
-    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+    toggleSidebar: () =>
+      set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-  setTheme: (theme) => {
-    // Apply to DOM
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    set({ theme });
-  },
-}));
+    setTheme: (theme) => {
+      // Apply to DOM
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      set({ theme });
+    },
+
+    setDensity: (d) => {
+      applyDensityToDom(d);
+      try { localStorage.setItem(DENSITY_KEY, d); } catch { /* ignore */ }
+      set({ density: d });
+    },
+  };
+});
