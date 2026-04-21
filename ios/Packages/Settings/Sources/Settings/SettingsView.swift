@@ -30,6 +30,8 @@ public struct SettingsView: View {
                     LabeledRow(label: "Version", value: "\(Platform.appVersion) (\(Platform.buildNumber))")
                     NavigationLink("Sync diagnostics") { SyncDiagnosticsView() }
                         .accessibilityIdentifier("settings.syncDiagnostics")
+                    NavigationLink("About") { AboutView() }
+                        .accessibilityIdentifier("settings.about")
                 }
 
                 Section {
@@ -58,7 +60,9 @@ public struct SettingsView: View {
                     .accessibilityIdentifier("settings.changeShop")
                 }
             }
+            #if canImport(UIKit)
             .listStyle(.insetGrouped)
+            #endif
             .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .navigationTitle("Settings")

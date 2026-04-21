@@ -82,7 +82,9 @@ public struct SyncDiagnosticsView: View {
                 }
             }
         }
+        #if canImport(UIKit)
         .listStyle(.insetGrouped)
+        #endif
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         .navigationTitle("Sync diagnostics")
