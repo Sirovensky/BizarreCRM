@@ -21,6 +21,14 @@ public struct PosView: View {
     @State private var showingGiftCardSheet: Bool = false
     @State private var showingCustomerPicker: Bool = false
     @State private var showingCreateCustomer: Bool = false
+    /// §16.3 — Cart adjustment sheets
+    @State private var showingDiscountSheet: Bool = false
+    @State private var showingTipSheet: Bool = false
+    @State private var showingFeesSheet: Bool = false
+    /// §16.3 — Hold sheets
+    @State private var showingHoldSheet: Bool = false
+    @State private var showingResumeHoldsSheet: Bool = false
+    @State private var holdToastMessage: String? = nil
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -112,7 +120,10 @@ public struct PosView: View {
                     },
                     onRemoveCustomer: { cart.detachCustomer() },
                     editQuantityFor: $editQuantityFor,
-                    editPriceFor: $editPriceFor
+                    editPriceFor: $editPriceFor,
+                    onShowDiscount: { showingDiscountSheet = true },
+                    onShowTip: { showingTipSheet = true },
+                    onShowFees: { showingFeesSheet = true }
                 )
                 .navigationTitle("Cart")
                 .navigationBarTitleDisplayMode(.inline)
@@ -132,6 +143,46 @@ public struct PosView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        // §16.3 — Adjustment sheets
+        .sheet(isPresented: $showingDiscountSheet) {
+            PosCartDiscountSheet(cart: cart)
+        }
+        .sheet(isPresented: $showingTipSheet) {
+            PosCartTipSheet(cart: cart)
+        }
+        .sheet(isPresented: $showingFeesSheet) {
+            PosCartFeesSheet(cart: cart)
+        }
+        // §16.3 — Hold sheets
+        .sheet(isPresented: $showingHoldSheet) {
+            PosHoldCartSheet(cart: cart, api: api) { holdId in
+                showingHoldSheet = false
+                holdToastMessage = "Cart saved (hold #\(holdId))."
+            }
+        }
+        .sheet(isPresented: $showingResumeHoldsSheet) {
+            PosResumeHoldsSheet(cart: cart, api: api) {
+                showingResumeHoldsSheet = false
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let msg = holdToastMessage {
+                Text(msg)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.sm)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, BrandSpacing.xl)
+                    .transition(.opacity)
+                    .onAppear {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                            holdToastMessage = nil
+                        }
+                    }
+            }
         }
     }
 
@@ -186,7 +237,10 @@ public struct PosView: View {
                     onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
                     onRemoveCustomer: { cart.detachCustomer() },
                     editQuantityFor: $editQuantityFor,
-                    editPriceFor: $editPriceFor
+                    editPriceFor: $editPriceFor,
+                    onShowDiscount: { showingDiscountSheet = true },
+                    onShowTip: { showingTipSheet = true },
+                    onShowFees: { showingFeesSheet = true }
                 )
                 .navigationTitle("Cart")
                 .navigationBarTitleDisplayMode(.inline)
@@ -203,21 +257,71 @@ public struct PosView: View {
                     .keyboardShortcut("N", modifiers: .command)
                     .accessibilityLabel("Add custom line")
             }
+            // §16.3 — overflow "⋯" menu. Keeps the toolbar from crowding.
             ToolbarItem(placement: .secondaryAction) {
-                Button { showingReturns = true } label: {
-                    Label("Process return", systemImage: "arrow.uturn.backward")
+                Menu {
+                    // Adjustments group
+                    Section("Cart adjustments") {
+                        Button {
+                            showingDiscountSheet = true
+                        } label: {
+                            Label("Add discount", systemImage: "tag")
+                        }
+                        .disabled(cart.isEmpty)
+                        .accessibilityIdentifier("pos.toolbar.discount")
+
+                        Button {
+                            showingTipSheet = true
+                        } label: {
+                            Label("Add tip", systemImage: "hand.thumbsup")
+                        }
+                        .disabled(cart.isEmpty)
+                        .accessibilityIdentifier("pos.toolbar.tip")
+
+                        Button {
+                            showingFeesSheet = true
+                        } label: {
+                            Label("Add fee", systemImage: "plus.circle")
+                        }
+                        .disabled(cart.isEmpty)
+                        .accessibilityIdentifier("pos.toolbar.fees")
+                    }
+                    // Holds group
+                    Section("Holds") {
+                        Button {
+                            showingHoldSheet = true
+                        } label: {
+                            Label("Hold cart", systemImage: "pause.circle")
+                        }
+                        .disabled(cart.isEmpty)
+                        .accessibilityIdentifier("pos.toolbar.hold")
+
+                        Button {
+                            showingResumeHoldsSheet = true
+                        } label: {
+                            Label("Resume holds", systemImage: "clock.arrow.circlepath")
+                        }
+                        .accessibilityIdentifier("pos.toolbar.resumeHolds")
+                    }
+                    // Existing destructive actions
+                    Section {
+                        Button { showingReturns = true } label: {
+                            Label("Process return", systemImage: "arrow.uturn.backward")
+                        }
+                        .keyboardShortcut("R", modifiers: [.command, .shift])
+                        .accessibilityIdentifier("pos.toolbar.returns")
+
+                        Button(role: .destructive) { cart.clear() } label: {
+                            Label("Clear cart", systemImage: "trash")
+                        }
+                        .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                        .disabled(cart.isEmpty)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .accessibilityLabel("More options")
+                        .accessibilityIdentifier("pos.toolbar.overflow")
                 }
-                .keyboardShortcut("R", modifiers: [.command, .shift])
-                .accessibilityLabel("Process return")
-                .accessibilityIdentifier("pos.toolbar.returns")
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Button(role: .destructive) { cart.clear() } label: {
-                    Label("Clear cart", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [.command, .shift])
-                .accessibilityLabel("Clear cart")
-                .disabled(cart.isEmpty)
             }
         }
     }

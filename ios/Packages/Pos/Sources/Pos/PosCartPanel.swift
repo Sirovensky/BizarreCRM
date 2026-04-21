@@ -19,6 +19,10 @@ struct PosCartPanel: View {
     var onRemoveCustomer: (() -> Void)?
     @Binding var editQuantityFor: CartItem?
     @Binding var editPriceFor: CartItem?
+    /// §16.3: show/hide each adjustment sheet
+    var onShowDiscount: (() -> Void)?
+    var onShowTip: (() -> Void)?
+    var onShowFees: (() -> Void)?
 
     var body: some View {
         ZStack {
@@ -110,7 +114,39 @@ struct PosCartPanel: View {
     private var totalsFooter: some View {
         VStack(spacing: BrandSpacing.sm) {
             totalsRow(label: "Subtotal", cents: cart.subtotalCents)
+
+            // §16.3 — discount row (only when non-zero)
+            if cart.effectiveDiscountCents > 0 {
+                adjustmentRow(
+                    label: cart.cartDiscountPercent.map { "\(Int($0 * 100))% discount" } ?? "Discount",
+                    cents: -cart.effectiveDiscountCents,
+                    onEdit: onShowDiscount,
+                    onRemove: { cart.clearCartDiscount() }
+                )
+            }
+
             totalsRow(label: "Tax", cents: cart.taxCents)
+
+            // §16.3 — tip row (only when non-zero)
+            if cart.tipCents > 0 {
+                adjustmentRow(
+                    label: "Tip",
+                    cents: cart.tipCents,
+                    onEdit: onShowTip,
+                    onRemove: { cart.setTip(cents: 0) }
+                )
+            }
+
+            // §16.3 — fees row (only when non-zero)
+            if cart.feesCents > 0 {
+                adjustmentRow(
+                    label: cart.feesLabel ?? "Fee",
+                    cents: cart.feesCents,
+                    onEdit: onShowFees,
+                    onRemove: { cart.setFees(cents: 0) }
+                )
+            }
+
             Divider().background(.bizarreOutline)
             totalsRow(label: "Total", cents: cart.totalCents, emphasized: true)
             // §40 — applied tenders render as negative rows followed by a
@@ -170,6 +206,54 @@ struct PosCartPanel: View {
                 .font(emphasized ? .brandHeadlineMedium() : .brandBodyLarge())
                 .foregroundStyle(.bizarreOnSurface)
                 .monospacedDigit()
+        }
+    }
+
+    /// §16.3 — Adjustment row (discount / tip / fee). Negative `cents`
+    /// renders in orange with a leading minus; positive renders normally.
+    /// Edit and Remove buttons are optional.
+    @ViewBuilder
+    private func adjustmentRow(
+        label: String,
+        cents: Int,
+        onEdit: (() -> Void)?,
+        onRemove: (() -> Void)?
+    ) -> some View {
+        HStack {
+            Text(label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .lineLimit(1)
+            Spacer()
+            let isNegative = cents < 0
+            Text(isNegative ? "-\(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
+                .font(.brandBodyLarge())
+                .foregroundStyle(isNegative ? .bizarreOrange : .bizarreOnSurface)
+                .monospacedDigit()
+            if let onEdit {
+                Button {
+                    BrandHaptics.tap()
+                    onEdit()
+                } label: {
+                    Image(systemName: "pencil.circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit \(label)")
+            }
+            if let onRemove {
+                Button {
+                    BrandHaptics.tap()
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(label)")
+            }
         }
     }
 

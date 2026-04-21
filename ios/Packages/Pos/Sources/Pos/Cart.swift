@@ -44,8 +44,7 @@ public struct PosCustomer: Equatable, Sendable {
 /// separate view-model.
 ///
 /// Scaffold-level state plus the attached customer (§16.4) land here.
-/// Holds, tenders, discounts, and receipts land in later phases
-/// (§16.3, §16.5, §16.6).
+/// Holds (§16.3), tenders, discounts, and receipts land in later phases.
 @MainActor
 @Observable
 public final class Cart {
@@ -54,6 +53,33 @@ public final class Cart {
     /// Currently attached customer (nil = no customer chosen yet — the
     /// empty-state CTAs surface walk-in / find / create).
     public private(set) var customer: PosCustomer?
+
+    // MARK: - §16.3 — Cart-level adjustments
+
+    /// Fixed cart-level discount in cents. Mutually exclusive with
+    /// `cartDiscountPercent`: when the percent is set this is recomputed
+    /// lazily; when set directly the percent is cleared.
+    public private(set) var cartDiscountCents: Int = 0
+
+    /// Percentage discount applied to the subtotal (e.g. 0.10 = 10%).
+    /// `nil` means we're using a fixed-cents discount instead.
+    public private(set) var cartDiscountPercent: Double? = nil
+
+    /// Tip in cents. Represents the cashier-entered tip before payment.
+    public private(set) var tipCents: Int = 0
+
+    /// Extra fees in cents (delivery, restocking, etc.).
+    public private(set) var feesCents: Int = 0
+
+    /// Human-readable label for the fees row (e.g. "Delivery fee").
+    /// `nil` when no fee is applied.
+    public private(set) var feesLabel: String? = nil
+
+    /// Server-assigned hold id once this cart has been saved as a hold.
+    public private(set) var holdId: Int64? = nil
+
+    /// Note stored alongside the hold on the server.
+    public private(set) var holdNote: String? = nil
 
     // MARK: - Applied tenders (§40)
     //
@@ -134,6 +160,64 @@ public final class Cart {
         pendingPaymentLinkId = nil
         pendingPaymentLinkToken = nil
         appliedTenders = []
+        cartDiscountCents = 0
+        cartDiscountPercent = nil
+        tipCents = 0
+        feesCents = 0
+        feesLabel = nil
+        holdId = nil
+        holdNote = nil
+    }
+
+    // MARK: - §16.3 — Cart-level adjustment mutators
+
+    /// Apply a fixed-cents cart discount. Clears any percentage discount.
+    public func setCartDiscount(cents: Int) {
+        cartDiscountCents = max(0, cents)
+        cartDiscountPercent = nil
+    }
+
+    /// Apply a percentage cart discount (e.g. 0.10 for 10%). Recomputes
+    /// `cartDiscountCents` against the current subtotal and stores the
+    /// percent so future subtotal changes can re-derive the amount.
+    public func setCartDiscountPercent(_ percent: Double) {
+        let clamped = max(0.0, min(1.0, percent))
+        cartDiscountPercent = clamped
+        cartDiscountCents = Int((Double(subtotalCents) * clamped).rounded())
+    }
+
+    /// Remove any cart-level discount entirely.
+    public func clearCartDiscount() {
+        cartDiscountCents = 0
+        cartDiscountPercent = nil
+    }
+
+    /// Set tip as a fixed cent amount.
+    public func setTip(cents: Int) {
+        tipCents = max(0, cents)
+    }
+
+    /// Set tip as a percentage of the current subtotal-after-discount.
+    /// E.g. `setTipPercent(0.15)` = 15% tip.
+    public func setTipPercent(_ percent: Double) {
+        let base = max(0, subtotalCents - effectiveDiscountCents)
+        tipCents = Int((Double(base) * max(0.0, percent)).rounded())
+    }
+
+    /// Set fees with an optional human label.
+    public func setFees(cents: Int, label: String? = nil) {
+        feesCents = max(0, cents)
+        feesLabel = label
+    }
+
+    // MARK: - §16.3 — Hold support
+
+    /// Mark the cart as saved on the server as a hold. Called by the
+    /// PosHoldCartSheet after a successful `POST /pos/holds`.
+    /// NEVER inherit a pending payment link from a resumed hold.
+    public func markHeld(id: Int64, note: String?) {
+        holdId = id
+        holdNote = note
     }
 
     // MARK: - Pending payment link (§41)
@@ -225,8 +309,22 @@ public final class Cart {
         items.reduce(0) { $0 + $1.lineTaxCents }
     }
 
+    /// The actual discount applied — if `cartDiscountPercent` is set we
+    /// always re-derive from the live subtotal so it stays correct as items
+    /// are added/removed. Clamped to the subtotal so we can't discount below 0.
+    public var effectiveDiscountCents: Int {
+        if let percent = cartDiscountPercent {
+            let derived = Int((Double(subtotalCents) * percent).rounded())
+            return min(derived, subtotalCents)
+        }
+        return min(cartDiscountCents, subtotalCents)
+    }
+
+    /// §16.3 — Cart total includes discount, tax, tip, and fees.
+    /// `max(0, ...)` guards the discounted-past-zero edge case.
     public var totalCents: Int {
-        subtotalCents + taxCents
+        let discounted = max(0, subtotalCents - effectiveDiscountCents)
+        return discounted + taxCents + tipCents + feesCents
     }
 
     public var isEmpty: Bool { items.isEmpty }
