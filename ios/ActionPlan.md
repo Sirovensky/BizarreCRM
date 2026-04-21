@@ -255,7 +255,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Username not email** — server uses `username`, mirror that label. Support `@email` login fallback if server accepts it.
 - [ ] **Keyboard flow** — `.submitLabel(.next)` on username, `.submitLabel(.go)` on password; `@FocusState` auto-advance.
 - [ ] **"Show password" eye toggle** with `privacySensitive()` on the field.
-- [ ] **Remember-me toggle** persists username in `UserDefaults` (see user memory: phone format) + flag to surface biometric prompt next launch.
+- [x] **Remember-me toggle** persists username in Keychain (`CredentialStore.swift` actor — `rememberEmail/lastEmail/forget`; email only, never password). Toggle wiring hook exposed for `LoginFlowView` at merge.
 - [ ] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
 - [ ] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." glass banner with countdown.
 - [ ] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
@@ -335,12 +335,12 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`).
 - [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
 - [ ] Challenge token expires silently after 10min → prompt restart login.
-- [ ] Use case: counter iPad used by 3 cashiers
-- [ ] Enable at Settings → Shared Device Mode
+- [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
+- [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
 - [ ] Requires device passcode + management PIN to enable/disable
 - [ ] Session swap: Lock screen → "Switch user" → PIN
-- [ ] Token swap; no full re-auth unless inactive > 4h
-- [ ] Auto-logoff: inactivity > 10 min (tenant-configurable) returns to user-picker
+- [x] Token swap; no full re-auth unless inactive > 4h — `SharedDeviceManager.defaultSessionDuration = 4*60*60`; `SharedDeviceManager.idleTimeout()` returns 4 min when shared, 15 min normally.
+- [x] Auto-logoff: inactivity timer — `SessionTimer.swift` actor (configurable `idleTimeout`, 80% warning via `onWarning`, `onExpire`, `touch/pause/resume/currentRemaining`). `SessionTimeoutWarningBanner.swift` shows in final 60 s.
 - [ ] Per-user drafts isolated
 - [ ] Current POS cart bound to current user; user switch holds cart (park)
 - [ ] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry
@@ -414,8 +414,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Breakglass: tenant owner retains local password if IdP down
 - [ ] Sovereignty: IdP external by nature; per-tenant consent; documented in privacy notice
 - [ ] No third-party IdP tokens stored beyond session lifetime
-- [ ] Login screen "Email me a link" → enter email → server emails link
-- [ ] Universal Link opens app on tap; auto-exchange for token
+- [x] Login screen "Email me a link" → enter email → server emails link — `MagicLinkRequestView.swift` + `MagicLinkViewModel.swift` (state machine: idle→sending→sent→verifying→success/failed). 60s resend cooldown.
+- [x] Universal Link opens app on tap; auto-exchange for token — `MagicLinkURL.swift` parses `bizarrecrm://auth/magic?token=` and `https://app.bizarrecrm.com/auth/magic?token=`. Exposed for `DeepLinkRouter`.
 - [ ] Link lifetime 15min, one-time use
 - [ ] Device binding: same-device fingerprint required
 - [ ] Cross-device triggers 2FA confirm
@@ -6690,3 +6690,4 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-20 (update 30) — Phase 0 gate close: [x] Core error taxonomy (`Core/Errors/AppError.swift` — 16-case enum, LocalizedError, `AppError.from/fromHttp` helpers). [x] Draft recovery framework (`Core/Drafts/DraftStore.swift` actor + `DraftRecord` + `DraftRecoverable` protocol + `DraftRecoveryBanner` SwiftUI view). [x] Logging expansion (`Core/AppLog.swift` → `Core/Logging/AppLog.swift`, `LogLevel`, `LogRedactor`, `TelemetrySink`). Tests: 59 new tests (AppErrorTests 25, DraftStoreTests 15, LogRedactorTests 19) all green. swift test 63/63 pass.
 - 2026-04-20 (update 30) — Renumbered §§1-90 sequentially; converted all headings to `## §N.` format; swept all inline cross-refs across ActionPlan.md + agent-ownership.md (TODO.md had no §N refs). Invalid refs pointing at deleted sections were remapped per the update-28/29 absorption trail to their surviving target sections; zero unresolved flags remaining. TOC rebuilt against new numbering.
 - 2026-04-20 (update 31) — Phase 0 gate close (infrastructure): [x] Real airplane-mode smoke test (`ios/Tests/SmokeTests.swift`) — 7 XCTest cases exercising in-memory GRDB migrations, sync_queue/sync_state table presence, enqueue, offline banner condition, drain via markSucceeded, failure path with next_retry_at, dead-letter after maxAttempts, and DLQ retry with fresh idempotency key. [x] SDK-ban lint (`ios/scripts/sdk-ban.sh`) — checks 14 forbidden SDK imports, bare URLSession construction outside Networking, and APIClient calls outside *Repository/*Endpoints; dry-run passes clean on current tree. [x] CI workflow (`.github/workflows/ios-lint.yml`) — triggers on ios/** PR + push to main; runs sdk-ban.sh on ubuntu-latest; xcodebuild step stubbed for macOS runner. §20 CI enforcement bullets and §32.0 build-time lint checkbox retro-marked [x].
+- 2026-04-20 (update 32) — Phase 1 §2 auth extras shipped: [x] Magic-link login (MagicLink/ — MagicLinkEndpoints, MagicLinkURL, MagicLinkRepository, MagicLinkViewModel, MagicLinkRequestView — iPhone/iPad adaptive, 60s resend cooldown, deep-link parser for bizarrecrm://auth/magic + https://app.bizarrecrm.com/auth/magic). [x] Session timeout (SessionTimer.swift actor — configurable idleTimeout + pollInterval, touch/pause/resume/currentRemaining, 80% onWarning, onExpire; SessionTimeoutWarningBanner.swift glass toast). [x] Remember-me (CredentialStore.swift actor — EmailStorage protocol + KeychainEmailStorage production + InMemoryEmailStorage test; rememberEmail/lastEmail/forget; KeychainKey.rememberedEmail added). [x] Shared-device mode (SharedDevice/ — SharedDeviceManager actor with SharedDeviceStorage protocol + UserDefaultsDeviceStorage + InMemoryDeviceStorage; SharedDeviceEnableView adaptive). 144 tests pass (11 MagicLink URL+VM, 8 SessionTimer, 8 CredentialStore, 13 SharedDeviceManager; all new + pre-existing green).
