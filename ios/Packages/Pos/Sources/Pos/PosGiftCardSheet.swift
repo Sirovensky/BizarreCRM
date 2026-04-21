@@ -102,7 +102,7 @@ struct PosGiftCardSheet: View {
             HStack {
                 Text(card.active ? "Active" : "Inactive")
                     .font(.brandLabelLarge())
-                    .foregroundStyle(card.active ? .bizarreGreen : .bizarreOnSurfaceMuted)
+                    .foregroundStyle(card.active ? .bizarreSuccess : .bizarreOnSurfaceMuted)
                 Spacer()
                 if let when = PosGiftCardSheetViewModel.formattedExpiry(card.expiresAt) {
                     Text("Expires \(when)")

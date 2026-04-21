@@ -71,7 +71,12 @@ public final class PosPaymentLinkViewModel {
     }
 
     deinit {
-        pollTask?.cancel()
+        // Swift 6 strict concurrency: `pollTask` is main-actor isolated
+        // so it cannot be touched from a `nonisolated` deinit. The poll
+        // loop captures `self` weakly and checks `Task.isCancelled`
+        // cooperatively; when the view model is released, the enclosing
+        // Task stops at the next iteration. `cancelPolling()` remains
+        // the explicit escape hatch for the sheet dismiss path.
     }
 
     // MARK: - Create
