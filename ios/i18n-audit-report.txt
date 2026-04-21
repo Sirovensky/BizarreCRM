@@ -1,0 +1,5 @@
+# i18n Hardcoded String Audit Report
+# Generated: 2026-04-21T09:00:44Z
+# Violations: 0 / baseline: 50
+
+(no violations)

@@ -167,7 +167,9 @@ public struct TaxYearReportView: View {
                     }
                 }
                 .frame(height: 180)
-                .accessibilityChartDescriptor(revenueChartDescriptor(data))
+                // TODO: wrap revenueChartDescriptor(data) in AXChartDescriptorRepresentable
+                //       before re-enabling. SwiftUI Charts API requires the wrapper type.
+                .accessibilityLabel("Monthly revenue chart, \(data.revenueByMonth.count) months")
             }
         }
         .padding(BrandSpacing.md)

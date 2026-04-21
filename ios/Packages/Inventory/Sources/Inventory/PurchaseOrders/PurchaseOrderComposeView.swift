@@ -276,14 +276,4 @@ public struct PurchaseOrderComposeView: View {
     }
 }
 
-// MARK: - Cents formatter
-
-private extension Int {
-    var formattedCents: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        return formatter.string(from: NSNumber(value: Double(self) / 100.0)) ?? "$0.00"
-    }
-}
 #endif

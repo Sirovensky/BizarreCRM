@@ -322,7 +322,7 @@ private struct POListRow: View {
 // MARK: - Cents formatter helper
 
 extension Int {
-    fileprivate var formattedCents: String {
+    var formattedCents: String {
         let dollars = Double(self) / 100.0
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
