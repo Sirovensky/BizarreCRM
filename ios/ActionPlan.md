@@ -2674,8 +2674,9 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - background upload via `URLSession.background` for any binary (§20.4).
 
 CI enforcement:
-- Lint rule flags `APIClient.{get,post,patch,put,delete}` called from outside a `*Repository` file.
-- Lint rule flags bare `URLSession` usage outside `Core/Networking/`.
+- [x] Lint rule flags `APIClient.{get,post,patch,put,delete}` called from outside a `*Repository` file. (`ios/scripts/sdk-ban.sh`, `.github/workflows/ios-lint.yml`)
+- [x] Lint rule flags bare `URLSession` usage outside `Core/Networking/`. (`ios/scripts/sdk-ban.sh`)
+- [x] Airplane-mode smoke test: migrations + `sync_queue`/`sync_state` tables verified; enqueue/drain/fail/dead-letter paths exercised via in-memory DB. (`ios/Tests/SmokeTests.swift`)
 - Required test fixtures: each repository has an offline-read + offline-write + reconnect-drain test (§31 / §31).
 
 Every subsequent subsection below is part of Phase 0 scope. Agent assignments in `ios/agent-ownership.md` move §20 into Phase 0.
@@ -3998,7 +3999,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Self-hosted endpoints** — `POST /telemetry/events`, `POST /telemetry/metrics`, `POST /telemetry/crashes`, `POST /telemetry/diagnostics`, `POST /telemetry/heartbeat`. Document in server API spec.
 - [ ] **Offline buffer** — events batched in GRDB `telemetry_queue`; flushed when online.
 - [ ] **Backpressure** — server returns 429 → back-off; drop oldest events past 10k cap.
-- [ ] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails.
+- [x] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails. (`ios/scripts/sdk-ban.sh` + `.github/workflows/ios-lint.yml`; dry-run passes clean on current tree.)
 - [ ] **Privacy manifest audit** — `PrivacyInfo.xcprivacy` declares zero `NSPrivacyTrackingDomains`.
 - [ ] **Request signing** — telemetry requests bear same bearer token as regular API.
 
@@ -6673,3 +6674,4 @@ Format: render `docs/state-diagrams/` with mermaid for web doc; ASCII kept here 
 - 2026-04-20 (update 29) — Consolidated §§100+ stubs into target §§1-75; deleted 218 stub bodies. Absorbed cross-referenced actionable bullets into their primary target sections without attribution tags. §§77-340 non-whitelist sections removed. File shrunk from 9151 to ~6700 lines; 90 H2 headings remain (75 core + 15 appendix/reference).
 - 2026-04-20 (update 30) — Phase 0 gate close: [x] Core error taxonomy (`Core/Errors/AppError.swift` — 16-case enum, LocalizedError, `AppError.from/fromHttp` helpers). [x] Draft recovery framework (`Core/Drafts/DraftStore.swift` actor + `DraftRecord` + `DraftRecoverable` protocol + `DraftRecoveryBanner` SwiftUI view). [x] Logging expansion (`Core/AppLog.swift` → `Core/Logging/AppLog.swift`, `LogLevel`, `LogRedactor`, `TelemetrySink`). Tests: 59 new tests (AppErrorTests 25, DraftStoreTests 15, LogRedactorTests 19) all green. swift test 63/63 pass.
 - 2026-04-20 (update 30) — Renumbered §§1-90 sequentially; converted all headings to `## §N.` format; swept all inline cross-refs across ActionPlan.md + agent-ownership.md (TODO.md had no §N refs). Invalid refs pointing at deleted sections were remapped per the update-28/29 absorption trail to their surviving target sections; zero unresolved flags remaining. TOC rebuilt against new numbering.
+- 2026-04-20 (update 31) — Phase 0 gate close (infrastructure): [x] Real airplane-mode smoke test (`ios/Tests/SmokeTests.swift`) — 7 XCTest cases exercising in-memory GRDB migrations, sync_queue/sync_state table presence, enqueue, offline banner condition, drain via markSucceeded, failure path with next_retry_at, dead-letter after maxAttempts, and DLQ retry with fresh idempotency key. [x] SDK-ban lint (`ios/scripts/sdk-ban.sh`) — checks 14 forbidden SDK imports, bare URLSession construction outside Networking, and APIClient calls outside *Repository/*Endpoints; dry-run passes clean on current tree. [x] CI workflow (`.github/workflows/ios-lint.yml`) — triggers on ios/** PR + push to main; runs sdk-ban.sh on ubuntu-latest; xcodebuild step stubbed for macOS runner. §20 CI enforcement bullets and §32.0 build-time lint checkbox retro-marked [x].
