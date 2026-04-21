@@ -120,6 +120,10 @@ public struct SetupWizardView: View {
                 stepValid = valid
             }, onNext: { payload in
                 vm.pendingPayload = payload
+                // Mirror into wizardPayload for cross-step pre-fill
+                vm.wizardPayload.companyName    = payload["name"]    ?? ""
+                vm.wizardPayload.companyAddress = payload["address"] ?? ""
+                vm.wizardPayload.companyPhone   = payload["phone"]   ?? ""
                 Task { await vm.goNext() }
             })
 
@@ -129,6 +133,57 @@ public struct SetupWizardView: View {
                 vm.pendingPayload = url.map { ["logoUrl": $0] } ?? [:]
                 Task { await vm.goNext() }
             })
+
+        case .timezoneLocale:
+            TimezoneLocaleStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { tz, currency, locale in
+                    vm.wizardPayload.timezone = tz
+                    vm.wizardPayload.currency = currency
+                    vm.wizardPayload.locale   = locale
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .businessHours:
+            BusinessHoursStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { days in
+                    vm.wizardPayload.hours = days
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .taxSetup:
+            TaxSetupStepView(
+                companyAddress: vm.wizardPayload.companyAddress,
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { taxRate in
+                    vm.wizardPayload.taxRate = taxRate
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .paymentMethods:
+            PaymentMethodsStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { methods in
+                    vm.wizardPayload.paymentMethods = methods
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .firstLocation:
+            FirstLocationStepView(
+                companyName:    vm.wizardPayload.companyName,
+                companyAddress: vm.wizardPayload.companyAddress,
+                companyPhone:   vm.wizardPayload.companyPhone,
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { location in
+                    vm.wizardPayload.firstLocation = location
+                    Task { await vm.goNext() }
+                }
+            )
 
         default:
             PlaceholderStepView(step: vm.currentStep)

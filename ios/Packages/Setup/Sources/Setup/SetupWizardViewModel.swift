@@ -84,22 +84,43 @@ public final class SetupWizardViewModel {
         AppLog.ui.info("Setup Wizard deferred by user")
     }
 
+    // MARK: Accumulated wizard payload
+
+    /// Accumulated structured payload for the whole wizard. Step views write to
+    /// this directly; `submitCurrentStep()` serialises the relevant subset.
+    public var wizardPayload: SetupPayload = SetupPayload()
+
     // MARK: Step submission
 
     /// Override payload per step — callers inject via `pendingPayload`.
+    /// Prefer writing to `wizardPayload` for typed steps 4-8.
     public var pendingPayload: [String: String] = [:]
 
     private func submitCurrentStep() async {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
+        let payload = resolvedPayload(for: currentStep)
         do {
-            _ = try await repository.submitStep(currentStep.rawValue, payload: pendingPayload)
+            _ = try await repository.submitStep(currentStep.rawValue, payload: payload)
             completedSteps.insert(currentStep.rawValue)
             pendingPayload = [:]
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Setup step \(self.currentStep.rawValue) submit error: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Returns the flat [String:String] payload for the given step, merging
+    /// typed `wizardPayload` fields with any legacy `pendingPayload` entries.
+    private func resolvedPayload(for step: SetupStep) -> [String: String] {
+        switch step {
+        case .timezoneLocale: return wizardPayload.timezoneLocalePayload()
+        case .businessHours:  return wizardPayload.businessHoursPayload()
+        case .taxSetup:       return wizardPayload.taxRatePayload()
+        case .paymentMethods: return wizardPayload.paymentMethodsPayload()
+        case .firstLocation:  return wizardPayload.firstLocationPayload()
+        default:              return pendingPayload
         }
     }
 

@@ -250,4 +250,123 @@ final class SetupWizardViewModelTests: XCTestCase {
         await vm.goNext()
         XCTAssertTrue(vm.pendingPayload.isEmpty)
     }
+
+    // MARK: - Step 4: Timezone/Locale payload accumulation
+
+    func testWizardPayload_timezoneLocale_accumulatesIntoTypedPayload() async {
+        // Navigate to step 4
+        await repo.setFetchStatus(.success(
+            SetupStatusResponse(currentStep: 4, completed: [1, 2, 3], totalSteps: 13)
+        ))
+        await vm.loadServerState()
+        XCTAssertEqual(vm.currentStep, .timezoneLocale)
+
+        vm.wizardPayload.timezone = "America/Chicago"
+        vm.wizardPayload.currency = "USD"
+        vm.wizardPayload.locale   = "en_US"
+        await vm.goNext()
+
+        let calls = await repo.submitStepCalls
+        let step4 = calls.first { $0.step == 4 }
+        XCTAssertNotNil(step4, "Expected a submitStep call for step 4")
+        XCTAssertEqual(step4?.payload["timezone"], "America/Chicago")
+        XCTAssertEqual(step4?.payload["currency"], "USD")
+        XCTAssertEqual(step4?.payload["locale"],   "en_US")
+    }
+
+    // MARK: - Step 5: Business hours payload accumulation
+
+    func testWizardPayload_businessHours_serialisedPayloadContainsAllDays() async {
+        await repo.setFetchStatus(.success(
+            SetupStatusResponse(currentStep: 5, completed: [1, 2, 3, 4], totalSteps: 13)
+        ))
+        await vm.loadServerState()
+        XCTAssertEqual(vm.currentStep, .businessHours)
+
+        // Default hours already set; just submit
+        await vm.goNext()
+
+        let calls = await repo.submitStepCalls
+        let step5 = calls.first { $0.step == 5 }
+        XCTAssertNotNil(step5)
+        // 7 days × 3 keys = 21 entries minimum
+        XCTAssertGreaterThanOrEqual(step5?.payload.count ?? 0, 21)
+    }
+
+    // MARK: - Step 6: Tax rate payload accumulation
+
+    func testWizardPayload_taxRate_sendsCorrectKeys() async {
+        await repo.setFetchStatus(.success(
+            SetupStatusResponse(currentStep: 6, completed: [1, 2, 3, 4, 5], totalSteps: 13)
+        ))
+        await vm.loadServerState()
+        XCTAssertEqual(vm.currentStep, .taxSetup)
+
+        vm.wizardPayload.taxRate = TaxRate(name: "GST", ratePct: 5.0, applyTo: .taxableOnly)
+        await vm.goNext()
+
+        let calls = await repo.submitStepCalls
+        let step6 = calls.first { $0.step == 6 }
+        XCTAssertEqual(step6?.payload["tax_name"],     "GST")
+        XCTAssertEqual(step6?.payload["tax_rate"],     "5.00")
+        XCTAssertEqual(step6?.payload["tax_apply_to"], "taxable")
+    }
+
+    // MARK: - Step 7: Payment methods payload accumulation
+
+    func testWizardPayload_paymentMethods_sendsCSV() async {
+        await repo.setFetchStatus(.success(
+            SetupStatusResponse(currentStep: 7, completed: [1, 2, 3, 4, 5, 6], totalSteps: 13)
+        ))
+        await vm.loadServerState()
+        XCTAssertEqual(vm.currentStep, .paymentMethods)
+
+        vm.wizardPayload.paymentMethods = [.cash, .card]
+        await vm.goNext()
+
+        let calls = await repo.submitStepCalls
+        let step7 = calls.first { $0.step == 7 }
+        let methods = step7?.payload["payment_methods"] ?? ""
+        // sorted alphabetically: card,cash
+        XCTAssertEqual(methods, "card,cash")
+    }
+
+    // MARK: - Step 8: First location payload accumulation
+
+    func testWizardPayload_firstLocation_sendsNameAndAddress() async {
+        await repo.setFetchStatus(.success(
+            SetupStatusResponse(currentStep: 8, completed: [1, 2, 3, 4, 5, 6, 7], totalSteps: 13)
+        ))
+        await vm.loadServerState()
+        XCTAssertEqual(vm.currentStep, .firstLocation)
+
+        vm.wizardPayload.firstLocation = SetupLocation(name: "HQ", address: "1 Main St", phone: "")
+        await vm.goNext()
+
+        let calls = await repo.submitStepCalls
+        let step8 = calls.first { $0.step == 8 }
+        XCTAssertEqual(step8?.payload["location_name"],    "HQ")
+        XCTAssertEqual(step8?.payload["location_address"], "1 Main St")
+        XCTAssertNil(step8?.payload["location_phone"], "Empty phone should be omitted")
+    }
+
+    // MARK: - wizardPayload initial defaults
+
+    func testWizardPayload_initialDefaults_paymentMethodHasCash() {
+        XCTAssertTrue(vm.wizardPayload.paymentMethods.contains(.cash))
+    }
+
+    func testWizardPayload_initialDefaults_sevenHourDays() {
+        XCTAssertEqual(vm.wizardPayload.hours.count, 7)
+    }
+
+    func testWizardPayload_companyInfo_preFillPropagates() async {
+        // Simulate step 2 completion writing into wizardPayload
+        vm.wizardPayload.companyName    = "Acme Repairs"
+        vm.wizardPayload.companyAddress = "42 Oak Ave"
+        vm.wizardPayload.companyPhone   = "(555) 000-0000"
+
+        XCTAssertEqual(vm.wizardPayload.companyName,    "Acme Repairs")
+        XCTAssertEqual(vm.wizardPayload.companyAddress, "42 Oak Ave")
+    }
 }

@@ -4328,11 +4328,11 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
 - [x] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §16.7 so tax engine seeds correctly.
 - [x] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19).
-- [ ] **4. Timezone + currency + locale** — default from device but user-confirmable.
-- [ ] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
-- [ ] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
-- [ ] **7. Payment methods** — enable cash, card (BlockChyp link), gift card, store credit, check.
-- [ ] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
+- [x] **4. Timezone + currency + locale** — default from device but user-confirmable.
+- [x] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
+- [x] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
+- [x] **7. Payment methods** — enable cash, card (BlockChyp link), gift card, store credit, check.
+- [x] **8. First location** — if multi-location tenant. Defaults to the company address from step 2.
 - [ ] **9. Invite teammates** — email list + role per; SMS invite option; defaults to manager role for the first invitee.
 - [ ] **10. SMS setup** — provider pick (Twilio / BizarreCRM-managed / etc.) + from-number + templates.
 - [ ] **11. Device templates** — pick from preset library (iPhone family, Samsung, iPad, etc.). Feeds ticket create + repair pricing (§43).
