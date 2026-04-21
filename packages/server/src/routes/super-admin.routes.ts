@@ -48,6 +48,7 @@ import { generateJwtSecret } from '../utils/jwtSecrets.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -191,7 +192,7 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
 
   const token = authHeader.substring(7);
   const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, message: 'Master DB unavailable' }); return; }
+  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' }); return; }
 
   try {
     const payload = jwt.verify(token, config.superAdminSecret, SUPER_ADMIN_JWT_VERIFY_OPTIONS) as {
@@ -234,7 +235,7 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
 // POST /login — Step 1: verify password, return challenge
 router.post('/login', async (req: Request, res: Response) => {
   const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false, message: 'Master DB unavailable' });
+  if (!masterDb) return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
 
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
@@ -263,7 +264,7 @@ router.post('/login', async (req: Request, res: Response) => {
     await bcrypt.compare(password, DUMMY_HASH);
     recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
     auditLog('super_admin_login_failed', null, ip, { username, reason: 'user_not_found' });
-    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   }
 
   // Check account lock
@@ -286,7 +287,7 @@ router.post('/login', async (req: Request, res: Response) => {
       masterDb.prepare('UPDATE super_admins SET failed_login_count = ? WHERE id = ?').run(fails, admin.id);
     }
     auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: !!lockUntil });
-    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   }
 
   // Password OK — check if password setup needed
@@ -313,7 +314,7 @@ router.post('/login', async (req: Request, res: Response) => {
 router.post('/login/set-password', async (req: Request, res: Response) => {
   const { challengeToken, password } = req.body;
   const challenge = consumeChallenge(challengeToken);
-  if (!challenge) return res.status(401).json({ success: false, message: 'Invalid or expired challenge' });
+  if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
 
   if (!password || typeof password !== 'string' || password.length < 10) {
     return res.status(400).json({ success: false, message: 'Password must be at least 10 characters' });
@@ -338,7 +339,7 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
 router.post('/login/2fa-setup', async (req: Request, res: Response) => {
   const { challengeToken } = req.body;
   const challenge = consumeChallenge(challengeToken);
-  if (!challenge) return res.status(401).json({ success: false, message: 'Invalid or expired challenge' });
+  if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
 
   const masterDb = getMasterDb()!;
   const admin = masterDb.prepare('SELECT username FROM super_admins WHERE id = ?').get(challenge.adminId) as any;
@@ -388,7 +389,7 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
 router.post('/login/2fa-verify', (req: Request, res: Response) => {
   const { challengeToken, code } = req.body;
   const challenge = consumeChallenge(challengeToken);
-  if (!challenge) return res.status(401).json({ success: false, message: 'Invalid or expired challenge' });
+  if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
 
   if (!code || typeof code !== 'string' || code.length !== 6 || !/^\d{6}$/.test(code)) {
     return res.status(400).json({ success: false, message: 'Enter a 6-digit code' });
@@ -674,7 +675,7 @@ router.post('/tenants', async (req, res) => {
 router.get('/tenants/:slug', (req, res) => {
   const masterDb = getMasterDb()!;
   const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
-  if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' });
+  if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
 
   let userCount = 0, ticketCount = 0, customerCount = 0;
   try {
@@ -776,7 +777,7 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
     .prepare('SELECT * FROM tenants WHERE slug = ?')
     .get(req.params.slug) as AnyRow | undefined;
   if (!existing) {
-    return res.status(404).json({ success: false, message: 'Tenant not found' });
+    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
   }
 
   const beforeSnapshot = snapshotTierFields(existing);
@@ -1126,7 +1127,7 @@ router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_
 router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) {
-    return res.status(500).json({ success: false, message: 'Master DB unavailable' });
+    return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
   }
 
   const slug = String(req.params.slug || '').toLowerCase().trim();
@@ -1142,7 +1143,7 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
     .prepare("SELECT id, slug, status FROM tenants WHERE slug = ?")
     .get(slug) as AnyRow | undefined;
   if (!tenant) {
-    return res.status(404).json({ success: false, message: 'Tenant not found' });
+    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
   }
   if (tenant.status !== 'active' && tenant.status !== 'suspended') {
     return res.status(400).json({
@@ -1443,7 +1444,7 @@ router.get('/tenant-auth-events', (req, res) => {
     }
     const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slugQ);
     if (!exists) {
-      return res.status(404).json({ success: false, message: 'Tenant not found' });
+      return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
     }
     conditions.push('tenant_slug = ?');
     params.push(slugQ);
@@ -1531,7 +1532,7 @@ router.get('/config/schema', (_req: Request, res: Response) => {
 router.get('/config', (req: Request, res: Response) => {
   const masterDb = (req as any).masterDb || getMasterDb();
   if (!masterDb) {
-    res.status(500).json({ success: false, message: 'Master DB not available' });
+    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' });
     return;
   }
 
@@ -1555,7 +1556,7 @@ router.get('/config', (req: Request, res: Response) => {
 router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (req: Request, res: Response) => {
   const masterDb = (req as any).masterDb || getMasterDb();
   if (!masterDb) {
-    res.status(500).json({ success: false, message: 'Master DB not available' });
+    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' });
     return;
   }
 
@@ -1612,11 +1613,11 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
 router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
-    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+    return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
   }
   const masterDb = getMasterDb()!;
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
-  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+  if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
   let tdb: import('better-sqlite3').Database;
   try {
@@ -1678,11 +1679,11 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
 router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
-    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+    return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
   }
   const masterDb = getMasterDb()!;
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
-  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+  if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
   let tdb: import('better-sqlite3').Database;
   try {
@@ -1731,11 +1732,11 @@ router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
 router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
-    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+    return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
   }
   const masterDb = getMasterDb()!;
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
-  if (!exists) return res.status(404).json({ success: false, message: 'tenant not found' });
+  if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
   let tdb: import('better-sqlite3').Database;
   try {
@@ -1907,7 +1908,7 @@ router.post(
       // Single-tenant scope — only that tenant's DB.
       const tenant = masterDb.prepare('SELECT slug FROM tenants WHERE slug = ?').get(tenantSlug) as { slug?: string } | undefined;
       if (!tenant?.slug) {
-        return res.status(404).json({ success: false, message: 'tenant not found' });
+        return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
       }
       try {
         const tdb = getTenantDb(tenant.slug);
