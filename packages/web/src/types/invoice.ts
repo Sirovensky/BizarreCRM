@@ -24,6 +24,7 @@ export interface InvoicePayment {
   notes?: string | null;
   created_at: string;
   recorded_by?: string | null;
+  processor_transaction_id?: string | null;
 }
 
 export interface InvoiceDepositRef {

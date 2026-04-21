@@ -49,7 +49,7 @@ function getWsUrl(): string {
 // ---------------------------------------------------------------------------
 type InvalidationEntry = {
   queryKeys: (string | number | undefined)[][];
-  toast?: (data: any) => string;
+  toast?: (data: unknown) => string;
 };
 
 function buildInvalidationMap(): Record<string, InvalidationEntry> {
@@ -78,11 +78,22 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     'sms_received': {
       // SMS routes currently broadcast with literal 'sms_received'
       queryKeys: [['sms-conversations']],
-      toast: (data: any) => `New SMS from ${data?.from || data?.customer?.first_name || 'unknown'}`,
+      toast: (data: unknown) => {
+        const d = data as { from?: string; customer?: { first_name?: string } } | null;
+        return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
+      },
     },
     [WS_EVENTS.SMS_RECEIVED]: {
       queryKeys: [['sms-conversations']],
-      toast: (data: any) => `New SMS from ${data?.from || data?.customer?.first_name || 'unknown'}`,
+      toast: (data: unknown) => {
+        const d = data as { from?: string; customer?: { first_name?: string } } | null;
+        return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
+      },
+    },
+    // sms:status_updated — server emits when an outbound SMS delivery status changes
+    'sms:status_updated': {
+      queryKeys: [['sms-conversations']],
+      toast: undefined,
     },
     [WS_EVENTS.NOTIFICATION_NEW]: {
       queryKeys: [['notifications'], ['notification-count']],
@@ -98,7 +109,10 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     },
     [WS_EVENTS.PAYMENT_RECEIVED]: {
       queryKeys: [['invoices'], ['dashboard']],
-      toast: (data: any) => data?.amount ? `Payment of $${data.amount} received` : 'Payment received',
+      toast: (data: unknown) => {
+        const d = data as { amount?: number | string } | null;
+        return d?.amount ? `Payment of $${d.amount} received` : 'Payment received';
+      },
     },
     [WS_EVENTS.INVENTORY_STOCK_CHANGED]: {
       queryKeys: [['inventory']],
@@ -106,20 +120,62 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     },
     [WS_EVENTS.INVENTORY_LOW_STOCK]: {
       queryKeys: [['inventory']],
-      toast: (data: any) => `Low stock alert: ${data?.name || 'item'}`,
+      toast: (data: unknown) => {
+        const d = data as { name?: string } | null;
+        return `Low stock alert: ${d?.name || 'item'}`;
+      },
     },
     [WS_EVENTS.LEAD_CREATED]: {
       queryKeys: [['leads']],
       toast: () => 'New lead created',
     },
-    [WS_EVENTS.CUSTOMER_CREATED]: {
-      queryKeys: [['customers']],
+    // voice:* — server emits for call lifecycle events
+    'voice:call_initiated': {
+      queryKeys: [['voice', 'calls']],
       toast: undefined,
     },
-    [WS_EVENTS.CUSTOMER_UPDATED]: {
-      queryKeys: [['customers']],
+    'voice:call_updated': {
+      queryKeys: [['voice', 'calls']],
       toast: undefined,
     },
+    'voice:inbound_call': {
+      queryKeys: [['voice', 'calls']],
+      toast: (data: unknown) => {
+        const d = data as { from?: string } | null;
+        return `Incoming call from ${d?.from || 'unknown'}`;
+      },
+    },
+    'voice:recording_ready': {
+      queryKeys: [['voice', 'calls']],
+      toast: undefined,
+    },
+    'voice:transcription_ready': {
+      queryKeys: [['voice', 'calls']],
+      toast: undefined,
+    },
+    // import:* — server emits progress/completion events during CSV imports
+    [WS_EVENTS.IMPORT_PROGRESS]: {
+      queryKeys: [['imports']],
+      toast: undefined,
+    },
+    [WS_EVENTS.IMPORT_COMPLETE]: {
+      queryKeys: [['imports']],
+      toast: () => 'Import complete',
+    },
+    // system:stall_alert — server emits when a ticket has been stalled past threshold
+    [WS_EVENTS.STALL_ALERT]: {
+      queryKeys: [['tickets']],
+      toast: (data: unknown) => {
+        const d = data as { id?: number | string } | null;
+        return d?.id ? `Ticket stalled: #${d.id}` : 'A ticket has stalled';
+      },
+    },
+    // management:* events are internal dashboard-only — no corresponding UI, skip silently
+    // (WS_EVENTS.MANAGEMENT_STATS, MANAGEMENT_CRASH, etc. intentionally omitted)
+
+    // NOTE: WS_EVENTS.CUSTOMER_CREATED / CUSTOMER_UPDATED are defined in the
+    // shared constants but the server never emits them. Removed from this map
+    // to avoid silently accumulating dead entries.
   };
 }
 

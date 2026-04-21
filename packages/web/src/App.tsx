@@ -73,6 +73,13 @@ const CampaignsPage = lazy(() => import('./pages/marketing/CampaignsPage').then(
 const SegmentsPage = lazy(() => import('./pages/marketing/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
 const NpsTrendPage = lazy(() => import('./pages/marketing/NpsTrendPage').then(m => ({ default: m.NpsTrendPage })));
 const ReferralsDashboard = lazy(() => import('./pages/marketing/ReferralsDashboard').then(m => ({ default: m.ReferralsDashboard })));
+// Gift Cards (§ gift-cards orphan UI).
+const GiftCardsListPage = lazy(() => import('./pages/gift-cards/GiftCardsListPage').then(m => ({ default: m.GiftCardsListPage })));
+const GiftCardDetailPage = lazy(() => import('./pages/gift-cards/GiftCardDetailPage').then(m => ({ default: m.GiftCardDetailPage })));
+// Memberships / Subscriptions admin list (§ subscriptions orphan UI).
+const SubscriptionsListPage = lazy(() => import('./pages/subscriptions/SubscriptionsListPage').then(m => ({ default: m.SubscriptionsListPage })));
+// Loaner devices
+const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => ({ default: m.LoanersPage })));
 
 function NotFoundPage() {
   return (
@@ -397,6 +404,13 @@ export default function App() {
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
+                    {/* Gift Cards (§ orphan). */}
+                    <Route path="/gift-cards" element={<GiftCardsListPage />} />
+                    <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
+                    {/* Memberships / Subscriptions admin list (§ orphan). */}
+                    <Route path="/subscriptions" element={<SubscriptionsListPage />} />
+                    {/* Loaner device management. */}
+                    <Route path="/loaners" element={<LoanersPage />} />
                     {/* Marketing / Growth enrichment (§54). */}
                     <Route path="/marketing/campaigns" element={<CampaignsPage />} />
                     <Route path="/marketing/segments" element={<SegmentsPage />} />

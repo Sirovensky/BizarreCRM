@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -161,6 +161,34 @@ export function InvoiceDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create credit note'),
   });
 
+  // Tip adjustment — wires the existing /blockchyp/adjust-tip endpoint.
+  // Currently returns NOT_SUPPORTED; the dialog surfaces that gracefully.
+  const [showTipAdjust, setShowTipAdjust] = useState(false);
+  const [tipAdjustForm, setTipAdjustForm] = useState({ transaction_id: '', new_tip: '' });
+  const tipAdjustMutation = useMutation({
+    mutationFn: (d: { transaction_id: string; new_tip: number }) =>
+      blockchypApi.adjustTip(d.transaction_id, d.new_tip),
+    onSuccess: (res) => {
+      const result = res.data?.data;
+      if (!result?.success && result?.code === 'NOT_SUPPORTED') {
+        toast.error('Tip adjustment not supported by current terminal');
+      } else if (result?.success) {
+        toast.success('Tip adjusted successfully');
+        setShowTipAdjust(false);
+      } else {
+        toast.error(result?.error || 'Tip adjustment failed');
+      }
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Tip adjustment failed');
+    },
+  });
+  // Find the most recent card payment that has a processor_transaction_id
+  const cardPaymentWithTxn = invoice?.payments?.find(
+    (p) => p.processor_transaction_id && !p.notes?.includes('[VOIDED]'),
+  );
+
   // FA-L4 — Installment plan creation mutation. Server route exists at
   // /api/v1/installments (see installment-plans.routes.ts). The wizard
   // already owns the money math + acceptance token; this just POSTs.
@@ -284,6 +312,17 @@ export function InvoiceDetailPage() {
             {invoice.status !== 'void' && Number(invoice.total) > 0 && (
               <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
                 <CreditCard className="h-4 w-4" /> Credit Note
+              </button>
+            )}
+            {blockchypEnabled && cardPaymentWithTxn && invoice.status !== 'void' && (
+              <button
+                onClick={() => {
+                  setTipAdjustForm({ transaction_id: cardPaymentWithTxn.processor_transaction_id ?? '', new_tip: '' });
+                  setShowTipAdjust(true);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+              >
+                <Receipt className="h-4 w-4" /> Adjust Tip
               </button>
             )}
             {invoice.status !== 'void' && (
@@ -699,6 +738,58 @@ export function InvoiceDetailPage() {
         onConfirm={() => { setShowVoidConfirm(false); scheduleVoidInvoice(); }}
         onCancel={() => setShowVoidConfirm(false)}
       />
+
+      {/* Tip Adjust Modal */}
+      {showTipAdjust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Adjust Tip</h2>
+              <button aria-label="Close" onClick={() => setShowTipAdjust(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+              Adjust the tip on terminal transaction <span className="font-mono text-xs">{tipAdjustForm.transaction_id}</span>.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">New Tip Amount</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={tipAdjustForm.new_tip}
+                  onChange={(e) => setTipAdjustForm({ ...tipAdjustForm, new_tip: e.target.value })}
+                  className="input w-full pl-6"
+                  autoFocus
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowTipAdjust(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const amount = parseFloat(tipAdjustForm.new_tip);
+                  if (isNaN(amount) || amount < 0) {
+                    toast.error('Enter a valid tip amount');
+                    return;
+                  }
+                  tipAdjustMutation.mutate({ transaction_id: tipAdjustForm.transaction_id, new_tip: amount });
+                }}
+                disabled={tipAdjustMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {tipAdjustMutation.isPending ? 'Adjusting...' : 'Adjust Tip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FA-L4 — Installment Plan Wizard. Mounts into a modal so it doesn't
           push the invoice detail content down when it's not in use. */}

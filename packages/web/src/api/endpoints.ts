@@ -918,7 +918,53 @@ export const blockchypApi = {
       { invoiceId, tip, idempotency_key: idempotencyKey },
     );
   },
+  adjustTip: (transaction_id: string, new_tip: number) =>
+    api.post<{ success: boolean; data: { success: boolean; code?: string; error?: string } }>(
+      '/blockchyp/adjust-tip',
+      { transaction_id, new_tip },
+    ),
 };
+
+// ==================== Loaners ====================
+export const loanerApi = {
+  list: (params?: { page?: number; per_page?: number }) =>
+    api.get<{ success: boolean; data: LoanerDevice[]; pagination: { page: number; per_page: number; total: number; total_pages: number } }>(
+      '/loaners',
+      { params },
+    ),
+  get: (id: number) =>
+    api.get<{ success: boolean; data: LoanerDevice & { history: LoanerHistoryEntry[] } }>(`/loaners/${id}`),
+  returnDevice: (id: number, body: { condition_in?: string; notes?: string }) =>
+    api.post<{ success: boolean; data: { returned: boolean } }>(`/loaners/${id}/return`, body),
+};
+
+export interface LoanerDevice {
+  id: number;
+  name: string;
+  serial: string | null;
+  imei: string | null;
+  condition: string;
+  status: 'available' | 'loaned';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  is_loaned_out?: number;
+  loaned_to?: string | null;
+}
+
+export interface LoanerHistoryEntry {
+  id: number;
+  loaner_device_id: number;
+  customer_id: number;
+  loaned_at: string;
+  returned_at: string | null;
+  condition_out: string | null;
+  condition_in: string | null;
+  notes: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  ticket_order_id?: string | null;
+}
 
 // ==================== Gift Cards ====================
 export const giftCardApi = {
