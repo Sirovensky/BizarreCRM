@@ -1067,7 +1067,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs.
 
 ### 6.2 Detail
-- [ ] Stock card / group prices / movements.
+- [x] Stock card / group prices / movements.
 - [ ] **Full movement history — cursor-based, offline-first** scoped per-SKU. Room `inventory_movement` table keyed by SKU + movement_id; detail view reads via Paging3. `sync_state` stored per-SKU: `{ cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. Online scroll-to-bottom triggers `GET /inventory/:sku/movements?cursor=&limit=50`. Offline shows cached range with banner "History from X to Y — older rows require sync". FCM silent push / WS broadcast inserts new movements at top via `updated_at` anchor so scroll position preserved. Four footer states. Never use `total_pages`.
 - [ ] **Price history chart** — Vico `AreaCartesianLayer` over time; toggle cost vs retail.
 - [ ] **Sales history** — last 30d sold qty × revenue line chart.
@@ -1084,7 +1084,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Edit / Deactivate / Delete** buttons.
 
 ### 6.3 Create
-- [ ] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
+- [~] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
 - [ ] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
 - [ ] **Photo capture** up to 4 per item; first = primary.
 - [ ] **Validation** — decimal for prices (2 places), integer for stock.
