@@ -52,6 +52,7 @@ private struct LoadedBody: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                greeting
                 heroCard
                 secondaryGrid
                 attentionCard
@@ -61,6 +62,27 @@ private struct LoadedBody: View {
             .padding(.bottom, BrandSpacing.lg)
             .frame(maxWidth: 1200, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// §3.9 — dynamic greeting by hour. Reads the current locale's first
+    /// day-part name, falls back to "Hello" if the clock lies. No server
+    /// round trip; the user's first name would need `/auth/me` which is
+    /// still TBD, so for now we keep it impersonal.
+    private var greeting: some View {
+        Text(Self.greetingText(for: Date()))
+            .font(.brandTitleLarge())
+            .foregroundStyle(.bizarreOnSurface)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    static func greetingText(for date: Date) -> String {
+        let hour = Calendar.current.component(.hour, from: date)
+        switch hour {
+        case 5..<12:  return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<22: return "Good evening"
+        default:      return "Working late"
         }
     }
 
