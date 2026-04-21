@@ -867,9 +867,9 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Concurrent-edit 409 banner.
 
 ### 5.5 Merge
-- [ ] `POST /customers/merge` with `{ keep_id, merge_id }`.
-- [ ] Search + select candidate; diff preview (which fields survive); confirmation.
-- [ ] Destructive — explicit warning that merge is irreversible.
+- [x] `POST /customers/merge` with `{ keep_id, merge_id }`.
+- [x] Search + select candidate; diff preview (which fields survive); confirmation.
+- [x] Destructive — explicit warning that merge is irreversible.
 
 ### 5.6 Bulk actions
 - [ ] Bulk tag (`POST /customers/bulk-tag`).
@@ -877,12 +877,12 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Bulk export selected.
 
 ### 5.7 Asset tracking
-- [ ] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
-- [ ] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
+- [x] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
+- [x] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
 - [ ] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`)
 - [ ] Color-coded with tenant-defined palette
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold")
-- [ ] Customer detail header chip row for tags
+- [x] Customer detail header chip row for tags
 - [ ] Tap tag → filter customer list
 - [ ] Bulk-assign tags via list multi-select
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters

@@ -7,6 +7,8 @@ import Networking
 public struct CustomerDetailView: View {
     @State private var vm: CustomerDetailViewModel
     @State private var showingEdit: Bool = false
+    @State private var showingMerge: Bool = false
+    @State private var showingTagEditor: Bool = false
     private let api: APIClient?
 
     public init(repo: CustomerDetailRepository, customerId: Int64, api: APIClient? = nil) {
@@ -29,12 +31,37 @@ public struct CustomerDetailView: View {
                     Button { showingEdit = true } label: {
                         Label("Edit", systemImage: "pencil")
                     }
+                    .accessibilityLabel("Edit customer")
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button { showingMerge = true } label: {
+                        Label("Merge…", systemImage: "arrow.triangle.merge")
+                    }
+                    .accessibilityLabel("Merge customer with another")
                 }
             }
         }
         .sheet(isPresented: $showingEdit) {
             if let detail = vm.snapshot.detail, let api {
                 CustomerEditView(api: api, customer: detail) {
+                    Task { await vm.load() }
+                }
+            }
+        }
+        .sheet(isPresented: $showingMerge) {
+            if let detail = vm.snapshot.detail, let api {
+                CustomerMergeView(api: api, primary: detail) {
+                    Task { await vm.load() }
+                }
+            }
+        }
+        .sheet(isPresented: $showingTagEditor) {
+            if let detail = vm.snapshot.detail, let api {
+                CustomerTagEditorSheet(
+                    api: api,
+                    customerId: detail.id,
+                    initialTags: detail.tagList
+                ) { _ in
                     Task { await vm.load() }
                 }
             }
@@ -79,9 +106,11 @@ public struct CustomerDetailView: View {
                         RecentTicketsSection(tickets: tickets)
                     }
 
-                    if !detail.tagList.isEmpty {
-                        TagsCard(tags: detail.tagList)
-                    }
+                    // §5.9 Tags section
+                    TagsCard(
+                        tags: detail.tagList,
+                        onEditTags: api != nil ? { showingTagEditor = true } : nil
+                    )
 
                     if let comments = detail.comments, !comments.isEmpty {
                         CommentsCard(text: comments)
@@ -89,6 +118,16 @@ public struct CustomerDetailView: View {
 
                     if let notes = vm.snapshot.notes, !notes.isEmpty {
                         NotesTimeline(notes: notes)
+                    }
+
+                    // §5.6 Contacts section
+                    if let api {
+                        CustomerContactListView(api: api, customerId: detail.id)
+                    }
+
+                    // §5.7 Devices section
+                    if let api {
+                        CustomerDeviceListView(api: api, customerId: detail.id)
                     }
                 }
                 .padding(BrandSpacing.base)
@@ -290,11 +329,30 @@ private struct RecentTicketsSection: View {
 
 private struct TagsCard: View {
     let tags: [String]
+    let onEditTags: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Tags").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            FlowTags(tags: tags)
+            HStack {
+                Text("Tags").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Spacer(minLength: 0)
+                if let onEditTags {
+                    Button {
+                        onEditTags()
+                    } label: {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .accessibilityLabel("Edit tags")
+                }
+            }
+            if tags.isEmpty {
+                Text("No tags.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            } else {
+                FlowTags(tags: tags)
+            }
         }
         .cardBackground()
     }

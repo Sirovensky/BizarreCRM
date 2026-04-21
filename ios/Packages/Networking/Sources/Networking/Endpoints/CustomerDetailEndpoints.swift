@@ -139,6 +139,135 @@ public struct CustomerNote: Decodable, Sendable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Customer contact models (§5.6)
+
+public struct CustomerContact: Codable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let customerId: Int64
+    public let name: String
+    public let relationship: String?
+    public let phone: String?
+    public let email: String?
+    public let isPrimary: Bool
+
+    public init(id: Int64, customerId: Int64, name: String, relationship: String? = nil,
+                phone: String? = nil, email: String? = nil, isPrimary: Bool = false) {
+        self.id = id
+        self.customerId = customerId
+        self.name = name
+        self.relationship = relationship
+        self.phone = phone
+        self.email = email
+        self.isPrimary = isPrimary
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, relationship, phone, email
+        case customerId = "customer_id"
+        case isPrimary = "is_primary"
+    }
+}
+
+public struct UpsertCustomerContactRequest: Codable, Sendable {
+    public let name: String
+    public let relationship: String?
+    public let phone: String?
+    public let email: String?
+    public let isPrimary: Bool
+
+    public init(name: String, relationship: String? = nil,
+                phone: String? = nil, email: String? = nil, isPrimary: Bool = false) {
+        self.name = name
+        self.relationship = relationship
+        self.phone = phone
+        self.email = email
+        self.isPrimary = isPrimary
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, relationship, phone, email
+        case isPrimary = "is_primary"
+    }
+}
+
+// MARK: - Customer device models (§5.7)
+
+public struct CustomerDevice: Codable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let customerId: Int64
+    public let deviceName: String
+    public let imei: String?
+    public let serial: String?
+    public let addedAt: String?
+
+    public init(id: Int64, customerId: Int64, deviceName: String,
+                imei: String? = nil, serial: String? = nil, addedAt: String? = nil) {
+        self.id = id
+        self.customerId = customerId
+        self.deviceName = deviceName
+        self.imei = imei
+        self.serial = serial
+        self.addedAt = addedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, imei, serial
+        case customerId = "customer_id"
+        case deviceName = "device_name"
+        case addedAt = "added_at"
+    }
+}
+
+// MARK: - Customer merge models (§5.5)
+
+public struct CustomerMergeRequest: Codable, Sendable {
+    public let primaryId: Int64
+    public let secondaryId: Int64
+    public let fieldPreferences: CustomerMergeFieldPreferences
+
+    public init(primaryId: Int64, secondaryId: Int64, fieldPreferences: CustomerMergeFieldPreferences) {
+        self.primaryId = primaryId
+        self.secondaryId = secondaryId
+        self.fieldPreferences = fieldPreferences
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case fieldPreferences = "field_preferences"
+        case primaryId = "primary_id"
+        case secondaryId = "secondary_id"
+    }
+}
+
+/// Per-field preference: `"primary"` or `"secondary"`.
+public struct CustomerMergeFieldPreferences: Codable, Sendable {
+    public var name: String
+    public var phone: String
+    public var email: String
+    public var address: String
+    public var notes: String
+
+    public init(name: String = "primary", phone: String = "primary",
+                email: String = "primary", address: String = "primary", notes: String = "primary") {
+        self.name = name
+        self.phone = phone
+        self.email = email
+        self.address = address
+        self.notes = notes
+    }
+}
+
+// MARK: - Tag autosuggest (§5.9)
+
+public struct TagSuggestionsResponse: Decodable, Sendable {
+    public let tags: [String]
+}
+
+public struct SetCustomerTagsRequest: Codable, Sendable {
+    public let tags: [String]
+
+    public init(tags: [String]) { self.tags = tags }
+}
+
 public extension APIClient {
     func customer(id: Int64) async throws -> CustomerDetail {
         try await get("/api/v1/customers/\(id)", as: CustomerDetail.self)
@@ -155,5 +284,50 @@ public extension APIClient {
 
     func customerNotes(id: Int64) async throws -> [CustomerNote] {
         try await get("/api/v1/customers/\(id)/notes", as: [CustomerNote].self)
+    }
+
+    // MARK: — Merge (§5.5)
+
+    func mergeCustomers(_ req: CustomerMergeRequest) async throws -> CustomerDetail {
+        try await post("/api/v1/customers/merge", body: req, as: CustomerDetail.self)
+    }
+
+    // MARK: — Contacts (§5.6)
+
+    func customerContacts(id: Int64) async throws -> [CustomerContact] {
+        try await get("/api/v1/customers/\(id)/contacts", as: [CustomerContact].self)
+    }
+
+    func createCustomerContact(customerId: Int64, _ req: UpsertCustomerContactRequest) async throws -> CustomerContact {
+        try await post("/api/v1/customers/\(customerId)/contacts", body: req, as: CustomerContact.self)
+    }
+
+    func updateCustomerContact(customerId: Int64, contactId: Int64, _ req: UpsertCustomerContactRequest) async throws -> CustomerContact {
+        try await patch("/api/v1/customers/\(customerId)/contacts/\(contactId)", body: req, as: CustomerContact.self)
+    }
+
+    func deleteCustomerContact(customerId: Int64, contactId: Int64) async throws {
+        try await delete("/api/v1/customers/\(customerId)/contacts/\(contactId)")
+    }
+
+    // MARK: — Devices (§5.7)
+
+    func customerDevices(id: Int64) async throws -> [CustomerDevice] {
+        try await get("/api/v1/customers/\(id)/devices", as: [CustomerDevice].self)
+    }
+
+    func customerDeviceTickets(customerId: Int64, deviceId: Int64) async throws -> [TicketSummary] {
+        try await get("/api/v1/customers/\(customerId)/devices/\(deviceId)/tickets", as: [TicketSummary].self)
+    }
+
+    // MARK: — Tags (§5.9)
+
+    func setCustomerTags(id: Int64, _ req: SetCustomerTagsRequest) async throws -> CustomerDetail {
+        try await post("/api/v1/customers/\(id)/tags", body: req, as: CustomerDetail.self)
+    }
+
+    func suggestCustomerTags(query: String) async throws -> [String] {
+        let items = [URLQueryItem(name: "q", value: query)]
+        return try await get("/api/v1/customers/tags", query: items, as: TagSuggestionsResponse.self).tags
     }
 }
