@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { StatusFooter } from './StatusFooter';
 import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
@@ -31,6 +32,7 @@ export function DashboardShell() {
           </PageErrorBoundary>
         </main>
       </div>
+      <StatusFooter />
     </div>
   );
 }
