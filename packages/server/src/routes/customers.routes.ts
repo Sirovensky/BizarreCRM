@@ -117,7 +117,7 @@ router.get(
     const allowedSorts = ['created_at', 'updated_at', 'first_name', 'last_name', 'organization', 'code', 'email', 'city', 'phone', 'mobile', 'total_spent', 'ticket_count'];
     const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'created_at';
 
-    const conditions: string[] = ['c.is_deleted = 0'];
+    const conditions: string[] = ['c.is_deleted = 0', "(c.code IS NULL OR c.code != 'WALK-IN')"];
     const params: unknown[] = [];
 
     // FTS keyword search with phone number fallback

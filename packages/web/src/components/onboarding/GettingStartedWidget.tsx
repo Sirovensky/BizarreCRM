@@ -29,11 +29,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
-  UserPlus,
+  Settings,
   Ticket,
-  FileText,
-  Receipt,
-  CreditCard,
+  ShoppingCart,
   ArrowRight,
   X,
   Sparkles,
@@ -43,61 +41,44 @@ import { onboardingApi, type OnboardingState } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 
 interface ChecklistStep {
-  id: 'customer' | 'ticket' | 'estimate' | 'invoice' | 'payment';
+  id: 'settings' | 'ticket' | 'checkout';
   title: string;
   description: string;
-  icon: typeof UserPlus;
+  icon: typeof Settings;
   route: string;
   doneKey: keyof Pick<
     OnboardingState,
-    'first_customer_at' | 'first_ticket_at' | 'first_invoice_at' | 'first_payment_at'
+    'first_ticket_at' | 'first_invoice_at' | 'first_payment_at'
   > | null;
 }
 
-// The audit lists 5 steps: customer -> ticket -> estimate -> invoice -> payment.
-// We track only 4 server-side milestones (customer/ticket/invoice/payment); the
-// "estimate" step is purely navigational because there's no dedicated
-// first_estimate_at column. It's still valuable UX (teaches the estimate flow
-// exists) so we include it as a non-checking nav button.
+// Three-step onboarding: finish advanced store configuration, create a ticket
+// from POS, then run a full checkout (edit + add part + pay). Each step deep-
+// links with `?tutorial=1&step=<id>` so the target page can surface a hint
+// overlay keyed to that step id without needing its own onboarding logic.
 const STEPS: ReadonlyArray<ChecklistStep> = [
   {
-    id: 'customer',
-    title: 'Create your first customer',
-    description: 'Name, phone, and email are all you need.',
-    icon: UserPlus,
-    route: '/customers?new=1',
-    doneKey: 'first_customer_at',
-  },
-  {
-    id: 'ticket',
-    title: 'Open a repair ticket',
-    description: 'Log the device, fault, and estimated price.',
-    icon: Ticket,
-    route: '/tickets?new=1',
-    doneKey: 'first_ticket_at',
-  },
-  {
-    id: 'estimate',
-    title: 'Send an estimate (optional)',
-    description: 'Text the customer a link to approve.',
-    icon: FileText,
-    route: '/estimates?new=1',
+    id: 'settings',
+    title: 'Finish store setup',
+    description: 'Tour advanced settings — tax, labels, notifications, printers.',
+    icon: Settings,
+    route: '/settings?tutorial=1&step=settings',
     doneKey: null,
   },
   {
-    id: 'invoice',
-    title: 'Generate an invoice',
-    description: 'Convert the ticket to a sale.',
-    icon: Receipt,
-    route: '/invoices?new=1',
-    doneKey: 'first_invoice_at',
+    id: 'ticket',
+    title: 'Create a ticket in POS',
+    description: 'Pick a customer, pick a device, set a price.',
+    icon: Ticket,
+    route: '/pos?tutorial=1&step=ticket',
+    doneKey: 'first_ticket_at',
   },
   {
-    id: 'payment',
-    title: 'Record your first payment',
-    description: 'Cash, card, or credit — celebrate!',
-    icon: CreditCard,
-    route: '/pos',
+    id: 'checkout',
+    title: 'Edit a ticket and check out',
+    description: 'Add a comment, change the price, add a part, then take payment.',
+    icon: ShoppingCart,
+    route: '/pos?tutorial=1&step=checkout',
     doneKey: 'first_payment_at',
   },
 ];

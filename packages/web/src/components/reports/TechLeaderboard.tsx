@@ -37,9 +37,9 @@ export function TechLeaderboard() {
   });
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-surface-200">
           <Trophy size={16} className="text-amber-500" /> Technician Leaderboard
         </div>
         <div className="flex gap-1">
@@ -49,7 +49,9 @@ export function TechLeaderboard() {
               type="button"
               onClick={() => setPeriod(p)}
               className={`px-2 py-0.5 text-xs rounded ${
-                period === p ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                period === p
+                  ? 'bg-gray-800 text-white dark:bg-surface-200 dark:text-surface-900'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
               }`}
             >
               {p}
@@ -58,14 +60,14 @@ export function TechLeaderboard() {
         </div>
       </div>
 
-      {isLoading && <div className="h-40 bg-gray-50 rounded animate-pulse" />}
-      {error && <div className="text-sm text-red-600">Failed to load leaderboard</div>}
+      {isLoading && <div className="h-40 bg-gray-50 dark:bg-surface-800 rounded animate-pulse" />}
+      {error && <div className="text-sm text-red-600 dark:text-red-400">Failed to load leaderboard</div>}
 
       {data && (
         <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm text-gray-800 dark:text-surface-200">
           <thead>
-            <tr className="text-left text-xs uppercase text-gray-500 border-b">
+            <tr className="text-left text-xs uppercase text-gray-500 dark:text-surface-400 border-b border-gray-200 dark:border-surface-700">
               <th className="py-2">Technician</th>
               <th className="py-2 text-right">Closed</th>
               <th className="py-2 text-right">Revenue</th>
@@ -75,15 +77,15 @@ export function TechLeaderboard() {
           <tbody>
             {data.leaderboard.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-gray-500">
+                <td colSpan={4} className="py-6 text-center text-gray-500 dark:text-surface-400">
                   No closed tickets in this period yet.
                 </td>
               </tr>
             )}
             {data.leaderboard.map((row, i) => (
-              <tr key={row.user_id} className="border-b last:border-0">
+              <tr key={row.user_id} className="border-b last:border-0 border-gray-200 dark:border-surface-700">
                 <td className="py-2">
-                  <span className="inline-block w-6 text-gray-400">{i + 1}.</span>
+                  <span className="inline-block w-6 text-gray-400 dark:text-surface-500">{i + 1}.</span>
                   {row.name}
                 </td>
                 <td className="py-2 text-right tabular-nums">{row.tickets_closed}</td>
@@ -91,7 +93,7 @@ export function TechLeaderboard() {
                 <td className="py-2 text-right tabular-nums">
                   {row.csat_avg != null ? `${row.csat_avg.toFixed(1)} / 10` : '—'}
                   {row.csat_responses > 0 && (
-                    <span className="ml-1 text-xs text-gray-400">({row.csat_responses})</span>
+                    <span className="ml-1 text-xs text-gray-400 dark:text-surface-500">({row.csat_responses})</span>
                   )}
                 </td>
               </tr>

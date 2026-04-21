@@ -16,12 +16,12 @@ interface HeatmapData {
 }
 
 function bucketColor(value: number, peak: number): string {
-  if (value === 0) return 'bg-gray-50';
+  if (value === 0) return 'bg-gray-50 dark:bg-surface-800';
   const pct = peak > 0 ? value / peak : 0;
   if (pct >= 0.75) return 'bg-blue-700';
   if (pct >= 0.5) return 'bg-blue-500';
   if (pct >= 0.25) return 'bg-blue-300';
-  return 'bg-blue-100';
+  return 'bg-blue-100 dark:bg-blue-900/40';
 }
 
 const HOUR_LABELS = Array.from({ length: 24 }, (_, i) =>
@@ -38,15 +38,15 @@ export function BusyHoursHeatmap({ days = 30 }: { days?: number }) {
   });
 
   if (isLoading) {
-    return <div className="h-64 rounded-xl border border-gray-200 bg-gray-50 animate-pulse" />;
+    return <div className="h-64 rounded-xl border border-gray-200 dark:border-surface-700 bg-gray-50 dark:bg-surface-800 animate-pulse" />;
   }
   if (error || !data) {
-    return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">Heatmap unavailable.</div>;
+    return <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-4 text-red-700 dark:text-red-300">Heatmap unavailable.</div>;
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+    <div className="rounded-xl border border-gray-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-surface-200">
         <Clock size={16} /> Busy Hours &mdash; last {data.days_analyzed} days
       </div>
       <div className="overflow-x-auto">
@@ -54,17 +54,17 @@ export function BusyHoursHeatmap({ days = 30 }: { days?: number }) {
           <div className="flex">
             <div className="w-10" />
             {HOUR_LABELS.map((h, i) => (
-              <div key={i} className="w-6 text-[9px] text-center text-gray-500">{h}</div>
+              <div key={i} className="w-6 text-[9px] text-center text-gray-500 dark:text-surface-400">{h}</div>
             ))}
           </div>
           {data.day_labels.map((day, dow) => (
             <div key={dow} className="flex items-center">
-              <div className="w-10 text-xs text-gray-600 font-medium">{day}</div>
+              <div className="w-10 text-xs text-gray-600 dark:text-surface-300 font-medium">{day}</div>
               {data.grid[dow].map((count, hour) => (
                 <div
                   key={hour}
                   className={cn(
-                    'w-6 h-6 border border-white transition',
+                    'w-6 h-6 border border-white dark:border-surface-900 transition',
                     bucketColor(count, data.peak),
                   )}
                   title={`${day} ${HOUR_LABELS[hour]}: ${count} tickets`}
@@ -74,8 +74,8 @@ export function BusyHoursHeatmap({ days = 30 }: { days?: number }) {
           ))}
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-        Peak: <strong className="text-gray-800">{data.peak}</strong> tickets / hour &middot; darker = busier
+      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-surface-400">
+        Peak: <strong className="text-gray-800 dark:text-surface-100">{data.peak}</strong> tickets / hour &middot; darker = busier
       </div>
     </div>
   );

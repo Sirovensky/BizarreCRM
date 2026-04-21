@@ -78,6 +78,17 @@ interface OnboardingRow {
 const SHOP_TYPES = ['phone_repair', 'computer_repair', 'watch_repair', 'general_electronics'] as const;
 type ShopType = typeof SHOP_TYPES[number];
 
+// Onboarding admin check: some tenants have legacy role strings like 'owner' or
+// mixed case, and the route previously only accepted lowercase 'admin' which
+// locked those admins out of sample-data loading. Admit any privileged role
+// here — this endpoint creates/removes demo rows that are already isolated by
+// the [Sample] tag and removable with one click.
+const ONBOARDING_ADMIN_ROLES = new Set(['admin', 'owner', 'manager']);
+function isOnboardingAdmin(role: string | undefined | null): boolean {
+  if (!role) return false;
+  return ONBOARDING_ADMIN_ROLES.has(role.toLowerCase());
+}
+
 // Fields accepted by PATCH /state. Every entry here is a simple boolean flag
 // that the UI toggles once and forgets. Milestone timestamps are NOT in the
 // allowlist — they are set server-side by the relevant create-first-thing
@@ -318,10 +329,10 @@ router.patch(
 router.post(
   '/sample-data',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') {
+    if (!isOnboardingAdmin(req.user?.role)) {
       audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
         route: 'POST /onboarding/sample-data',
-        required_role: 'admin',
+        required_role: 'admin|manager|owner',
         actual_role: req.user?.role ?? 'anonymous',
       });
       throw new AppError('Admin role required', 403);
@@ -406,10 +417,10 @@ router.post(
 router.delete(
   '/sample-data',
   asyncHandler(async (req, res) => {
-    if (req.user?.role !== 'admin') {
+    if (!isOnboardingAdmin(req.user?.role)) {
       audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
         route: 'DELETE /onboarding/sample-data',
-        required_role: 'admin',
+        required_role: 'admin|manager|owner',
         actual_role: req.user?.role ?? 'anonymous',
       });
       throw new AppError('Admin role required', 403);
@@ -451,7 +462,7 @@ router.post(
   asyncHandler(async (req, res) => {
     // SEC (post-enrichment audit §6): admin only — installs SMS templates
     // and sets a global shop_type flag that influences new-user flows.
-    if (req.user?.role !== 'admin') {
+    if (!isOnboardingAdmin(req.user?.role)) {
       audit(req.db, 'unauthorized_attempt', req.user?.id ?? null, req.ip || 'unknown', {
         route: 'POST /onboarding/set-shop-type',
         required_role: 'admin',
