@@ -1444,13 +1444,14 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Typing indicator** (if supported).
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload.
 - [x] **Canned responses / templates** — `MessageTemplateListView` + `MessageTemplateEditorView` (CRUD: `GET/POST/PATCH/DELETE /message-templates`); `TemplateRenderer` pure substitution helper; `{first_name}` / `{ticket_no}` / `{amount}` / `{date}` / `{company}` variable chips; live preview; channel (SMS/Email) + category filters; injectable picker closure for future in-composer surfacing. In-composer chips + hotkeys remain `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
+- [x] **In-composer dynamic-var chip bar** — `SmsComposerView` + `SmsComposerViewModel`; chip bar with `{first_name}` / `{ticket_no}` / `{total}` / `{due_date}` / `{tech_name}` / `{appointment_time}` / `{shop_name}`; insert-at-cursor; live preview via `TemplateRenderer`; "Load template" picker. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
 - [ ] **Emoji picker**.
 - [ ] **Schedule send** — date/time picker for future delivery.
 - [ ] **Voice memo** (if MMS supported) — record AAC inline; bubble plays audio.
 - [ ] **Long-press message** → context menu — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
 - [ ] **Create customer from thread** — if phone not associated.
-- [ ] **Character counter** + SMS-segments display (160 / 70 unicode).
+- [x] **Character counter** + SMS-segments display (160 / 70 unicode). (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [ ] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers.
 - [ ] **Off-hours auto-reply** indicator when enabled.
 
@@ -1478,6 +1479,16 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 ### 12.7 Empty / error states
 - [ ] No threads → "Start a conversation" CTA → compose new.
 - [ ] Send failed → red bubble with "Retry" chip; retried sends queued offline.
+
+### 12.8 Email templates (§64 in agent-ownership Phase 8)
+- [x] **`EmailTemplate` model** — `{ id, name, subject, htmlBody, plainBody, category, dynamicVars }` in `Communications/Email/`. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailRenderer` pure** — `static func render(template:context:) → (subject, html, plain)`; HTML-to-plain stripping via `NSAttributedString`; missing-var fallback; `sampleContext`. 12 tests. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailTemplateListView`** — admin CRUD; category filter chips; search; context menu (Edit / Delete); picker closure for compose. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailTemplateEditorView`** — subject field with dynamic-var chips; `TextEditor` HTML body; iPhone tabbed (Editor | Preview) / iPad side-by-side. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`HtmlPreviewView`** — `UIViewRepresentable` wrapping `WKWebView`; safe content policy (JS disabled); brand dark CSS wrapper. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailComposerView`** — To / Subject / Body fields; dynamic-var chip bar; template picker sheet; HTML preview pane; iPhone full-screen / iPad side-by-side; `POST /api/v1/emails/send`. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailEndpoints`** — `listEmailTemplates`, `createEmailTemplate`, `updateEmailTemplate`, `deleteEmailTemplate`, `sendEmail` wrappers. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
+- [x] **`EmailComposerViewModel`** — `@Observable`; cursor insert; `loadTemplate`; `isValid`; `send`; `htmlPreview`. 18 tests. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 
 ---
 ## §13. Notifications
