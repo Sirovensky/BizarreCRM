@@ -46,7 +46,7 @@ in-progress and lags the audit.
 | 10 | Appointments | ~20% | Day-list + create DONE. Missing: week/month/agenda, RRULE recurrence, scheduling engine. |
 | 11 | Expenses | ~25% | List w/ summary + filter, create DONE. Missing: receipt OCR, approval, pie chart, PhotoPicker. |
 | 12 | SMS | ~30% | Thread list, WebSocket realtime, compose-new DONE. Missing: filters, attachments, templates, voice calls, bulk. |
-| 13 | Notifications | ~50% | List, FCM token, deep-link whitelist, **12 granular channels (NEW)**, **POST_NOTIFICATIONS prompt (NEW)** DONE. Missing: rich push, quiet hours, in-app toast. |
+| 13 | Notifications | ~65% | List + **group-by-day sticky headers (NEW)** + FCM token + deep-link whitelist + 12 granular channels + POST_NOTIFICATIONS prompt + **quiet hours UI (NEW)** DONE. Missing: rich push, in-app toast, launcher badge. |
 | 14 | Employees & Timeclock | ~45% | List, clock in/out, **detail screen (NEW)** DONE. Missing: real-time presence, permissions matrix, edit/reset-PIN/deactivate (server endpoints pending). |
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
 | 16 | POS | ~5% | Read-only "Recent Tickets" only. Missing: cart, catalog, checkout, payment, drawer. |

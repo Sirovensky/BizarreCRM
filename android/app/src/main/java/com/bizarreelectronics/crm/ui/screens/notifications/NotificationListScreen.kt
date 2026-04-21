@@ -228,7 +228,7 @@ class NotificationListViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NotificationListScreen(
     onNotificationClick: (String, Long?) -> Unit,
@@ -395,7 +395,24 @@ fun NotificationListScreen(
                             // stays consistent with other list screens.
                             contentPadding = PaddingValues(bottom = 96.dp),
                         ) {
-                            items(visible, key = { it.id }) { notification ->
+                            // §13.1 group by day with sticky headers. Each
+                            // header renders "Today" / "Yesterday" /
+                            // "April 18, 2026" keyed off createdAt. Rows that
+                            // couldn't be parsed fall into "Earlier".
+                            val grouped = groupNotificationsByDay(visible)
+                            grouped.forEach { (label, group) ->
+                                stickyHeader(key = "hdr-$label") {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surface)
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                }
+                                items(group, key = { it.id }) { notification ->
                                 val isUnread = !notification.isRead
                                 val icon = when (notification.type) {
                                     "ticket" -> Icons.Default.ConfirmationNumber
@@ -486,10 +503,57 @@ fun NotificationListScreen(
                                 // Brand-aligned divider: outline at 40% alpha (§3 P2)
                                 BrandListItemDivider()
                             }
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * §13.1 — group notifications by calendar day in the device timezone.
+ *
+ * Labels: "Today" / "Yesterday" / absolute date for older entries.
+ * Parse failures fall into a single "Earlier" bucket at the end. Order
+ * preserved within each group (input is already newest-first).
+ */
+private fun groupNotificationsByDay(
+    list: List<com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity>,
+): List<Pair<String, List<com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity>>> {
+    if (list.isEmpty()) return emptyList()
+    val zone = java.time.ZoneId.systemDefault()
+    val today = java.time.LocalDate.now(zone)
+    val yesterday = today.minusDays(1)
+    val absoluteFmt = java.time.format.DateTimeFormatter
+        .ofPattern("LLLL d, yyyy", java.util.Locale.getDefault())
+
+    val groups = linkedMapOf<String, MutableList<com.bizarreelectronics.crm.data.local.db.entities.NotificationEntity>>()
+    val earlier = "Earlier"
+
+    for (item in list) {
+        val raw = item.createdAt
+        val label = if (raw.isBlank()) {
+            earlier
+        } else {
+            val parsed = runCatching {
+                // Server sends UTC "YYYY-MM-DD HH:MM:SS". Anchor at UTC so
+                // devices east of UTC don't misbucket entries near midnight.
+                val normalized = raw.replace(' ', 'T')
+                java.time.LocalDateTime.parse(normalized)
+                    .atZone(java.time.ZoneOffset.UTC)
+                    .withZoneSameInstant(zone)
+                    .toLocalDate()
+            }.getOrNull()
+            when (parsed) {
+                null -> earlier
+                today -> "Today"
+                yesterday -> "Yesterday"
+                else -> parsed.format(absoluteFmt)
+            }
+        }
+        groups.getOrPut(label) { mutableListOf() }.add(item)
+    }
+    return groups.map { (k, v) -> k to v }
 }
