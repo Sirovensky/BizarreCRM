@@ -29,6 +29,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
 import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.SearchApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -61,6 +62,12 @@ data class GlobalSearchUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val hasSearched: Boolean = false,
+    /**
+     * §18.1 recent-searches cache. Rendered as chips on the idle state so
+     * users can re-run a prior lookup in one tap. See
+     * [com.bizarreelectronics.crm.util.RecentSearches] for dedupe + cap.
+     */
+    val recentSearches: List<String> = emptyList(),
 )
 
 @OptIn(FlowPreview::class)
@@ -71,9 +78,14 @@ class GlobalSearchViewModel @Inject constructor(
     private val ticketDao: TicketDao,
     private val customerDao: CustomerDao,
     private val inventoryDao: InventoryDao,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(GlobalSearchUiState())
+    private val _state = MutableStateFlow(
+        // §18.1 — seed with whatever the last session cached so the chips
+        // appear instantly when the user opens search.
+        GlobalSearchUiState(recentSearches = appPreferences.recentSearches),
+    )
     val state = _state.asStateFlow()
 
     private val _queryFlow = MutableStateFlow("")
@@ -86,6 +98,18 @@ class GlobalSearchViewModel @Inject constructor(
                 .filter { it.isNotBlank() }
                 .collectLatest { query -> performSearch(query) }
         }
+    }
+
+    /** §18.1 — user tapped a recent-search chip; hydrate the field + run. */
+    fun onRecentTapped(query: String) {
+        updateQuery(query)
+        executeSearch()
+    }
+
+    /** §18.1 — user tapped "Clear" on the recent-searches row. */
+    fun clearRecentSearches() {
+        appPreferences.clearRecentSearches()
+        _state.value = _state.value.copy(recentSearches = emptyList())
     }
 
     fun updateQuery(value: String) {
@@ -129,10 +153,15 @@ class GlobalSearchViewModel @Inject constructor(
                     parseResultList(data["invoices"], "invoice")?.let { results.addAll(it) }
                 }
 
+                // §18.1 — only cache the query once we know it returned a
+                // server response. Zero results is still a valid "I asked
+                // for this" signal, so no result-count gate here.
+                appPreferences.addRecentSearch(query)
                 _state.value = _state.value.copy(
                     results = results,
                     isLoading = false,
                     hasSearched = true,
+                    recentSearches = appPreferences.recentSearches,
                 )
                 return
             } catch (_: Exception) {
@@ -170,10 +199,14 @@ class GlobalSearchViewModel @Inject constructor(
                 results.add(SearchResult(type = "inventory", id = i.id, title = title, subtitle = subtitle))
             }
 
+            // §18.1 — also cache the offline-path query; a user who's
+            // offline still benefits from the chip next time.
+            appPreferences.addRecentSearch(query)
             _state.value = _state.value.copy(
                 results = results,
                 isLoading = false,
                 hasSearched = true,
+                recentSearches = appPreferences.recentSearches,
             )
         } catch (e: Exception) {
             _state.value = _state.value.copy(
@@ -318,6 +351,57 @@ private fun InlineSearchField(
 }
 
 // ---------------------------------------------------------------------------
+// Recent searches — §18.1 idle-state chips above the EmptyState
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecentSearchesRow(
+    recent: List<String>,
+    onRecentTapped: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Recent",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onClear) {
+                Text("Clear")
+            }
+        }
+        androidx.compose.foundation.lazy.LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(items = recent, key = { it }) { query ->
+                AssistChip(
+                    onClick = { onRecentTapped(query) },
+                    label = { Text(query) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Result-group header — display-condensed ALL-CAPS (sanctioned use)
 // ---------------------------------------------------------------------------
 
@@ -423,13 +507,24 @@ fun GlobalSearchScreen(
                 .padding(padding),
         ) {
             when {
-                // Idle — user hasn't typed anything yet. EmptyState includes WaveDivider.
+                // Idle — user hasn't typed anything yet. Show recent-searches
+                // chips (§18.1) above the canonical EmptyState so the user
+                // can re-run a prior lookup in one tap.
                 state.query.isBlank() -> {
-                    EmptyState(
-                        icon = Icons.Default.Search,
-                        title = "Search",
-                        subtitle = "Tickets, customers, inventory, invoices",
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (state.recentSearches.isNotEmpty()) {
+                            RecentSearchesRow(
+                                recent = state.recentSearches,
+                                onRecentTapped = viewModel::onRecentTapped,
+                                onClear = viewModel::clearRecentSearches,
+                            )
+                        }
+                        EmptyState(
+                            icon = Icons.Default.Search,
+                            title = "Search",
+                            subtitle = "Tickets, customers, inventory, invoices",
+                        )
+                    }
                 }
 
                 // Loading — in-toolbar spinner style (search is a focused action, not a list load)

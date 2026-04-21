@@ -51,7 +51,7 @@ in-progress and lags the audit.
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
 | 16 | POS | ~5% | Read-only "Recent Tickets" only. Missing: cart, catalog, checkout, payment, drawer. |
 | 17 | Hardware | ~20% | HID barcode passthrough + **Ctrl+N/Shift+N/Shift+S/Shift+M/F/, keyboard chords (NEW)** DONE. Missing: CameraX wire, ML Kit wire, printers, stylus. |
-| 18 | Global Search | ~50% | Debounced search + offline FTS DONE. Missing: scoped search, recent, voice. |
+| 18 | Global Search | ~58% | Debounced search + offline FTS + **recent searches chip row (NEW)** DONE. Missing: scoped search, voice. |
 | 19 | Settings | ~30% | Main screen + biometric toggle + logout + notification toggles DONE. Missing: search-in-settings, change-password UI, change-PIN UI, deep links. |
 | 20 | Offline & Sync | ~50% | sync_queue + sync_metadata + dead-letter + WorkManager + WebSocket DONE. Missing: conflict resolution, delta sync, cursor pagination, dev tools drawer. |
 | 21 | Background & Push | ~55% | FCM + foreground service + WorkManager + **silent-push delta sync (NEW)** + quiet hours DONE. Missing: Live Updates (Android 16), OEM killer detection, Direct Boot. |
@@ -64,7 +64,7 @@ in-progress and lags the audit.
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
-| 31 | Testing | ~16% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / **ReduceMotion / Money / PhoneFormat / QuietHours (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
+| 31 | Testing | ~17% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / **RecentSearches (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
 | 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
@@ -1933,7 +1933,7 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert.
 - [ ] Debounced 300ms; results grouped by entity type with count chip.
 - [ ] Tap result → deep link.
-- [ ] Recent searches cached in DataStore.
+- [x] Recent searches cached in DataStore.
 - [ ] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
 
 ### 18.2 Scoped search per screen

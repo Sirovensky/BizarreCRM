@@ -185,4 +185,33 @@ class AppPreferences @Inject constructor(
     var reduceMotionEnabled: Boolean
         get() = prefs.getBoolean("reduce_motion_enabled", false)
         set(value) = prefs.edit().putBoolean("reduce_motion_enabled", value).apply()
+
+    // --- §18.1 recent global-search queries ---------------------------------
+    //
+    // Stored as a single \u0001-separated string under "recent_searches". The
+    // raw list math (dedupe, case-fold, LIMIT-cap) lives in
+    // [com.bizarreelectronics.crm.util.RecentSearches] so unit tests can
+    // exercise it without a Context. Persistence here is deliberately plain
+    // (not encrypted) — search queries are low-sensitivity hints, not PII.
+
+    var recentSearches: List<String>
+        get() = com.bizarreelectronics.crm.util.RecentSearches.deserialize(
+            prefs.getString("recent_searches", null),
+        )
+        set(value) = prefs.edit()
+            .putString(
+                "recent_searches",
+                com.bizarreelectronics.crm.util.RecentSearches.serialize(value),
+            )
+            .apply()
+
+    /** Prepend a new query, respecting dedupe + LIMIT. See [RecentSearches.prepend]. */
+    fun addRecentSearch(query: String) {
+        recentSearches = com.bizarreelectronics.crm.util.RecentSearches.prepend(recentSearches, query)
+    }
+
+    /** Wipe the cache (user-requested clear). */
+    fun clearRecentSearches() {
+        prefs.edit().remove("recent_searches").apply()
+    }
 }
