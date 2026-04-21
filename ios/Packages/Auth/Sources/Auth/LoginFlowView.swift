@@ -934,10 +934,18 @@ public struct PINUnlockView: View {
         error = nil
         pin.append(digit)
         BrandHaptics.tap()
-        // Auto-submit once the entry length matches the enrolled PIN
-        // length — no debounce needed. Short PINs submit instantly;
-        // 6-digit PINs wait until all 6 are in.
-        if pin.count == pinExpectedLength { submit() }
+        // Auto-submit strategy agnostic to stored PIN length so legacy
+        // installs without `pin_length` still unlock:
+        //   • at max (6) → fire immediately (no more digits possible).
+        //   • at >= 4  → fire after 500ms debounce (cancelled by the
+        //     next keystroke). Covers 4- and 5-digit PINs without
+        //     blocking 6-digit users behind a never-reached match.
+        if pin.count >= pinHardMax {
+            hideTimer?.cancel()
+            submit()
+        } else if pin.count >= 4 {
+            autoSubmit(after: 0.5)
+        }
     }
 
     private func backspace() {
