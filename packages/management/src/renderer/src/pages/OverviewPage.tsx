@@ -20,6 +20,7 @@ import type { MetricsDataPoint } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { Sparkline } from '@/components/Sparkline';
 import { SetupChecklist } from '@/components/SetupChecklist';
+import { RecentActivityWidget } from '@/components/RecentActivityWidget';
 
 interface StatCardProps {
   label: string;
@@ -728,6 +729,9 @@ export function OverviewPage() {
         avgMs={stats?.avgResponseMs ?? 0}
         p95Ms={stats?.p95ResponseMs ?? 0}
       />
+
+      {/* Recent activity — compact audit + alerts preview. Multi-tenant only. */}
+      <RecentActivityWidget />
 
       {/* System info — includes build SHA + boot timestamp so operators can
           verify "did my git pull land on the running process?" without SSH. */}
