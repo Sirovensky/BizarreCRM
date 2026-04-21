@@ -4686,12 +4686,12 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 
 ### 44.2 LTV
 - [x] **Lifetime value** — `CustomerLTVChip` with server analytics `lifetime_value` + DTO `ltv_cents` fallback; rendered on CustomerDetailView header.
-- [ ] **Tier** — Bronze / Silver / Gold / Platinum by LTV threshold.
-- [ ] **Perks per tier** — auto discounts, priority queue.
+- [x] **Tier** — Bronze / Silver / Gold / Platinum by LTV threshold. `LTVTier`, `LTVThresholds`, `LTVCalculator` (pure, tenant-overridable). `LTVTierBadge` (glass, Reduce Motion, a11y). Shown in CustomerDetailView header next to health badge.
+- [x] **Perks per tier** — `LTVPerk` (discount %, priority queue, warranty months, custom). `LTVPerkApplier` (pure filter). `LTVTierEditorView` admin editor (`PATCH /tenant/ltv-policy`). iPhone form + iPad split editor.
 
 ### 44.3 Predicted churn
-- [ ] **ML score** (server) — probability of not returning.
-- [ ] **Proactive campaign** — auto-target red-health customers.
+- [x] **ML score** (server) — `ChurnScore` + `ChurnScoreDTO` from server. `ChurnEndpoints` (`GET /customers/:id/churn-score`, `GET /customers/churn-cohort?riskLevel=`). Client-side fallback via `ChurnScoreCalculator` (5-factor, base 50). `ChurnRiskLevel` (low/medium/high/critical). `ChurnRiskBadge` (glass, factors popover, a11y) on CustomerDetailView header.
+- [x] **Proactive campaign** — `ChurnCohortView` (iPhone NavStack + iPad SplitView, risk filter). `ChurnTargetCampaignBuilder` → `ChurnCampaignSpec` for §37 Marketing. Customer list `CustomerSortOrder` menu with "LTV tier" + "Churn risk" sort options.
 
 ---
 ## §45. Team Collaboration (internal messaging)

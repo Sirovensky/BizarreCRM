@@ -162,16 +162,42 @@ private struct Header: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
 
-            // §44 — health badge + LTV chip
+            // §44 — health badge + LTV chip + LTV tier badge + churn risk badge
             let health = CustomerHealthScore.compute(detail: detail)
-            HStack(spacing: BrandSpacing.sm) {
-                CustomerHealthBadge(score: health)
-                // LTV from analytics (dollars) takes priority; fall back to detail cents.
-                if let ltv = analytics?.lifetimeValue, ltv > 0 {
-                    CustomerLTVChip(ltvDollars: ltv)
-                } else {
-                    CustomerLTVChip(ltvCents: detail.ltvCents)
+            let ltvDollars: Double? = {
+                if let ltv = analytics?.lifetimeValue, ltv > 0 { return ltv }
+                if let c = detail.ltvCents, c > 0 { return Double(c) / 100.0 }
+                return nil
+            }()
+            let ltvCentsInt = ltvDollars.map { Int($0 * 100) } ?? 0
+            let tier = LTVCalculator.tier(for: ltvCentsInt)
+
+            BrandGlassContainer(spacing: BrandSpacing.sm) {
+                HStack(spacing: BrandSpacing.sm) {
+                    CustomerHealthBadge(score: health)
+                    // LTV chip (dollar amount)
+                    if let ltv = ltvDollars {
+                        CustomerLTVChip(ltvDollars: ltv)
+                    }
+                    // §44.2 Tier badge
+                    LTVTierBadge(tier: tier, ltvDollars: ltvDollars)
                 }
+            }
+
+            // §44.3 Churn risk badge — shown below the tier row
+            let churnInput = ChurnInput(
+                daysSinceLastVisit: analytics?.daysSinceLastVisit ?? {
+                    detail.lastVisitAt.flatMap { CustomerHealthScore.parseISO8601($0) }
+                        .map { CustomerHealthScore.daysSince($0) }
+                }(),
+                visitFrequencyDecline: false,
+                supportComplaints: detail.complaintCount ?? 0,
+                npsScore: nil,
+                ltvTrend: .stable
+            )
+            let churnScore = ChurnScoreCalculator.compute(input: churnInput)
+            if churnScore.riskLevel != .low {
+                ChurnRiskBadge(score: churnScore)
             }
         }
         .frame(maxWidth: .infinity)

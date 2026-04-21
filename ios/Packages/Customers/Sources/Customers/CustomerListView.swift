@@ -5,12 +5,26 @@ import DesignSystem
 import Networking
 import Sync
 
+// MARK: - CustomerSortOrder
+
+/// Sort options for the customer list, including §44.2/§44.3 additions.
+public enum CustomerSortOrder: String, CaseIterable, Sendable {
+    case name         = "A–Z"
+    case nameDesc     = "Z–A"
+    case mostTickets  = "Most tickets"
+    case mostRevenue  = "Most revenue"
+    case lastVisit    = "Last visit"
+    case ltvTier      = "LTV tier ↑"
+    case churnRisk    = "Churn risk ↑"
+}
+
 public struct CustomerListView: View {
     @State private var vm: CustomerListViewModel
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
     @State private var selected: Int64?
     @State private var showingCreate: Bool = false
+    @State private var sortOrder: CustomerSortOrder = .name
     private let listRepo: CustomerRepository
     private let detailRepo: CustomerDetailRepository
     private let api: APIClient
@@ -53,6 +67,7 @@ public struct CustomerListView: View {
             .toolbar {
                 newCustomerToolbar
                 stalenessToolbarItem
+                sortToolbarItem
             }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 CustomerCreateView(api: api)
@@ -78,6 +93,7 @@ public struct CustomerListView: View {
             .toolbar {
                 newCustomerToolbar
                 stalenessToolbarItem
+                sortToolbarItem
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
@@ -110,6 +126,29 @@ public struct CustomerListView: View {
     private var stalenessToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+    }
+
+    /// §44.2/§44.3 — Sort menu with LTV tier + churn risk options.
+    private var sortToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Menu {
+                ForEach(CustomerSortOrder.allCases, id: \.self) { order in
+                    Button {
+                        sortOrder = order
+                    } label: {
+                        HStack {
+                            Text(order.rawValue)
+                            if sortOrder == order {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .accessibilityLabel("Sort customers by \(sortOrder.rawValue)")
         }
     }
 
