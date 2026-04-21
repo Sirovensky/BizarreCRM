@@ -1715,11 +1715,11 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Header** — total shown in brand Barlow Condensed via `.monospacedDigit()`.
 - [x] **Line items** — qty stepper (inc/dec with light haptic), unit price, line total. Swipe trailing = Remove; context menu = Remove / Edit quantity / Edit price.
 - [x] **Line edit sheets** — `PosEditQuantitySheet` + `PosEditPriceSheet` wired (role gating TBD in Phase 3).
-- [ ] **Cart-level** — discount (% or $), tip (if enabled, preset chips 10/15/20% + custom), fees (delivery, restocking, etc.).
+- [x] **Cart-level** — discount (% + $), tip (preset 10/15/20% + custom), fees (cents + label) via `PosCartAdjustmentSheets` + overflow ⋯ toolbar menu. `effectiveDiscountCents` re-derives on subtotal change.
 - [x] **Tax** — per-line `taxRate` propagated into `CartMath.totals` with bankers rounding; multi-rate per item supported. Tenant-wide tax config integration deferred to §19.
 - [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()` via `CartMath.formatCents`. Discount + Tip lines added when those features ship.
 - [ ] **Link to record** — chip "Link to Ticket #1234".
-- [ ] **Hold cart** — `POST /pos/holds` save/resume.
+- [x] **Hold cart** — `POsHoldCartSheet` + `PosResumeHoldsSheet` wired to `POST/GET /pos/holds` with 404/501 "Coming soon" fallback. Resume clears cart first, never inherits pending payment link. Synthetic single-line pending per-hold detail endpoint.
 - [x] **Clear cart** — `Clear cart` toolbar action with ⌘⇧⌫ shortcut (destructive confirm lands with the first real-tender phase).
 - [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
 
