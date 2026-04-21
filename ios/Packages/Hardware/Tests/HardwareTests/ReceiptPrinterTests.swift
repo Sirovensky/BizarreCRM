@@ -17,10 +17,18 @@ final class ReceiptPrinterTests: XCTestCase {
     func test_nullPrinter_mutations_throwNotPaired() async {
         let printer = NullReceiptPrinter()
         let payload = ReceiptPayload(
-            lines: ["Line 1"],
-            totalCents: 1234,
-            merchant: "Bizarre CRM",
-            date: Date(timeIntervalSince1970: 0)
+            tenantName: "Bizarre CRM",
+            tenantAddress: "123 Main St",
+            tenantPhone: "555-1234",
+            receiptNumber: "R-0001",
+            createdAt: Date(timeIntervalSince1970: 0),
+            lineItems: [],
+            subtotalCents: 1000,
+            taxCents: 100,
+            tipCents: 0,
+            totalCents: 1100,
+            paymentTender: "Cash",
+            cashierName: "Test"
         )
 
         do {

@@ -1,23 +1,9 @@
 import Foundation
 import Core
 
-/// Printable receipt payload. Kept intentionally shallow: the printer
-/// adapter receives already-rendered lines (via `PosReceiptRenderer`)
-/// plus the metadata it needs for the header band. Money lives in cents
-/// so summation never drifts across the serialization boundary.
-public struct ReceiptPayload: Sendable, Equatable {
-    public let lines: [String]
-    public let totalCents: Int
-    public let merchant: String
-    public let date: Date
-
-    public init(lines: [String], totalCents: Int, merchant: String, date: Date) {
-        self.lines = lines
-        self.totalCents = totalCents
-        self.merchant = merchant
-        self.date = date
-    }
-}
+// NOTE: ReceiptPayload is defined in Printing/PrintPayloads.swift (the canonical version).
+// This file previously had a shallow duplicate that has been removed to resolve the
+// ambiguous-type compiler error introduced when §17.4 added the richer Printing module.
 
 /// Errors surfaced by any `ReceiptPrinter` adapter. Wrapped as an enum
 /// rather than bare `Error` so the Pos layer can branch on "not paired
@@ -65,7 +51,7 @@ public final class NullReceiptPrinter: ReceiptPrinter, @unchecked Sendable {
     public func isAvailable() -> Bool { false }
 
     public func printReceipt(_ payload: ReceiptPayload) async throws {
-        AppLog.hardware.info("NullReceiptPrinter.printReceipt: no printer paired (\(payload.lines.count) lines)")
+        AppLog.hardware.info("NullReceiptPrinter.printReceipt: no printer paired")
         throw ReceiptPrinterError.notPaired
     }
 
