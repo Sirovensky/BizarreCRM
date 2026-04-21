@@ -1254,6 +1254,40 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Jurisdiction limits: some jurisdictions cap late fees by law
 - [ ] Tenant-configurable max; warn on violation
 
+### 7.8 Recurring invoices
+- [x] **`RecurringInvoiceRule`** — `{ id, customerId, templateInvoiceId, frequency (monthly/quarterly/yearly), dayOfMonth, nextRunAt, startDate, endDate?, autoSend }`. (feat(ios post-phase §7): Invoices — recurring + installment plans + credit notes + templates + late fees + discount codes)
+- [x] **`RecurringInvoiceEditorSheet`** — admin form; prefills from existing rule. (feat(ios post-phase §7))
+- [x] **`RecurringInvoiceListView`** — list with next-run + auto-send status; swipe delete/edit. (feat(ios post-phase §7))
+- [x] **`RecurringInvoiceEndpoints`** — CRUD (`GET/POST/PUT/DELETE /api/v1/invoices/recurring`). (feat(ios post-phase §7))
+- [x] **`RecurringInvoiceEditorViewModel`** — `@Observable`; 9 tests. (feat(ios post-phase §7))
+
+### 7.9 Installment payment plans
+- [x] **`InstallmentPlan`** — `{ invoiceId, totalCents, installments: [{ dueDate, amountCents, paidAt? }], autopay }`. (feat(ios post-phase §7))
+- [x] **`InstallmentPlanEditorSheet`** — split invoice into N installments with custom dates + amounts; total must sum to invoice total. (feat(ios post-phase §7))
+- [x] **`InstallmentScheduleView`** — visualize upcoming installments in `InvoiceDetailView`; A11y on rows; Reduce Motion. (feat(ios post-phase §7))
+- [x] **`InstallmentReminder`** — `POST /api/v1/invoices/installment-plans/:planId/reminders`; auto-send 3 days before. (feat(ios post-phase §7))
+- [x] **`InstallmentCalculator`** — pure `static func distribute(totalCents:count:startDate:interval:) -> [ComputedInstallmentItem]`; 28 tests ≥80%. (feat(ios post-phase §7))
+
+### 7.10 Credit notes
+- [x] **`CreditNote`** — `{ id, customerId, originalInvoiceId?, amountCents, reason, issueDate, status }`. (feat(ios post-phase §7))
+- [x] **`CreditNoteComposeSheet`** — issue credit note standalone or tied to invoice. (feat(ios post-phase §7))
+- [x] **`CreditNoteApplyToInvoiceSheet`** — apply existing credit toward new invoice; lists open notes for customer. (feat(ios post-phase §7))
+- [x] **`CreditNoteRepository`** + endpoints (`GET/POST /api/v1/credit-notes`, `POST /apply`, `POST /:id/void`). (feat(ios post-phase §7))
+
+### 7.11 Invoice templates
+- [x] **`InvoiceTemplate`** — saved recurring line-items `{ id, name, lineItems, notes }`. (feat(ios post-phase §7))
+- [x] **`InvoiceTemplatePickerSheet`** — at create, user picks template to pre-fill; searchable. (feat(ios post-phase §7))
+- [x] **`InvoiceTemplateEndpoints`** — CRUD (`GET/POST/PUT/DELETE /api/v1/invoice-templates`). (feat(ios post-phase §7))
+
+### 7.12 Late fees
+- [x] **`LateFeePolicy`** — `{ flatFeeCents?, percentPerDay?, gracePeriodDays, compoundDaily, maxFeeCents? }`. (feat(ios post-phase §7))
+- [x] **`LateFeePolicyEditorView`** — admin; `PATCH /api/v1/settings/late-fee-policy`. (feat(ios post-phase §7))
+- [x] **`LateFeeCalculator`** — pure `static func compute(invoice:asOf:policy:) -> Cents`; 19 tests covering flat, percent, compound, grace window, zero-balance, no-due-date. (feat(ios post-phase §7))
+
+### 7.13 Discount codes on invoice
+- [x] **`InvoiceDiscountInputSheet`** — code field; auto-uppercased; `POST /api/v1/invoices/:id/apply-discount`. (feat(ios post-phase §7))
+- [x] **`InvoiceDiscountInputViewModel`** — reuses CouponInputViewModel pattern; `@Observable`. (feat(ios post-phase §7))
+
 ---
 ## §8. Estimates
 
