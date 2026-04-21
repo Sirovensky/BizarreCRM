@@ -140,12 +140,17 @@ public struct LeadListView: View {
         } else {
             List {
                 ForEach(vm.items) { lead in
-                    Row(lead: lead)
-                        .listRowBackground(Color.bizarreSurface1)
+                    NavigationLink(value: lead.id) {
+                        Row(lead: lead)
+                    }
+                    .listRowBackground(Color.bizarreSurface1)
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .navigationDestination(for: Int64.self) { id in
+                LeadDetailView(api: api, id: id)
+            }
         }
     }
 
