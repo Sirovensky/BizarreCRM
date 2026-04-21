@@ -5,6 +5,7 @@ import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
 import { BannerTagVerifyWarning } from '@/components/BannerTagVerifyWarning';
+import { CommandPalette } from '@/components/CommandPalette';
 
 export function DashboardShell() {
   // Start health polling when the shell mounts (user is authenticated)
@@ -16,6 +17,8 @@ export function DashboardShell() {
       <BannerCertWarning />
       {/* AUDIT-MGT-018: visible warning when signed-tag verification bypass is active */}
       <BannerTagVerifyWarning />
+      {/* Global Cmd/Ctrl+K / `/` command palette mounted once at the shell. */}
+      <CommandPalette />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

@@ -43,6 +43,15 @@ export function Header() {
 
       {/* Right: User + window controls (not draggable) */}
       <div className="flex items-center gap-2">
+        {/* Static palette hint — the actual Cmd+K handler lives on window in
+            CommandPalette. Click-to-dispatch would be nice but adds a stale
+            focus dance we don't need. */}
+        <span
+          className="hidden sm:inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono"
+          title="Ctrl/Cmd + K to open the command palette"
+        >
+          ⌘K
+        </span>
         {username && (
           <span className="text-xs text-surface-500 mr-2">{username}</span>
         )}
