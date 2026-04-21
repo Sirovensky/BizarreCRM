@@ -4,6 +4,7 @@ import Core
 import DesignSystem
 import Hardware
 import Networking
+import Persistence
 import Inventory
 import Customers
 
@@ -29,6 +30,17 @@ public struct PosView: View {
     @State private var showingHoldSheet: Bool = false
     @State private var showingResumeHoldsSheet: Bool = false
     @State private var holdToastMessage: String? = nil
+    /// §16.10 / §39 — cash register drawer-lock gate. POS is sell-locked
+    /// until an open session exists. `registerLoaded` prevents a flash of
+    /// the open-sheet on first-render while the store is being read.
+    @State private var registerSession: CashSessionRecord?
+    @State private var registerLoaded: Bool = false
+    @State private var showingOpenRegister: Bool = false
+    @State private var showingCloseRegister: Bool = false
+    @State private var showingZReport: Bool = false
+    /// Snapshot of the session that was just closed so `ZReportView` has
+    /// something to render after `registerSession` has been cleared.
+    @State private var lastClosedSession: CashSessionRecord?
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -54,9 +66,67 @@ public struct PosView: View {
 
     public var body: some View {
         Group {
-            if Platform.isCompact { compactLayout } else { regularLayout }
+            if !registerLoaded {
+                // First-tick loading — avoid flashing the open-register
+                // sheet before the store has answered.
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if registerSession == nil {
+                registerLockedPlaceholder
+            } else if Platform.isCompact {
+                compactLayout
+            } else {
+                regularLayout
+            }
         }
         .task { await search.load() }
+        .task { await loadRegisterSession() }
+        .fullScreenCover(isPresented: $showingOpenRegister) {
+            // §16.10 — drawer-lock sheet. Cashier ID 0 is a placeholder
+            // until the `/auth/me` propagation path wires the real user
+            // ID into AppState. Sessions are local-first anyway, so the
+            // record can be re-stamped on server sync (see §39).
+            OpenRegisterSheet(
+                cashierId: 0,
+                onOpened: { record in
+                    registerSession = record
+                    showingOpenRegister = false
+                    BrandHaptics.success()
+                },
+                onCancel: {
+                    // Leave the sheet dismissed; the register-locked
+                    // placeholder stays up so the cashier can still tap
+                    // "Open register" when ready. Prevents accidental
+                    // sales on an unopened drawer.
+                    showingOpenRegister = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingCloseRegister) {
+            if let session = registerSession {
+                CloseRegisterSheet(
+                    session: session,
+                    expectedCents: session.openingFloat + cart.totalCents,
+                    closedBy: 0,
+                    onClosed: { closed in
+                        if closed.isOpen {
+                            registerSession = closed
+                        } else {
+                            lastClosedSession = closed
+                            registerSession = nil
+                        }
+                        showingCloseRegister = false
+                        if !closed.isOpen {
+                            showingZReport = true
+                        }
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showingZReport) {
+            if let session = registerSession ?? lastClosedSession {
+                ZReportView(session: session)
+            }
+        }
         .sheet(isPresented: $showingCustomLine) {
             PosCustomLineSheet { item in cart.add(item) }
         }
@@ -303,6 +373,24 @@ public struct PosView: View {
                         }
                         .accessibilityIdentifier("pos.toolbar.resumeHolds")
                     }
+                    // §16.10 — Register management
+                    Section("Register") {
+                        Button {
+                            showingCloseRegister = true
+                        } label: {
+                            Label("Close register", systemImage: "lock.circle")
+                        }
+                        .disabled(registerSession == nil)
+                        .accessibilityIdentifier("pos.toolbar.closeRegister")
+
+                        Button {
+                            showingZReport = true
+                        } label: {
+                            Label("View Z-report", systemImage: "doc.text.magnifyingglass")
+                        }
+                        .disabled(registerSession == nil && lastClosedSession == nil)
+                        .accessibilityIdentifier("pos.toolbar.zReport")
+                    }
                     // Existing destructive actions
                     Section {
                         Button { showingReturns = true } label: {
@@ -358,6 +446,68 @@ public struct PosView: View {
     }
 
     private func openDrawer() { /* §17.4 stub */ }
+
+    /// §16.10 — load any open register session on POS mount. Nil result
+    /// triggers the drawer-lock placeholder. Errors are swallowed: a
+    /// store failure shouldn't hide the POS tab, just keeps it locked.
+    private func loadRegisterSession() async {
+        let current = try? await CashRegisterStore.shared.currentSession()
+        registerSession = current
+        registerLoaded = true
+        if current == nil && lastClosedSession == nil {
+            showingOpenRegister = true
+        }
+    }
+
+    /// Full-screen placeholder rendered when no register session is open.
+    /// Prevents accidental sales before the cashier counts their float.
+    private var registerLockedPlaceholder: some View {
+        ZStack {
+            Color.bizarreSurfaceBase.ignoresSafeArea()
+            VStack(spacing: BrandSpacing.lg) {
+                Image(systemName: "lock.circle.fill")
+                    .font(.system(size: 64, weight: .regular))
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                VStack(spacing: BrandSpacing.xs) {
+                    Text("Register closed")
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Open a cash register to start selling. Count the opening float before ringing up any sale.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, BrandSpacing.xl)
+                }
+                Button {
+                    BrandHaptics.tap()
+                    showingOpenRegister = true
+                } label: {
+                    Label("Open register", systemImage: "lock.open")
+                        .font(.brandTitleSmall())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.registerLocked.open")
+
+                if lastClosedSession != nil {
+                    Button {
+                        showingZReport = true
+                    } label: {
+                        Text("View last Z-report")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pos.registerLocked.lastZReport")
+                }
+            }
+            .frame(maxWidth: 420)
+        }
+        .accessibilityIdentifier("pos.registerLocked")
+    }
 }
 
 private struct CartPill: View {
