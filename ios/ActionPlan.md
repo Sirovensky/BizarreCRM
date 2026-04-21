@@ -2132,7 +2132,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Audit entry (§50) per reprint
 - [ ] Fallback: no printer → PDF share
 - [ ] Entry from customer detail / ticket detail → "Scan document"
-- [x] Use `VNDocumentCameraViewController`. `DocumentScanner` UIViewControllerRepresentable + `DocumentScanViewModel` + `DocumentScanPreviewView`. Camera/DocScan/. Commit TBD.
+- [x] Use `VNDocumentCameraViewController`. `DocumentScanner` UIViewControllerRepresentable + `DocumentScanViewModel` + `DocumentScanPreviewView`. Camera/DocScan/. Commit 468fe08.
 - [x] Multi-page scan with auto-crop + perspective correction — VisionKit handles perspective; pages collected via `VNDocumentCameraScan.imageOfPage(at:)`.
 - [x] Reorder / delete pages before save — `DocumentScanPreviewView` List with `.onMove`/`.onDelete`; `DocumentScanViewModel.movePages`/`deletePage`.
 - [ ] OCR via `VNRecognizeTextRequest`, text searchable via FTS5
@@ -4556,20 +4556,20 @@ See §16.10 for core flow. Additional items:
 
 ### 40.1 Gift cards
 - [x] **Networking** — `GiftCardsEndpoints.swift`: `lookupGiftCard(code:)`, `redeemGiftCard(id:amountCents:reason:)`. Sell/void/transfer endpoints TBD.
-- [x] **Sell** — at POS; physical card scan OR generate virtual (SMS/email with QR). `GiftCardSellSheet` + `GiftCardSellViewModel` (physical activate + virtual email flow). Networking: `createVirtualGiftCard`, `activateGiftCard`. Commit TBD.
+- [x] **Sell** — at POS; physical card scan OR generate virtual (SMS/email with QR). `GiftCardSellSheet` + `GiftCardSellViewModel` (physical activate + virtual email flow). Networking: `createVirtualGiftCard`, `activateGiftCard`. Commit 468fe08.
 - [x] **Redeem** — `PosGiftCardSheet` + `PosGiftCardSheetViewModel` → lookup → clamp-to-min(total, balance) → `apply(tender:)` via `AppliedTender.giftCard`.
 - [x] **Balance check** — lookup shows remaining balance + status + expiry.
-- [x] **Reload** — add more funds. `GiftCardReloadSheet` + `GiftCardReloadViewModel`, $500 cap, active-card validation. Networking: `reloadGiftCard`. Commit TBD.
+- [x] **Reload** — add more funds. `GiftCardReloadSheet` + `GiftCardReloadViewModel`, $500 cap, active-card validation. Networking: `reloadGiftCard`. Commit 468fe08.
 - [x] **Expiration** — surfaced in sheet if present.
-- [x] **Transfer** — from one card to another. `GiftCardTransferSheet` + `GiftCardTransferViewModel`. Networking: `transferGiftCard`. Commit TBD.
-- [x] **Refund to gift card** — if original tender was gift card. `RefundToGiftCardSheet` + `RefundToGiftCardViewModel`. Networking: `refundInvoice(id:request:)`. Commit TBD.
+- [x] **Transfer** — from one card to another. `GiftCardTransferSheet` + `GiftCardTransferViewModel`. Networking: `transferGiftCard`. Commit 468fe08.
+- [x] **Refund to gift card** — if original tender was gift card. `RefundToGiftCardSheet` + `RefundToGiftCardViewModel`. Networking: `refundInvoice(id:request:)`. Commit 468fe08.
 
 ### 40.2 Store credit
 - [x] **Networking** — `StoreCreditEndpoints.swift`: `getStoreCreditBalance(customerId:)`. Redeem issuance via tender flow.
 - [ ] **Issued** on returns / apologies / promos.
 - [x] **Balance visible** — store credit section in `PosGiftCardSheet` when `cart.customer.id != nil`.
 - [x] **Redeem** at POS with toggle via `AppliedTender.storeCredit`.
-- [x] **Expiration** configurable. `StoreCreditExpirationSettingsView` admin view (90/180/365/never). Networking: `updateStoreCreditPolicy`. Commit TBD.
+- [x] **Expiration** configurable. `StoreCreditExpirationSettingsView` admin view (90/180/365/never). Networking: `updateStoreCreditPolicy`. Commit 468fe08.
 
 ### 40.3 Refunds (see §16.9)
 - [ ] Already detailed.
