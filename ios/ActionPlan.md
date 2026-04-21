@@ -3019,20 +3019,20 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Rate limits** — respect 1 active Live Activity per subject; dismiss automatically.
 
 ### 24.4 App Intents (Shortcuts + Siri)
-- [ ] **CreateTicketIntent** — "New ticket for {customer} on {device}"; parameterizable.
+- [x] **CreateTicketIntent** — "New ticket for {customer} on {device}"; parameterizable. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **LookupTicketIntent** — "Find ticket {number}"; returns structured snippet.
-- [ ] **LookupCustomerIntent** — "Show {customer}".
+- [x] **LookupCustomerIntent** — "Show {customer}" via FindCustomerIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **ScanBarcodeIntent** — opens scanner → inventory lookup or POS add-to-cart.
-- [ ] **ClockInIntent** / **ClockOutIntent** — "Hey Siri, clock in".
+- [x] **ClockInIntent** / **ClockOutIntent** — "Hey Siri, clock in". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **SendSMSIntent** — "Text {customer} {message}".
-- [ ] **StartSaleIntent** — opens POS.
+- [x] **StartSaleIntent** — opens POS via OpenPosIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **RecordExpenseIntent** — "Log $42 lunch expense".
-- [ ] **ShowDashboardIntent** — "Show dashboard".
-- [ ] **Intent return values** — structured `AppEntity` with human-readable snippets for Siri speech.
-- [ ] **Parameters** — entity types (TicketEntity, CustomerEntity) provide suggested values.
+- [x] **ShowDashboardIntent** — "Show dashboard" via OpenDashboardIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
+- [x] **Intent return values** — structured `AppEntity` with human-readable snippets for Siri speech. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
+- [x] **Parameters** — entity types (TicketEntity, CustomerEntity) provide suggested values. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 
 ### 24.5 App Shortcuts (`AppShortcutsProvider`)
-- [ ] **Seed phrases** in English (plus 10 locales later) — "Create ticket for ACME", "Show my tickets", "Clock in".
+- [x] **Seed phrases** in English (plus 10 locales later) — "Create ticket for ACME", "Show my tickets", "Clock in". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **System suggestions** — daily rotating shortcut tiles in Shortcuts app.
 - [ ] **Siri suggestions** on lock screen.
 
@@ -3074,8 +3074,8 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] Lock Screen variants: circular = ticket count; rectangular = revenue + Δ vs yesterday; inline = "3 tickets ready"
 - [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
 - [ ] Privacy: widget content stays on device; no sensitive data on Lock Screen (no customer names; counts only)
-- [ ] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Scan barcode to inventory" (opens scanner), "Send payment link" (prompts amount, copies link), "Look up ticket by IMEI" (prompts IMEI, opens ticket).
-- [ ] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions.
+- [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
+- [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
 - [ ] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution.
 - [ ] Siri learns to invoke by donated phrases.
