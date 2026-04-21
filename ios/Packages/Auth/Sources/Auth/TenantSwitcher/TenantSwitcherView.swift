@@ -188,7 +188,7 @@ private struct TenantRow: View {
                     .foregroundStyle(Color.accentColor)
                     .accessibilityLabel("Active tenant")
 #if canImport(UIKit)
-                    .symbolEffect(.bounce, options: reduceMotion ? .nonRepeating : .default)
+                    .symbolEffect(.bounce, value: isActive)
 #endif
             }
         }

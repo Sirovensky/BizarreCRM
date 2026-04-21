@@ -124,7 +124,6 @@ public struct MagicLinkRequestView: View {
                     .font(.brandLabelSmall())
                     .foregroundStyle(Color.bizarreError)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLiveRegion(.polite)
             }
         }
     }
@@ -152,7 +151,7 @@ public struct MagicLinkRequestView: View {
 
             if vm.state == .verifying {
                 ProgressView()
-                    .tint(Color.bizarreAccent)
+                    .tint(Color.bizarreOrange)
                     .accessibilityLabel("Verifying sign-in link")
             }
         }

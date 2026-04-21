@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 // Re-export the route enum so callers only need to import the App target.
-@_exported import struct Core.DeepLinkRoute    // DeepLinkRoute lives in Core
-@_exported import enum   Core.DeepLinkParser   // parser lives in Core
+@_exported import enum   Core.DeepLinkRoute    // DeepLinkRoute enum lives in Core
+@_exported import enum   Core.DeepLinkParser   // parser enum lives in Core
 
 // MARK: - DeepLinkRouter
 

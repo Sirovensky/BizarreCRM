@@ -39,7 +39,6 @@ public struct SessionTimeoutWarningBanner: View {
                     Animation.spring(response: 0.4, dampingFraction: 0.8),
                     value: isVisible
                 )
-                .accessibilityLiveRegion(.polite)
         }
     }
 

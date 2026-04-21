@@ -65,12 +65,12 @@ public final class LiveAuthorizationController: NSObject, AuthorizationControlle
 
     // MARK: ASAuthorizationControllerPresentationContextProviding
 
-    nonisolated public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    @MainActor public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         #if canImport(UIKit)
         // Walk the scene hierarchy for the key window.
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-        let keyWindow = scenes.compactMap { $0.windows.first(where: \.isKeyWindow) }.first
+        let keyWindow = scenes.compactMap { $0.windows.first(where: { $0.isKeyWindow }) }.first
         let anyWindow = scenes.compactMap { $0.windows.first }.first
         return keyWindow ?? anyWindow ?? UIWindow()
         #else

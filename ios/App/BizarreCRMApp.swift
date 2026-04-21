@@ -24,6 +24,11 @@ struct BizarreCRMApp: App {
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL {
+                        DeepLinkRouter.shared.handle(url)
+                    }
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {

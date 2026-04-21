@@ -152,7 +152,7 @@ struct MainShellView: View {
             settingsHours:     { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
             reportsRevenue:    { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
             sendSMS:           { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            signOut:           { [onSignOut] in Task { @MainActor in showCmdPalette = false; onSignOut?() } }
+            signOut:           { Task { @MainActor [onSignOut] in showCmdPalette = false; onSignOut?() } }
         )
         return CommandPaletteViewModel(actions: actions, context: .none)
     }
