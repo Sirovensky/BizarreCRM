@@ -110,6 +110,10 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <string>Connect to Bluetooth receipt printers and card readers.</string>
     <key>NSContactsUsageDescription</key>
     <string>Import customer phone numbers from Contacts.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Record voice memos to attach to tickets and messages.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Verify you are at the shop when clocking in.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Discover your shop server and payment terminal on the local network.</string>
 
