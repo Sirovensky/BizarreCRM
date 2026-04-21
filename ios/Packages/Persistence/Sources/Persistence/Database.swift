@@ -44,12 +44,15 @@ public actor Database {
         // schema-version table (`grdb_migrations`) survives a wipe because
         // Migrator.register re-creates it from scratch; only local offline
         // data is lost, which is also what would happen on a re-install.
-        let passphrase = try KeychainStore.shared.dbPassphrase()
+        // SEC-1 (partial): passphrase is generated + stored via KeychainStore.
+        // GRDB.SQLCipher dep addition pending — for now we rely on iOS Data
+        // Protection (FileProtectionType.complete on the SQLite file).
+        // TODO: add `grdb-sqlcipher` SPM dep and re-enable `db.usePassphrase(_:)`.
+        _ = try KeychainStore.shared.dbPassphrase()
 
         var config = Configuration()
         config.label = "bizarrecrm"
         config.prepareDatabase { db in
-            try db.usePassphrase(passphrase)
             try db.execute(sql: "PRAGMA foreign_keys = ON")
         }
 

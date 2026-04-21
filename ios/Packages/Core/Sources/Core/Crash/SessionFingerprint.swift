@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // §32.5 Crash recovery pipeline — Session fingerprint
 // Phase 11
