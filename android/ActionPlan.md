@@ -243,7 +243,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68).
 - [ ] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact.
 - [ ] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`.
-- [ ] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR.
+- [x] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR. (`FcmService.onMessageReceived` short-circuits when `type=silent_sync` / `data.sync=true` / no notification + no body, calls `SyncWorker.syncNow(this)`, and skips notification-post.)
 - [ ] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [ ] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.

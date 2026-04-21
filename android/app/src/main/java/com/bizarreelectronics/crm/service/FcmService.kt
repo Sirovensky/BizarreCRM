@@ -78,9 +78,24 @@ class FcmService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
 
+        val type = message.data["type"] ?: "system"
+
+        // §13.2 / §21.3 — silent push: kick a one-shot delta sync via
+        // WorkManager and skip posting any notification. The server uses
+        // type=silent_sync (or sync=true in data) to nudge clients without
+        // showing an alert. Must complete within 10s of FCM dispatch to
+        // avoid Android killing the worker — handled by SyncWorker.syncNow
+        // which schedules a OneTimeWorkRequest with EXPEDITED quota.
+        val isSilent = type == "silent_sync" ||
+            message.data["sync"]?.equals("true", ignoreCase = true) == true ||
+            (message.notification == null && message.data["body"].isNullOrBlank())
+        if (isSilent) {
+            com.bizarreelectronics.crm.data.sync.SyncWorker.syncNow(this)
+            return
+        }
+
         val title = message.notification?.title ?: message.data["title"] ?: "Bizarre CRM"
         val body = message.notification?.body ?: message.data["body"] ?: ""
-        val type = message.data["type"] ?: "system"
         val entityType = message.data["entity_type"]
         val entityId = message.data["entity_id"]
 
