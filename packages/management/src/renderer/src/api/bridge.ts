@@ -10,6 +10,10 @@ export interface ApiResponse<T = unknown> {
   data?: T;
   message?: string;
   offline?: boolean;
+  /** Stable ERR_* identifier from the server's errorBody helper. */
+  code?: string;
+  /** Server-supplied correlation id (matches an X-Request-Id log entry). */
+  request_id?: string;
 }
 
 // ── Server stats ──────────────────────────────────────────────────

@@ -169,6 +169,23 @@ client.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Attach server-supplied error code + request_id to the thrown axios error
+    // so callers (toast helpers, inline error UIs) don't have to dig through
+    // `error.response.data` every time. `extractApiError()` / `formatApiError()`
+    // in utils/apiError.ts are the usual consumers.
+    try {
+      const data = error.response?.data;
+      if (data && typeof data === 'object') {
+        const code = typeof (data as any).code === 'string' ? (data as any).code : null;
+        const requestId =
+          typeof (data as any).request_id === 'string' ? (data as any).request_id : null;
+        if (code) error.errorCode = code;
+        if (requestId) error.requestId = requestId;
+      }
+      const xrid = error.response?.headers?.['x-request-id'];
+      if (!error.requestId && typeof xrid === 'string') error.requestId = xrid;
+    } catch { /* best-effort tagging — never let this throw */ }
+
     // Tier gate 403: open the upgrade modal globally so the user sees it
     if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
       // Lazy import to avoid circular deps with planStore
