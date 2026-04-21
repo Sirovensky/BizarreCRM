@@ -422,14 +422,14 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Tenant can disable magic links (strict security mode)
 - [ ] Phishing defense: link preview shows tenant name explicitly
 - [ ] Domain pinned to `app.bizarrecrm.com`
-- [ ] iOS 17+ passkeys via `ASAuthorizationController` + `ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest`
-- [ ] iCloud Keychain cross-Apple-device sync
-- [ ] Enrollment: Settings → Security → Add passkey → Face ID / Touch ID confirm
-- [ ] Store credential with tenant server (FIDO2)
-- [ ] Login screen "Use passkey" button with system UI prompt (no password typed)
+- [x] iOS 17+ passkeys via `ASAuthorizationController` + `ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest` — `PasskeyManager.swift` (commit feat(ios phase-1 §2))
+- [x] iCloud Keychain cross-Apple-device sync — handled by OS via associated domain `app.bizarrecrm.com`
+- [x] Enrollment: Settings → Security → Add passkey → Face ID / Touch ID confirm — `PasskeyRegisterFlow.swift` + `PasskeyListView.swift`
+- [x] Store credential with tenant server (FIDO2) — `PasskeyRepository.swift` + `PasskeyEndpoints.swift`
+- [x] Login screen "Use passkey" button with system UI prompt (no password typed) — `PasskeyLoginButton.swift`
 - [ ] Password remains as breakglass fallback
 - [ ] Can remove password once passkey + recovery codes set
-- [ ] Cross-device: passkey syncs to iPad / Mac via iCloud
+- [x] Cross-device: passkey syncs to iPad / Mac via iCloud — OS handles; same `PasskeyManager` path
 - [ ] Android coworker stays on password (no cross-OS passkey sync yet)
 - [ ] Recovery via §2 recovery codes when all Apple devices lost
 - [ ] YubiKey 5C (USB-C) plugs into iPad; triggers passkey flow
