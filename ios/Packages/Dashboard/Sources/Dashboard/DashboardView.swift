@@ -12,9 +12,19 @@ public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
 
-    public init(repo: DashboardRepository, api: APIClient) {
+    /// - Parameters:
+    ///   - repo: Dashboard data repository.
+    ///   - api: APIClient for all network calls (timeclock included).
+    ///   - userIdProvider: Closure that returns the current user's ID for
+    ///     timeclock calls. Defaults to `{ 0 }` — a placeholder until
+    ///     `GET /auth/me` is wired (TODO post-phase-11).
+    public init(
+        repo: DashboardRepository,
+        api: APIClient,
+        userIdProvider: (@Sendable () async -> Int64)? = nil
+    ) {
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
-        _clockVM = State(wrappedValue: ClockInOutViewModel(api: api))
+        _clockVM = State(wrappedValue: ClockInOutViewModel(api: api, userIdProvider: userIdProvider))
     }
 
     public var body: some View {

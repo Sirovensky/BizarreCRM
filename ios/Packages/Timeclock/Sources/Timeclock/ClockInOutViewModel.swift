@@ -31,7 +31,13 @@ public final class ClockInOutViewModel {
     // MARK: - Dependencies
 
     @ObservationIgnored private let api: APIClient
-    @ObservationIgnored private let userId: Int64
+    /// Resolves the current user's ID just before each clock API call.
+    /// Defaults to `{ 0 }` — a placeholder until `GET /auth/me` is wired
+    /// through `AppServices` (pending §2.x / post-phase-11).
+    /// Host (AppServices) should pass `{ TokenStore.shared.currentUserId ?? 0 }`
+    /// once `currentUserId` is exposed.
+    /// TODO (post-phase-11): Replace default with real currentUserId provider.
+    @ObservationIgnored public var userIdProvider: @Sendable () async -> Int64
     /// Injectable clock for deterministic tests. Defaults to `Date.now`.
     @ObservationIgnored var now: () -> Date
 
@@ -39,11 +45,13 @@ public final class ClockInOutViewModel {
 
     public init(
         api: APIClient,
-        userId: Int64 = 0,
+        userId: Int64 = 0, // TODO (post-phase-11): remove; kept for test backward compatibility
+        userIdProvider: (@Sendable () async -> Int64)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.api = api
-        self.userId = userId
+        let fixedId = userId
+        self.userIdProvider = userIdProvider ?? { fixedId }
         self.now = now
     }
 
@@ -51,6 +59,7 @@ public final class ClockInOutViewModel {
 
     /// Fetch the current clock status from the server. Call from `.task { }`.
     public func refresh() async {
+        let userId = await userIdProvider()
         do {
             let status = try await api.getClockStatus(userId: userId)
             if let status {
@@ -76,6 +85,7 @@ public final class ClockInOutViewModel {
     /// doesn't require a PIN — the server validates and returns 401 if wrong).
     public func clockIn(pin: String) async {
         state = .loading
+        let userId = await userIdProvider()
         do {
             let entry = try await api.clockIn(userId: userId, pin: pin)
             state = .active(entry)
@@ -89,6 +99,7 @@ public final class ClockInOutViewModel {
     /// Attempt to clock out with the provided PIN.
     public func clockOut(pin: String) async {
         state = .loading
+        let userId = await userIdProvider()
         do {
             _ = try await api.clockOut(userId: userId, pin: pin)
             state = .idle
