@@ -57,11 +57,16 @@ public struct PosView: View {
     /// message when `api` is nil.
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
+    /// Closure-based DI for the cash drawer. AppServices passes
+    /// `CashDrawer.shared.open` (or an `EscPosDrawerKick`-backed instance);
+    /// previews and tests receive the default `NullCashDrawer`.
+    private let cashDrawerOpen: @Sendable () async throws -> Void
 
     public init(
         repo: InventoryRepository? = nil,
         api: APIClient? = nil,
-        customerRepo: CustomerRepository? = nil
+        customerRepo: CustomerRepository? = nil,
+        cashDrawerOpen: @escaping @Sendable () async throws -> Void = { throw CashDrawerError.notConnected }
     ) {
         if let repo {
             _search = State(wrappedValue: PosSearchViewModel(repo: repo))
@@ -70,6 +75,7 @@ public struct PosView: View {
         }
         self.api = api
         self.customerRepo = customerRepo
+        self.cashDrawerOpen = cashDrawerOpen
     }
 
     public var body: some View {
@@ -573,7 +579,15 @@ public struct PosView: View {
         )
     }
 
-    private func openDrawer() { /* §17.4 stub */ }
+    private func openDrawer() {
+        Task {
+            do {
+                try await cashDrawerOpen()
+            } catch {
+                AppLog.hardware.error("openDrawer failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
 
     /// §16.10 — load any open register session on POS mount. Nil result
     /// triggers the drawer-lock placeholder. Errors are swallowed: a

@@ -8,6 +8,7 @@ import Tickets
 import Inventory
 import Pos
 import Sync
+import Hardware
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -19,6 +20,12 @@ final class AppServices {
     static let shared = AppServices()
 
     let apiClient: APIClient
+
+    /// §17.4 — Cash drawer. Defaults to `NullCashDrawer` (throws
+    /// `CashDrawerError.notConnected`) until a paired printer is configured.
+    /// When `EscPosNetworkEngine` gains `EscPosSender` conformance, replace
+    /// with `EscPosDrawerKick(sender: EscPosNetworkEngine(config: printerConfig))`.
+    let cashDrawer: any CashDrawer = NullCashDrawer()
 
     private init() {
         self.apiClient = APIClientImpl(initialBaseURL: ServerURLStore.load())

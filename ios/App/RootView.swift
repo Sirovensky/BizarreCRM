@@ -30,6 +30,7 @@ import DataExport
 import KioskMode
 import RolesEditor
 import RepairPricing
+import Hardware
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
@@ -266,7 +267,9 @@ private struct iPhoneTabs: View {
                 .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
                 .tag(MainTab.customers)
 
-            PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient))
+            PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient,
+                    cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
                 .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
                 .tag(MainTab.pos)
 
