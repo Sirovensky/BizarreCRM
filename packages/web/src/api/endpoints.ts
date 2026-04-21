@@ -1170,3 +1170,24 @@ export const signupApi = {
   createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; captcha_token?: string }) =>
     publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string }; message?: string }>('/signup', data),
 };
+
+// ==================== Privacy / GDPR ====================
+export const privacyApi = {
+  eraseCustomerPii: (data: { customer_id: number; confirm_name: string }) =>
+    api.post<{ success: boolean; data: { message: string }; message?: string }>('/data-export/erase-customer-pii', data),
+};
+
+// ==================== Super-Admin Impersonation ====================
+interface ImpersonateResponse {
+  token: string;
+  tenant_slug: string;
+  expires_in_seconds: number;
+  target_user: { id: number; username: string; role: string };
+}
+
+export const superAdminApi = {
+  impersonate: (slug: string) =>
+    api.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
+      `/super-admin/tenants/${encodeURIComponent(slug)}/impersonate`,
+    ),
+};

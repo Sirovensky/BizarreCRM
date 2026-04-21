@@ -80,6 +80,8 @@ const GiftCardDetailPage = lazy(() => import('./pages/gift-cards/GiftCardDetailP
 const SubscriptionsListPage = lazy(() => import('./pages/subscriptions/SubscriptionsListPage').then(m => ({ default: m.SubscriptionsListPage })));
 // Loaner devices
 const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => ({ default: m.LoanersPage })));
+// Automations standalone page
+const AutomationsListPage = lazy(() => import('./pages/automations/AutomationsListPage').then(m => ({ default: m.AutomationsListPage })));
 
 function NotFoundPage() {
   return (
@@ -411,6 +413,8 @@ export default function App() {
                     <Route path="/subscriptions" element={<SubscriptionsListPage />} />
                     {/* Loaner device management. */}
                     <Route path="/loaners" element={<LoanersPage />} />
+                    {/* Automations standalone page. */}
+                    <Route path="/automations" element={<AutomationsListPage />} />
                     {/* Marketing / Growth enrichment (§54). */}
                     <Route path="/marketing/campaigns" element={<CampaignsPage />} />
                     <Route path="/marketing/segments" element={<SegmentsPage />} />

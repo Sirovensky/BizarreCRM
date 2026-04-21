@@ -373,4 +373,80 @@ router.get('/export-all-data/status', adminOnly, (req: Request, res: Response) =
   });
 });
 
+// ─── POST /erase-customer-pii ─────────────────────────────────────────────
+// GDPR right-to-erasure: NULLs out PII fields on the customer row and marks
+// is_deleted=1. Business records (tickets, invoices) are intentionally kept
+// — they are the shop's own business data, not the subject's personal data.
+// Requires admin role + confirm_name match (same confirm pattern as SEC-H23).
+
+router.post('/erase-customer-pii', adminOnly, (req: Request, res: Response) => {
+  const db = req.db;
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const userId = req.user?.id ?? null;
+
+  const rawId = req.body?.customer_id;
+  const confirmName: unknown = req.body?.confirm_name;
+
+  if (!rawId || !Number.isInteger(Number(rawId))) {
+    res.status(400).json({ success: false, message: 'customer_id must be a valid integer' });
+    return;
+  }
+  const customerId = Number(rawId);
+
+  if (typeof confirmName !== 'string' || confirmName.trim() === '') {
+    res.status(400).json({ success: false, message: 'confirm_name is required' });
+    return;
+  }
+
+  const customer = db
+    .prepare('SELECT id, first_name, last_name FROM customers WHERE id = ? AND is_deleted = 0')
+    .get(customerId) as { id: number; first_name: string | null; last_name: string | null } | undefined;
+
+  if (!customer) {
+    res.status(404).json({ success: false, message: 'Customer not found' });
+    return;
+  }
+
+  const expected = `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim();
+  if (confirmName.trim() !== expected) {
+    res.status(400).json({
+      success: false,
+      message: 'confirm_name must exactly match the customer\'s full name',
+    });
+    return;
+  }
+
+  // NULL out all PII fields; keep the row so FK-linked tickets/invoices stay valid.
+  db.prepare(`
+    UPDATE customers
+    SET first_name = NULL,
+        last_name  = NULL,
+        email      = NULL,
+        phone      = NULL,
+        mobile     = NULL,
+        address1   = NULL,
+        address2   = NULL,
+        city       = NULL,
+        state      = NULL,
+        postcode   = NULL,
+        country    = NULL,
+        comments   = NULL,
+        is_deleted = 1,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).run(customerId);
+
+  audit(db, 'gdpr_customer_pii_erased', userId, ip, {
+    customer_id: customerId,
+    erased_fields: ['first_name', 'last_name', 'email', 'phone', 'mobile', 'address1', 'address2', 'city', 'state', 'postcode', 'country', 'comments'],
+  });
+
+  logger.info('GDPR PII erasure completed', { customerId, adminUserId: userId });
+
+  res.json({
+    success: true,
+    data: { message: `PII for customer ${customerId} has been erased per GDPR right-to-be-forgotten` },
+  });
+});
+
 export default router;

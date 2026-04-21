@@ -33,7 +33,7 @@ import {
   Copy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customerApi, membershipApi, settingsApi, crmApi } from '@/api/endpoints';
+import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';

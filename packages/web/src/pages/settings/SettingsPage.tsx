@@ -2697,6 +2697,51 @@ function DataImportTab() {
             </div>
           )}
 
+          {/* Per-entity checkpoint progress (SA7-1) */}
+          {activeImportStatus?.checkpoints && Object.keys(activeImportStatus.checkpoints).length > 0 && (
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {(Object.entries(activeImportStatus.checkpoints) as Array<[string, {
+                step: number;
+                total: number;
+                last_processed_id: string | null;
+                status: string;
+              } | null]>)
+                .filter(([, cp]) => cp !== null)
+                .map(([entity, cp]) => {
+                  if (!cp) return null;
+                  const pct = cp.total > 0 ? Math.min(100, Math.round((cp.step / cp.total) * 100)) : 0;
+                  const isRunning = cp.status === 'running' || cp.status === 'pending';
+                  const isDone = cp.status === 'completed';
+                  return (
+                    <div key={entity} className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-surface-700 dark:text-surface-300 capitalize">{entity}</span>
+                        <span className={cn(
+                          'text-[10px] font-semibold',
+                          isDone ? 'text-green-600 dark:text-green-400' :
+                          isRunning ? 'text-blue-600 dark:text-blue-400' :
+                          'text-surface-400'
+                        )}>
+                          {isDone ? '100%' : `${pct}%`}
+                        </span>
+                      </div>
+                      <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-1.5">
+                        <div
+                          className={cn('h-1.5 rounded-full transition-all', isDone ? 'bg-green-500' : 'bg-primary-500')}
+                          style={{ width: `${isDone ? 100 : pct}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-surface-400">
+                        {cp.step.toLocaleString()}
+                        {cp.total > 0 && <> / {cp.total.toLocaleString()}</>}
+                        {cp.last_processed_id && <> &middot; last: {cp.last_processed_id}</>}
+                      </p>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
           <div className="divide-y divide-surface-100 dark:divide-surface-800">
             {allRuns.slice(0, 15).map((run: any) => (
               <div key={`${run.source}-${run.id}`} className="flex items-center gap-3 text-sm py-2">

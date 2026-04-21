@@ -45,6 +45,7 @@ import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/r
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
 import { generateJwtSecret } from '../utils/jwtSecrets.js';
+import { JWT_SIGN_OPTIONS as TENANT_JWT_SIGN_OPTIONS } from '../middleware/auth.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
@@ -2055,5 +2056,96 @@ router.post(
     res.json({ success: true, data: { summary, rows } });
   }
 );
+
+// ─── POST /tenants/:slug/impersonate ────────────────────────────────────────
+// Issue a short-lived (15min) tenant-scoped access token so a super-admin can
+// open a tenant's CRM without knowing their credentials. The token is identical
+// in shape to a normal access token but carries `impersonated: true` so the
+// audit trail and any future UI banner can distinguish it.
+//
+// Security constraints:
+//  - Requires super-admin session (superAdminAuth middleware, applied above).
+//  - Tenant must be active (not suspended).
+//  - Selects the first active admin user of the tenant — falls back to any
+//    active user if no admin exists (edge case: freshly-provisioned shop).
+//  - TTL is 15min, non-renewable (no refresh token issued).
+//  - Full audit row in master_audit_log.
+
+router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+
+  const masterDb = getMasterDb()!;
+  const tenant = masterDb
+    .prepare("SELECT id, slug, status FROM tenants WHERE slug = ?")
+    .get(slug) as { id: number; slug: string; status: string } | undefined;
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+  }
+  if (tenant.status !== 'active') {
+    return res.status(403).json({ success: false, message: `Tenant is ${tenant.status} — cannot impersonate` });
+  }
+
+  let targetUser: { id: number; username: string; role: string } | undefined;
+  try {
+    const tdb = getTenantDb(slug);
+    // Prefer an admin user; fall back to any active user.
+    targetUser =
+      (tdb.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??
+      (tdb.prepare("SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined);
+  } catch (err) {
+    logger.error('impersonate: failed to open tenant DB', { slug, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not open tenant database' });
+  }
+
+  if (!targetUser) {
+    return res.status(404).json({ success: false, message: 'No active users found in tenant' });
+  }
+
+  const superAdminId = req.superAdmin!.superAdminId;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  // Issue a short-lived access token in the same shape as regular tenant tokens.
+  // No refresh token — session expires in 15 min and must be re-impersonated.
+  const token = jwt.sign(
+    {
+      userId: targetUser.id,
+      sessionId: `impersonate-${crypto.randomBytes(8).toString('hex')}`,
+      role: targetUser.role,
+      tenantSlug: slug,
+      impersonated: true,
+      superAdminId,
+      jti: crypto.randomUUID(),
+    },
+    config.accessJwtSecret,
+    { ...TENANT_JWT_SIGN_OPTIONS, expiresIn: '15m' },
+  );
+
+  auditLog('super_admin.impersonate_started', superAdminId, ip, {
+    tenant_slug: slug,
+    super_admin_user_id: superAdminId,
+    target_user_id: targetUser.id,
+    target_username: targetUser.username,
+  });
+
+  logger.info('super-admin impersonation token issued', {
+    superAdminId,
+    slug,
+    targetUserId: targetUser.id,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      token,
+      tenant_slug: slug,
+      expires_in_seconds: 15 * 60,
+      target_user: { id: targetUser.id, username: targetUser.username, role: targetUser.role },
+    },
+  });
+});
 
 export default router;
