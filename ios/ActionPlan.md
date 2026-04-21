@@ -1126,6 +1126,31 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] PO creation uses latest stats for ETA
 - [ ] See §7 for the full list.
 
+### 6.10 Variants
+- [x] **`InventoryVariant`** — `{ id, parentSKU, attributes: [String: String], sku, stock, retailCents, costCents, imageURL? }`; `displayLabel` for A11y. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`VariantEditorSheet`** — admin: add/remove attribute axes + values, auto-generate cartesian combinations, `VariantEditorViewModel`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`VariantSelectorView`** — POS: color swatches + size pill buttons; Reduce Motion; A11y labels ("Red, small"); Liquid Glass. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`VariantStockAggregator`** — pure: `totalStock`, `isAnyInStock`, `grouped(byAttribute:)`, `distinctValues(forAttribute:)`. 11 tests ≥80%. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`VariantEndpoints`** — CRUD: `listVariants`, `createVariant`, `updateVariant`, `deleteVariant` on `APIClient`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+
+### 6.11 Bundles
+- [x] **`InventoryBundle`** — `{ id, sku, name, components: [BundleComponent], bundlePriceCents, individualPriceSum }`; `isSavingsBundle`, `savingsCents`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`BundleEditorSheet`** — form + component rows with SKU + qty; validation warnings from `BundleUnpacker.validate`; savings preview. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`BundleUnpacker`** — pure: `unpack(bundle:quantity:)` → `[DecrementInstruction]`; `validate(bundle:)` → `[MissingComponentWarning]`. 14 tests ≥80%. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+
+### 6.12 Serialized Tracking
+- [x] **`SerializedItem`** — `{ id, parentSKU, serialNumber, status (.available/.reserved/.sold/.returned), locationId, receivedAt, soldAt?, invoiceId? }`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialScanView`** — scan IMEI/serial; `IMEIValidator` (Luhn check); look-up + confirm UI. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialReceiveSheet`** — at receiving, scan each unit's serial; progress header; duplicate guard. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialSellSheet`** — at POS, if SKU is serial-tracked, list/scan available units; calls `SerialStatusCalculator.availableUnits`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialTraceReport`** — admin: search by serial → status badge + received/sold history timeline. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialEndpoints`** — `POST /inventory/serials`, `GET /inventory/serials/:sn`, `PATCH /inventory/serials/:id/status`, `GET /inventory/serials?parent_sku=`. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`SerialStatusCalculator`** — pure: `statusCounts(for:)`, `counts(sku:serials:)`, `availableUnits(from:sku:)`. 11 tests ≥80%. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+
+### 6.13 Reorder Points
+- [x] **`ReorderSuggestionEngine`** — pure: `suggestions(items:policy:)` + `suggestion(for:policy:)`; `ReorderPolicy` (leadTimeDays, safetyStock, minOrderQty); sorts by urgency; minOrderQty rounding. 13 tests ≥80%. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+- [x] **`AutoPOGenerator`** — from `ReorderEngineSuggestion` array → draft `PurchaseOrder` via existing `PurchaseOrderRepository`; policy metadata in PO notes; expected-date uses leadTimeDays. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
+
 ---
 ## §7. Invoices
 
