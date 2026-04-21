@@ -118,8 +118,12 @@ cat > "${PLIST}" <<'PLIST_EOF'
 
     <key>NSUserActivityTypes</key>
     <array>
+        <!-- §25 Handoff / Continuity — HandoffActivityType constants -->
         <string>com.bizarrecrm.ticket.view</string>
         <string>com.bizarrecrm.ticket.create</string>
+        <string>com.bizarrecrm.customer.view</string>
+        <string>com.bizarrecrm.invoice.view</string>
+        <string>com.bizarrecrm.dashboard</string>
     </array>
 
     <key>CFBundleURLTypes</key>

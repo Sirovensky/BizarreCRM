@@ -2253,11 +2253,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **iPad** — persistent sidebar → list → detail; search stays in list column.
 
 ### 18.3 Spotlight (system search)
-- [ ] **`CSSearchableIndex`** — index on background: recent 500 customers, 500 tickets, 200 invoices, 100 appointments.
-- [ ] **Attributes** — title, contentDescription, thumbnailData (customer avatar / ticket photo), keywords, domainIdentifier (bucket by type).
-- [ ] **Update** — on sync, reindex changed items; batch size 100.
-- [ ] **Deletion** — when item deleted locally, delete from index.
-- [ ] **Deep link** — Spotlight tap passes `uniqueIdentifier` → deep link to `/customers/:id` etc.
+- [x] **`CSSearchableIndex`** — index on background: recent 500 customers, 500 tickets, 200 invoices, 100 appointments. (feat(ios phase-6 §24+§25))
+- [x] **Attributes** — title, contentDescription, thumbnailData (customer avatar / ticket photo), keywords, domainIdentifier (bucket by type). (feat(ios phase-6 §24+§25))
+- [x] **Update** — on sync, reindex changed items; batch size 100. (feat(ios phase-6 §24+§25))
+- [x] **Deletion** — when item deleted locally, delete from index. (feat(ios phase-6 §24+§25))
+- [x] **Deep link** — Spotlight tap passes `uniqueIdentifier` → deep link to `/customers/:id` etc. (feat(ios phase-6 §24+§25))
 - [ ] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`.
 - [ ] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts).
 
@@ -3086,21 +3086,21 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 
 ### 25.1 Spotlight (`CoreSpotlight`)
 - [ ] **Index window** — last 60 days tickets + top 500 customers + top 200 invoices + top 100 appointments + all inventory SKUs.
-- [ ] **Attributes per item** — `title`, `contentDescription`, `keywords`, `thumbnailData`, `domainIdentifier`, `contentURL`, `relatedUniqueIdentifiers`.
+- [x] **Attributes per item** — `title`, `contentDescription`, `keywords`, `thumbnailData`, `domainIdentifier`, `contentURL`, `relatedUniqueIdentifiers`. (feat(ios phase-6 §24+§25))
 - [ ] **Refresh** — on sync-complete, background reindex changed items; batch 100.
-- [ ] **Deletion** — tombstoned items deleted from index.
-- [ ] **Privacy** — respect user-facing "Hide from Spotlight" per domain in Settings.
-- [ ] **Deep-link handler** — `continueUserActivity` → route by `uniqueIdentifier`.
+- [x] **Deletion** — tombstoned items deleted from index. (feat(ios phase-6 §24+§25))
+- [x] **Privacy** — respect user-facing "Hide from Spotlight" per domain in Settings. (feat(ios phase-6 §24+§25))
+- [x] **Deep-link handler** — `continueUserActivity` → route by `uniqueIdentifier`. (feat(ios phase-6 §24+§25))
 - [ ] **Suggestions** — `CSSuggestionsConfiguration` for proactive suggestions.
 - [ ] **Preview** — rich preview card in Spotlight with customer avatar + ticket status.
 
 ### 25.2 Handoff / `NSUserActivity`
-- [ ] **Per-detail `NSUserActivity`** — on every Ticket/Customer/Invoice/SMS/Appointment detail, `becomeCurrent()` with `activityType`, `userInfo`, `title`, `webpageURL`.
-- [ ] **Handoff to Mac** — Mac docks show the icon; tap to open same record.
-- [ ] **Handoff to iPad** — multi-window opens fresh scene at same record.
+- [x] **Per-detail `NSUserActivity`** — on every Ticket/Customer/Invoice/SMS/Appointment detail, `becomeCurrent()` with `activityType`, `userInfo`, `title`, `webpageURL`. (feat(ios phase-6 §24+§25))
+- [x] **Handoff to Mac** — Mac docks show the icon; tap to open same record. (feat(ios phase-6 §24+§25))
+- [x] **Handoff to iPad** — multi-window opens fresh scene at same record. (feat(ios phase-6 §24+§25))
 - [ ] **Encrypted payload** — sensitive items sent via key derived from iCloud Keychain.
-- [ ] **`eligibleForSearch`** — also indexes in Spotlight.
-- [ ] **`eligibleForPrediction`** — Siri suggests continue-ticket on other devices.
+- [x] **`eligibleForSearch`** — also indexes in Spotlight. (feat(ios phase-6 §24+§25))
+- [x] **`eligibleForPrediction`** — Siri suggests continue-ticket on other devices. (feat(ios phase-6 §24+§25))
 
 ### 25.3 Universal Clipboard
 - [ ] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU.
