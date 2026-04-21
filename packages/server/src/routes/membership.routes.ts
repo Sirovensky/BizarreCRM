@@ -262,6 +262,7 @@ router.get('/:id/payments', asyncHandler(async (req: Request, res: Response) => 
 // ── All Active Subscriptions (for admin) ─────────────────────────────
 
 router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const adb = req.asyncDb;
   const subs = await adb.all<AnyRow>(`
     SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.color,

@@ -9,12 +9,16 @@ export interface ImpersonationSession {
   tenant_slug: string;
 }
 
+const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
+
 export function setImpersonationSession(session: ImpersonationSession): void {
   localStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
+  window.dispatchEvent(new CustomEvent(IMPERSONATION_CHANGED_EVENT));
 }
 
 export function clearImpersonationSession(): void {
   localStorage.removeItem(IMPERSONATION_KEY);
+  window.dispatchEvent(new CustomEvent(IMPERSONATION_CHANGED_EVENT));
 }
 
 export function getImpersonationSession(): ImpersonationSession | null {
@@ -35,15 +39,23 @@ export function ImpersonationBanner() {
     setSession(getImpersonationSession());
   }, []);
 
-  // Re-check whenever localStorage changes (e.g. impersonate sets the key)
+  // Re-check on cross-tab storage events AND same-tab CustomEvents
+  // (storage event does not fire in the tab that wrote the value).
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key === IMPERSONATION_KEY) {
         setSession(getImpersonationSession());
       }
     }
+    function onChanged() {
+      setSession(getImpersonationSession());
+    }
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+    };
   }, []);
 
   if (!session) return null;
