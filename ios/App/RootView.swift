@@ -26,6 +26,10 @@ import AuditLogs
 import Marketing
 import Setup
 import DataImport
+import DataExport
+import KioskMode
+import RolesEditor
+import RepairPricing
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
@@ -294,8 +298,32 @@ struct MoreMenuView: View {
                     NavigationLink("Audit Logs") {
                         AuditLogListView(api: AppServices.shared.apiClient)
                     }
+                    NavigationLink("Roles Matrix") {
+                        Group {
+                            if Platform.isCompact {
+                                RoleListView(viewModel: RolesMatrixViewModel(
+                                    repository: RolesRepositoryLive(api: AppServices.shared.apiClient)))
+                            } else {
+                                RolesMatrixView(viewModel: RolesMatrixViewModel(
+                                    repository: RolesRepositoryLive(api: AppServices.shared.apiClient)))
+                            }
+                        }
+                    }
                     NavigationLink("Data Import") {
                         DataImportView(repository: LiveImportRepository(api: AppServices.shared.apiClient))
+                    }
+                    NavigationLink("Data Export") {
+                        DataExportSettingsView(viewModel: DataExportViewModel(
+                            repository: LiveExportRepository(api: AppServices.shared.apiClient)))
+                    }
+                    NavigationLink("Price Overrides") {
+                        PriceOverrideListView(api: AppServices.shared.apiClient)
+                    }
+                    NavigationLink("Device Templates") {
+                        DeviceTemplateListView(api: AppServices.shared.apiClient)
+                    }
+                    NavigationLink("Kiosk Mode") {
+                        KioskModeSettingsView(manager: KioskModeManager())
                     }
                     NavigationLink("Setup Wizard") {
                         SetupWizardView(repository: SetupRepositoryLive(api: AppServices.shared.apiClient))

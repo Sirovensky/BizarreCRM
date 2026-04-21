@@ -60,6 +60,9 @@ packages:
   Marketing:     { path: Packages/Marketing }
   Setup:         { path: Packages/Setup }
   DataImport:    { path: Packages/DataImport }
+  DataExport:    { path: Packages/DataExport }
+  KioskMode:     { path: Packages/KioskMode }
+  RolesEditor:   { path: Packages/RolesEditor }
 
 targets:
   BizarreCRM:
@@ -157,6 +160,12 @@ targets:
         product: Setup
       - package: DataImport
         product: DataImport
+      - package: DataExport
+        product: DataExport
+      - package: KioskMode
+        product: KioskMode
+      - package: RolesEditor
+        product: RolesEditor
 
   BizarreCRMTests:
     type: bundle.unit-test
