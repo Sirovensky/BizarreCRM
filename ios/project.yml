@@ -53,6 +53,7 @@ packages:
   Search:        { path: Packages/Search }
   RepairPricing: { path: Packages/RepairPricing }
   Voice:         { path: Packages/Voice }
+  Loyalty:       { path: Packages/Loyalty }
 
 targets:
   BizarreCRM:
@@ -138,6 +139,8 @@ targets:
         product: RepairPricing
       - package: Voice
         product: Voice
+      - package: Loyalty
+        product: Loyalty
 
   BizarreCRMTests:
     type: bundle.unit-test
