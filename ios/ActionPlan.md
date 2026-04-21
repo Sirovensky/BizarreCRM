@@ -665,7 +665,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 ### 4.4 Edit
 - [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
 - [x] **Offline enqueue** — network failure routes to `ticket.update` with `entityServerId`; `TicketSyncHandlers` replays on reconnect.
-- [ ] **Expanded fields** — status, assignee, notes, devices, services, prices, deposit, urgency, tags, labels, customer reassign (pending device-level `PUT /tickets/devices/:deviceId` endpoint).
+- [x] **Expanded fields** — notes, estimated cost, priority, tags, discount, source, referral, due_on, customer reassign, state-transition picker, archive. `TicketEditDeepView` + `TicketEditDeepViewModel` with draft auto-save + iPad side-by-side layout. Reassign via `PATCH /tickets/:id/assign`; archive via `POST /tickets/:id/archive`.
 - [ ] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast).
 - [ ] **Audit log** entries streamed back into timeline.
 - [ ] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
@@ -694,6 +694,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 ### 4.7 Statuses & transitions
 - [x] **Fetch taxonomy** `GET /settings/statuses` → `TicketStatusRow` array; drives `TicketStatusChangeSheet` (no hardcoded statuses).
 - [x] **Commit** via `PATCH /tickets/:id/status`; sheet highlights current status with a check, dismisses + refreshes detail on success.
+- [x] **State machine** — `TicketStateMachine` + `TicketStatus` (9 states) + `TicketTransition` (9 actions) in `StateMachine/TicketStateMachine.swift`. `TicketStatusTransitionSheet` shows only allowed transitions; Confirm disabled when illegal. 51 unit tests, 100% transition coverage.
+- [x] **Timeline events** — `TicketTimelineView` + `TicketTimelineViewModel` load `GET /tickets/:id/events`; fallback to embedded `history` on 404/network. Vertical timeline with circle connectors, kind icons, diff chips, Reduce Motion support, full a11y labels. Wired into `TicketDetailView` as sheet + inline preview.
 - [ ] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
 - [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
 - [ ] **QC sign-off modal** — signature capture (PencilKit `PKCanvasView`), comments, "Work complete" confirm.

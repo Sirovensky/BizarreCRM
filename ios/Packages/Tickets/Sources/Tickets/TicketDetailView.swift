@@ -8,6 +8,8 @@ public struct TicketDetailView: View {
     @State private var vm: TicketDetailViewModel
     @State private var showingEdit: Bool = false
     @State private var showingStatus: Bool = false
+    @State private var showingTransition: Bool = false
+    @State private var showingTimeline: Bool = false
     private let api: APIClient?
 
     /// Basic init — read-only detail.
@@ -17,7 +19,7 @@ public struct TicketDetailView: View {
     }
 
     /// Edit-capable init — enables the "Edit" toolbar button that presents
-    /// `TicketEditView`. Pass the real `APIClient` when you want writes.
+    /// `TicketEditDeepView`. Pass the real `APIClient` when you want writes.
     public init(repo: TicketRepository, ticketId: Int64, api: APIClient) {
         _vm = State(wrappedValue: TicketDetailViewModel(repo: repo, ticketId: ticketId))
         self.api = api
@@ -33,29 +35,17 @@ public struct TicketDetailView: View {
         .task { await vm.load() }
         .refreshable { await vm.load() }
         .toolbar {
-            if api != nil, case .loaded = vm.state {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { showingEdit = true } label: {
-                            Label("Edit details", systemImage: "pencil")
-                        }
-                        Button { showingStatus = true } label: {
-                            Label("Change status", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                    } label: {
-                        Label("Actions", systemImage: "ellipsis.circle")
-                    }
-                    .accessibilityIdentifier("ticket.actions")
-                }
-            }
+            toolbarItems
         }
+        // §4.4 — Deep edit sheet
         .sheet(isPresented: $showingEdit) {
             if let api, case let .loaded(detail) = vm.state {
-                TicketEditView(api: api, ticket: detail) {
+                TicketEditDeepView(api: api, ticket: detail) {
                     Task { await vm.load() }
                 }
             }
         }
+        // Legacy status change (server-driven list)
         .sheet(isPresented: $showingStatus) {
             if let api, case let .loaded(detail) = vm.state {
                 TicketStatusChangeSheet(
@@ -65,6 +55,40 @@ public struct TicketDetailView: View {
                 ) { Task { await vm.load() } }
             }
         }
+        // §4.6 — State-machine-gated transition sheet
+        .sheet(isPresented: $showingTransition) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketStatusTransitionSheet(
+                    ticketId: detail.id,
+                    currentStatus: detail.status,
+                    api: api
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.7 — Timeline sheet
+        .sheet(isPresented: $showingTimeline) {
+            if let api, case let .loaded(detail) = vm.state {
+                NavigationStack {
+                    ScrollView {
+                        TicketTimelineView(
+                            ticketId: detail.id,
+                            api: api,
+                            fallbackHistory: detail.history
+                        )
+                        .padding(BrandSpacing.base)
+                    }
+                    .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+                    .navigationTitle("Timeline")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingTimeline = false }
+                        }
+                    }
+                }
+                .presentationDetents([.large])
+            }
+        }
     }
 
     private var navTitle: String {
@@ -72,15 +96,69 @@ public struct TicketDetailView: View {
         return "Ticket"
     }
 
+    // MARK: — Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        if api != nil, case .loaded = vm.state {
+            // §4.6 — "Advance status" button
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingTransition = true
+                } label: {
+                    Label("Advance Status", systemImage: "arrow.right.circle")
+                }
+                .accessibilityLabel("Advance ticket status")
+                .accessibilityHint("Opens status transition sheet")
+                .brandGlass(.clear, in: Capsule())
+            }
+
+            // Actions menu: Edit, Change Status, Timeline
+            ToolbarItem(placement: .secondaryAction) {
+                Menu {
+                    Button {
+                        showingEdit = true
+                    } label: {
+                        Label("Edit Details", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("ticket.editDetails")
+
+                    Button {
+                        showingStatus = true
+                    } label: {
+                        Label("Change Status", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityIdentifier("ticket.changeStatus")
+
+                    Divider()
+
+                    Button {
+                        showingTimeline = true
+                    } label: {
+                        Label("View Timeline", systemImage: "clock.fill")
+                    }
+                    .accessibilityIdentifier("ticket.timeline")
+                } label: {
+                    Label("Actions", systemImage: "ellipsis.circle")
+                }
+                .accessibilityIdentifier("ticket.actions")
+            }
+        }
+    }
+
+    // MARK: — Content
+
     @ViewBuilder
     private var content: some View {
         switch vm.state {
         case .loading:
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Loading ticket")
         case .failed(let msg):
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 36)).foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
                 Text("Couldn't load ticket")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
                 Text(msg).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
@@ -89,25 +167,129 @@ public struct TicketDetailView: View {
                     .buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .combine)
         case .loaded(let detail):
             ScrollView {
                 VStack(spacing: BrandSpacing.base) {
                     CustomerCard(detail: detail)
                     InfoRow(detail: detail)
+
+                    // §4.6 — Status chip with inline transition button
+                    if let status = detail.status, let api {
+                        StatusChipRow(status: status) {
+                            showingTransition = true
+                        }
+                    }
+
                     if !detail.devices.isEmpty {
                         DevicesSection(devices: detail.devices)
                     }
                     if !detail.notes.isEmpty {
                         NotesSection(notes: detail.notes)
                     }
-                    if !detail.history.isEmpty {
-                        HistorySection(history: detail.history)
+
+                    // §4.7 — Timeline section (inline preview)
+                    if let api, !detail.history.isEmpty {
+                        TimelinePreviewSection(
+                            ticketId: detail.id,
+                            api: api,
+                            history: detail.history
+                        ) {
+                            showingTimeline = true
+                        }
                     }
+
                     TotalsCard(detail: detail)
                 }
                 .padding(BrandSpacing.base)
             }
         }
+    }
+}
+
+// MARK: - Status chip row (§4.6)
+
+private struct StatusChipRow: View {
+    let status: TicketDetail.Status
+    let onAdvance: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Text(status.name)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.xs)
+                .brandGlass(.clear, in: Capsule())
+                .accessibilityLabel("Status: \(status.name)")
+
+            Spacer()
+
+            Button {
+                onAdvance()
+            } label: {
+                Label("Advance", systemImage: "arrow.right.circle")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOrange)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Advance ticket status")
+            .accessibilityHint("Opens status transition options")
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+    }
+}
+
+// MARK: - Timeline preview section (§4.7 — inline)
+
+private struct TimelinePreviewSection: View {
+    let ticketId: Int64
+    let api: APIClient
+    let history: [TicketDetail.TicketHistory]
+    let onShowAll: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            HStack {
+                Text("Timeline")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Button("Show all") { onShowAll() }
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityLabel("Show full timeline")
+            }
+
+            // Show up to 3 most recent history entries inline.
+            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                ForEach(history.prefix(3)) { entry in
+                    HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                        Circle()
+                            .fill(Color.bizarreOrange)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 7)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.stripped)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                            if let ts = entry.createdAt {
+                                Text(String(ts.prefix(16)))
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(entry.stripped) at \(String((entry.createdAt ?? "").prefix(16)))")
+                }
+            }
+        }
+        .cardBackground()
     }
 }
 
@@ -132,6 +314,7 @@ private struct CustomerCard: View {
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreTeal)
                 }
+                .accessibilityLabel("Call \(PhoneFormatter.format(phone))")
             }
             if let email = detail.customer?.email, !email.isEmpty,
                let encoded = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -142,11 +325,13 @@ private struct CustomerCard: View {
                         .foregroundStyle(.bizarreTeal)
                         .textSelection(.enabled)
                 }
+                .accessibilityLabel("Email \(email)")
             }
             if let org = detail.customer?.organization, !org.isEmpty {
                 Label(org, systemImage: "building.2")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityLabel("Organization: \(org)")
             }
         }
         .cardBackground()
@@ -189,6 +374,8 @@ private struct InfoTile: View {
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 
@@ -282,6 +469,8 @@ private struct KeyValueLine: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(key): \(value)")
     }
 }
 
@@ -303,6 +492,7 @@ private struct NotesSection: View {
                             Image(systemName: "flag.fill")
                                 .font(.caption)
                                 .foregroundStyle(.bizarreError)
+                                .accessibilityLabel("Flagged")
                         }
                         Spacer()
                         if let ts = note.createdAt {
@@ -316,40 +506,9 @@ private struct NotesSection: View {
                         .foregroundStyle(.bizarreOnSurface)
                 }
                 .cardBackground()
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(note.userName): \(note.stripped)\(note.isFlagged == true ? ", flagged" : "")")
             }
-        }
-    }
-}
-
-// MARK: - History
-
-private struct HistorySection: View {
-    let history: [TicketDetail.TicketHistory]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Activity").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                ForEach(history) { entry in
-                    HStack(alignment: .top, spacing: BrandSpacing.sm) {
-                        Circle()
-                            .fill(Color.bizarreOrange)
-                            .frame(width: 6, height: 6)
-                            .padding(.top, 7)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.stripped)
-                                .font(.brandBodyMedium())
-                                .foregroundStyle(.bizarreOnSurface)
-                            if let ts = entry.createdAt {
-                                Text(String(ts.prefix(16)))
-                                    .font(.brandLabelSmall())
-                                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                            }
-                        }
-                    }
-                }
-            }
-            .cardBackground()
         }
     }
 }
@@ -380,7 +539,10 @@ private struct TotalsCard: View {
                     .font(.brandTitleLarge()).bold()
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
+                    .textSelection(.enabled)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Total: \(formatMoney(detail.total ?? 0))")
         }
         .cardBackground()
     }
@@ -394,6 +556,8 @@ private struct TotalsCard: View {
                 .foregroundStyle(tint)
                 .monospacedDigit()
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(formatMoney(value))")
     }
 
     private func formatMoney(_ value: Double) -> String {
