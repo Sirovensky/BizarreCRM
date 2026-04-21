@@ -11,6 +11,7 @@ let package = Package(
         .package(path: "../Core")
     ],
     targets: [
-        .target(name: "Hardware", dependencies: ["Core"])
+        .target(name: "Hardware", dependencies: ["Core"]),
+        .testTarget(name: "HardwareTests", dependencies: ["Hardware"])
     ]
 )

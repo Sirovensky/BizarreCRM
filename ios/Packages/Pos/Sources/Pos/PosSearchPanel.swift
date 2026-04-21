@@ -17,6 +17,12 @@ struct PosSearchPanel: View {
     var onCreateCustomer: (() -> Void)? = nil
     var onFindCustomer: (() -> Void)? = nil
 
+    /// When set, the panel is waiting for results matching a scanned
+    /// barcode so it can auto-pick the first hit. Cleared as soon as
+    /// that pick fires or the results finish loading empty.
+    @State private var pendingScanCode: String?
+    @State private var showingScanSheet: Bool = false
+
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -28,12 +34,40 @@ struct PosSearchPanel: View {
                 resultsContent
             }
         }
+        .sheet(isPresented: $showingScanSheet) {
+            PosScanSheet { code in
+                handleScan(code)
+            }
+        }
+        .onChange(of: search.results) { _, newResults in
+            // When the scan-driven fetch lands, auto-add the first row
+            // and clear the pending flag. If the scan produced zero
+            // matches we still drop the flag so a stale code doesn't
+            // re-trigger on the next organic fetch.
+            guard let scanCode = pendingScanCode, !search.isLoading else { return }
+            _ = scanCode
+            if let first = newResults.first {
+                pendingScanCode = nil
+                BrandHaptics.success()
+                onPick(first)
+            } else {
+                pendingScanCode = nil
+            }
+        }
+    }
+
+    private func handleScan(_ code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        pendingScanCode = trimmed
+        search.onQueryChange(trimmed)
     }
 
     /// Prominent glass-styled search field. Tall 48pt minimum so thumb
-    /// accuracy is ok at the top of a larger-screen iPhone. No scan icon
-    /// yet — DataScannerViewController lands in §17.2. When it arrives,
-    /// drop a trailing Button(label: Image("barcode.viewfinder")) here.
+    /// accuracy is ok at the top of a larger-screen iPhone. Trailing
+    /// `barcode.viewfinder` button opens the §17.2 DataScannerViewController
+    /// sheet; on a matched payload we stuff the query and auto-add the
+    /// first search result to the cart.
     private var searchField: some View {
         HStack(spacing: BrandSpacing.sm) {
             Image(systemName: "magnifyingglass")
@@ -56,6 +90,17 @@ struct PosSearchPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
+            Button {
+                BrandHaptics.tap()
+                showingScanSheet = true
+            } label: {
+                Image(systemName: "barcode.viewfinder")
+                    .foregroundStyle(.bizarreOrange)
+                    .font(.system(size: 20, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Scan barcode")
+            .accessibilityIdentifier("pos.scanButton")
         }
         .padding(.horizontal, BrandSpacing.md)
         .frame(minHeight: 48)
