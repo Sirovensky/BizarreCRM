@@ -6,6 +6,8 @@ import Settings
 import Customers
 import Tickets
 import Inventory
+import Pos
+import Sync
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -47,5 +49,16 @@ final class AppServices {
         await CustomerSyncHandlers.register(api: apiClient)
         await TicketSyncHandlers.register(api: apiClient)
         await InventorySyncHandlers.register(api: apiClient)
+
+        // §16 / SEC-2 — POS offline sync executor. Handles pos.sale.finalize,
+        // pos.return.create, and pos.cash.opening ops that were enqueued while
+        // offline. Without this the drain loop has no executor and POS ops are
+        // permanently stranded.
+        // TODO: When Invoices/Appointments/Expenses/SMS/Employees also gain
+        // offline-write executors, replace with a CompositeSyncOpExecutor
+        // that dispatches by op.entity prefix to the right domain executor.
+        let posExecutor = PosSyncOpExecutor(api: apiClient)
+        SyncManager.shared.executor = posExecutor
+        SyncManager.shared.autoStart()
     }
 }
