@@ -729,12 +729,23 @@ export function OverviewPage() {
         p95Ms={stats?.p95ResponseMs ?? 0}
       />
 
-      {/* System info */}
+      {/* System info — includes build SHA + boot timestamp so operators can
+          verify "did my git pull land on the running process?" without SSH. */}
       {stats && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-surface-500">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500">
           <span>Node {stats.nodeVersion}</span>
           <span>{stats.platform}</span>
           <span>{stats.hostname}</span>
+          {stats.gitSha && stats.gitSha !== 'unknown' && (
+            <span title={stats.gitSha}>
+              build <code className="font-mono text-surface-400">{stats.gitSha.slice(0, 8)}</code>
+            </span>
+          )}
+          {stats.startedAt && (
+            <span title={`Server process started at ${stats.startedAt}`}>
+              started {new Date(stats.startedAt).toLocaleString()}
+            </span>
+          )}
           {stats.multiTenant && (
             <span className="text-accent-400 font-medium">Multi-tenant</span>
           )}

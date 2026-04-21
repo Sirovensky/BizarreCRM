@@ -43,7 +43,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFile } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { getCrashLog, getDisabledRoutes, reenableRoute, clearCrashLog, getCrashStats } from '../services/crashTracker.js';
@@ -334,6 +334,33 @@ function getUploadsSize(dirPath: string, seen = new Set<string>(), depth = 0): n
   }
 }
 
+/**
+ * Server build fingerprint — resolved ONCE at module load so every /stats
+ * poll is cheap. Prefers a build-time-injected GIT_SHA env var (set by
+ * setup.bat / CI); falls back to a synchronous `git rev-parse` against the
+ * repo root. If both fail (packaged binary without git on PATH) we return
+ * 'unknown' so the dashboard can render a dash instead of crashing.
+ *
+ * Also captures the wall-clock server-start timestamp so the dashboard can
+ * show "started at …" alongside uptime — useful when an operator wants to
+ * verify a recent restart actually landed.
+ */
+const SERVER_STARTED_AT = new Date().toISOString();
+const GIT_SHA: string = (() => {
+  const envSha = process.env.GIT_SHA;
+  if (envSha && /^[a-f0-9]{7,40}$/i.test(envSha)) return envSha.slice(0, 12);
+  try {
+    const cwd = path.resolve(__dirname, '..', '..', '..', '..');
+    const out = execSync('git rev-parse --short=12 HEAD', { cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 })
+      .toString()
+      .trim();
+    if (/^[a-f0-9]{7,40}$/i.test(out)) return out;
+  } catch {
+    /* git not available or not a git checkout */
+  }
+  return 'unknown';
+})();
+
 router.get('/stats', (_req: Request, res: Response) => {
   const mem = process.memoryUsage();
   const cpuUsage = process.cpuUsage();
@@ -375,6 +402,8 @@ router.get('/stats', (_req: Request, res: Response) => {
       pm2Managed: !!process.env.PM2_HOME || !!process.env.pm_id,
       multiTenant: config.multiTenant === true,
       nodeEnv: process.env.NODE_ENV || 'development',
+      gitSha: GIT_SHA,
+      startedAt: SERVER_STARTED_AT,
       unacknowledgedSecurityAlerts: (() => {
         const db = getMasterDb();
         if (!db) return 0;

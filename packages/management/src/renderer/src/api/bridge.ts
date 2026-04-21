@@ -40,6 +40,10 @@ export interface ServerStats {
   multiTenant?: boolean;
   nodeEnv?: string;
   unacknowledgedSecurityAlerts?: number;
+  /** Short git SHA the server was built from — surfaced in Overview sys-info. */
+  gitSha?: string;
+  /** ISO timestamp of process boot — lets the dashboard show "started at …". */
+  startedAt?: string;
 }
 
 // ── Crash types ───────────────────────────────────────────────────
