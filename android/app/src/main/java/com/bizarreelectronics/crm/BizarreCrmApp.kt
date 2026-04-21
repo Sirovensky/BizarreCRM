@@ -144,43 +144,57 @@ class BizarreCrmApp : Application(), Configuration.Provider {
             // — High-importance (heads-up + sound) —
             NotificationChannel(CH_SMS_INBOUND, "SMS — incoming", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "New SMS messages from customers."
+                setShowBadge(true)
             },
             NotificationChannel(CH_APPOINTMENT_REMINDER, "Appointment reminder", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Upcoming appointment reminders."
+                setShowBadge(true)
             },
             NotificationChannel(CH_SLA_BREACH, "SLA breach", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Ticket SLA amber / red alerts."
+                setShowBadge(true)
             },
             NotificationChannel(CH_SECURITY_EVENT, "Security alerts", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Unusual sign-ins, session revokes, password changes."
+                setShowBadge(true)
             },
 
             // — Default-importance (banner + sound) —
             NotificationChannel(CH_TICKET_ASSIGNED, "Ticket assigned to you", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "You were assigned a ticket."
+                setShowBadge(true)
             },
             NotificationChannel(CH_TICKET_STATUS, "Ticket status changes", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Status updates on tickets you follow."
+                setShowBadge(true)
             },
             NotificationChannel(CH_PAYMENT_RECEIVED, "Payment received", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Invoice payments and deposits."
+                setShowBadge(true)
             },
             NotificationChannel(CH_MENTION, "You were @mentioned", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "You were tagged in a note, message, or chat."
+                setShowBadge(true)
             },
 
-            // — Low-importance (silent) —
+            // — Low-importance (silent) — no launcher dot for these; the
+            // user opted into low-importance by definition, no point
+            // pulling them back via the dot.
             NotificationChannel(CH_LOW_STOCK, "Low-stock alerts", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "Inventory items below reorder threshold."
+                setShowBadge(false)
             },
             NotificationChannel(CH_DAILY_SUMMARY, "Daily summary", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "End-of-day totals and activity digest."
+                setShowBadge(false)
             },
             NotificationChannel(CH_SYNC, "Background sync", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "Data synchronization progress."
+                setShowBadge(false)
             },
             NotificationChannel(CH_BACKUP_REPORT, "Backup & diagnostics", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "Backup results, crash reports, diagnostic logs."
+                setShowBadge(false)
             },
         )
 

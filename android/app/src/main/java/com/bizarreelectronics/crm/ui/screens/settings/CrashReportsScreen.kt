@@ -90,6 +90,19 @@ fun CrashReportsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    // §32.3 dev tool — force a crash to verify the reporter
+                    // captures it. Hidden in release builds. The throw runs
+                    // off the Compose dispatch loop so the crash log is
+                    // attributed to a clean stack and not a Compose frame.
+                    if (com.bizarreelectronics.crm.BuildConfig.DEBUG) {
+                        IconButton(onClick = {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                throw RuntimeException("Test crash from CrashReportsScreen")
+                            }
+                        }) {
+                            Icon(Icons.Default.BugReport, contentDescription = "Force crash (debug)")
+                        }
+                    }
                     if (files.isNotEmpty()) {
                         IconButton(onClick = { confirmDeleteAll = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete all")
