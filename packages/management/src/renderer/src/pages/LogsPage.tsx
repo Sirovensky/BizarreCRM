@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollText, RefreshCw, Pause, Play, Filter, Trash2 } from 'lucide-react';
+import { ScrollText, RefreshCw, Pause, Play, Filter, Trash2, Copy, ArrowDownToLine } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatBytes, formatDateTime } from '@/utils/format';
@@ -28,6 +28,35 @@ function colorize(line: string): string {
     if (pattern.test(line)) return cls;
   }
   return 'text-surface-300';
+}
+
+/**
+ * Split a line into plain + highlighted segments wherever the filter
+ * substring matches (case-insensitive). Returns the original line as a
+ * single text node when the filter is empty so there's no DOM cost.
+ */
+function renderWithHighlight(line: string, filter: string): React.ReactNode {
+  const q = filter.trim();
+  if (!q) return line || '\u00A0';
+  const needle = q.toLowerCase();
+  const hay = line.toLowerCase();
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  while (cursor < line.length) {
+    const hit = hay.indexOf(needle, cursor);
+    if (hit === -1) {
+      nodes.push(line.slice(cursor));
+      break;
+    }
+    if (hit > cursor) nodes.push(line.slice(cursor, hit));
+    nodes.push(
+      <mark key={hit} className="bg-amber-500/30 text-amber-100 rounded px-0.5">
+        {line.slice(hit, hit + needle.length)}
+      </mark>
+    );
+    cursor = hit + needle.length;
+  }
+  return nodes.length === 0 ? (line || '\u00A0') : nodes;
 }
 
 export function LogsPage() {
@@ -118,6 +147,29 @@ export function LogsPage() {
             {autoRefresh ? 'Pause tail' : 'Resume tail'}
           </button>
           <button
+            onClick={async () => {
+              const text = filteredLines.join('\n');
+              if (!text.trim()) { toast('Nothing to copy'); return; }
+              try {
+                await navigator.clipboard.writeText(text);
+                toast.success(`Copied ${filteredLines.length} lines`);
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : 'Clipboard write failed');
+              }
+            }}
+            className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800"
+            title="Copy visible lines to clipboard"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }}
+            className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800"
+            title="Scroll to bottom"
+          >
+            <ArrowDownToLine className="w-4 h-4" />
+          </button>
+          <button
             onClick={loadTail}
             disabled={loading}
             className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
@@ -194,7 +246,7 @@ export function LogsPage() {
         ) : (
           filteredLines.map((line, i) => (
             <div key={i} className={`whitespace-pre-wrap break-all ${colorize(line)}`}>
-              {line || '\u00A0'}
+              {renderWithHighlight(line, filter)}
             </div>
           ))
         )}
