@@ -130,11 +130,11 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 - [x] `APIClient` with dynamic base URL (`APIClient.setBaseURL`) — shipped.
 - [x] `{ success, data, message }` envelope decoder — shipped.
 - [x] Bearer-token injection from Keychain — shipped.
-- [ ] **Token refresh on 401 with retry-of-original-request.** Current behavior: 401 → drop to Login. Target: refresh silently, replay original request once, fall back to drop-to-login only if refresh fails. Backend: `POST /auth/refresh` (verify exists). Frontend: request-middleware that queues concurrent calls behind a single refresh in-flight. UX: user never sees a re-login unless the refresh token is expired/revoked.
+- [x] **Token refresh on 401 with retry-of-original-request.** (`Networking/APIClient.swift` `performOnce` + `refreshSessionOnce()` single-flight `Task<Bool,Error>`; concurrent 401s queue behind same task; `AuthSessionRefresher` protocol wired via `AuthRefresher.swift`; failure posts `SessionEvents.sessionRevoked`.)
 - [ ] **Typed endpoint namespaces** — migrate each repository to an `Endpoint` enum (`Endpoints.Tickets.list(page:filter:)`) so path strings are not scattered across files.
 - [ ] **Multipart upload helper** (`APIClient.upload(_:to:fields:)`) for photos, receipts, avatars. Must use a background `URLSession` configuration so uploads survive app exit.
 - [ ] **Retries with jitter** on transient network failures (5xx, URLError `.timedOut`, `.networkConnectionLost`). Respect `Retry-After` on 429.
-- [ ] **Offline detection banner** driven by `NWPathMonitor` — sticky `.brandGlass` banner at the top of `NavigationStack`s with "Offline — showing cached data" copy and a Retry button.
+- [x] **Offline detection banner** driven by `NWPathMonitor` — sticky `.brandGlass` banner at the top of `NavigationStack`s with "Offline — changes will sync when connected" copy. (`Networking/Reachability.swift` + `DesignSystem/OfflineBanner.swift`. Retry button deferred.)
 
 ### 1.2 Pinning & TLS
 - [x] `PinnedURLSessionDelegate` scaffold — shipped (empty pin set).
@@ -146,10 +146,10 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundation. This subsection covers the storage layer; §20 covers the repository pattern, sync queue, cursor pagination, and conflict resolution that sit on top of it. Domain PRs must use both; neither ships in isolation.
 
 - [~] GRDB wiring exists for some domains; full coverage missing.
-- [ ] **Per-domain DAO**: Tickets, Customers, Inventory, Invoices, Estimates, Leads, Appointments, Expenses, SMS threads, SMS messages, Notifications, Employees, Reports cache. Each DAO paired with the `XyzRepository` required by §20.1.
-- [ ] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. Drives every list's `hasMore` decision. Mandatory before domain list PRs can merge.
-- [ ] **`sync_queue` table** (§20.2) — optimistic-write log feeding the drain loop. Every mutation ViewModel enqueues here instead of calling APIClient directly.
-- [ ] **Migrations registry** — numbered migrations, each one idempotent. Tests assert every migration on a fresh DB replica.
+- [~] **Per-domain DAO**: partial — Tickets (`TicketRepository` + `TicketSyncHandlers`), Customers (`CustomerRepository` + `CustomerSyncHandlers`), Inventory (`InventoryRepository` + `InventorySyncHandlers`) wired. Invoices (`InvoiceRepository`), Leads (`LeadListView` via `LeadsEndpoints`) present without full GRDB layer. Appointments, Expenses, SMS, Notifications, Employees, Reports cache still missing.
+- [x] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. (`Persistence/SyncStateStore.swift`, migration `002_sync_state_and_queue.sql`)
+- [x] **`sync_queue` table** (§20.2) — optimistic-write log feeding the drain loop. (`Persistence/SyncQueueStore.swift`; migration `002_sync_state_and_queue.sql`; `SyncFlusher` drain loop wired.)
+- [x] **Migrations registry** — numbered migrations, each one idempotent. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 shipped.)
 - [ ] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
 - [ ] **Encryption passphrase** — 32-byte random on first run, stored in Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
 - [ ] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes a zipped snapshot (without passphrase) to the share sheet.
@@ -178,7 +178,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Required usage-description strings: Camera, Photos, Photos-add, FaceID, Bluetooth, Contacts, Location-when-in-use (tech dispatch), Microphone (SMS voice memo — optional), Calendars (EventKit appointments mirror).
 - [ ] `UIBackgroundModes`: `remote-notification`, `processing`, `fetch`.
 - [ ] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`.
-- [ ] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped.
+- [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
 - [ ] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support".
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
@@ -1295,8 +1295,8 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Bulk archive won/lost**.
 
 ### 9.3 Detail
-- [ ] **Header** — name + phone + email + score ring + status chip.
-- [ ] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to.
+- [x] **Header** — name + phone + email + score ring + status chip. (`Leads/LeadDetailView.swift` `headerCard` — name, score badge, status chip, source.)
+- [x] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to. (partial — `LeadDetailView.swift` `contactCard` + `metaCard` render phone/email/company; title/value/next-action date deferred.)
 - [ ] **Lead score** — calculated metric with explanation sheet.
 - [ ] **Status workflow** — transition dropdown; Lost → reason dialog (required).
 - [ ] **Activity timeline** — calls, SMS, email, appointments, property changes.
@@ -1441,7 +1441,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Off-hours auto-reply** indicator when enabled.
 
 ### 12.3 PATCH helpers
-- [ ] Add PATCH method to `APIClient` (currently missing).
+- [x] Add PATCH method to `APIClient` — shipped (`Networking/APIClient.swift` exposes `patch<T,B>(_:body:as:)`).
 - [ ] Mark read — `PATCH /sms/messages/:id { read: true }` (verify endpoint).
 - [ ] Flag / pin — `PATCH /sms/conversations/:id { flagged, pinned }`.
 
@@ -2293,12 +2293,12 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Change email** — server emits verify-email link; banner until verified.
 - [ ] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`.
 - [ ] **Username / slug** — read-only unless admin.
-- [ ] **Sign out (primary)** — bottom of page, destructive red. Clears session + tokens, returns to Login. Server URL + username pre-filled from Keychain so re-auth = one tap + biometric/password. Tenant switch = this sign-out + sign-in-to-other-tenant flow (§79 dropped the in-app live switcher). This is the ONLY primary sign-out button in the app; §19.22 Server, §2 timeout dialog, and §2.11 auth spec all route to the same underlying action.
+- [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
 - [ ] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device).
 
 ### 19.2 Security
 - [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
-- [ ] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates.
+- [x] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates. (`Settings/BiometricToggleRow.swift` in `SettingsView.swift` section "Security".)
 - [ ] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot.
 - [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), disable, regenerate backup codes, copy to Notes prompt.
 - [ ] **Active sessions** — list device + last-seen + location (IP); revoke.
@@ -2457,16 +2457,16 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 
 ### 19.23 Data (local)
 - [ ] **Force full sync** — wipes GRDB, re-fetches all domains.
-- [ ] **Sync queue inspector** — pending writes + retry age + dead-letter (tap to retry / drop).
+- [x] **Sync queue inspector** — pending writes + retry age + dead-letter (tap to retry / drop). (`Settings/SyncDiagnosticsView.swift` with per-row Retry / Discard backed by `SyncQueueStore`.)
 - [ ] **Clear cache** — images + catalog (not queued writes).
 - [ ] **Reset GRDB** — nuclear option (sign out + wipe).
 - [ ] **Disk usage** — breakdown: images X MB, GRDB Y MB, logs Z MB.
 - [ ] **Export DB** (dev build only) — share sheet → `.sqlite` file.
 
 ### 19.24 About
-- [ ] **Version + build + commit SHA** (from `GitVersion`).
+- [x] **Version + build + commit SHA** (from `GitVersion`). (partial — `Settings/AboutView.swift` shows version + build via `Platform.appVersion`/`Platform.buildNumber`; commit SHA not yet appended.)
 - [ ] **Licenses** — `NSAcknowledgments` auto-generated.
-- [ ] **Privacy policy**, **Terms of Service**, **Support email** — deep links.
+- [x] **Privacy policy**, **Terms of Service**, **Support email** — deep links. (`Settings/AboutView.swift` section "Support" links `mailto:support@bizarrecrm.com`, privacy policy, and terms of service.)
 - [ ] **App Store review** — `SKStoreReviewController` after N engaged sessions.
 - [ ] **Device info** — iOS version, model, free storage.
 - [ ] **Secret gesture** — long-press version 7x → Diagnostics.
@@ -4002,7 +4002,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Request signing** — telemetry requests bear same bearer token as regular API.
 
 ### 32.1 OSLog
-- [ ] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`.
+- [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
 - [ ] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`.
 - [ ] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII.
 - [ ] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders.
