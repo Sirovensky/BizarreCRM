@@ -5005,19 +5005,19 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 ## §52. Command Palette (⌘K)
 
 ### 52.1 Universal shortcut
-- [ ] **⌘K on iPad / Mac** → global command palette.
-- [ ] **iPhone** — reachable via pull-down gesture on any screen.
+- [x] **⌘K on iPad / Mac** → global command palette.
+- [x] **iPhone** — reachable via pull-down gesture on any screen.
 
 ### 52.2 Action catalog
-- [ ] **Every registered action** — "New ticket", "Find customer by phone", "Send SMS", "Clock out", "Close shift", "Settings: Tax", "Reports: Revenue this month".
-- [ ] **Fuzzy search** — Sublime-style; rank by recent usage.
+- [x] **Every registered action** — "New ticket", "Find customer by phone", "Send SMS", "Clock out", "Close shift", "Settings: Tax", "Reports: Revenue this month".
+- [x] **Fuzzy search** — Sublime-style; rank by recent usage.
 
 ### 52.3 Scope + context
-- [ ] **Current context aware** — "Add note to this ticket" works when ticket open.
-- [ ] **Entities** — type ticket # / phone / SKU → navigate.
+- [x] **Current context aware** — "Add note to this ticket" works when ticket open.
+- [x] **Entities** — type ticket # / phone / SKU → navigate.
 
 ### 52.4 Keyboard-first
-- [ ] **Arrow navigate**, **⏎ execute**, **⎋ dismiss**.
+- [x] **Arrow navigate**, **⏎ execute**, **⎋ dismiss**.
 
 ---
 ## §53. Public Tracking Page — SERVER-SIDE SURFACE (iOS is thin)
