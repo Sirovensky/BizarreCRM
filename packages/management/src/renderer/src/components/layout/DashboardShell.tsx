@@ -6,6 +6,7 @@ import { useServerHealth } from '@/hooks/useServerHealth';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
 import { BannerTagVerifyWarning } from '@/components/BannerTagVerifyWarning';
 import { CommandPalette } from '@/components/CommandPalette';
+import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 
 export function DashboardShell() {
   // Start health polling when the shell mounts (user is authenticated)
@@ -19,6 +20,8 @@ export function DashboardShell() {
       <BannerTagVerifyWarning />
       {/* Global Cmd/Ctrl+K / `/` command palette mounted once at the shell. */}
       <CommandPalette />
+      {/* `?` opens keyboard shortcut help overlay. */}
+      <KeyboardShortcutsHelp />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
