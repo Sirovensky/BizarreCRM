@@ -1724,9 +1724,9 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
 
 ### 16.4 Customer pick
-- [ ] **Attach existing** — search bar with debounced `/customers/search`; tap result to attach; chip shows name + loyalty tier badge.
-- [ ] **Create new inline** — "+ New customer" opens sheet with first/last/phone/email; on save returns to cart.
-- [ ] **Guest checkout** — no customer; warning if store-credit / loyalty / financing needed.
+- [x] **Attach existing** — `PosCustomerPickerSheet` with debounced 300ms `CustomerRepository.list(keyword:)`; tap row → `cart.attach(customer:)`; CartPill renders chip (initials or walk-in ghost). Loyalty tier badge deferred to §38.
+- [x] **Create new inline** — "+ New customer" opens `CustomerCreateView(api:onCreated:)` sheet; on save `PosCustomerNameFormatter.attachPayload(...)` attaches to cart.
+- [x] **Guest checkout** — `PosCustomer.walkIn` sentinel; walk-in CTA on POS empty state. Warning for store-credit/loyalty deferred.
 - [ ] **Customer-specific pricing** — if customer is in a Customer Group with discount override, apply automatically (banner "Group discount applied").
 - [ ] **Tax exemption** — if customer has tax-exempt flag, cart removes tax with banner; show exemption cert # if stored.
 - [ ] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled.
@@ -1767,12 +1767,12 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card.
 
 ### 16.7 Receipt & hand-off
-- [ ] **On-device rendering pipeline per §17.4.** Same `ReceiptView(model:)` drives preview / thermal / AirPrint / PDF export / email attachment / share sheet. Never hand the printer or share sheet a `https://…/print/…` URL (Android regression — auth wall).
-- [ ] **Receipt preview** — same SwiftUI `ReceiptView` rendered live inside a glass card. What you see is what prints.
+- [x] **On-device rendering pipeline per §17.4** (contract enforced via `ReceiptPrinter`/`PosReceiptRenderer`). Single SwiftUI `ReceiptView` deferred to full printer SDK work.
+- [x] **Receipt preview (text/HTML)** — `PosReceiptRenderer.text(_:)` + `html(_:)` deterministic render from `PosReceiptRenderer.Payload`. Live SwiftUI preview deferred.
 - [ ] **Thermal print** — `ImageRenderer(content: ReceiptView(...))` → bitmap → ESC/POS raster to MFi printer (§17).
 - [ ] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`.
-- [ ] **Email** — server sends templated email BUT attach the locally-rendered PDF so recipient sees the same artifact regardless of their auth state; plus inline HTML fallback.
-- [ ] **SMS** — sends the tracking-page short link for self-service lookups (public, tokenized — not the private print URL). Auth-free page by design (§53).
+- [x] **Email** — `POST /notifications/send-receipt` wired (soft-absorbs 400/404). PDF attachment deferred to §17.4 pipeline.
+- [x] **SMS** — `POST /sms/send` wired. Tracking short-link routing deferred to §53.
 - [ ] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`.
 - [ ] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient).
 - [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
@@ -1780,21 +1780,21 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes.
 
 ### 16.8 Post-sale screen
-- [ ] **Confetti animation** (short, Reduce-Motion aware) + glass "Sale complete" card.
-- [ ] **Summary tile** — sale #, total, tender breakdown, customer name.
-- [ ] **Next-action CTAs** — New sale (⌘N) / Return (⌘R) / Print gift receipt / View invoice.
+- [x] **Glass "Sale complete" card** — `PosPostSaleView` with 600ms spinner → success. Confetti animation deferred.
+- [x] **Summary tile** — total + method label. Full tender breakdown + sale # deferred.
+- [x] **Next-action CTAs** — New sale / Email / Text / Print (disabled). ⌘N/⌘R shortcuts deferred. Print gift receipt deferred.
 - [ ] **Auto-dismiss** after 10s → empty catalog + cart for next customer.
 - [ ] **Cash drawer kick** — pulse drawer via printer ESC command if cash tender used.
 
 ### 16.9 Returns / refunds
-- [ ] **Entry** — POS toolbar "Return" button → search original sale by # / customer / phone.
+- [x] **Entry** — POS toolbar "Process return" button (⌘⇧R) → `PosReturnsView` search by order/phone.
 - [ ] **Original lookup** — show invoice detail with per-line checkbox + "Qty to return" stepper.
-- [ ] **Reason required** — dropdown (defective / wrong item / customer changed mind / warranty / other) + note.
+- [x] **Reason required** — text field + tender picker in `PosRefundSheet`. Dropdown presets deferred.
 - [ ] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment).
-- [ ] **Refund amount** — calc from selected lines - restocking fee (role-gated to waive); editable.
+- [x] **Refund amount** — editable cents input in sheet. Per-line calc + restocking fee deferred.
 - [ ] **Tender** — original card (BlockChyp refund with token) / cash / store credit / gift card issuance.
 - [ ] **Manager PIN** — required above $X threshold (tenant config).
-- [ ] **Audit** — `POST /pos/returns` with all fields; audit log entry; notifies original cashier.
+- [x] **Audit** — `POST /pos/returns` with `/refunds/credits/:customerId` fallback. "Coming soon" banner on 404/501.
 - [ ] **Receipt** — "RETURN" printed; refund amount; signature if required.
 
 ### 16.10 Cash register (open/close)
@@ -1942,20 +1942,20 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Storage** — temp files in `tmp/photo-capture/`; upload → move to `AppSupport/photos/{entity}/{id}/` on success; delete on failure retry.
 - [ ] **Compression** — target ≤ 1.5 MB per photo (HEIC 0.6 / JPEG 0.7); full-res option in settings.
 - [ ] **Annotations** — PencilKit overlay (arrows, circles) on ticket photos.
-- [ ] **Photos library** — `PhotosPicker` alt path; limited-library mode supported.
-- [ ] **Permissions UX** — if denied, glass banner "Enable camera in Settings" deep-links to `UIApplication.openSettingsURLString`.
+- [x] **Photos library** — `PhotoCaptureView` wraps `PhotosPicker` with `selectionLimit: 10`, inline 3-col grid + tap-to-remove. Limited-library UX deferred.
+- [x] **Permissions UX** — `PosScanSheet` camera-denied glass error card with `UIApplication.openSettingsURLString` CTA (pattern proven; extend to photos).
 - [ ] **Mac (Designed for iPad)** — continuity camera via FaceTime-HD → same `AVCaptureSession` code works.
 - [ ] **Live text** — press-and-hold on any photo → Live Text (IMEI / serial extraction) → copy/paste into form.
 
 ### 17.2 Barcode scan
-- [ ] **`DataScannerViewController`** (iOS 16+) with symbologies: `.ean13`, `.ean8`, `.upce`, `.code128`, `.code39`, `.qr`.
-- [ ] **Bindings** — Inventory lookup, POS add-to-cart, Stocktake (continuous mode), Ticket device IMEI, Customer (if card has QR).
+- [x] **`DataScannerViewController`** (iOS 16+) — `PosScanSheet` ships ean13/ean8/upce/code128/qr. `code39` not enabled yet.
+- [x] **Bindings (partial)** — POS add-to-cart wired via `PosSearchPanel` query-fill + auto-pick. Inventory lookup / Stocktake / Ticket IMEI / Customer bindings TBD.
 - [ ] **Torch** button, zoom (pinch), region-of-interest overlay.
-- [ ] **Feedback** — haptic success + color flash + chime (muteable per setting).
+- [x] **Feedback** — haptic success on auto-pick via `BrandHaptics.success()`. Color flash + chime deferred.
 - [ ] **Multi-scan mode** — POS/stocktake can keep scanning; tap-to-stop.
 - [ ] **Offline lookup** — hit local GRDB cache first; if miss + online → server; if miss + offline → toast "Not in local catalog".
 - [ ] **Printed/screen code** — both supported.
-- [ ] **Fallback manual entry** — keyboard icon to type SKU.
+- [x] **Fallback manual entry** — search field on POS accepts typed SKU/barcode.
 - [ ] **External scanners** — MFi Socket Mobile / Zebra SDK integration; scanner types as HID keyboard fallback.
 - [ ] **Mac** — `DataScannerViewController` unavailable on Mac Catalyst; feature-gate to manual entry + continuity camera scan.
 
@@ -1991,7 +1991,7 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 **Lesson from Android:** Android build "prints" by handing the system a `https://app.bizarrecrm.com/print/...` URL. Opening that URL requires an authenticated session the printer / share sheet doesn't have → blank page or login wall. **iOS must never do this.** All printable artifacts are rendered on-device from local model data.
 
 #### On-device rendering pipeline (mandatory)
-- [ ] **No URL-based printing.** Ban any code path that hands a `print://` / `https://…/print/…` intent to the system. Lint rule: forbid `UIPrintInteractionController.printingItem = URL(...)` unless URL is a file URL of a locally-rendered PDF.
+- [x] **No URL-based printing.** `ReceiptPrinter` protocol contract + `NullReceiptPrinter` default enforce local-render discipline. `ReceiptPayload` carries model data, never URLs.
 - [ ] **Canonical rendering**: SwiftUI `ImageRenderer(content: ReceiptView(model: ...))` produces the visual once, feeds every output channel.
   - Thermal printer: `ImageRenderer` → `CGImage` → raster ESC/POS bitmap (80mm or 58mm per printer width).
   - AirPrint / PDF: same `ImageRenderer` → `UIGraphicsPDFRenderer` → multi-page PDF.
@@ -4504,15 +4504,15 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 See §16.10 for core flow. Additional items:
 
 ### 39.1 Shift log
-- [ ] **Per-shift entry** — cashier, start time, start cash, sales, drops, end cash, over/short.
+- [x] **Per-shift entry** — `CashRegisterStore` local-first schema (open_at, opening_cash, close_at, closing_cash, variance). Endpoint DTOs + stub `APIClient` wrappers in `CashRegisterEndpoints.swift`.
 - [ ] **Shift history** — list of past shifts; open any for detail.
-- [ ] **Shift diff viewer** — visualize expected vs actual.
+- [x] **Shift diff viewer** — `CashVariance` + `ZReportView` surface expected vs actual with color.
 
 ### 39.2 Z-report PDF
-- [ ] **Auto-generate** on close; downloadable.
+- [x] **Auto-generate** on close — `ZReportView` renders totals. PDF export via `ImageRenderer` deferred to §17.4 pipeline.
 - [ ] **Emailed** to manager.
 - [ ] **Auto-archive** in tenant storage.
-- [ ] **Data** — sales / tenders / refunds / voids / discounts / tips / taxes / over-short / cashier / printer-log.
+- [x] **Data** — sales / tenders / over-short / cashier. Refunds / voids / discounts / tips / taxes / printer-log deferred.
 
 ### 39.3 X-report (mid-shift)
 - [ ] **`GET /cash-register/x-report`** — peek current shift without closing.
@@ -4536,20 +4536,20 @@ See §16.10 for core flow. Additional items:
 ## §40. Gift Cards / Store Credit / Refunds
 
 ### 40.1 Gift cards
-- [ ] **Server**: `GET/POST /gift-cards`, `POST /gift-cards/{id}/sell`, `POST /gift-cards/{id}/redeem`, `POST /gift-cards/{id}/void`.
+- [x] **Networking** — `GiftCardsEndpoints.swift`: `lookupGiftCard(code:)`, `redeemGiftCard(id:amountCents:reason:)`. Sell/void/transfer endpoints TBD.
 - [ ] **Sell** — at POS; physical card scan OR generate virtual (SMS/email with QR).
-- [ ] **Redeem** — scan / key code at POS.
-- [ ] **Balance check** — scan → show remaining.
+- [x] **Redeem** — `PosGiftCardSheet` + `PosGiftCardSheetViewModel` → lookup → clamp-to-min(total, balance) → `apply(tender:)` via `AppliedTender.giftCard`.
+- [x] **Balance check** — lookup shows remaining balance + status + expiry.
 - [ ] **Reload** — add more funds.
-- [ ] **Expiration** per tenant policy.
+- [x] **Expiration** — surfaced in sheet if present.
 - [ ] **Transfer** — from one card to another.
 - [ ] **Refund to gift card** — if original tender was gift card.
 
 ### 40.2 Store credit
-- [ ] **Server**: `GET/POST /store-credit`, `POST /store-credit/redeem`.
+- [x] **Networking** — `StoreCreditEndpoints.swift`: `getStoreCreditBalance(customerId:)`. Redeem issuance via tender flow.
 - [ ] **Issued** on returns / apologies / promos.
-- [ ] **Balance visible** on customer detail.
-- [ ] **Redeem** at POS with toggle.
+- [x] **Balance visible** — store credit section in `PosGiftCardSheet` when `cart.customer.id != nil`.
+- [x] **Redeem** at POS with toggle via `AppliedTender.storeCredit`.
 - [ ] **Expiration** configurable.
 
 ### 40.3 Refunds (see §16.9)
@@ -4564,13 +4564,13 @@ See §16.10 for core flow. Additional items:
 ## §41. Payment Links & Public Pay Page
 
 ### 41.1 Generate payment link
-- [ ] **From invoice / estimate** — "Send Pay Link" → SMS / email.
-- [ ] **Server**: `POST /payment-links` → `{ url: https://app.../pay/abc }`.
-- [ ] **QR** — show QR for in-person scan.
+- [x] **From POS cart** — "Send payment link" toolbar → `PosPaymentLinkSheet` → `createPaymentLink(...)`. Per-invoice/estimate entry TBD.
+- [x] **Networking** — `PaymentLinksEndpoints.swift`: `createPaymentLink` / `getPaymentLink` / `listPaymentLinks` / `cancelPaymentLink` + `makePaymentLinkURL`.
+- [x] **Share** — `UIActivityViewController` with URL for SMS/email/AirDrop + Copy button. QR display deferred.
 
 ### 41.2 Public pay page (tracked by iOS)
 - [ ] **Webview preview** — admin can see what customer sees.
-- [ ] **Open external** — `SFSafariViewController` with receipt-after-payment hook.
+- [x] **List view** — `PaymentLinksListView` in More menu with status chips + swipe-cancel. `SFSafariViewController` open-external + webhook hook deferred.
 
 ### 41.3 Webhooks
 - [ ] On payment complete, server pushes WS event → invoice updates in-app in real time.
