@@ -2241,7 +2241,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Permanent drawer at ≥ 1240dp.
 
 ### 22.3 Keyboard & mouse
-- [~] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape.
+- [~] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape. (Ctrl+N, Shift+N/S/M, Ctrl+F, Ctrl+H, Ctrl+",", Ctrl+/, Esc DONE; Ctrl+P/K/S/Z pending)
 - [x] Shortcut overlay (Ctrl+/) lists every shortcut for current screen.
 - [ ] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons.
 - [ ] Right-click: `Modifier.onPointerEvent(Release) { ... if (button.isSecondary) showDropdown }`.

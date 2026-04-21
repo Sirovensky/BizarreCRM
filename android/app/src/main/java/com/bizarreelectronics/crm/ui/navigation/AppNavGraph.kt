@@ -477,6 +477,22 @@ fun AppNavGraph(
                 onNewSms = { navController.navigate(Screen.Messages.route) },
                 onGlobalSearch = { navController.navigate(Screen.GlobalSearch.route) },
                 onSettings = { navController.navigate(Screen.Settings.route) },
+                onHome = {
+                    // Pop to the dashboard root without stacking it again.
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Dashboard.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onBack = {
+                    if (!navController.popBackStack()) {
+                        // Already on the root — fall back to Dashboard.
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Dashboard.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                },
             ) {
             // §22.2 — at tablet+ widths render NavigationRail alongside the
             // NavHost in a Row. Phones fall through to single-column.

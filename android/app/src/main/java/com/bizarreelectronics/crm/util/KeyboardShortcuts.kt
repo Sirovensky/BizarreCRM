@@ -44,6 +44,9 @@ import androidx.compose.ui.input.key.type
  *   - Ctrl+Shift+M  → onNewSms
  *   - Ctrl+F        → onGlobalSearch
  *   - Ctrl+,        → onSettings
+ *   - Ctrl+H        → onHome (dashboard)
+ *   - Escape        → onBack
+ *   - Ctrl+/        → show help dialog
  *
  * Returns true from the lambda when handled so the event is not propagated
  * further (otherwise Ctrl+N would also type "n" into the focused TextField).
@@ -59,6 +62,8 @@ fun KeyboardShortcutsHost(
     onNewSms: () -> Unit,
     onGlobalSearch: () -> Unit,
     onSettings: () -> Unit,
+    onHome: () -> Unit,
+    onBack: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -85,6 +90,10 @@ fun KeyboardShortcutsHost(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Escape has no modifier — handle before the Ctrl gate.
+                if (event.key == Key.Escape && !event.isCtrlPressed && !event.isShiftPressed) {
+                    onBack(); return@onPreviewKeyEvent true
+                }
                 if (!event.isCtrlPressed) return@onPreviewKeyEvent false
                 when {
                     event.key == Key.N && event.isShiftPressed -> {
@@ -101,6 +110,9 @@ fun KeyboardShortcutsHost(
                     }
                     event.key == Key.F -> {
                         onGlobalSearch(); true
+                    }
+                    event.key == Key.H -> {
+                        onHome(); true
                     }
                     event.key == Key.Comma -> {
                         onSettings(); true
@@ -124,7 +136,9 @@ private fun ShortcutHelpTable() {
         "Ctrl+Shift+S" to "Scan barcode",
         "Ctrl+Shift+M" to "New SMS",
         "Ctrl+F" to "Global search",
+        "Ctrl+H" to "Home",
         "Ctrl+," to "Settings",
+        "Escape" to "Back",
         "Ctrl+/" to "Show this help",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
