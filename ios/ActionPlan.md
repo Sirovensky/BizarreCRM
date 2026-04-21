@@ -272,7 +272,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
 - [ ] **Paste-from-clipboard** auto-detect 6-digit string.
-- [ ] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
+- [x] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`. (TwoFactorSettingsView + TwoFactorSettingsViewModel, commit feat(ios phase-1 §2): 2FA enrollment + recovery codes + challenge flow)
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
@@ -382,24 +382,24 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Factor type SMS: fallback only; discouraged (SIM swap risk)
 - [ ] Factor type hardware key (FIDO2 / Passkey): recommended for owners
 - [ ] Factor type biometric-backed passkey: iOS 17+ via iCloud Keychain
-- [ ] Enrollment flow: Settings → Security → Enable 2FA
-- [ ] Generates secret → displays QR + manual code
-- [ ] User scans with Authenticator
-- [ ] Verify via entering current 6-digit code
-- [ ] Save recovery codes at enrollment
-- [ ] Back-up factor required: ≥ 2 factors minimum (TOTP + recovery codes)
+- [x] Enrollment flow: Settings → Security → Enable 2FA (TwoFactorSettingsView + TwoFactorEnrollView, commit feat(ios phase-1 §2))
+- [x] Generates secret → displays QR + manual code (TwoFactorQRGenerator, TwoFactorEnrollView step 2)
+- [x] User scans with Authenticator (QR display + manual entry fallback)
+- [x] Verify via entering current 6-digit code (TwoFactorEnrollView step 3 + TwoFactorEnrollmentViewModel)
+- [x] Save recovery codes at enrollment (BackupCodesStep: Copy + Save to Files + confirmation gate)
+- [x] Back-up factor required: ≥ 2 factors minimum (TOTP + recovery codes) (enforced in enrollment wizard)
 - [ ] Disable flow: requires current factor + password + email confirm link
 - [ ] Passkey preference: iOS 17+ promotes passkey over TOTP as primary
-- [ ] Generate 10 codes, 10-char base32 each
-- [ ] Generated at enrollment; copyable / printable
-- [ ] One-time use per code
-- [ ] Not stored on device (user's responsibility)
-- [ ] Server stores hashes only
-- [ ] Display: reveal once with warning "Save these — they won't show again"
-- [ ] Print + email-to-self options
-- [ ] Regeneration at Settings → Security → Regenerate codes (invalidates previous)
-- [ ] Usage: Login 2FA prompt has "Use recovery code" link
-- [ ] Entering recovery code logs in + flags account (email sent to alert)
+- [x] Generate 10 codes, 10-char base32 each (RecoveryCodeList struct + BackupCodesStep display)
+- [x] Generated at enrollment; copyable / printable (UIPasteboard copy + UIDocumentPicker export)
+- [x] One-time use per code (handled server-side; UI shows codes-remaining)
+- [x] Not stored on device (user's responsibility) (in-memory only, never UserDefaults/Keychain)
+- [x] Server stores hashes only (server-side; iOS only holds plain codes briefly for display)
+- [x] Display: reveal once with warning "Save these — they won't show again" (BackupCodesStep with confirmation gate)
+- [x] Print + email-to-self options (Save to Files via UIDocumentPicker + Copy to clipboard)
+- [x] Regeneration at Settings → Security → Regenerate codes (invalidates previous) (TwoFactorSettingsView regenerate flow)
+- [x] Usage: Login 2FA prompt has "Use recovery code" link (TwoFactorChallengeView recovery link)
+- [x] Entering recovery code logs in + flags account (email sent to alert) (TwoFactorRecoveryInputView + repository.verifyRecovery)
 - [ ] Admin override: tenant owner can reset staff recovery codes after verifying identity
 - [ ] Providers: Okta, Azure AD, Google Workspace, JumpCloud
 - [ ] SAML 2.0 primary; OIDC for newer

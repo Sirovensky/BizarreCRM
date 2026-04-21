@@ -24,39 +24,39 @@ public actor SessionTimer {
     // MARK: - Configuration
 
     private let idleTimeout: TimeInterval
+    private let pollInterval: TimeInterval
     private let onExpire: @Sendable () async -> Void
-    private let onWarning: (() async -> Void)?
-
-    /// 80 % threshold triggers the warning callback.
-    private var warningThreshold: TimeInterval { idleTimeout * 0.8 }
+    private let onWarning: (@Sendable () async -> Void)?
 
     // MARK: - Internal state
 
     private var deadline: Date = .distantFuture
     private var warningSent: Bool = false
-
     private var runLoop: Task<Void, Never>?
 
     // MARK: - Init
 
     /// - Parameters:
-    ///   - idleTimeout: Seconds of inactivity before expiry. Default: 15 minutes.
-    ///   - onWarning:   Called when 80% of the idle window has elapsed (optional).
-    ///   - onExpire:    Called when the full idle window has elapsed.
+    ///   - idleTimeout:  Seconds of inactivity before expiry. Default: 15 minutes.
+    ///   - pollInterval: How often to check the deadline. Default 1 s; use a
+    ///                   shorter value in tests with short timeouts.
+    ///   - onWarning:    Called when 80% of the idle window has elapsed (optional).
+    ///   - onExpire:     Called when the full idle window has elapsed.
     public init(
         idleTimeout: TimeInterval = 15 * 60,
+        pollInterval: TimeInterval = 1.0,
         onWarning: (@Sendable () async -> Void)? = nil,
         onExpire: @Sendable @escaping () async -> Void
     ) {
         self.idleTimeout = idleTimeout
+        self.pollInterval = pollInterval
         self.onWarning = onWarning
         self.onExpire = onExpire
     }
 
     // MARK: - Public API
 
-    /// Start (or restart) the idle countdown. Call `start()` after creating
-    /// the timer; it is NOT started automatically.
+    /// Start (or restart) the idle countdown.
     public func start() {
         isRunning = true
         resetDeadline()
@@ -71,7 +71,7 @@ public actor SessionTimer {
         warningSent = false
     }
 
-    /// Pause the countdown (e.g. user is in a Settings sheet, shouldn't time out).
+    /// Pause the countdown.
     public func pause() {
         isRunning = false
         runLoop?.cancel()
@@ -88,6 +88,7 @@ public actor SessionTimer {
     }
 
     /// How many seconds remain before the session expires.
+    /// Returns `idleTimeout` when paused (the full window would restart on resume).
     public func currentRemaining() -> TimeInterval {
         guard isRunning else { return idleTimeout }
         return max(0, deadline.timeIntervalSinceNow)
@@ -95,27 +96,22 @@ public actor SessionTimer {
 
     // MARK: - Private
 
-    private func idleTimeoutValue() -> TimeInterval { idleTimeout }
-
-    private func warningThresholdValue() -> TimeInterval { idleTimeout * 0.2 }
-
     private func resetDeadline() {
         deadline = Date(timeIntervalSinceNow: idleTimeout)
     }
 
     private func scheduleLoop() {
         runLoop?.cancel()
+        let intervalNS = UInt64(pollInterval * 1_000_000_000)
         runLoop = Task { [weak self] in
-            // Poll every second; short interval keeps the UI banner accurate.
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: intervalNS)
                 guard !Task.isCancelled, let self else { return }
 
-                let remaining  = await self.currentRemaining()
-                let didWarn    = await self.warningSent
-                let threshold  = await self.idleTimeoutValue() * 0.2
+                let remaining = await self.currentRemaining()
+                let didWarn   = await self.warningSent
+                let threshold = await self.warningThreshold()
 
-                // Warning at 80% elapsed (remaining ≤ 20% of timeout).
                 if !didWarn && remaining <= threshold {
                     await self.triggerWarning()
                 }
@@ -127,6 +123,8 @@ public actor SessionTimer {
             }
         }
     }
+
+    private func warningThreshold() -> TimeInterval { idleTimeout * 0.2 }
 
     private func triggerWarning() async {
         guard let cb = onWarning, !warningSent else { return }
