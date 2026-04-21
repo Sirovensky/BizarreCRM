@@ -4618,15 +4618,15 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 - [x] **Device picker (standalone)** — `RepairPricingServicePicker` multi-select sheet ready for §16.2 POS wiring. IMEI pattern + conditions list display in detail view.
 
 ### 43.3 Price overrides
-- [ ] **Per-tenant price** — override service default.
-- [ ] **Per-customer override** — VIP pricing.
+- [x] **Per-tenant price** — `PriceOverrideEditorSheet` + `PriceOverrideEditorViewModel` + `PriceOverrideValidator`. Override service default via swipe/long-press on service row.
+- [x] **Per-customer override** — VIP pricing via customer-scope picker in same sheet. `PriceOverrideListView` admin screen lists + deletes all overrides.
 
 ### 43.4 Part mapping
-- [ ] **SKU picker** for each service.
-- [ ] **Multi-part bundles** — e.g., screen + battery + adhesive.
+- [x] **SKU picker** for each service — `PartSkuPicker` debounced search against `GET /inventory/items?q=...`. `ServicePartMappingSheet` opened from service row swipe action.
+- [x] **Multi-part bundles** — toggle reveals multi-row editor; each row has SKU picker + Stepper qty. Save via `PATCH /repair-pricing/services/:id`.
 
 ### 43.5 Add/edit templates (admin)
-- [ ] **Full editor** — model, year, conditions, services, default prices.
+- [x] **Full editor** — `DeviceTemplateEditorView` with model name, family picker (+ custom entry), year, condition chips, services with `NewServiceInlineForm`. `DeviceTemplateListView` admin sidebar+detail (iPad) / NavigationStack (iPhone) with edit/delete swipe actions.
 
 ---
 ## §44. CRM Health Score & LTV

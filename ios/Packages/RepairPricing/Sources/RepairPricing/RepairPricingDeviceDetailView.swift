@@ -3,11 +3,14 @@ import Core
 import DesignSystem
 import Networking
 
-/// §43.1 Device detail — shows header + services list for a single template.
+/// §43.1/§43.3/§43.4 Device detail — shows header + services list for a single template.
 ///
 /// Services are loaded from the full template detail endpoint so we always
 /// have the enriched parts + pricing, even when the catalog list was loaded
 /// without services.
+///
+/// §43.3: Long-press a service row → "Override price" sheet.
+/// §43.4: "Map parts" button on each row opens ServicePartMappingSheet.
 @MainActor
 public struct RepairPricingDeviceDetailView: View {
     private let initialTemplate: DeviceTemplate
@@ -16,6 +19,11 @@ public struct RepairPricingDeviceDetailView: View {
     @State private var template: DeviceTemplate
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    // §43.3 override sheet
+    @State private var overrideTarget: RepairService?
+    // §43.4 part mapping sheet
+    @State private var partMappingTarget: RepairService?
 
     public init(template: DeviceTemplate, api: APIClient) {
         self.initialTemplate = template
@@ -41,6 +49,44 @@ public struct RepairPricingDeviceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .task { await loadDetail() }
+        // §43.3 Price override sheet
+        .sheet(item: $overrideTarget) { svc in
+            PriceOverrideEditorSheet(
+                api: api,
+                serviceId: String(svc.id),
+                serviceName: svc.serviceName
+            ) { _ in
+                // Refresh detail to reflect new override (or dismiss — no refresh needed yet)
+            }
+        }
+        // §43.4 Part mapping sheet
+        .sheet(item: $partMappingTarget) { svc in
+            ServicePartMappingSheet(
+                api: api,
+                serviceId: svc.id,
+                serviceName: svc.serviceName
+            ) { updated in
+                // Patch the in-memory service list
+                if var services = template.services,
+                   let idx = services.firstIndex(where: { $0.id == updated.id }) {
+                    services[idx] = updated
+                    template = DeviceTemplate(
+                        id: template.id,
+                        name: template.name,
+                        family: template.family,
+                        model: template.model,
+                        color: template.color,
+                        thumbnailUrl: template.thumbnailUrl,
+                        imeiPattern: template.imeiPattern,
+                        conditions: template.conditions,
+                        services: services,
+                        estimatedMinutes: template.estimatedMinutes,
+                        defaultPriceCents: template.defaultPriceCents,
+                        warrantyDays: template.warrantyDays
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Content
@@ -68,8 +114,32 @@ public struct RepairPricingDeviceDetailView: View {
                     ForEach(services) { service in
                         ServiceRow(service: service)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button("Adjust") { /* §43.3 price override — coming later */ }
-                                    .tint(.bizarreOrange)
+                                // §43.4 Map parts
+                                Button {
+                                    partMappingTarget = service
+                                } label: {
+                                    Label("Map Parts", systemImage: "cpu")
+                                }
+                                .tint(.bizarreTeal)
+                                // §43.3 Override price
+                                Button {
+                                    overrideTarget = service
+                                } label: {
+                                    Label("Override", systemImage: "tag")
+                                }
+                                .tint(.bizarreOrange)
+                            }
+                            .contextMenu {
+                                Button {
+                                    overrideTarget = service
+                                } label: {
+                                    Label("Override price", systemImage: "tag")
+                                }
+                                Button {
+                                    partMappingTarget = service
+                                } label: {
+                                    Label("Map parts", systemImage: "cpu")
+                                }
                             }
                     }
                 }
