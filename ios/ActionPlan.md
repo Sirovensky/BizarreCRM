@@ -1447,7 +1447,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 
 ### 11.3 Create
 - [x] Minimal — shipped.
-- [ ] **Receipt capture** — camera inline; OCR total via `VNRecognizeTextRequest` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable).
+- [x] **Receipt capture** — camera inline; OCR total via `VNRecognizeTextRequest` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable). (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
 - [ ] **Photo library import** — pick existing receipt.
 - [ ] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
 - [ ] **Amount validation** — decimal 2 places; cap $100k.
@@ -1456,8 +1456,33 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [ ] **Offline create** + temp-id reconcile.
 
 ### 11.4 Approval (admin)
-- [ ] List filter "Pending approval".
-- [ ] Approve / Reject with comment; auto-notify submitter.
+- [x] List filter "Pending approval" — `ExpenseApprovalListView` (manager, Glass toolbar, approve/deny with reason). (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] Approve / Reject with comment; audit log on every decision; budget override warning. `POST /expenses/:id/approve` / `/deny`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+
+### 11.5 Deep OCR (post-phase)
+- [x] **`ReceiptOCRService`** — actor; Vision `VNRecognizeTextRequest` accurate mode; returns `ReceiptOCRResult` (`merchantName`, `totalCents`, `taxCents`, `subtotalCents`, `transactionDate`, `lineItems`, `rawText`). (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`ReceiptParser`** — pure; regex amount matching ($X.XX), date patterns, common line-item format. 22 tests pass. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`ReceiptCategoryGuesser`** — pure; merchant name → category guess (Shell→Fuel, Home Depot→Supplies, etc.). 37 tests pass. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+
+### 11.6 Split receipt (post-phase)
+- [x] **`ReceiptSplitView`** — list OCR'd line items; user toggles per-line category; a11y on each toggle. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`ReceiptSplitViewModel`** — `@Observable`; per-line category assignments (immutable updates); `POST /expenses/split`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+
+### 11.7 Recurring expenses (post-phase)
+- [x] **`RecurringExpenseRule`** — `{ id, merchant, amountCents, category, frequency (monthly/yearly), dayOfMonth, notes }`; `nextOccurrenceLabel()`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`RecurringExpenseListView`** — admin CRUD; swipe-to-delete; pull-to-refresh. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`RecurringExpenseRunner`** — actor; `nextOccurrenceLabel(relativeTo:)` for dashboard "Next recurring expense: Rent on Dec 1". (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+
+### 11.8 Mileage tracking (post-phase)
+- [x] **`MileageEntry`** — `{ id, employeeId, fromLocation, toLocation, fromLat?, fromLon?, toLat?, toLon?, miles, rateCentsPerMile, totalCents, date, purpose }`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`MileageEntrySheet`** — form; GPS auto-fill via one-shot `CLLocationManager` (`@unchecked Sendable`); a11y on location fields. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`MileageCalculator`** — pure; haversine distance in miles + rate×miles; 13 tests pass. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`POST /expenses/mileage`** wired from sheet VM. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+
+### 11.9 Per-diem (post-phase)
+- [x] **`PerDiemClaim`** — `{ id, employeeId, dateRange, ratePerDayCents, totalCents, notes }`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`PerDiemClaimSheet`** — form; date range picker; auto-sum; `POST /expenses/perdiem`. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
+- [x] **`PerDiemCalculator`** — pure; inclusive day count + rate×days; 14 tests pass. (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
 
 ---
 ## §12. SMS & Communications
