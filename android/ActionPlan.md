@@ -1049,9 +1049,9 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inventory/import-csv`, `POST /inventory/{id}/image`, `GET /stocktake`, `POST /stocktake`, `POST /stocktake/{id}/items`, `GET /inventory-enrich/barcode-lookup`, `GET /purchase-orders`, `POST /purchase-orders`._
 
 ### 6.1 List
-- [ ] Base list + filter chips + search.
-- [ ] **Tabs** — All / Products / Parts. NOT SERVICES — services aren't inventoriable. Settings menu handles services catalog (device types, manufacturers).
-- [ ] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
+- [x] Base list + filter chips + search.
+- [x] **Tabs** — All / Products / Parts. NOT SERVICES — services aren't inventoriable. Settings menu handles services catalog (device types, manufacturers).
+- [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
 - [ ] **Filters** (collapsible drawer via `ModalBottomSheet`): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock.
 - [ ] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user.
 - [ ] **Sort** — SKU / name / stock / last restocked / price / last sold / margin.
@@ -1212,7 +1212,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`, `POST /invoices`, `PUT /invoices/{id}`, `POST /invoices/{id}/payments`, `POST /invoices/{id}/void`, `POST /invoices/{id}/credit-note`, `POST /invoices/bulk-action`, `GET /reports/aging`._
 
 ### 7.1 List
-- [ ] Base list + filter chips + search.
+- [x] Base list + filter chips + search.
 - [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void via `ScrollableTabRow`.
 - [ ] **Filters** — date range, customer, amount range, payment method, created-by.
 - [ ] **Sort** — date / amount / due date / status.
@@ -1225,7 +1225,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator.
 
 ### 7.2 Detail
-- [ ] Line items / totals / payments.
+- [x] Line items / totals / payments.
 - [ ] **Header** — invoice number (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip.
 - [ ] **Customer card** — name + phone + email + quick-actions.
 - [ ] **Line items** — editable table (if status allows); tax per line.
@@ -1316,7 +1316,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `PUT /estimates/{id}`, `POST /estimates/{id}/approve`._
 
 ### 8.1 List
-- [ ] Base list + is-expiring warning.
+- [x] Base list + is-expiring warning.
 - [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
 - [ ] Filters — date range, customer, amount, validity.
 - [ ] Bulk actions — Send / Delete / Export.
@@ -1369,7 +1369,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.1 List
-- [ ] Base list.
+- [x] Base list.
 - [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 `LinearProgressIndicator`) / Status / Source / Value / Next Action.
 - [x] **Status filter** (multi-select `FilterChip` row) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
 - [ ] **Sort** — name / created / lead score / last activity / next action.
@@ -1402,7 +1402,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Delete / Edit**.
 
 ### 9.4 Create
-- [ ] Minimal form.
+- [x] Minimal form.
 - [ ] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
 - [ ] **Offline create** + reconcile.
 
@@ -1415,7 +1415,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments/{id}`, `DELETE /appointments/{id}`, `GET /calendar` (verify)._
 
 ### 10.1 List / calendar views
-- [ ] Base list.
+- [x] Base list.
 - [ ] **`SegmentedButton`** — Agenda / Day / Week / Month.
 - [ ] **Month** — custom `CalendarGrid` Composable with dot per day for events; tap day → agenda.
 - [ ] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin.
@@ -1483,7 +1483,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [ ] Approval workflow — admin Approve / Reject with comment.
 
 ### 11.3 Create
-- [ ] Minimal.
+- [x] Minimal.
 - [ ] **Receipt capture** — CameraX inline; OCR total via ML Kit `TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable).
 - [ ] **PhotoPicker import** — pick existing receipt.
 - [ ] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
