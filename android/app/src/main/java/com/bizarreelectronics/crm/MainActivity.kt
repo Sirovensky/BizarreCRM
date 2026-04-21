@@ -65,6 +65,9 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var pinPreferences: PinPreferences
 
+    @Inject
+    lateinit var breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs
+
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
      * onNewIntent intents. Shared by two entry points that both need to
@@ -188,6 +191,7 @@ class MainActivity : FragmentActivity() {
                         syncQueueDao = syncQueueDao,
                         syncManager = syncManager,
                         deepLinkBus = deepLinkBus,
+                        breadcrumbs = breadcrumbs,
                     )
                 }
             }

@@ -33,6 +33,7 @@ import javax.inject.Singleton
 @Singleton
 class CrashReporter @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val breadcrumbs: Breadcrumbs,
 ) {
     @Volatile
     private var installed = false
@@ -80,6 +81,8 @@ class CrashReporter @Inject constructor(
                     pw.println("Caused by:"); cause.printStackTrace(pw); pw.println()
                     cause = cause.cause
                 }
+                pw.println("--- Breadcrumbs (last ${breadcrumbs.recent().size}) ---")
+                breadcrumbs.recent().forEach { pw.println(it) }
             }
         }
         file.writeText(sw.toString())

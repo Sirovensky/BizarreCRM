@@ -65,7 +65,7 @@ in-progress and lags the audit.
 | 29 | Performance | ~10% | minifyEnabled true. Missing: Macrobenchmark, JankStats, baseline profiles. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
 | 31 | Testing | ~5% | Schema guard rail only. Missing: unit, integration, UI, E2E, perf, a11y, security tests. |
-| 32 | Telemetry | ~40% | ProGuard bans Firebase Crashlytics + **CrashReporter + Crash Reports screen (NEW)** + **RedactingHttpLogger (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
+| 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
 §§36-75 not yet audited. Next pass.

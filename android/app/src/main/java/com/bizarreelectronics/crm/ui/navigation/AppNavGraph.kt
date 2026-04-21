@@ -236,10 +236,17 @@ fun AppNavGraph(
     syncQueueDao: SyncQueueDao? = null,
     syncManager: SyncManager? = null,
     deepLinkBus: DeepLinkBus? = null,
+    breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // §32.5 — log every nav route change so the breadcrumb tail in any
+    // future crash log shows the user's path leading up to the throwable.
+    LaunchedEffect(currentRoute) {
+        currentRoute?.let { breadcrumbs?.log(com.bizarreelectronics.crm.util.Breadcrumbs.CAT_NAV, it) }
+    }
 
     // Observe auth expiry: when AuthInterceptor fails to refresh and clears
     // prefs, navigate the user back to the login screen + pass the reason
