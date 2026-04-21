@@ -217,6 +217,8 @@ fun SettingsScreen(
     onPinSetup: (() -> Unit)? = null,
     // §32.3 — opens the Crash reports diagnostic screen.
     onCrashReports: (() -> Unit)? = null,
+    // §28 — opens About + diagnostics screen (copy-bundle for support).
+    onAbout: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -285,6 +287,15 @@ fun SettingsScreen(
                     icon = Icons.Default.BugReport,
                     title = "Crash reports",
                     onClick = onCrashReports,
+                )
+            }
+
+            // §28 — About + diagnostics. Copy-bundle for support tickets.
+            if (onAbout != null) {
+                SettingsRow(
+                    icon = Icons.Default.Info,
+                    title = "About",
+                    onClick = onAbout,
                 )
             }
 
