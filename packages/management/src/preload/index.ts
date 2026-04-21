@@ -67,6 +67,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:acknowledge-all-alerts',
   'super-admin:reset-rate-limits',
   'super-admin:list-rate-limits',
+  'super-admin:rotate-jwt-secret',
   'super-admin:backfill-cloudflare-dns',
   'super-admin:list-tenant-auth-events',
   'super-admin:list-tenant-notifications',
@@ -181,6 +182,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       safeInvoke('super-admin:reset-rate-limits', payload),
     listRateLimits: (payload: { lockedOnly?: boolean; limit?: number }) =>
       safeInvoke('super-admin:list-rate-limits', payload),
+    rotateJwtSecret: (purpose: 'access' | 'refresh' | 'both') =>
+      safeInvoke('super-admin:rotate-jwt-secret', purpose),
     backfillCloudflareDns: () => safeInvoke('super-admin:backfill-cloudflare-dns'),
     listTenantAuthEvents: (params?: unknown) =>
       safeInvoke('super-admin:list-tenant-auth-events', params),

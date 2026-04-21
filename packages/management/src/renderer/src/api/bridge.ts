@@ -274,6 +274,13 @@ interface ElectronAPI {
       summary: { total: number; locked: number; dbsTouched: number };
       now: number;
     }>>;
+    /** Generate a new JWT signing secret. Value is returned once; operator must paste into .env. */
+    rotateJwtSecret(purpose: 'access' | 'refresh' | 'both'): Promise<ApiResponse<{
+      purpose: 'access' | 'refresh' | 'both';
+      nextJwtSecret?: string;
+      nextJwtRefreshSecret?: string;
+      instructions: string[];
+    }>>;
     listTenantAuthEvents(params?: { tenant_slug?: string; ip?: string; event?: string; page?: number; limit?: number }): Promise<ApiResponse<{
       events: Array<{ id: number; tenant_slug: string; event: string; ip_address: string; user_agent?: string; details?: string; created_at: string }>;
       pagination: { page: number; limit: number; total: number; total_pages: number };

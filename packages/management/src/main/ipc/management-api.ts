@@ -1110,6 +1110,16 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
+  ipcMain.handle('super-admin:rotate-jwt-secret', wrapHandler(async (event, purpose: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = z.enum(['access', 'refresh', 'both']).safeParse(purpose);
+    if (!parsed.success) {
+      return { success: false, message: 'Invalid purpose (expected access / refresh / both)' };
+    }
+    const res = await apiRequest('POST', '/super-admin/api/rotate-jwt-secret', { purpose: parsed.data });
+    return res.body;
+  }));
+
   ipcMain.handle('super-admin:list-rate-limits', wrapHandler(async (event, payload: unknown) => {
     assertRendererOrigin(event);
     const parsed = SchemaListRateLimits.safeParse(payload ?? {});

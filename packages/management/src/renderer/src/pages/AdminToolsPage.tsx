@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Wrench, Unlock, Cloud, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Lock,
+  Wrench, Unlock, Cloud, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Lock, Key,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
+import { CopyText } from '@/components/CopyText';
 import toast from 'react-hot-toast';
 
 interface RateLimitRow {
@@ -31,6 +32,12 @@ export function AdminToolsPage() {
 
   const [dnsBusy, setDnsBusy] = useState(false);
   const [dnsResult, setDnsResult] = useState<ToolResult | null>(null);
+
+  const [jwtBusy, setJwtBusy] = useState(false);
+  const [jwtPurpose, setJwtPurpose] = useState<'access' | 'refresh' | 'both'>('both');
+  const [jwtAccess, setJwtAccess] = useState<string | null>(null);
+  const [jwtRefresh, setJwtRefresh] = useState<string | null>(null);
+  const [jwtInstructions, setJwtInstructions] = useState<string[] | null>(null);
 
   // Rate-limit inspector
   const [rlRows, setRlRows] = useState<RateLimitRow[]>([]);
@@ -112,6 +119,35 @@ export function AdminToolsPage() {
     }
   }
 
+  async function handleRotateJwt() {
+    const proceed = window.confirm(
+      `Generate a new JWT ${jwtPurpose === 'both' ? 'access + refresh' : jwtPurpose} secret?
+
+` +
+        'The new value is shown ONCE on this screen — copy it before closing. ' +
+        'Paste into .env as the new primary and keep the old value as ' +
+        '{JWT,JWT_REFRESH}_SECRET_PREVIOUS until existing sessions expire.'
+    );
+    if (!proceed) return;
+    setJwtBusy(true);
+    try {
+      const res = await getAPI().superAdmin.rotateJwtSecret(jwtPurpose);
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        setJwtAccess(res.data.nextJwtSecret ?? null);
+        setJwtRefresh(res.data.nextJwtRefreshSecret ?? null);
+        setJwtInstructions(res.data.instructions);
+        toast.success('New secret(s) generated — copy before closing');
+      } else {
+        toast.error(res.message ?? 'JWT rotation failed');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'JWT rotation failed');
+    } finally {
+      setJwtBusy(false);
+    }
+  }
+
   async function handleBackfillDns() {
     const proceed = window.confirm(
       'Re-create Cloudflare DNS records for every active tenant that is missing one? ' +
@@ -159,6 +195,63 @@ export function AdminToolsPage() {
         Operator-only maintenance scripts. Each call is gated by a step-up TOTP challenge
         and recorded in the master audit log.
       </p>
+
+      {/* Rotate JWT secret */}
+      <ToolCard
+        icon={Key}
+        iconColor="text-amber-400"
+        title="Rotate JWT signing secret"
+        description="Generates a new cryptographic key for signing session tokens. The server does not apply it automatically — paste the value into .env and restart. Use during incident response or regular rotation (SA1-1)."
+      >
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            <span className="text-surface-500">Scope:</span>
+            {(['access', 'refresh', 'both'] as const).map((p) => (
+              <label key={p} className="inline-flex items-center gap-1 cursor-pointer text-surface-300">
+                <input
+                  type="radio"
+                  name="jwt-purpose"
+                  value={p}
+                  checked={jwtPurpose === p}
+                  onChange={() => setJwtPurpose(p)}
+                  className="cursor-pointer"
+                />
+                <span>{p}</span>
+              </label>
+            ))}
+          </div>
+          <ActionButton onClick={handleRotateJwt} busy={jwtBusy} label="Generate new secret" busyLabel="Generating…" />
+          {(jwtAccess || jwtRefresh) && (
+            <div className="space-y-2 p-3 rounded border border-amber-900/60 bg-amber-950/30">
+              <div className="flex items-start gap-2 text-xs text-amber-200">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>Shown ONCE. Copy before closing this panel. The server never stores these.</span>
+              </div>
+              {jwtAccess && (
+                <div>
+                  <div className="text-[10px] font-mono text-surface-500 uppercase tracking-wider mb-1">JWT_SECRET</div>
+                  <div className="font-mono text-[11px] text-surface-200 break-all bg-surface-950 border border-surface-800 rounded p-2">
+                    <CopyText value={jwtAccess} hideIconUntilHover={false}>{jwtAccess}</CopyText>
+                  </div>
+                </div>
+              )}
+              {jwtRefresh && (
+                <div>
+                  <div className="text-[10px] font-mono text-surface-500 uppercase tracking-wider mb-1">JWT_REFRESH_SECRET</div>
+                  <div className="font-mono text-[11px] text-surface-200 break-all bg-surface-950 border border-surface-800 rounded p-2">
+                    <CopyText value={jwtRefresh} hideIconUntilHover={false}>{jwtRefresh}</CopyText>
+                  </div>
+                </div>
+              )}
+              {jwtInstructions && (
+                <ol className="text-[11px] text-surface-400 space-y-0.5 list-decimal pl-4">
+                  {jwtInstructions.map((i, idx) => <li key={idx}>{i.replace(/^\d+\.\s*/, '')}</li>)}
+                </ol>
+              )}
+            </div>
+          )}
+        </div>
+      </ToolCard>
 
       {/* Rate-limit inspector */}
       <ToolCard
