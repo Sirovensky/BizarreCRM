@@ -68,6 +68,9 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs
 
+    @Inject
+    lateinit var jankReporter: com.bizarreelectronics.crm.util.JankReporter
+
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
      * onNewIntent intents. Shared by two entry points that both need to
@@ -108,6 +111,9 @@ class MainActivity : FragmentActivity() {
             setRecentsScreenshotEnabled(false)
         }
         enableEdgeToEdge()
+        // §29 — start frame-timing collection so jank surfaces in
+        // breadcrumbs without an external profiler.
+        jankReporter.attach(this)
 
         // Resolve a route from two possible sources, in priority order:
         //   1. AND-20260414-H1: launcher shortcut / App Actions / QS tile

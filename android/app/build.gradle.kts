@@ -186,6 +186,11 @@ dependencies {
     // WorkManager (Background Sync)
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
+    // §29 — JankStats: lightweight frame-timing collector. Records janky
+    // frames (>16ms over the deadline) without an external profiler so
+    // perf regressions surface in CrashReporter breadcrumbs.
+    implementation("androidx.metrics:metrics-performance:1.0.0-beta02")
+
     // CameraX (Photo capture)
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
