@@ -1503,19 +1503,19 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 
 ### 12.1 Thread list
 - [x] Threads list via `LazyColumn`.
+- [x] **Search** — across all messages + phone numbers.
 - [ ] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row.
 - [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
-- [ ] **Search** — across all messages + phone numbers.
 - [ ] **Pin important threads** to top.
 - [ ] **Sentiment badge** (positive / neutral / negative) if server computes.
 - [ ] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin.
 - [ ] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive.
-- [ ] **Compose new** (FAB) — pick customer or raw phone.
+- [x] **Compose new** (FAB) — pick customer or raw phone.
 - [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
 
 ### 12.2 Thread view
-- [ ] Bubbles + composer + POST /sms/send.
-- [ ] **Real-time WebSocket** via OkHttp `WebSocket` — new message arrives without refresh; animate in with `AnimatedVisibility` + slide-up spring.
+- [x] Bubbles + composer + POST /sms/send.
+- [~] **Real-time WebSocket** via OkHttp `WebSocket` — new message arrives without refresh; animate in with `AnimatedVisibility` + slide-up spring.
 - [ ] **Delivery status** icons per message — sent / delivered / failed / scheduled.
 - [ ] **Read receipts** (if server supports).
 - [ ] **Typing indicator** (if supported).
@@ -1564,12 +1564,12 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 ### 13.1 List
 - [ ] Base list.
 - [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
-- [ ] **Mark all read** action (top-bar button).
-- [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
-- [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
+- [x] **Mark all read** action (top-bar button).
+- [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
+- [~] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
 - [x] **Group by day** (sticky day-header via `stickyHeader` in `LazyColumn`).
 - [x] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
-- [ ] **Empty state** — "All caught up. Nothing new." illustration.
+- [x] **Empty state** — "All caught up. Nothing new." illustration.
 
 ### 13.2 Push pipeline
 - [ ] **Register FCM** on login via `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform: "android", model, os_version, app_version }`.
