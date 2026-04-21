@@ -25,6 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -96,6 +101,14 @@ fun ClockInTile(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            // §26.1 — merge children so TalkBack reads "Clocked in, <name>,
+            // Button" as one labeled action instead of focusing the icon,
+            // title, subtitle, and chevron separately.
+            // §22.3 — hand pointer on tablet / desktop hover.
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+            }
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onOpen),
     ) {
         Row(
