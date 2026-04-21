@@ -64,7 +64,7 @@ in-progress and lags the audit.
 | 28 | Security | ~72% | SQLCipher + EncryptedSharedPrefs + cert pinning + Network Security Config + FLAG_SECURE (partial) + setRecentsScreenshotEnabled + RedactingHttpLogger + ClipboardUtil sensitive-clear + OTP detect + SessionRevoked banner + Biometric STRONG + 401 remote sign-out + ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints, Blur-on-recents, Timber RedactorTree. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
-| 31 | Testing | ~19% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / RecentSearches / EmailValidator / **Formatters (PhoneFormatter + CurrencyFormatter) (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
+| 31 | Testing | ~20% | Schema guard rail + JVM unit tests for ImeiValidator / Breadcrumbs / WindowSize / AppError / ReduceMotion / Money / PhoneFormat / QuietHours / RecentSearches / EmailValidator / Formatters / **LogRedactor (NEW)** DONE. Missing: Compose UI tests, integration, perf, E2E, a11y. |
 | 32 | Telemetry | ~50% | ProGuard bans Firebase Crashlytics + CrashReporter + Crash Reports screen + RedactingHttpLogger + **Breadcrumbs ring buffer (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
@@ -633,9 +633,9 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [ ] **Cursor-based pagination (offline-first)** — list reads from Room via `Flow<PagingData<Ticket>>`. `RemoteMediator` drives `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into Room; list auto-refreshes. Offline: no-op (or un-archive older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from `total_pages`.
 - [ ] **Room cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via Room predicates on `(status_group, assignee, urgency, updated_at)` rather than server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
 - [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
-- [ ] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`) via `FilterChip`.
+- [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`) via `FilterChip`.
 - [ ] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
-- [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms via Flow `debounce`.
+- [~] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms via Flow `debounce`.
 - [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC — via `ExposedDropdownMenuBox`.
 - [ ] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user.
 - [ ] **Swipe actions** — `SwipeToDismissBox` leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete.
@@ -653,8 +653,8 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → `Popup` with recent-tickets + quick-actions.
 - [ ] **Row age / due-date badges** — same color scheme as My Queue.
-- [ ] **Empty state** — "No tickets yet. Create one." CTA.
-- [ ] **Offline state** — list renders from Room; banner "Showing cached tickets" + last-sync time.
+- [x] **Empty state** — "No tickets yet. Create one." CTA.
+- [x] **Offline state** — list renders from Room; banner "Showing cached tickets" + last-sync time.
 
 ### 4.2 Detail
 - [ ] Base detail (customer, devices, notes, history, totals).
@@ -2696,8 +2696,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 32. Telemetry, Crash, Logging
 
 ### 32.1 No third-party telemetry
-- [ ] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
-- [ ] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`.
+- [x] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
+- [~] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`.
 - [ ] Gradle dependency allowlist enforced by custom plugin.
 
 ### 32.2 Tenant-server telemetry
@@ -2719,17 +2719,17 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Share logs → generates redacted bundle + share sheet.
 
 ### 32.5 Breadcrumbs
-- [ ] Screen view / nav events / mutation start-end recorded in ring buffer.
-- [ ] Included with crash report.
+- [x] Screen view / nav events / mutation start-end recorded in ring buffer.
+- [~] Included with crash report.
 
 ### 32.6 Redactor
-- [ ] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens.
-- [ ] Runs before every log emit and telemetry emit.
-- [ ] Unit-tested against known-PII samples.
+- [~] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens.
+- [~] Runs before every log emit and telemetry emit.
+- [x] Unit-tested against known-PII samples.
 
 ### 32.7 Network trace
-- [ ] Debug builds: OkHttp logging interceptor at BODY level, redacted.
-- [ ] Release builds: BASIC level (method + URL + status code), still redacted.
+- [x] Debug builds: OkHttp logging interceptor at BODY level, redacted.
+- [x] Release builds: BASIC level (method + URL + status code), still redacted.
 
 ### 32.8 ANR monitoring
 - [ ] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server.
