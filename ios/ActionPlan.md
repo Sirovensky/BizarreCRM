@@ -4317,17 +4317,17 @@ Why it matters:
 _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step wizard. Mirrors web wizard. Server endpoints: `GET /setup/status`, `POST /setup/step/{n}`, `POST /setup/complete`._
 
 ### 36.1 Shell
-- [ ] **Sheet modal** — full-screen on iPhone, centered glass card on iPad; cannot dismiss until finished or "Do later".
-- [ ] **Step indicator** — 13 dots + progress bar; glass chip on top.
-- [ ] **Skip any** button → resume later in Settings.
-- [ ] **Back / Next / Skip / Do Later** nav always visible; never trap the user.
-- [ ] **Loading / saving state per step** — each `POST /setup/step/{n}` optimistic with offline queue (§20). If submit fails, step stays editable; never lose progress.
-- [ ] **Accessibility baseline** — full VoiceOver labeling; Dynamic Type respected; keyboard navigation on iPad Magic Keyboard (Tab / Enter / Esc / ⌘⇧Enter to submit).
+- [x] **Sheet modal** — full-screen on iPhone, centered glass card on iPad; cannot dismiss until finished or "Do later".
+- [x] **Step indicator** — 13 dots + progress bar; glass chip on top.
+- [x] **Skip any** button → resume later in Settings.
+- [x] **Back / Next / Skip / Do Later** nav always visible; never trap the user.
+- [x] **Loading / saving state per step** — each `POST /setup/step/{n}` optimistic with offline queue (§20). If submit fails, step stays editable; never lose progress.
+- [x] **Accessibility baseline** — full VoiceOver labeling; Dynamic Type respected; keyboard navigation on iPad Magic Keyboard (Tab / Enter / Esc / ⌘⇧Enter to submit).
 
 ### 36.2 Steps
-- [ ] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
-- [ ] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §16.7 so tax engine seeds correctly.
-- [ ] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19).
+- [x] **1. Welcome** — brand hero + value props. Bebas Neue display. Skip button present.
+- [x] **2. Company info** — name, address, phone, website, EIN. Address field uses MapKit autocomplete per §16.7 so tax engine seeds correctly.
+- [x] **3. Logo** — camera / library upload; cropper; preview on sample receipt. Stored as tenant branding asset (§19).
 - [ ] **4. Timezone + currency + locale** — default from device but user-confirmable.
 - [ ] **5. Business hours** — per day, with "Copy Mon to all weekdays" helper.
 - [ ] **6. Tax setup** — add first tax rate; address from step 2 pre-populates jurisdiction hint.
