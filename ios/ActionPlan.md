@@ -4448,7 +4448,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] **Earn** — points on paid invoice (configurable rate).
 - [ ] **Redeem** — at POS (see §16.15).
 - [ ] **Expiration** — configurable.
-- [ ] **Point history** — per customer.
+- [x] **Point history (partial)** — `LoyaltyBalanceView` surfaces current points + tier + lifetime spend via `GET /api/v1/loyalty/balance/:customerId`. Per-transaction history endpoint TBD.
 
 ### 38.3 Subscription memberships
 - [ ] **Paid plans** — monthly / annual with auto-renew.
@@ -4457,7 +4457,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] **Cancel / pause / resume**.
 
 ### 38.4 Apple Wallet pass
-- [ ] **`PKAddPassesViewController`** — issue member card as Apple Wallet pass.
+- [x] **`PKAddPassesViewController`** — `LoyaltyPassPresenter.present(passData:)` scaffold ships in `Packages/Loyalty`. Commit `73229b3`. Server .pkpass signing + Wallet entitlement still required for live install.
 - [ ] **Pass updates** — push via pass server (tenant server).
 - [ ] **Barcode on pass** — scannable at POS.
 
