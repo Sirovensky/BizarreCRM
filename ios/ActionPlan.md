@@ -4842,19 +4842,19 @@ Covers what §46 specified. Non-negotiable ethical constraints.
 See §19.14 for settings entry. Deep features:
 
 ### 47.1 Matrix UI
-- [ ] **iPad** — full matrix; rows=roles, cols=capabilities; toggle cells.
-- [ ] **iPhone** — per-role detail view.
+- [x] **iPad** — full matrix; rows=roles, cols=capabilities; toggle cells.
+- [x] **iPhone** — per-role detail view.
 
 ### 47.2 Granular caps
-- [ ] **~80 capabilities** — each action on each entity.
-- [ ] **Presets** — Admin / Manager / Technician / Cashier / Viewer / Training.
-- [ ] **Custom role** — clone + modify.
+- [x] **~80 capabilities** — each action on each entity.
+- [x] **Presets** — Admin / Manager / Technician / Cashier / Viewer / Training.
+- [x] **Custom role** — clone + modify.
 
 ### 47.3 Preview before save
-- [ ] **"As this role"** preview mode — admin previews UI as different role.
+- [x] **"As this role"** preview mode — admin previews UI as different role.
 
 ### 47.4 Audit
-- [ ] **Every role change logged** — who, what, when.
+- [x] **Every role change logged** — who, what, when.
 
 ### 47.5 Capabilities (fine-grained, from §47)
 - **Tickets**: view.any / view.own / create / edit / delete / reassign / archive / price.override.
