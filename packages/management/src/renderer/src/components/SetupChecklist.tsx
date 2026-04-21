@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
@@ -52,24 +52,25 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
       .catch((err) => console.warn('[SetupChecklist] listBackups failed', err));
   }, []);
 
-  if (!envFields) {
-    return null;
-  }
+  // Build the check list inside useMemo so all hooks (including the
+  // auto-collapse useEffect below) run unconditionally in the same order
+  // on every render. Returning null from the component when envFields is
+  // not loaded yet still happens AFTER every hook has run (React's rules
+  // of hooks enforce "same number & order of hooks every render").
+  const checks: CheckItem[] = useMemo(() => {
+    if (!envFields) return [];
+    const envValue = (key: string): string =>
+      envFields.find((f) => f.key === key)?.value ?? '';
+    const envHasSecret = (key: string): boolean =>
+      envFields.find((f) => f.key === key)?.hasValue ?? false;
 
-  function envValue(key: string): string {
-    return envFields?.find((f) => f.key === key)?.value ?? '';
-  }
-  function envHasSecret(key: string): boolean {
-    return envFields?.find((f) => f.key === key)?.hasValue ?? false;
-  }
-
-  const checks: CheckItem[] = [];
+    const out: CheckItem[] = [];
 
   // Captcha — only required when multi-tenant prod with require=true.
   const captchaRequired = envValue('SIGNUP_CAPTCHA_REQUIRED') !== 'false';
   if (isMultiTenant) {
     if (captchaRequired) {
-      checks.push({
+      out.push({
         id: 'hcaptcha',
         label: 'hCaptcha secret',
         status: envHasSecret('HCAPTCHA_SECRET') ? 'pass' : 'fail',
@@ -79,7 +80,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         to: '/settings',
       });
     } else {
-      checks.push({
+      out.push({
         id: 'hcaptcha-bypass',
         label: 'Signup bot protection',
         status: 'warn',
@@ -92,7 +93,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   // Cloudflare — only meaningful in multi-tenant.
   if (isMultiTenant) {
     const cfComplete = envHasSecret('CLOUDFLARE_API_TOKEN') && envValue('CLOUDFLARE_ZONE_ID') && envValue('SERVER_PUBLIC_IP');
-    checks.push({
+    out.push({
       id: 'cloudflare',
       label: 'Cloudflare DNS auto-provisioning',
       status: cfComplete ? 'pass' : 'warn',
@@ -107,7 +108,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   const stripeKeys = [envHasSecret('STRIPE_SECRET_KEY'), envHasSecret('STRIPE_WEBHOOK_SECRET'), !!envValue('STRIPE_PRO_PRICE_ID')];
   const stripeFilledCount = stripeKeys.filter(Boolean).length;
   if (stripeFilledCount === 3) {
-    checks.push({
+    out.push({
       id: 'stripe',
       label: 'Stripe billing',
       status: 'pass',
@@ -115,7 +116,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
       to: '/settings',
     });
   } else if (stripeFilledCount > 0) {
-    checks.push({
+    out.push({
       id: 'stripe',
       label: 'Stripe billing',
       status: 'fail',
@@ -124,7 +125,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     });
   } else {
     // Not configured at all is OK — billing simply disabled.
-    checks.push({
+    out.push({
       id: 'stripe',
       label: 'Stripe billing',
       status: 'warn',
@@ -137,7 +138,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   if (backupCount === null) {
     // Loading — skip.
   } else if (backupCount === 0) {
-    checks.push({
+    out.push({
       id: 'backups',
       label: 'Backups',
       status: 'fail',
@@ -148,7 +149,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     const ageMs = latestBackupAt ? Date.now() - new Date(latestBackupAt).getTime() : Infinity;
     const ageHours = ageMs / (1000 * 60 * 60);
     if (ageHours < 24) {
-      checks.push({
+      out.push({
         id: 'backups',
         label: 'Backups',
         status: 'pass',
@@ -156,7 +157,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         to: '/backups',
       });
     } else if (ageHours < 72) {
-      checks.push({
+      out.push({
         id: 'backups',
         label: 'Backups',
         status: 'warn',
@@ -164,7 +165,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         to: '/backups',
       });
     } else {
-      checks.push({
+      out.push({
         id: 'backups',
         label: 'Backups',
         status: 'fail',
@@ -180,7 +181,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     envValue('DISABLE_OUTBOUND_SMS') === 'true' ||
     envValue('DISABLE_OUTBOUND_VOICE') === 'true';
   if (anyKill) {
-    checks.push({
+    out.push({
       id: 'killswitches',
       label: 'Outbound kill switches',
       status: 'warn',
@@ -192,7 +193,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   // Security alerts unack count from the live stats poll (no extra fetch).
   const unack = stats?.unacknowledgedSecurityAlerts ?? 0;
   if (unack > 0) {
-    checks.push({
+    out.push({
       id: 'unack-alerts',
       label: 'Security alerts',
       status: unack > 10 ? 'fail' : 'warn',
@@ -202,17 +203,21 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     });
   }
 
-  if (checks.length === 0) return null;
+    return out;
+  }, [envFields, isMultiTenant, backupCount, latestBackupAt, stats?.unacknowledgedSecurityAlerts]);
 
   const passCount = checks.filter((c) => c.status === 'pass').length;
   const failCount = checks.filter((c) => c.status === 'fail').length;
   const warnCount = checks.filter((c) => c.status === 'warn').length;
   const allGood = failCount === 0 && warnCount === 0;
 
-  // Auto-collapse when complete IF the prop allows.
+  // Auto-collapse when complete IF the prop allows. Kept unconditional at
+  // top level so hook order is stable even when envFields is still loading.
   useEffect(() => {
     if (allGood && collapsedWhenComplete) setExpanded(false);
   }, [allGood, collapsedWhenComplete]);
+
+  if (!envFields || checks.length === 0) return null;
 
   const headerColor = failCount > 0
     ? 'border-red-900/60 bg-red-950/30 text-red-300'
