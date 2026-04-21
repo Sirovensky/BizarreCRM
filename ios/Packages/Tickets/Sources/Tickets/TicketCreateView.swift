@@ -9,6 +9,7 @@ public struct TicketCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: TicketCreateViewModel
     @State private var showingCustomerPicker = false
+    @State private var showingIMEIScanner = false
     @State private var pendingBanner: String?
     private let customerRepo: CustomerRepository
 
@@ -58,9 +59,19 @@ public struct TicketCreateView: View {
                     Section("Device") {
                         TextField("Device (e.g. iPhone 14 Pro)", text: $vm.deviceName)
                             .onChange(of: vm.deviceName) { _, _ in vm.scheduleAutoSave() }
-                        TextField("IMEI", text: $vm.imei)
-                            .keyboardType(.numbersAndPunctuation)
-                            .onChange(of: vm.imei) { _, _ in vm.scheduleAutoSave() }
+                        HStack(spacing: BrandSpacing.sm) {
+                            TextField("IMEI", text: $vm.imei)
+                                .keyboardType(.numbersAndPunctuation)
+                                .onChange(of: vm.imei) { _, _ in vm.scheduleAutoSave() }
+                            Button {
+                                showingIMEIScanner = true
+                            } label: {
+                                Image(systemName: "barcode.viewfinder")
+                                    .foregroundStyle(.bizarreTeal)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Scan IMEI barcode")
+                        }
                         TextField("Serial", text: $vm.serial)
                             .autocorrectionDisabled()
                             .onChange(of: vm.serial) { _, _ in vm.scheduleAutoSave() }
@@ -108,6 +119,13 @@ public struct TicketCreateView: View {
                     vm.selectedCustomer = customer
                     vm.scheduleAutoSave()
                     showingCustomerPicker = false
+                }
+            }
+            // §4 — IMEI scanner
+            .sheet(isPresented: $showingIMEIScanner) {
+                IMEIScanView { imei in
+                    vm.imei = imei
+                    vm.scheduleAutoSave()
                 }
             }
             .overlay(alignment: .top) {

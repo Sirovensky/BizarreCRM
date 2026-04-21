@@ -15,7 +15,7 @@ public final class TicketDetailViewModel {
     public var state: State = .loading
     public let ticketId: Int64
 
-    @ObservationIgnored private let repo: TicketRepository
+    @ObservationIgnored public let repo: TicketRepository
 
     public init(repo: TicketRepository, ticketId: Int64) {
         self.repo = repo

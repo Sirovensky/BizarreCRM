@@ -10,6 +10,10 @@ public struct TicketDetailView: View {
     @State private var showingStatus: Bool = false
     @State private var showingTransition: Bool = false
     @State private var showingTimeline: Bool = false
+    // §4 — new features
+    @State private var showingMerge: Bool = false
+    @State private var showingSplit: Bool = false
+    @State private var showingSignOff: Bool = false
     private let api: APIClient?
 
     /// Basic init — read-only detail.
@@ -89,6 +93,35 @@ public struct TicketDetailView: View {
                 .presentationDetents([.large])
             }
         }
+        // §4 — Merge
+        .sheet(isPresented: $showingMerge) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketMergeView(vm: TicketMergeViewModel(
+                    primaryId: detail.id,
+                    repo: vm.repo,
+                    api: api
+                ))
+            }
+        }
+        // §4 — Split
+        .sheet(isPresented: $showingSplit) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketSplitView(vm: TicketSplitViewModel(
+                    ticketId: detail.id,
+                    repo: vm.repo,
+                    api: api
+                ))
+            }
+        }
+        // §4 — Sign-off (only when readyForPickup)
+        .sheet(isPresented: $showingSignOff) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketSignOffView(vm: TicketSignOffViewModel(
+                    ticketId: detail.id,
+                    api: api
+                ))
+            }
+        }
     }
 
     private var navTitle: String {
@@ -113,7 +146,7 @@ public struct TicketDetailView: View {
                 .brandGlass(.clear, in: Capsule())
             }
 
-            // Actions menu: Edit, Change Status, Timeline
+            // Actions menu: Edit, Change Status, Timeline, Merge, Split, Sign-Off
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
                     Button {
@@ -138,6 +171,35 @@ public struct TicketDetailView: View {
                         Label("View Timeline", systemImage: "clock.fill")
                     }
                     .accessibilityIdentifier("ticket.timeline")
+
+                    Divider()
+
+                    // §4 — Merge / Split
+                    Button {
+                        showingMerge = true
+                    } label: {
+                        Label("Merge…", systemImage: "arrow.triangle.merge")
+                    }
+                    .accessibilityIdentifier("ticket.merge")
+
+                    Button {
+                        showingSplit = true
+                    } label: {
+                        Label("Split…", systemImage: "arrow.triangle.branch")
+                    }
+                    .accessibilityIdentifier("ticket.split")
+
+                    // §4 — Sign-off (only when readyForPickup)
+                    if case .loaded(let detail) = vm.state,
+                       detail.status?.name.lowercased().contains("pickup") == true {
+                        Divider()
+                        Button {
+                            showingSignOff = true
+                        } label: {
+                            Label("Customer Sign-Off", systemImage: "signature")
+                        }
+                        .accessibilityIdentifier("ticket.signoff")
+                    }
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }
@@ -186,6 +248,32 @@ public struct TicketDetailView: View {
                     }
                     if !detail.notes.isEmpty {
                         NotesSection(notes: detail.notes)
+                    }
+
+                    // §4 — Photos section
+                    TicketDevicePhotoListView(
+                        photos: detail.photos,
+                        ticketId: detail.id,
+                        uploadService: nil,
+                        onUpload: nil
+                    )
+                    .cardBackground()
+
+                    // §4 — Sign-off button when readyForPickup
+                    if api != nil,
+                       detail.status?.name.lowercased().contains("pickup") == true {
+                        Button {
+                            showingSignOff = true
+                        } label: {
+                            Label("Customer Sign-Off", systemImage: "signature")
+                                .font(.brandBodyLarge())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, BrandSpacing.sm)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Customer sign-off for pickup")
+                        .accessibilityHint("Opens signature capture for customer to sign off on repair")
                     }
 
                     // §4.7 — Timeline section (inline preview)
