@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface Session {
   id: string;
@@ -93,7 +94,7 @@ export function SessionsPage() {
       setRevokeTarget(null);
       refresh();
     } else {
-      toast.error(res.message ?? 'Failed');
+      toast.error(formatApiError(res));
     }
   };
 

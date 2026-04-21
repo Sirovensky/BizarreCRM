@@ -9,6 +9,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 export function CrashMonitorPage() {
   const [crashes, setCrashes] = useState<CrashEntry[]>([]);
@@ -54,7 +55,7 @@ export function CrashMonitorPage() {
       toast.success('Route re-enabled');
       refresh();
     } else {
-      toast.error(res.message ?? 'Failed');
+      toast.error(formatApiError(res));
     }
   };
 
@@ -71,7 +72,7 @@ export function CrashMonitorPage() {
         setShowClearConfirm(false);
         toast.success('Crash log cleared');
       } else {
-        toast.error(res.message ?? 'Failed to clear crash log');
+        toast.error(formatApiError(res));
         setShowClearConfirm(false);
       }
     } catch (err) {

@@ -3,6 +3,7 @@ import { Download, RefreshCw, Check, ArrowUpCircle, Undo2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface UpdateStatus {
   available: boolean;
@@ -85,7 +86,7 @@ export function UpdatesPage() {
           toast.success('Already up to date');
         }
       } else {
-        toast.error(res.message ?? 'Check failed');
+        toast.error(formatApiError(res));
       }
     } catch {
       toast.error('Failed to check for updates');
@@ -102,7 +103,7 @@ export function UpdatesPage() {
       // UP4: The main process now returns { success: false, error, message }
       // when the spawn itself fails. Respect that before inspecting `data`.
       if (!res.success) {
-        toast.error(res.message ?? 'Update failed to launch');
+        toast.error(formatApiError(res));
         return;
       }
       const result = res.data as { success?: boolean; output?: string } | undefined;
@@ -130,7 +131,7 @@ export function UpdatesPage() {
         toast.success('Rolled back to previous commit. Restart the server to apply.');
         setRollback({ available: false });
       } else {
-        toast.error(res.message ?? 'Rollback failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error('Rollback failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -151,7 +152,7 @@ export function UpdatesPage() {
       const res = await getAPI().management.clearRollback();
       setRollback({ available: false });
       if (!res.success) {
-        toast.error(res.message ?? 'Could not delete the rollback snapshot');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       setRollback({ available: false });

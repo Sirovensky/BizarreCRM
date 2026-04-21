@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatBytes, formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface LogFileMeta {
   name: string;
@@ -76,7 +77,7 @@ export function LogsPage() {
       if (res.success && res.data) {
         setFiles(res.data.files);
       } else if (res.message) {
-        toast.error(res.message);
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       console.warn('[LogsPage] listLogs failed', err);

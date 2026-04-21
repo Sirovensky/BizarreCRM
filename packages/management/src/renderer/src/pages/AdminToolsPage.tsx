@@ -6,6 +6,7 @@ import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface RateLimitRow {
   db: string;
@@ -108,7 +109,7 @@ export function AdminToolsPage() {
         refreshRateLimits();
       } else {
         setResetResult({ ok: false, summary: res.message ?? 'Reset failed' });
-        toast.error(res.message ?? 'Reset failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Reset failed';
@@ -139,7 +140,7 @@ export function AdminToolsPage() {
         setJwtInstructions(res.data.instructions);
         toast.success('New secret(s) generated — copy before closing');
       } else {
-        toast.error(res.message ?? 'JWT rotation failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'JWT rotation failed');
@@ -174,7 +175,7 @@ export function AdminToolsPage() {
         toast.success(`DNS backfill complete (${summary.created} new records)`);
       } else {
         setDnsResult({ ok: false, summary: res.message ?? 'Backfill failed' });
-        toast.error(res.message ?? 'Backfill failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Backfill failed';

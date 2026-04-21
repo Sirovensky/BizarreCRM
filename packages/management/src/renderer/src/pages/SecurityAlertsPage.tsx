@@ -6,6 +6,7 @@ import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 type AckFilter = 'unacknowledged' | 'acknowledged' | 'all';
 
@@ -55,7 +56,7 @@ export function SecurityAlertsPage() {
       if (res.success && res.data) {
         setAlerts(res.data.alerts);
       } else {
-        toast.error(res.message ?? 'Failed to load security alerts');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load security alerts');
@@ -82,7 +83,7 @@ export function SecurityAlertsPage() {
         toast.success('Alert acknowledged');
         await refresh();
       } else {
-        toast.error(res.message ?? 'Acknowledge failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Acknowledge failed');
@@ -106,7 +107,7 @@ export function SecurityAlertsPage() {
         toast.success(`${res.data.count} alert${res.data.count === 1 ? '' : 's'} acknowledged`);
         await refresh();
       } else {
-        toast.error(res.message ?? 'Bulk acknowledge failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Bulk acknowledge failed');

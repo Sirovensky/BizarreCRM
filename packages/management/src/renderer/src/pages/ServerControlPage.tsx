@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatUptime } from '@/utils/format';
 import { useServerStore } from '@/stores/serverStore';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 export function ServerControlPage() {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
@@ -256,7 +257,7 @@ export function ServerControlPage() {
                 toast.success(newState ? 'Rate limit bypass enabled' : 'Rate limit bypass disabled');
               } else {
                 setRateLimitBypass(!newState);
-                toast.error(res.message ?? 'Failed to update config');
+                toast.error(formatApiError(res));
               }
             }}
           >

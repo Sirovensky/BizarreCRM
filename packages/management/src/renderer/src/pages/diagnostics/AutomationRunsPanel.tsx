@@ -5,6 +5,7 @@ import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface Row {
   id: number;
@@ -62,7 +63,7 @@ export function AutomationRunsPanel({ slug }: { slug: string }) {
         setRows(res.data.rows);
         setSummary(res.data.summary);
       } else if (res.message) {
-        toast.error(res.message);
+        toast.error(formatApiError(res));
         setRows([]);
         setSummary(null);
       }

@@ -5,6 +5,7 @@ import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface AuthEvent {
   id: number;
@@ -37,7 +38,7 @@ export function TenantAuthEventsPanel() {
       if (res.success && res.data) {
         setEvents(res.data.events);
       } else if (res.message) {
-        toast.error(res.message);
+        toast.error(formatApiError(res));
         setEvents([]);
       }
     } catch (err) {

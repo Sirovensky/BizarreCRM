@@ -10,6 +10,7 @@ import type {
 } from '@/api/bridge';
 import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 // @audit-fixed: removed unused `theme` / `setTheme` zustand selectors and the
 // `Sun` icon import — the dashboard is dark-mode only and the toggle was never
@@ -95,7 +96,7 @@ export function SettingsPage() {
         setEnvFields(res.data.fields);
         setPending({});
       } else if (res.message) {
-        toast.error(res.message);
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load env settings');
@@ -137,7 +138,7 @@ export function SettingsPage() {
         setPcValues((prev) => ({ ...prev, [f.key]: next }));
         toast.success(`${f.label} updated`);
       } else {
-        toast.error(res.message ?? 'Update failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Update failed');
@@ -193,7 +194,7 @@ export function SettingsPage() {
         setRestartPending(true);
         await refreshEnv();
       } else {
-        toast.error(res.message ?? 'Save failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -210,7 +211,7 @@ export function SettingsPage() {
         setRestartPending(false);
         toast.success('Server restart requested. May take up to a minute to come back online.');
       } else {
-        toast.error(res.message ?? 'Server restart failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Server restart failed');
@@ -572,7 +573,7 @@ export function SettingsPage() {
                       toast('No drives reported (wmic may be disabled on this OS)');
                     }
                   } else {
-                    toast.error(res.message ?? 'Failed to read disk space');
+                    toast.error(formatApiError(res));
                   }
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : 'Failed to read disk space');

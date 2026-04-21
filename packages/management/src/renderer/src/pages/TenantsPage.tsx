@@ -9,6 +9,7 @@ import { formatDateTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+import { formatApiError } from '@/utils/apiError';
 
 const PLAN_OPTIONS = Object.values(PLAN_DEFINITIONS);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -147,7 +148,7 @@ export function TenantsPage() {
         setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free');
         refresh();
       } else {
-        toast.error(res.message ?? 'Failed to create tenant');
+        toast.error(formatApiError(res));
       }
     } catch {
       toast.error('Failed to create tenant');
@@ -159,13 +160,13 @@ export function TenantsPage() {
   const handleSuspend = async (slug: string) => {
     const res = await getAPI().superAdmin.suspendTenant(slug);
     if (res.success) { toast.success('Tenant suspended'); refresh(); }
-    else toast.error(res.message ?? 'Failed');
+    else toast.error(formatApiError(res));
   };
 
   const handleActivate = async (slug: string) => {
     const res = await getAPI().superAdmin.activateTenant(slug);
     if (res.success) { toast.success('Tenant activated'); refresh(); }
-    else toast.error(res.message ?? 'Failed');
+    else toast.error(formatApiError(res));
   };
 
   // TPH6: additive repair. Never deletes — only creates missing pieces.
@@ -181,7 +182,7 @@ export function TenantsPage() {
       }
       refresh();
     } else {
-      toast.error(res.message ?? 'Repair failed');
+      toast.error(formatApiError(res));
     }
   };
 
@@ -189,7 +190,7 @@ export function TenantsPage() {
     if (!deleteTarget) return;
     const res = await getAPI().superAdmin.deleteTenant(deleteTarget.slug);
     if (res.success) { toast.success('Tenant deleted'); setDeleteTarget(null); refresh(); }
-    else toast.error(res.message ?? 'Failed');
+    else toast.error(formatApiError(res));
   };
 
   const copySetupLink = async (url: string) => {
@@ -414,7 +415,7 @@ export function TenantsPage() {
                               `https://localhost/?tenant=${encodeURIComponent(t.slug)}`
                             );
                             if (res && res.success === false) {
-                              toast.error(res.message ?? 'Failed to open tenant URL');
+                              toast.error(formatApiError(res));
                             }
                           } catch (err) {
                             toast.error(err instanceof Error ? err.message : 'Failed to open tenant URL');

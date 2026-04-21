@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Sparkline } from '@/components/Sparkline';
 import { formatDateTime, formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
+import { formatApiError } from '@/utils/apiError';
 
 interface Backup {
   filename: string;
@@ -76,7 +77,7 @@ export function BackupPage() {
         toast.success('Backup completed');
         refresh();
       } else {
-        toast.error(res.message ?? 'Backup failed');
+        toast.error(formatApiError(res));
       }
     } catch {
       toast.error('Backup failed');
@@ -93,7 +94,7 @@ export function BackupPage() {
       setDeleteTarget(null);
       refresh();
     } else {
-      toast.error(res.message ?? 'Failed');
+      toast.error(formatApiError(res));
     }
   };
 
@@ -112,7 +113,7 @@ export function BackupPage() {
         setRestoreTarget(null);
         refresh();
       } else {
-        toast.error(res.message ?? 'Restore failed');
+        toast.error(formatApiError(res));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Restore failed');
