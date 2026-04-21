@@ -1599,12 +1599,17 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Pin messages.
 
 ### 14.6 Team shifts (weekly schedule)
-- [ ] **Week grid** (7 columns, employees rows).
-- [ ] Tap empty cell → add shift; tap filled → edit.
-- [ ] Shift modal — employee, start/end, role, notes.
+- [x] **Week grid** (7 columns, employees rows) — `ShiftSchedulePostView` (iPhone list / iPad horizontal grid); `ShiftScheduleConflictChecker` pure engine (double-booking + PTO overlap); `ShiftPublishBanner` Liquid Glass sticky footer; `POST /team/shifts`, `GET /team/shifts`. (feat(ios post-phase §14))
+- [x] Tap empty cell → add shift; tap filled → edit — `AddShiftSheet` inline. (feat(ios post-phase §14))
+- [x] Shift modal — employee, start/end, role, notes — `CreateScheduledShiftBody`. (feat(ios post-phase §14))
 - [ ] Time-off requests sidebar — approve / deny (manager).
-- [ ] Publish week → notifies team.
+- [x] Publish week → notifies team — `POST /team/shifts/publish`; `ShiftPublishBanner` confirm. (feat(ios post-phase §14))
 - [ ] Drag-drop rearrange (iPad).
+
+### 14.6b Shift Swap
+- [x] **Employee requests swap** — `ShiftSwapRequestSheet` (Liquid Glass, `.presentationDetents`); `POST /timeclock/swap-requests`. (feat(ios post-phase §14))
+- [x] **Receiver accepts/declines** — `ShiftSwapOfferView`; `POST /timeclock/swap-requests/:id/offer`. (feat(ios post-phase §14))
+- [x] **Manager approves** (audit logged) — `ShiftSwapApprovalView`; `POST /timeclock/swap-requests/:id/approve`. (feat(ios post-phase §14))
 
 ### 14.7 Leaderboard
 - [ ] Ranked list by tickets closed / revenue / commission.
