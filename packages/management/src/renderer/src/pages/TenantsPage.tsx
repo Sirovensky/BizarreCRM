@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant, TenantCreateResult } from '@/api/bridge';
@@ -366,9 +366,8 @@ export function TenantsPage() {
                 const isOpen = expandedSlug === t.slug;
                 const detail = detailCache[t.slug];
                 return (
-                <>
+                <Fragment key={t.id}>
                 <tr
-                  key={t.id}
                   className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
                   onClick={() => toggleExpand(t.slug)}
                 >
@@ -450,7 +449,7 @@ export function TenantsPage() {
                   </td>
                 </tr>
                 {isOpen && (
-                  <tr key={t.slug + '-detail'} className="border-b border-surface-800 bg-surface-900/30">
+                  <tr className="border-b border-surface-800 bg-surface-900/30">
                     <td colSpan={7} className="px-3 py-3">
                       {detail === 'loading' || detail === undefined ? (
                         <p className="text-xs text-surface-500">Loading tenant metrics…</p>
@@ -467,7 +466,7 @@ export function TenantsPage() {
                     </td>
                   </tr>
                 )}
-                </>
+                </Fragment>
                 );
               })}
             </tbody>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, RefreshCw, Trash2, RotateCw, TrendingUp, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { CrashEntry, CrashStats, DisabledRoute } from '@/api/bridge';
@@ -263,9 +263,8 @@ export function CrashMonitorPage() {
                 {recentCrashes.map((c) => {
                   const isOpen = expandedId === c.id;
                   return (
-                    <>
+                    <Fragment key={c.id}>
                       <tr
-                        key={c.id}
                         className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
                         onClick={() => setExpandedId(isOpen ? null : c.id)}
                       >
@@ -292,7 +291,7 @@ export function CrashMonitorPage() {
                         </td>
                       </tr>
                       {isOpen && (
-                        <tr key={c.id + '-stack'} className="border-b border-surface-800">
+                        <tr className="border-b border-surface-800">
                           <td colSpan={4} className="px-2 pb-2 pt-0">
                             <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
                               {c.errorStack || c.errorMessage || '(no stack captured)'}
@@ -300,7 +299,7 @@ export function CrashMonitorPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
