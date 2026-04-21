@@ -567,9 +567,23 @@ public struct PosView: View {
         let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
+        // §16.7 — derive the payment method label from the cart's applied
+        // tenders. Once the BlockChyp terminal flow (§17.3) lands, replace
+        // with TerminalTransaction.cardBrand + " •••• " + cardLast4.
+        let methodLabel: String = {
+            if cart.isFullyTendered {
+                // All tenders covered the total — show first tender's label
+                // (e.g. "Gift card ••••4C7A"). Multiple tenders: use first.
+                return cart.appliedTenders.first?.label ?? "Store credit"
+            }
+            // Not fully tendered by gift cards / store credit — a card charge
+            // via BlockChyp (§17.3) is implied. "Card" is correct until the
+            // terminal flow populates cardBrand + cardLast4.
+            return "Card"
+        }()
         return PosPostSaleViewModel(
             totalCents: cart.totalCents,
-            methodLabel: "Placeholder — pending §17.3",
+            methodLabel: methodLabel,
             receiptText: text,
             receiptHtml: html,
             defaultEmail: cart.customer?.email,
