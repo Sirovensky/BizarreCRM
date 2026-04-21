@@ -1020,7 +1020,8 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.4 Edit
 - [x] All fields editable (cost/price role gating TBD) — `Inventory/InventoryEditView`.
-- [ ] **Stock adjust** quick-action: +1 / −1 / Set to… (logs stock movement with reason). Context menu stub present, action disabled until admin endpoint lands.
+- [x] **Stock adjust** — `InventoryAdjustSheet` + `InventoryAdjustViewModel` wired. `POST /inventory/:id/adjust-stock` with delta + 6-reason picker (Recount/Shrinkage/Damage/Receive/Transfer/Other) + notes. Commit `0f43c61`. 404/501 → `APITransportError.notImplemented` surfaces "Coming soon" banner.
+- [x] **Low-stock alerts view** — `InventoryLowStockView` lists items below reorder_level with shortage badge; swipe → `InventoryAdjustSheet`. Toolbar "Low stock" ⌘⇧L on Inventory list.
 - [ ] **Move between locations** (multi-location tenants).
 - [ ] **Delete** — confirm; prevent if stock > 0 or open PO references it.
 - [ ] **Deactivate** — keep history, hide from POS.
