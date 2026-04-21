@@ -3742,16 +3742,16 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 ## 68. Deep-link / App Links reference
 
 ### 68.1 Scheme
-- [ ] Custom: `bizarrecrm://<host>/<path>`.
-- [ ] App Link (verified HTTPS): `https://app.bizarrecrm.com/<path>`.
+- [x] Custom: `bizarrecrm://<host>/<path>`.
+- [~] App Link (verified HTTPS): `https://app.bizarrecrm.com/<path>`.
 
 ### 68.2 Routes
 - [ ] `bizarrecrm://dashboard`
 - [ ] `bizarrecrm://tickets` — list
 - [ ] `bizarrecrm://tickets/:id` — detail
-- [ ] `bizarrecrm://tickets/new` — create
+- [x] `bizarrecrm://tickets/new` — create
 - [ ] `bizarrecrm://customers/:id`
-- [ ] `bizarrecrm://customers/new`
+- [x] `bizarrecrm://customers/new`
 - [ ] `bizarrecrm://inventory/:sku`
 - [ ] `bizarrecrm://invoices/:id`
 - [ ] `bizarrecrm://estimates/:id`
@@ -3760,15 +3760,15 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 - [ ] `bizarrecrm://sms/:thread`
 - [ ] `bizarrecrm://pos/new`
 - [ ] `bizarrecrm://pos/cart/:id`
-- [ ] `bizarrecrm://scan` — opens scanner
+- [x] `bizarrecrm://scan` — opens scanner
 - [ ] `bizarrecrm://reports/:slug`
 - [ ] `bizarrecrm://settings/:section`
 - [ ] `bizarrecrm://reset-password/:token`
 - [ ] `bizarrecrm://setup/:token`
 
 ### 68.3 Router
-- [ ] `DeepLinkRouter` class in `MainActivity.onNewIntent` parses URI → navigates via NavController.
-- [ ] Unknown routes → Dashboard with "Unknown link" Snackbar.
+- [x] `DeepLinkRouter` class in `MainActivity.onNewIntent` parses URI → navigates via NavController.
+- [~] Unknown routes → Dashboard with "Unknown link" Snackbar.
 - [ ] Auth-required routes: if unauthenticated, redirect to Login with `intent_after_login` extra.
 
 ### 68.4 Verification
@@ -3797,9 +3797,9 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 | Segment frequent | `SEGMENT_FREQUENT_TICK` | 5ms |
 
 ### 69.1 Use cases
-- [ ] Barcode scan success → `CONFIRM`.
-- [ ] Wrong PIN / login → `REJECT`.
-- [ ] PIN / keypad digit → `VIRTUAL_KEY`.
+- [x] Barcode scan success → `CONFIRM`.
+- [~] Wrong PIN / login → `REJECT`.
+- [x] PIN / keypad digit → `VIRTUAL_KEY`.
 - [ ] Swipe action release → `GESTURE_END`.
 - [ ] Toggle on/off → `CONTEXT_CLICK`.
 - [ ] Payment success → `CONFIRM` + extended 60ms.
