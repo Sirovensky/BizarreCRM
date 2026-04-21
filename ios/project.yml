@@ -51,6 +51,7 @@ packages:
   Employees:     { path: Packages/Employees }
   Camera:        { path: Packages/Camera }
   Search:        { path: Packages/Search }
+  RepairPricing: { path: Packages/RepairPricing }
 
 targets:
   BizarreCRM:
@@ -132,6 +133,8 @@ targets:
         product: Camera
       - package: Search
         product: Search
+      - package: RepairPricing
+        product: RepairPricing
 
   BizarreCRMTests:
     type: bundle.unit-test
