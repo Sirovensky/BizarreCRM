@@ -2137,13 +2137,13 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced.
 
 ### 20.7 Dead-letter queue
-- [ ] After 5 retries with exponential backoff, move to `sync_dead_letter` table.
-- [ ] Settings → Data → Sync Issues shows list with payload preview, last error, retry / discard / export-for-support actions.
-- [ ] Persistent banner on affected screen ("1 ticket failed to sync").
-- [ ] Retry action requeues with fresh idempotency key.
+- [x] After 5 retries with exponential backoff, move to `sync_dead_letter` table.
+- [x] Settings → Data → Sync Issues shows list with payload preview, last error, retry / discard / export-for-support actions.
+- [~] Persistent banner on affected screen ("1 ticket failed to sync").
+- [~] Retry action requeues with fresh idempotency key.
 
 ### 20.8 Database encryption
-- [ ] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
+- [x] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
 - [x] Passphrase: 32-byte random at first-run, stored in EncryptedSharedPreferences with Android Keystore-backed AES256_GCM scheme.
 - [x] Opt out of Android Auto-Backup on encrypted DB file.
 
@@ -2153,10 +2153,10 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Never evict rows with pending queue entries.
 
 ### 20.10 WebSocket
-- [ ] OkHttp `WebSocket` to tenant server; auto-reconnect with exponential backoff + jitter.
-- [ ] Topics: `ticket:updated`, `customer:updated`, `invoice:updated`, `sms:received`, `notification:new`, `delta:invalidate`.
+- [x] OkHttp `WebSocket` to tenant server; auto-reconnect with exponential backoff + jitter.
+- [~] Topics: `ticket:updated`, `customer:updated`, `invoice:updated`, `sms:received`, `notification:new`, `delta:invalidate`.
 - [ ] Reconnect resumes from last delta cursor.
-- [ ] Foreground only; background uses FCM silent push to trigger delta.
+- [~] Foreground only; background uses FCM silent push to trigger delta.
 
 ### 20.11 Offline indicators
 - [ ] Top banner: "Offline — showing cached data".
@@ -2171,19 +2171,19 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 21. Background, Push, & Real-Time
 
 ### 21.1 FCM push
-- [ ] `FirebaseMessagingService` subclass → dispatches data + notification payloads.
-- [ ] Token registration: `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform, model, os_version, app_version }`.
-- [ ] Token rotation: `onNewToken` callback posts update.
-- [ ] Logout: `deleteToken()` + `DELETE /device-tokens/:token`.
-- [ ] Message types: `notification` (UI-only, auto-shown when backgrounded) and `data` (always trigger code path).
+- [x] `FirebaseMessagingService` subclass → dispatches data + notification payloads.
+- [x] Token registration: `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform, model, os_version, app_version }`.
+- [x] Token rotation: `onNewToken` callback posts update.
+- [~] Logout: `deleteToken()` + `DELETE /device-tokens/:token`.
+- [x] Message types: `notification` (UI-only, auto-shown when backgrounded) and `data` (always trigger code path).
 - [ ] `priority: high` + `ttl` tuned per message type.
-- [ ] Entity allowlist on deep-link parse — prevent injected routes.
+- [x] Entity allowlist on deep-link parse — prevent injected routes.
 
 ### 21.2 NotificationChannels (Android 8+)
-- [ ] Create at first launch via `NotificationManagerCompat.createNotificationChannels(...)`.
-- [ ] Categories as per §13.2; importance respects user override.
+- [x] Create at first launch via `NotificationManagerCompat.createNotificationChannels(...)`.
+- [x] Categories as per §13.2; importance respects user override.
 - [ ] Channel group: Operational / Customer / Admin / System.
-- [ ] Post with `NotificationCompat.Builder(context, channelId)`; intent trampolines banned (Android 12+ `PendingIntent.FLAG_IMMUTABLE`).
+- [~] Post with `NotificationCompat.Builder(context, channelId)`; intent trampolines banned (Android 12+ `PendingIntent.FLAG_IMMUTABLE`).
 
 ### 21.3 Live Updates (Android 16)
 - [ ] `NotificationCompat.ProgressStyle` or `Notification.Builder.setStyle(Notification.ProgressStyle())` for ongoing progress posts on status bar + Lock Screen.
@@ -2192,9 +2192,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Mirror to companion Wear OS device (stretch).
 
 ### 21.4 Foreground services
-- [ ] Declare service types in `AndroidManifest.xml` (required Android 14+): `dataSync`, `shortService`, `connectedDevice`, `specialUse`, `mediaPlayback`.
-- [ ] Start via `ContextCompat.startForegroundService(...)` within 5s of promotion; post matching notification immediately.
-- [ ] Uses: SMS send during network blip, photo upload, BlockChyp charge, bench timer, cash-drawer watch.
+- [x] Declare service types in `AndroidManifest.xml` (required Android 14+): `dataSync`, `shortService`, `connectedDevice`, `specialUse`, `mediaPlayback`.
+- [~] Start via `ContextCompat.startForegroundService(...)` within 5s of promotion; post matching notification immediately.
+- [~] Uses: SMS send during network blip, photo upload, BlockChyp charge, bench timer, cash-drawer watch.
 - [ ] Respect `shortService` 3min cap; fall back to WorkManager expedited if exceeded.
 
 ### 21.5 WorkManager
