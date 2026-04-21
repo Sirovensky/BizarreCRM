@@ -66,10 +66,20 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
 
   const adb = req.asyncDb;
   const db = req.db; // needed for sync repair-time utils
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+  // RPT-TZ4: Derive "today" and "month start" in the tenant's configured
+  // timezone so the "revenue today" and "tickets created today" KPIs count
+  // on the owner's local calendar, not UTC. Without this a shop in UTC-5
+  // would show zero revenue for the last two hours of their business day
+  // because UTC has already rolled to tomorrow.
+  const tenantTz = getTenantTz(req);
+  const localDateParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tenantTz || 'UTC',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const lp = Object.fromEntries(localDateParts.map(p => [p.type, p.value]));
+  const today = `${lp.year}-${lp.month}-${lp.day}`; // YYYY-MM-DD in tenant TZ
+  const monthStartStr = `${lp.year}-${lp.month}-01`;
 
   // Parallelize all independent queries
   const [
@@ -1634,7 +1644,7 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
       GROUP BY STRFTIME('%Y-%m', t.created_at)
     ) cogs ON cogs.month = m.month
     ORDER BY m.month ASC
-  `, months - 1, months, months);
+  `, months - 1, months - 1, months - 1);
 
   // Summary totals — RPT5: use NULL (not 0) when total revenue is 0 so the UI
   // can distinguish "no data" from "break even" and negative overall margins
@@ -1661,10 +1671,13 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
 
 // ─── ENR-R7: Report Export to CSV ───────────────────────────────────────────
 
-// Helper: convert array of objects to CSV string
-function toCsv(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return '';
-  const headers = Object.keys(rows[0]);
+// Helper: convert array of objects to CSV string.
+// RPT-CSV1: Always emit the header row even when rows is empty so that an
+// empty-period export opens in Excel with column labels instead of a blank file.
+function toCsv(rows: Record<string, unknown>[], knownHeaders?: string[]): string {
+  const headers = knownHeaders ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
+  if (headers.length === 0) return '';
+
   const csvLines = [headers.join(',')];
   for (const row of rows) {
     const values = headers.map(h => {
@@ -2227,6 +2240,10 @@ router.get('/repeat-customers', asyncHandler(async (req, res) => {
      FROM customers c
      LEFT JOIN tickets t ON t.customer_id = c.id AND t.is_deleted = 0
      LEFT JOIN invoices i ON i.customer_id = c.id AND i.status != 'void'
+     WHERE c.is_deleted = 0
+       -- RPT-REPEAT1: Exclude walk-in sentinel so anonymous POS transactions
+       -- don't appear at the top of the "best customers" leaderboard.
+       AND NOT (c.first_name = 'Walk-in' AND c.last_name = 'Customer')
      GROUP BY c.id
      HAVING ticket_count >= 2
      ORDER BY total_spent DESC
@@ -2546,6 +2563,9 @@ router.get('/churn', asyncHandler(async (req, res) => {
        GROUP BY customer_id
      ) last_touch ON last_touch.customer_id = c.id
      WHERE c.is_deleted = 0
+       -- RPT-CHURN3: Exclude the walk-in sentinel customer so anonymous POS
+       -- transactions don't surface a "Walk-in Customer" in win-back campaigns.
+       AND NOT (c.first_name = 'Walk-in' AND c.last_name = 'Customer')
      GROUP BY c.id
      HAVING days_inactive >= ?
      ORDER BY lifetime_spent DESC
@@ -2553,11 +2573,37 @@ router.get('/churn', asyncHandler(async (req, res) => {
     daysInactive
   );
 
+  // RPT-CHURN2: at_risk_count must reflect the true total, not be capped by the
+  // LIMIT 200 on the customer rows query. Run a lightweight COUNT separately so
+  // the badge number is accurate even when there are more than 200 at-risk customers.
+  const countRow = await adb.get<{ n: number }>(
+    `SELECT COUNT(*) AS n
+     FROM customers c
+     JOIN (
+       SELECT customer_id, MAX(ts) AS last_visit FROM (
+         SELECT customer_id, MAX(created_at) AS ts
+         FROM tickets
+         WHERE is_deleted = 0 AND customer_id IS NOT NULL
+         GROUP BY customer_id
+         UNION ALL
+         SELECT customer_id, MAX(created_at) AS ts
+         FROM invoices
+         WHERE status != 'void' AND customer_id IS NOT NULL
+         GROUP BY customer_id
+       )
+       GROUP BY customer_id
+     ) last_touch ON last_touch.customer_id = c.id
+     WHERE c.is_deleted = 0
+       AND NOT (c.first_name = 'Walk-in' AND c.last_name = 'Customer')
+       AND CAST(julianday('now') - julianday(last_touch.last_visit) AS INTEGER) >= ?`,
+    daysInactive
+  );
+
   res.json({
     success: true,
     data: {
       threshold_days: daysInactive,
-      at_risk_count: rows.length,
+      at_risk_count: countRow?.n ?? rows.length,
       customers: rows.map(r => ({
         customer_id: r.customer_id,
         name: r.name,

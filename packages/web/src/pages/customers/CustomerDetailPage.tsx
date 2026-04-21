@@ -33,7 +33,7 @@ import {
   Copy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { customerApi, smsApi, membershipApi, settingsApi, crmApi } from '@/api/endpoints';
+import { customerApi, membershipApi, settingsApi, crmApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -137,7 +137,7 @@ export function CustomerDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => customerApi.delete(customerId),
+    mutationFn: (confirmName: string) => customerApi.delete(customerId, confirmName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
@@ -414,7 +414,7 @@ export function CustomerDetailPage() {
       )}
       {activeTab === 'tickets' && <TicketsTab customerId={customerId} />}
       {activeTab === 'invoices' && <InvoicesTab customerId={customerId} />}
-      {activeTab === 'communications' && <CommunicationsTab phone={customer.mobile || customer.phone} />}
+      {activeTab === 'communications' && <CommunicationsTab customerId={customerId} />}
       {activeTab === 'assets' && <AssetsTab customerId={customerId} />}
 
       <ConfirmDialog
@@ -425,7 +425,7 @@ export function CustomerDetailPage() {
         danger
         requireTyping
         confirmText={customer ? `${customer.first_name} ${customer.last_name}`.trim() : ''}
-        onConfirm={() => { setShowDeleteConfirm(false); deleteMutation.mutate(); }}
+        onConfirm={() => { setShowDeleteConfirm(false); deleteMutation.mutate(`${customer.first_name} ${customer.last_name}`.trim()); }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
 
@@ -1586,29 +1586,27 @@ function InvoicesTab({ customerId }: { customerId: number }) {
 
 // ==================== Communications Tab ====================
 
-function CommunicationsTab({ phone }: { phone?: string | null }) {
+function CommunicationsTab({ customerId }: { customerId: number }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['customer-sms', phone],
-    queryFn: () => smsApi.messages(phone!),
-    enabled: !!phone,
+    queryKey: ['customer-communications', customerId],
+    queryFn: () => customerApi.getCommunications(customerId),
+    enabled: !!customerId,
   });
-  const messages: any[] = data?.data?.data?.messages || data?.data?.data || [];
-
-  if (!phone) {
-    return <EmptyTabState icon={MessageSquare} title="No Phone Number" description="Add a phone number to this customer to view SMS history." />;
-  }
+  const communications: any[] = data?.data?.data?.communications || [];
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400" /></div>;
   }
 
-  if (messages.length === 0) {
-    return <EmptyTabState icon={MessageSquare} title="No Messages" description="No SMS messages found for this customer." />;
+  if (communications.length === 0) {
+    return <EmptyTabState icon={MessageSquare} title="No Communications" description="No SMS, calls, or emails found for this customer." />;
   }
+
+  const typeLabel: Record<string, string> = { sms: 'SMS', call: 'Call', email: 'Email' };
 
   return (
     <div className="space-y-2 max-h-96 overflow-y-auto">
-      {messages.map((msg: any, i: number) => (
+      {communications.map((msg: any, i: number) => (
         <div key={msg.id || i} className={cn('flex', msg.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',
@@ -1616,9 +1614,15 @@ function CommunicationsTab({ phone }: { phone?: string | null }) {
               ? 'bg-primary-600 text-white rounded-br-none'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-bl-none'
           )}>
-            <p>{msg.message || msg.content}</p>
+            {msg.comm_type && msg.comm_type !== 'sms' && (
+              <p className={cn('text-[10px] font-semibold mb-0.5', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
+                {typeLabel[msg.comm_type] ?? msg.comm_type}
+                {msg.subject ? ` · ${msg.subject}` : ''}
+              </p>
+            )}
+            <p>{msg.content ?? msg.message ?? ''}</p>
             <p className={cn('text-[10px] mt-1', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
-              {msg.date_time ? new Date(msg.date_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+              {msg.created_at ? new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
             </p>
           </div>
         </div>

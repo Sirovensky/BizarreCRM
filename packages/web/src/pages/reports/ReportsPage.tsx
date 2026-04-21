@@ -117,7 +117,10 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
     headers.map(escape).join(','),
     ...rows.map((row) => row.map(escape).join(',')),
   ].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // RPT-CSV2: Prepend UTF-8 BOM (\uFEFF) so Excel on Windows opens the file
+  // with the correct encoding instead of garbling currency symbols and accented
+  // characters in customer names.
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

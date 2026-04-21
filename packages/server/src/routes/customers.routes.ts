@@ -301,6 +301,7 @@ router.get(
              INNER JOIN customers_fts fts ON fts.rowid = c.id
              LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
              WHERE fts.customers_fts MATCH ? AND c.is_deleted = 0
+               AND (c.code IS NULL OR c.code != 'WALK-IN')
              LIMIT 10`,
           matchExpr);
       } catch {
@@ -328,6 +329,7 @@ async function likeSearch(adb: AsyncDb, q: string) {
      FROM customers c
      LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
      WHERE c.is_deleted = 0
+       AND (c.code IS NULL OR c.code != 'WALK-IN')
        AND (c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\')
      LIMIT 10`,
     like, like, like, like, like, like,

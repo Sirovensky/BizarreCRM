@@ -47,8 +47,8 @@ const initialForm: FormState = {
   referred_by: '',
   comments: '',
   tags: '',
-  email_opt_in: true,
-  sms_opt_in: true,
+  email_opt_in: false,
+  sms_opt_in: false,
 };
 
 export function CustomerCreatePage() {
@@ -111,7 +111,16 @@ export function CustomerCreatePage() {
       const customer = res.data?.data;
       navigate(`/customers/${customer?.id}`);
     },
-    onError: () => toast.error('Failed to create customer'),
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number; data?: { message?: string; error?: string } } })?.response?.status;
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      if (status === 409 && msg) {
+        toast.error(msg, { duration: 6000 });
+      } else {
+        toast.error('Failed to create customer');
+      }
+    },
   });
 
   const updateField = <K extends keyof FormState>(

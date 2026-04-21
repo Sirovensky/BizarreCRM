@@ -102,15 +102,16 @@ export const authApi = {
 export const customerApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string }) =>
     api.get('/customers', { params }),
-  importCsv: (items: ImportCustomerItem[]) => api.post('/customers/import-csv', { items }),
+  importCsv: (items: ImportCustomerItem[], skipDuplicates = true) =>
+    api.post('/customers/import-csv', { items, skip_duplicates: skipDuplicates }),
   get: (id: number) =>
     api.get(`/customers/${id}`),
   create: (data: CreateCustomerInput) =>
     api.post('/customers', data),
   update: (id: number, data: UpdateCustomerInput) =>
     api.put(`/customers/${id}`, data),
-  delete: (id: number) =>
-    api.delete(`/customers/${id}`),
+  delete: (id: number, confirmName: string) =>
+    api.delete(`/customers/${id}`, { data: { confirm_name: confirmName } }),
   search: (q: string) =>
     api.get('/customers/search', { params: { q } }),
   // @audit-fixed: orphan server route. `GET /customers/repeat` exists at

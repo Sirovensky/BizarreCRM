@@ -183,8 +183,8 @@ export function CustomerListPage() {
   // fire the server call only after the undo window elapses. If Undo is
   // clicked we restore the cached row and never hit the server.
   const deleteUndo = useUndoableAction<{ id: number; name: string }>(
-    async ({ id }) => {
-      await customerApi.delete(id);
+    async ({ id, name }) => {
+      await customerApi.delete(id, name);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     {
