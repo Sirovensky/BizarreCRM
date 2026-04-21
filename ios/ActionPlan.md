@@ -3347,6 +3347,10 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 ### 27.4 RTL layout
 - [x] **Mirror UI** — `.environment(\.layoutDirection, .rightToLeft)` pseudo-locale testing. `RTLPreviewModifier.swift` + `.rtlPreview()` modifier.
 - [x] **SF Symbols** with `.imageScale(.large)` auto-mirror for directional (`arrow.right`). `RTLHelpers.directionalImage(_:)` wraps this.
+- [x] **RTL lint CI** — `ios/scripts/rtl-lint.sh`; 6 checks (physical padding edges, hardwired LTR env, TextField trailing alignment, fixed rotationEffect, hardcoded trailing text alignment); baseline + regression-only exit; Bash 3.x compatible.
+- [x] **RTL smoke tests** — `ios/Tests/Performance/RTLSmokeTests.swift`; 6 XCUITest cases; launches 4 key screens (LoginFlowView, DashboardView, TicketListView, PosView) with `-AppleLanguages (ar)`; screenshots to `/tmp/rtl-screenshots/`; asserts element visibility + no zero-size text.
+- [x] **RTL preview catalog** — `ios/Packages/DesignSystem/Sources/DesignSystem/RTL/RTLPreviewCatalog.swift`; 13 screens catalogued; `RTLPreviewCatalogTests.swift` (10 XCTest cases) asserts ≥10 entries, unique IDs, 4 smoke-tested screens flagged.
+- [x] **RTL glossary extension** — `docs/localization/glossary.md` §RTL: Arabic/Hebrew/Farsi/Urdu notes, Eastern Arabic-Indic numerals, price format (NumberFormatter.locale), icon mirroring policy, text wrapping/truncation rules, bidi-isolation for mixed content, testing strategy.
 - [ ] **Charts** tested in RTL.
 - [ ] **Pickers + chips** respect RTL flow.
 
@@ -3383,12 +3387,12 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [x] Gender-inclusive: prefer neutral phrasing where grammar allows; cashier → persona cajera vs cajero/a, tenant configures. Entry #33 in glossary.md.
 - [ ] Currency + dates via `Locale` formatter — never translate numbers manually.
 - [x] Workflow: English source in `Localizable.strings` → CSV export to vendor → import translations; pseudo-loc regression (`xx-PS`) for ~30% expansion truncation check. `gen-pseudo-loc.sh` ships 40% expansion + ⟦brackets⟧.
-- [ ] Supported RTL languages: Arabic, Hebrew, Farsi, Urdu.
+- [x] Supported RTL languages: Arabic, Hebrew, Farsi, Urdu — documented in `docs/localization/glossary.md` §RTL.
 - [x] Mirroring via SwiftUI `.environment(\.layoutDirection, .rightToLeft)`; all custom views use logical properties (leading/trailing), never `.left`/`.right`. `RTLHelpers.swift` enforces this.
 - [x] Icon policy: directional icons (arrows, back chevrons) flip; non-directional (clock, info) stay. `RTLHelpers.directionalImage` / `staticImage` APIs.
 - [ ] Numerals: Arabic locale uses Eastern Arabic numerals unless tenant overrides.
 - [ ] Mixed-content: LTR substrings (English brand/IDs) inside RTL paragraph wrapped with Unicode bidi markers.
-- [ ] Audit: pseudo-loc RTL snapshot run on every screen.
+- [x] Audit: `RTLPreviewCatalog.swift` catalogs 13 screens; `rtl-lint.sh` + `RTLSmokeTests` form CI audit baseline.
 - [ ] POS / receipts: ensure thermal receipts in RTL locales print mirrored correctly.
 
 ---

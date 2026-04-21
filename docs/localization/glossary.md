@@ -76,8 +76,102 @@ before committing a translation.
 - **Arabic (ar)**: RTL layout required; use Eastern Arabic numerals by default unless tenant overrides.
 - **CJK (zh/ja/ko)**: No plural forms; singular only.  Inter/Barlow lack CJK — SF fallback applies (see ios/CLAUDE.md).
 
+---
+
+## RTL (Right-to-Left) layout notes  — §27
+
+### Supported RTL languages (roadmap)
+- **Arabic (ar)** — primary RTL target; Saudi Arabia (ar-SA) is the first locale.
+- **Hebrew (he)** — RTL; numerals and punctuation have nuanced bidi rules.
+- **Farsi / Persian (fa)** — RTL; uses Extended Arabic-Indic numerals.
+- **Urdu (ur)** — RTL; Nastaliq script; line spacing and glyph joining differ.
+
+### Layout direction
+- SwiftUI `.environment(\.layoutDirection, .rightToLeft)` flips the coordinate
+  system so logical `leading` becomes the visual right, `trailing` becomes the
+  visual left.
+- **Never** use `.padding(.left, ...)` / `.padding(.right, ...)` — these are
+  physical edges that do not flip.  Always use `.leading` / `.trailing`.
+- **Never** hard-code `.environment(\.layoutDirection, .leftToRight)` outside of
+  `#Preview` blocks — this overrides the system locale and locks RTL users into
+  LTR layout.
+
+### Numerals
+- **Eastern Arabic-Indic** (`٠١٢٣٤٥٦٧٨٩`) — default for `ar` locale unless
+  tenant disables via `NumberFormatter.locale = Locale(identifier: "en_US_POSIX")`.
+- **Hebrew** — uses standard Western Arabic numerals (0–9) for prices and dates.
+- **Rule**: always use `NumberFormatter` / `Decimal.FormatStyle` with
+  `Locale.current` — **never** manually translate digit strings.
+
+### Price formatting
+- **Arabic (ar-SA)**: `250٫00 ر.س.` (SAR) — trailing currency symbol, decimal
+  separator is `٫` (Arabic decimal separator U+066B).
+- **Hebrew (he-IL)**: `₪250.00` — leading shekel sign; period decimal separator.
+- **General rule**: use `NumberFormatter` with `.currencyCode` set to the
+  tenant-configured currency. Example:
+  ```swift
+  let fmt = NumberFormatter()
+  fmt.numberStyle = .currency
+  fmt.currencyCode = tenantCurrencyCode   // e.g. "ILS" or "SAR"
+  fmt.locale = Locale.current
+  return fmt.string(from: amount as NSDecimalNumber) ?? ""
+  ```
+
+### Keyboard and text direction
+- iOS automatically switches the software keyboard layout and character set when
+  the device input language is Arabic / Hebrew.
+- `TextField` default text alignment follows the active keyboard direction.
+- Do **not** set `.multilineTextAlignment(.trailing)` unconditionally — it
+  right-aligns text even in LTR locales.  Use `.leading` (bidi-safe default) or
+  `.automatic` for mixed-direction fields.
+
+### Icon mirroring policy
+| Icon type | Mirrors in RTL? | Example SF Symbols |
+|---|---|---|
+| Directional (arrow/chevron) | **Yes** — use `RTLHelpers.directionalImage(_:)` | `arrow.right`, `chevron.right` |
+| Back navigation chevron | **Yes** — SwiftUI `NavigationStack` handles automatically | `chevron.left` |
+| Symmetric / non-directional | **No** — use `RTLHelpers.staticImage(_:)` | `clock`, `info.circle`, `star` |
+| Loader / spinner | **No** | `arrow.clockwise` |
+| Check / X mark | **No** | `checkmark`, `xmark` |
+
+Use `RTLHelpers.directionalImage(_:)` (applies `.flipsForRightToLeftLayoutDirection(true)`)
+for any arrow or chevron that communicates direction.
+
+### Text wrapping and truncation
+- Longer Arabic / Hebrew strings can be 20–40% wider than English equivalents.
+- Always test with pseudo-locale (`xx-PS`) 40%-expansion tool (`gen-pseudo-loc.sh`)
+  before testing with real Arabic.
+- Truncation mode `.tail` in RTL clips the wrong (visual right) end.  SwiftUI's
+  default `.lineLimit` + `truncationMode` respects bidi — avoid overriding
+  `.truncationMode(.head)` unless intentional.
+- Avoid fixed `frame(width: N)` on text containers; use `.frame(maxWidth: .infinity)`
+  or `Layout` containers that adapt.
+
+### Bidi-isolated strings (mixed content)
+- English brand names, IDs, phone numbers, and URLs embedded inside Arabic
+  sentences must be wrapped with Unicode bidi-isolation markers so they render
+  in the correct visual order:
+  - LTR isolate: U+2066 `⁦` … U+2069 `⁩`
+  - Example: `"رقم الطلب ⁦BZ-0042⁩"` keeps `BZ-0042` reading left-to-right
+    inside the RTL paragraph.
+- SwiftUI `Text` with `.environment(\.locale, ...)` does **not** automatically
+  insert bidi marks — the server must include them in API-provided strings where
+  needed, or the client must inject them at render time.
+
+### Testing strategy
+- **`RTLPreviewModifier.swift`**: `.rtlPreview()` and `.bothDirectionsPreviews()`
+  — use in all `#Preview` blocks.
+- **`RTLPreviewCatalog.swift`**: canonical list of screens requiring coverage.
+- **`rtl-lint.sh`**: CI script that flags physical-edge padding, hardwired LTR
+  environment, fixed rotation angles, and hardcoded trailing alignment.
+- **`RTLSmokeTests.swift`**: XCUITest suite launching four key screens with
+  `-AppleLanguages (ar)` and asserting element visibility + no clipping.
+
+---
+
 ## Change log
 
 | Date | Change | Author |
 |---|---|---|
 | 2026-04-20 | Initial 50-term glossary — §27 i18n scaffold | iOS Phase 10 agent |
+| 2026-04-20 | §27 RTL notes — Arabic/Hebrew/Farsi/Urdu, numeral rules, price format, icon policy, text wrapping, bidi isolation, testing strategy | iOS §27 agent |
