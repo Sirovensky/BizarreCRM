@@ -42,9 +42,12 @@ export function SmsVoiceSettings() {
     },
   });
 
-  // Load current config
+  // Load current config — use the canonical ['settings', 'config'] key so this
+  // component shares the same cache entry as ReceiptSettings, PosSettings, etc.
+  // Previously used ['settings-config'] which meant saves from other tabs were
+  // invisible here and vice-versa.
   const { data: configData } = useQuery({
-    queryKey: ['settings-config'],
+    queryKey: ['settings', 'config'],
     queryFn: () => settingsApi.getConfig(),
   });
 
@@ -123,7 +126,7 @@ export function SmsVoiceSettings() {
       await settingsApi.updateConfig(entries);
       // Reload provider on server
       await axios.post('/settings/sms/reload');
-      queryClient.invalidateQueries({ queryKey: ['settings-config'] });
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
       toast.success('SMS & Voice settings saved');
     } catch (err: unknown) {
       toast.error((err as any)?.response?.data?.message || 'Failed to save');

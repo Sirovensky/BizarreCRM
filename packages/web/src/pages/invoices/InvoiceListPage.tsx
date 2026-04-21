@@ -111,8 +111,8 @@ export function InvoiceListPage() {
     if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
     return invoices.filter((inv: any) => {
       if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
-      if (!inv.due_date) return false;
-      const ts = Date.parse(inv.due_date);
+      if (!inv.due_on) return false;
+      const ts = Date.parse(inv.due_on);
       return !isNaN(ts) && ts < Date.now();
     }).length;
   }, [invoices, status]);
@@ -347,7 +347,7 @@ export function InvoiceListPage() {
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {invoices.map((inv: any) => {
-                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_date && new Date(inv.due_date) < new Date();
+                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_on && new Date(inv.due_on) < new Date();
                     const isSelected = selected.has(inv.id);
                     return (
                     <tr key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}

@@ -233,6 +233,6 @@ export function requirePermission(permission: string) {
       next();
       return;
     }
-    res.status(403).json({ success: false, message: 'Insufficient permissions' });
+    res.status(403).json(errorBody(ERROR_CODES.ERR_PERM_INSUFFICIENT, 'Insufficient permissions', rid, { permission }));
   };
 }

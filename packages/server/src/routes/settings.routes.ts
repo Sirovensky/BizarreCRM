@@ -84,9 +84,17 @@ const logoUpload = multer({
   },
 });
 
+// Roles treated as admin for settings mutations.
+// Mirrors the pattern in onboarding.routes.ts (ONBOARDING_ADMIN_ROLES) which
+// admits 'owner' for tenants with legacy role strings, and normalises to
+// lowercase so 'Admin' / 'ADMIN' are also accepted.
+const SETTINGS_ADMIN_ROLES = new Set(['admin', 'owner']);
+
 // Admin-only middleware for mutating settings
 function adminOnly(req: Request, _res: Response, next: NextFunction) {
-  if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  if (!req.user?.role || !SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase())) {
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
   next();
 }
 
@@ -289,7 +297,7 @@ router.post('/complete-setup', adminOnly, async (req, res) => {
 router.get('/config', async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const isAdmin = req.user?.role === 'admin';
+  const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
   const cfg: Record<string, string> = {};
   for (const row of rows) {
     if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
@@ -441,7 +449,7 @@ router.put('/config', adminOnly, async (req, res) => {
 router.get('/store', async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const isAdmin = req.user?.role === 'admin';
+  const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
   const cfg: Record<string, string> = {};
   for (const row of rows) {
     if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
@@ -463,8 +471,10 @@ router.put('/store', adminOnly, async (req, res) => {
     await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
   }
 
-  // MW5: Clear cached email transporter when SMTP settings change
-  const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from'];
+  // MW5: Clear cached email transporter when any SMTP credential changes.
+  // Previously smtp_pass was missing, so a password rotation wouldn't take
+  // effect until the next server restart.
+  const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
   if (smtpStoreKeys.some(k => k in req.body)) {
     clearEmailCache();
   }
@@ -678,6 +688,15 @@ router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const taxClassId = req.params.id;
+
+  // Guard: block deleting the last remaining tax class.  pos.routes.ts relies on
+  // `SELECT id, rate FROM tax_classes WHERE is_default = 1` returning a row for
+  // every POS transaction. Deleting the only (default) class leaves the system
+  // with no fallback tax rate, silently breaking checkout.
+  const totalCount = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM tax_classes');
+  if ((totalCount?.c ?? 0) <= 1) {
+    throw new AppError('Cannot delete the last tax class — at least one must always exist', 400);
+  }
 
   const [invCount, lineCount, deviceCount] = await Promise.all([
     adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', taxClassId),

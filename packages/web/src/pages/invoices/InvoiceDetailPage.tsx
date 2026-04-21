@@ -315,6 +315,9 @@ export function InvoiceDetailPage() {
                 <p className="font-mono font-semibold text-surface-900 dark:text-surface-100">{invoice.order_id}</p>
                 {/* @audit-fixed: use formatDate helper instead of hardcoded en-US locale */}
                 <p className="text-sm text-surface-500">{formatDate(invoice.created_at)}</p>
+                {invoice.due_on && (
+                  <p className="text-sm text-surface-500">Due: {formatDate(invoice.due_on)}</p>
+                )}
                 {invoice.ticket_id && (
                   <Link to={`/tickets/${invoice.ticket_id}`} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
                     Ticket #{invoice.ticket_id}
@@ -510,7 +513,7 @@ export function InvoiceDetailPage() {
                 </div>
                 <button onClick={() => setPaymentForm({ ...paymentForm, amount: Number(invoice.amount_due).toFixed(2) })}
                   className="text-xs text-primary-600 dark:text-primary-400 hover:underline mt-1">
-                  Pay full balance (${Number(invoice.amount_due).toFixed(2)})
+                  Pay full balance ({formatCurrency(invoice.amount_due)})
                 </button>
               </div>
               <div>
@@ -545,7 +548,7 @@ export function InvoiceDetailPage() {
                 {terminalProcessing ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
                 ) : (
-                  <><Smartphone className="h-4 w-4" /> Pay ${Number(invoice.amount_due).toFixed(2)} via Terminal</>
+                  <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(invoice.amount_due)} via Terminal</>
                 )}
               </button>
             )}
@@ -594,7 +597,7 @@ export function InvoiceDetailPage() {
                   onClick={() => {
                     const phone = invoice.customer_phone;
                     if (!phone) return;
-                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total $${Number(invoice.total).toFixed(2)}. Thank you for your business!`;
+                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Thank you for your business!`;
                     smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
                       .then(() => toast.success('Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));

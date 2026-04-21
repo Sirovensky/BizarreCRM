@@ -50,6 +50,7 @@ export interface InvoiceDetail {
   amount_paid: number;
   amount_due: number;
   notes?: string | null;
+  due_on?: string | null;
   created_at: string;
   updated_at: string;
   // Joined customer fields

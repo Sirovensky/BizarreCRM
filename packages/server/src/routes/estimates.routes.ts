@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { config } from '../config.js';
@@ -135,6 +136,7 @@ router.get(
 // ---------------------------------------------------------------------------
 router.post(
   '/',
+  requirePermission('estimates.create'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const { customer_id, status, discount, notes, valid_until, line_items, reserve_parts } = req.body;
@@ -507,6 +509,7 @@ router.get(
 // ---------------------------------------------------------------------------
 router.put(
   '/:id',
+  requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -673,6 +676,7 @@ router.get(
 // ---------------------------------------------------------------------------
 router.post(
   '/:id/convert',
+  requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -808,6 +812,7 @@ router.post(
 //   - estimates.converted_ticket_id (no-op for delete but documented here)
 router.delete(
   '/:id',
+  requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);

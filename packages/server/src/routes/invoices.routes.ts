@@ -114,7 +114,7 @@ router.get('/', async (req, res) => {
   const params: any[] = [];
 
   if (status === 'overdue') {
-    where += " AND inv.status IN ('unpaid','partial') AND inv.due_date IS NOT NULL AND inv.due_date < DATE('now')";
+    where += " AND inv.status IN ('unpaid','partial') AND inv.due_on IS NOT NULL AND inv.due_on < DATE('now')";
   } else if (status) { where += ' AND inv.status = ?'; params.push(status); }
   if (customer_id) { where += ' AND inv.customer_id = ?'; params.push(customer_id); }
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
@@ -332,7 +332,7 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
 
   const result = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
-      total_tax, total, amount_paid, amount_due, notes, due_date, created_by,
+      total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
       is_deposit, deposit_amount, parent_invoice_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
   `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
