@@ -1282,6 +1282,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 ### 9.1 List
 - [x] Base list — shipped.
 - [x] Row a11y — combined utterance `displayName. [orderId]. [phone-or-email]. [Status X]. [Score N of 100]`. Selectable phone/email/order, monospaced score.
+- [x] **CachedRepository + offline** — `LeadCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 progress bar) / Status / Source / Value / Next Action.
 - [ ] **Status filter** (multi-select) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
 - [ ] **Sort** — name / created / lead score / last activity / next action.
@@ -1328,6 +1329,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 
 ### 10.1 List / calendar views
 - [x] Base list — shipped. Rows parse ISO-8601 / SQL datetimes and render 'Today' / 'Tomorrow' / 'Yesterday' / 'MMM d' + short time; single-utterance accessibilityLabel combining date, title, customer, assignee, status.
+- [x] **CachedRepository + offline** — `AppointmentCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Segmented control** — Agenda / Day / Week / Month.
 - [ ] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda.
 - [ ] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin.
@@ -1380,6 +1382,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 ### 11.1 List
 - [x] Base list + summary header — shipped.
 - [x] Row a11y — combined utterance `category. [description]. [date]. amount`. Monospaced amount text.
+- [x] **CachedRepository + offline** — `ExpenseCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, returns `ExpensesListResponse` preserving summary, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Filters** — category / date range / employee / reimbursable flag / approval status.
 - [ ] **Sort** — date / amount / category.
 - [ ] **Summary tiles** — Total (period), By category (pie), Reimbursable pending.
@@ -1416,6 +1419,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 ### 12.1 Thread list
 - [x] Threads list — shipped.
 - [x] Row a11y — combined utterance `displayName. [Pinned]. [Flagged]. [lastMessage]. [date]. [N unread]`. Avatar + pin + flag + unread dot are accessibilityHidden.
+- [x] **CachedRepository + offline** — `SmsCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, extends `SmsRepository`, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Unread badge** on tab icon (`UIApplication.shared.applicationIconBadgeNumber`) + per-thread bubble.
 - [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
 - [ ] **Search** — across all messages + phone numbers.
@@ -1476,6 +1480,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 
 ### 13.1 List
 - [x] Base list — shipped.
+- [x] **CachedRepository + offline** — `NotificationCachedRepositoryImpl` (actor, single-entry in-memory cache, 2min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 6 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
 - [ ] **Mark all read** action (glass toolbar button).
 - [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
@@ -1513,6 +1518,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.1 List
 - [x] Base list — shipped.
+- [x] **CachedRepository + offline** — `EmployeeCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Filters** — role / active-inactive / clocked-in-now.
 - [ ] **"Who's clocked in right now"** view — real-time via WS presence events.
 - [ ] **Columns** (iPad/Mac) — Name / Email / Role / Status / Has PIN / Hours this week / Commission.
@@ -1615,6 +1621,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.1 Tab shell
 - [~] Phase-0 placeholder.
+- [x] **Offline indicator** — inline `HStack` in header shows wifi.slash icon + "Offline — reports require a network connection" when `!Reachability.shared.isOnline`. `StalenessIndicator` in toolbar accepts optional `referenceSyncedAt` (shows "Never synced" when nil). No ReportsRepository yet — static index only. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Sub-routes / segmented picker** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
 - [ ] **Date-range selector** with presets + custom; persists.
 - [ ] **Export button** — CSV / PDF via `.fileExporter`.
@@ -2212,6 +2219,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
+- [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
 - [ ] **Scope chips** — All / Customers / Tickets / Inventory / Invoices / Estimates / Leads / Appointments / SMS / Employees / Expenses / Notes.
