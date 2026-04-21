@@ -4,162 +4,385 @@ import DesignSystem
 import Networking
 import Sync
 
-/// Reports home surface. Today it lists the read-only snapshots that are
-/// already wired up elsewhere (Dashboard totals, Needs-attention) and
-/// cross-links to the domain lists where richer views live. Dedicated
-/// report builders (pie charts, date-range pickers, CSV export) arrive in
-/// a later phase — we ship a functional index now rather than a stub.
-///
-/// Staleness note: Reports is a static shortcut index — no dedicated
-/// `ReportsRepository` or cached repo exists yet (see §15). A
-/// `StalenessIndicator` is shown in the header to signal that the underlying
-/// domain data (Dashboard, Inventory, Invoices) may be stale. Each of those
-/// domains shows its own freshness chip in their list views.
-public struct ReportsView: View {
-    /// Injected from parent when available (e.g. DashboardViewModel.lastSyncedAt).
-    /// Nil = no connected data source yet; chip shows "Never synced".
-    public let referenceSyncedAt: Date?
+// MARK: - ReportsView
 
-    public init(referenceSyncedAt: Date? = nil) {
-        self.referenceSyncedAt = referenceSyncedAt
+/// Full Reports dashboard — Phase 8 §15.
+///
+/// iPhone: single-column card scroll.
+/// iPad: 3-column `LazyVGrid`.
+///
+/// Liquid Glass only on toolbar and hero tile chrome; never on chart surfaces.
+public struct ReportsView: View {
+    @State private var vm: ReportsViewModel
+    private let exportService: ReportExportService
+
+    // Sheet routing
+    @State private var drillContext: DrillThroughContext?
+    @State private var showCSATDetail = false
+    @State private var showNPSDetail  = false
+    @State private var showScheduled  = false
+    @State private var exportURL: URL?
+    @State private var showExportShare = false
+    @State private var exportError: String?
+    @State private var emailRecipient = ""
+    @State private var showEmailSheet  = false
+
+    private let onTapSaleRecord: (Int64) -> Void
+
+    public init(repository: ReportsRepository,
+                onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
+        _vm = State(wrappedValue: ReportsViewModel(repository: repository))
+        self.exportService = ReportExportService(repository: repository)
+        self.onTapSaleRecord = onTapSaleRecord
     }
 
+    // MARK: - Body
+
     public var body: some View {
+        Group {
+            if Platform.isCompact {
+                phoneLayout
+            } else {
+                ipadLayout
+            }
+        }
+        .task { await vm.loadAll() }
+        .refreshable { await vm.loadAll() }
+        .sheet(item: $drillContext) { ctx in
+            DrillThroughSheet(
+                context: ctx,
+                repository: vm.repository,
+                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) }
+            )
+        }
+        .sheet(isPresented: $showCSATDetail) {
+            if let csat = vm.csatScore {
+                CSATDetailView(score: csat)
+            }
+        }
+        .sheet(isPresented: $showNPSDetail) {
+            if let nps = vm.npsScore {
+                NPSDetailView(score: nps)
+            }
+        }
+        .sheet(isPresented: $showScheduled) {
+            ScheduledReportsSettingsView(repository: vm.repository)
+        }
+        .sheet(isPresented: $showExportShare) {
+            if let url = exportURL {
+                ShareLink(item: url)
+            }
+        }
+        .alert("Email Report", isPresented: $showEmailSheet) {
+            TextField("Recipient email", text: $emailRecipient)
+                .autocorrectionDisabled()
+            Button("Send") { Task { await sendEmail() } }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Export Error", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    // MARK: - iPhone Layout
+
+    private var phoneLayout: some View {
         NavigationStack {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: BrandSpacing.lg) {
-                        header
-                        shortcutsGrid
-                        backlogNotice
+                    LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
+                        dateRangePicker
+                            .padding(.horizontal, BrandSpacing.base)
+                        heroTile
+                            .padding(.horizontal, BrandSpacing.base)
+                        if vm.isLoading {
+                            loadingPlaceholders
+                        } else {
+                            cardStack
+                        }
                     }
-                    .padding(BrandSpacing.base)
-                    .frame(maxWidth: 1000, alignment: .leading)
+                    .padding(.bottom, BrandSpacing.xxl)
                 }
             }
             .navigationTitle("Reports")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    StalenessIndicator(lastSyncedAt: referenceSyncedAt)
+            .toolbar { toolbarItems }
+        }
+    }
+
+    // MARK: - iPad Layout
+
+    private var ipadLayout: some View {
+        NavigationStack {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
+                        dateRangePicker
+                            .padding(.horizontal, BrandSpacing.base)
+                        heroTile
+                            .padding(.horizontal, BrandSpacing.base)
+                        if vm.isLoading {
+                            loadingPlaceholders
+                        } else {
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: BrandSpacing.md),
+                                    GridItem(.flexible(), spacing: BrandSpacing.md),
+                                    GridItem(.flexible(), spacing: BrandSpacing.md)
+                                ],
+                                spacing: BrandSpacing.md
+                            ) {
+                                cardItems
+                            }
+                            .padding(.horizontal, BrandSpacing.base)
+                        }
+                    }
+                    .padding(.bottom, BrandSpacing.xxl)
                 }
             }
+            .navigationTitle("Reports")
+            .toolbar { toolbarItems }
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Text("Read-only snapshots")
-                .font(.brandHeadlineMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityAddTraits(.isHeader)
-            Text("Quick links to the live numbers already on your dashboard + domain lists. Full report builders with date ranges and CSV export land in a later release.")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-            // Offline hint — report data requires a live connection to refresh.
-            if !Reachability.shared.isOnline {
-                HStack(spacing: BrandSpacing.xs) {
-                    Image(systemName: "wifi.slash")
-                        .foregroundStyle(.bizarreWarning)
-                        .accessibilityHidden(true)
-                    Text("Offline — connect to refresh report data.")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreWarning)
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button {
+                    Task { await exportPDF() }
+                } label: {
+                    Label("Export PDF", systemImage: "doc.richtext")
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Offline. Connect to refresh report data.")
+                .accessibilityLabel("Export PDF report")
+
+                Button {
+                    showEmailSheet = true
+                } label: {
+                    Label("Email Report", systemImage: "envelope")
+                }
+                .accessibilityLabel("Email report")
+
+                Button {
+                    showScheduled = true
+                } label: {
+                    Label("Scheduled Reports", systemImage: "clock")
+                }
+                .accessibilityLabel("Scheduled reports settings")
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
+            .brandGlass(.clear, in: Circle())
+            .accessibilityLabel("Report actions")
         }
     }
 
-    private var shortcutsGrid: some View {
-        let tiles: [ReportShortcut] = [
-            .init(title: "Today's KPIs",        subtitle: "Open tickets, revenue, closes", icon: "chart.bar",        target: "Dashboard"),
-            .init(title: "Needs attention",     subtitle: "Stale tickets + overdue invoices", icon: "exclamationmark.circle", target: "Dashboard"),
-            .init(title: "Inventory valuation", subtitle: "Unit cost × on-hand quantity", icon: "shippingbox",       target: "Inventory"),
-            .init(title: "Low stock",           subtitle: "Below reorder threshold",       icon: "tray.and.arrow.down", target: "Inventory"),
-            .init(title: "Open invoices",       subtitle: "Unpaid + partially paid",       icon: "doc.text",          target: "Invoices"),
-            .init(title: "Employees",           subtitle: "Active roster + roles",         icon: "person.3",          target: "Employees"),
-        ]
+    // MARK: - Date Range Picker
 
-        return LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 180), spacing: BrandSpacing.md)],
-            spacing: BrandSpacing.md
-        ) {
-            ForEach(tiles) { tile in
-                ReportTile(shortcut: tile)
+    private var dateRangePicker: some View {
+        Picker("Date Range", selection: $vm.selectedPreset) {
+            ForEach(DateRangePreset.allCases) { preset in
+                Text(preset.displayLabel).tag(preset)
             }
         }
+        .pickerStyle(.segmented)
+        .onChange(of: vm.selectedPreset) { _, _ in
+            Task { await vm.loadAll() }
+        }
+        .accessibilityLabel("Select date range")
     }
 
-    private var backlogNotice: some View {
-        HStack(alignment: .top, spacing: BrandSpacing.sm) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.bizarreTeal)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text("Coming next")
-                    .font(.brandTitleSmall())
+    // MARK: - Hero Tile (Liquid Glass on chrome)
+
+    @ViewBuilder
+    private var heroTile: some View {
+        HStack(spacing: BrandSpacing.base) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text("Revenue")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(vm.revenueTotalDollars, format: .currency(code: "USD"))
+                    .font(.brandHeadlineLarge())
                     .foregroundStyle(.bizarreOnSurface)
-                Text("Date-range revenue chart, category pie for expenses, per-tech repair hours, CSV export. See ActionPlan §15 for the full list.")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                HStack(spacing: BrandSpacing.sm) {
+                    sparklineView
+                    if let atv = vm.avgTicketValue {
+                        trendArrow(pct: atv.trendPct)
+                    }
+                }
             }
-        }
-        .padding(BrandSpacing.md)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-        )
-    }
-}
-
-private struct ReportShortcut: Identifiable {
-    let id = UUID()
-    let title: String
-    let subtitle: String
-    let icon: String
-    let target: String
-}
-
-private struct ReportTile: View {
-    let shortcut: ReportShortcut
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            HStack {
-                Image(systemName: shortcut.icon)
-                    .foregroundStyle(.bizarreOrange)
-                    .accessibilityHidden(true)
-                Spacer()
-                Text(shortcut.target.uppercased())
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .padding(.horizontal, BrandSpacing.sm)
-                    .padding(.vertical, BrandSpacing.xxs)
-                    .background(Color.bizarreSurface2.opacity(0.7), in: Capsule())
-            }
-            Text(shortcut.title)
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Text(shortcut.subtitle)
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Spacer()
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 40))
+                .foregroundStyle(.bizarreOrange.opacity(0.5))
+                .accessibilityHidden(true)
         }
         .padding(BrandSpacing.base)
-        .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5)
-        )
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xl))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(shortcut.title). \(shortcut.subtitle). Find it in \(shortcut.target).")
+        .accessibilityLabel(
+            "Total revenue for period: \(String(format: "$%.2f", vm.revenueTotalDollars))"
+        )
+    }
+
+    @ViewBuilder
+    private var sparklineView: some View {
+        if !vm.revenue.isEmpty {
+            SparklineView(points: vm.revenue.map { Double($0.amountCents) })
+                .frame(width: 80, height: 24)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private func trendArrow(pct: Double) -> some View {
+        let isUp = pct >= 0
+        HStack(spacing: BrandSpacing.xxs) {
+            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text(String(format: "%.1f%%", abs(pct)))
+                .font(.brandLabelLarge())
+        }
+        .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
+    }
+
+    // MARK: - Loading Placeholders
+
+    private var loadingPlaceholders: some View {
+        VStack(spacing: BrandSpacing.md) {
+            ForEach(0..<4, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                    .fill(Color.bizarreSurface1)
+                    .frame(height: 120)
+                    .shimmer()
+            }
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .accessibilityLabel("Loading reports…")
+    }
+
+    // MARK: - Phone card stack (single column)
+
+    private var cardStack: some View {
+        VStack(spacing: BrandSpacing.md) {
+            cardItems
+        }
+        .padding(.horizontal, BrandSpacing.base)
+    }
+
+    // MARK: - Card items (shared between phone/iPad)
+
+    @ViewBuilder
+    private var cardItems: some View {
+        RevenueChartCard(points: vm.revenue) { pt in
+            drillContext = .revenue(date: pt.date)
+        }
+
+        TicketsByStatusCard(points: vm.ticketsByStatus)
+
+        AvgTicketValueCard(value: vm.avgTicketValue)
+
+        TopEmployeesCard(employees: vm.employeePerf)
+
+        InventoryTurnoverCard(rows: vm.inventoryTurnover)
+
+        CSATScoreCard(score: vm.csatScore) {
+            showCSATDetail = true
+        }
+
+        NPSScoreCard(score: vm.npsScore) {
+            showNPSDetail = true
+        }
+    }
+
+    // MARK: - Export
+
+    private func exportPDF() async {
+        let snapshot = ReportSnapshot(
+            title: "BizarreCRM Report",
+            period: "\(vm.fromDateString) – \(vm.toDateString)",
+            revenue: vm.revenue,
+            ticketsByStatus: vm.ticketsByStatus,
+            avgTicketValue: vm.avgTicketValue,
+            topEmployees: Array(vm.employeePerf.prefix(5)),
+            inventoryTurnover: vm.inventoryTurnover,
+            csatScore: vm.csatScore,
+            npsScore: vm.npsScore
+        )
+        do {
+            exportURL = try await exportService.generatePDF(report: snapshot)
+            showExportShare = true
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    private func sendEmail() async {
+        let snapshot = ReportSnapshot(
+            title: "BizarreCRM Report",
+            period: "\(vm.fromDateString) – \(vm.toDateString)",
+            revenue: vm.revenue,
+            ticketsByStatus: vm.ticketsByStatus,
+            avgTicketValue: vm.avgTicketValue,
+            topEmployees: Array(vm.employeePerf.prefix(5)),
+            inventoryTurnover: vm.inventoryTurnover,
+            csatScore: vm.csatScore,
+            npsScore: vm.npsScore
+        )
+        do {
+            let url = try await exportService.generatePDF(report: snapshot)
+            try await exportService.emailReport(pdf: url, recipient: emailRecipient)
+        } catch {
+            exportError = error.localizedDescription
+        }
     }
 }
 
-#Preview {
-    ReportsView()
-        .preferredColorScheme(.dark)
+// MARK: - SparklineView
+
+private struct SparklineView: View {
+    let points: [Double]
+
+    var body: some View {
+        GeometryReader { geo in
+            let (minV, maxV) = (points.min() ?? 0, points.max() ?? 1)
+            let range = max(maxV - minV, 1)
+            let w = geo.size.width / max(Double(points.count - 1), 1)
+            let h = geo.size.height
+
+            Path { path in
+                for (idx, val) in points.enumerated() {
+                    let x = Double(idx) * w
+                    let y = h - ((val - minV) / range * h)
+                    if idx == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                    else { path.addLine(to: CGPoint(x: x, y: y)) }
+                }
+            }
+            .stroke(Color.bizarreOrange, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+        }
+    }
 }
+
+// MARK: - Shimmer placeholder modifier
+
+private extension View {
+    func shimmer() -> some View {
+        self.opacity(0.5)
+    }
+}
+
+// MARK: - DrillThroughContext Identifiable
+
+extension DrillThroughContext: Identifiable {
+    public var id: String { "\(metric)-\(date)" }
+}
+

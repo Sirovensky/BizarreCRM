@@ -1637,46 +1637,50 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET /reports/aging`, `GET /reports/technician-performance`, `GET /reports/tax`, `GET /reports/inventory`, `GET /reports/scheduled`, `POST /reports/run-now`._
 
 ### 15.1 Tab shell
-- [~] Phase-0 placeholder.
+- [x] Phase-0 placeholder replaced with full charts dashboard. (feat(ios phase-8 §15): Reports charts + BI + drill-through + CSAT+NPS + PDF export + scheduled reports)
 - [x] **Offline indicator** — inline `HStack` in header shows wifi.slash icon + "Offline — reports require a network connection" when `!Reachability.shared.isOnline`. `StalenessIndicator` in toolbar accepts optional `referenceSyncedAt` (shows "Never synced" when nil). No ReportsRepository yet — static index only. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
+- [x] **Date-range selector** — segmented picker 7D/30D/90D/Custom; `applyCustomRange(from:to:)` on ViewModel; triggers `loadAll()`. (feat(ios phase-8 §15))
+- [x] **Export button** — "Export PDF" toolbar action via `ReportExportService.generatePDF` + `ShareLink`; "Email Report" posts to `POST /api/v1/reports/email`. (feat(ios phase-8 §15))
+- [x] **iPad** — 3-column `LazyVGrid` gated on `Platform.isCompact`; iPhone single-column. (feat(ios phase-8 §15))
+- [x] **Schedule report** — `ScheduledReportsSettingsView` with `GET/POST/DELETE /reports/scheduled`; frequency picker daily/weekly/monthly; recipient email list. (feat(ios phase-8 §15))
 - [ ] **Sub-routes / segmented picker** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
-- [ ] **Date-range selector** with presets + custom; persists.
-- [ ] **Export button** — CSV / PDF via `.fileExporter`.
-- [ ] **iPad** — sidebar list of reports + chart detail pane.
-- [ ] **Schedule report** — `GET /reports/scheduled`; create schedule; auto-email.
 
 ### 15.2 Sales
+- [x] Revenue trend — `RevenueChartCard` with Swift Charts `AreaMark + LineMark`, y-axis in $K, x-axis time-scale; hero tile shows period total + sparkline + trend arrow. (feat(ios phase-8 §15))
 - [ ] Total invoices / revenue / unique customers / period-over-period delta.
-- [ ] Revenue trend (`Charts.LineMark`) daily/weekly toggle.
 - [ ] Revenue by payment method pie.
 - [ ] YoY growth.
 - [ ] Top 10 customers by spend.
 - [ ] Cohort revenue retention.
 
 ### 15.3 Tickets
+- [x] Tickets by status — `TicketsByStatusCard` horizontal `BarMark` chart with per-status color. (feat(ios phase-8 §15))
 - [ ] Opened vs closed per day (stacked bar).
 - [ ] Close rate.
 - [ ] Avg turnaround time.
-- [ ] Tickets by status pie.
 - [ ] Tickets by tech bar.
 - [ ] Busy-hours heatmap.
 - [ ] SLA breach count.
 
 ### 15.4 Employees
+- [x] `GET /reports/employees-performance` — `TopEmployeesCard` top-5 ranked by revenue; `EmployeePerf` model with tickets closed, revenue cents, avg resolution hours. (feat(ios phase-8 §15))
 - [ ] `GET /reports/technician-performance` — table: name / tickets assigned / closed / commission / hours / revenue.
 - [ ] Per-tech detail drill.
 
 ### 15.5 Inventory
+- [x] Turnover / dead-stock — `InventoryTurnoverCard` sorted table top-10 slowest by daysOnHand; `InventoryTurnoverRow` model with turnoverRate + daysOnHand. (feat(ios phase-8 §15))
 - [ ] Low stock / out-of-stock counts.
 - [ ] Inventory value (cost + retail).
-- [ ] Turnover / dead-stock / top-moving.
 - [ ] Shrinkage trend.
 
 ### 15.6 Tax
 - [ ] `GET /reports/tax` — collected by class / rate summary.
 - [ ] Period total for filing.
 
-### 15.7 Insights (adv)
+### 15.7 Insights (adv) — CSAT + NPS
+- [x] **CSAT** — `CSATScoreCard` gauge + trend badge; `CSATDetailView` score distribution bar chart + free-text comments list. `GET /reports/csat`. (feat(ios phase-8 §15))
+- [x] **NPS** — `NPSScoreCard` gauge + promoter/passive/detractor split bar + theme chips; `NPSDetailView` per-tech breakdown anonymized per §37. `GET /reports/nps`. (feat(ios phase-8 §15))
+- [x] **Avg Ticket Value** — `AvgTicketValueCard` single-metric + delta badge + trend arrow. `GET /reports/avg-ticket-value`. (feat(ios phase-8 §15))
 - [ ] Warranty claims trend.
 - [ ] Device-models repaired distribution.
 - [ ] Parts usage analysis.
@@ -1688,8 +1692,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Pick series + bucket + range; save as favorite per user.
 
 ### 15.9 Export / schedule
-- [ ] CSV / PDF export per report.
-- [ ] Schedule recurring email of report (server-side).
+- [x] PDF export — `ReportExportService` actor with `generatePDF(report:)` using `UIGraphicsPDFRenderer` (iOS) / CoreGraphics (macOS); returns non-empty URL. (feat(ios phase-8 §15))
+- [x] Email report — `emailReport(pdf:recipient:)` posts base64 PDF to `POST /api/v1/reports/email`. (feat(ios phase-8 §15))
+- [x] Scheduled reports — `ScheduledReportsSettingsView` CRUD; `GET/POST/DELETE /api/v1/reports/scheduled`. (feat(ios phase-8 §15))
+- [x] Drill-through — `DrillThroughSheet` tapping any chart data point opens `GET /reports/drill-through?metric=&date=`; records list with sale navigation closure. (feat(ios phase-8 §15))
+- [x] Swift Charts with `AreaMark + LineMark` on revenue; `BarMark` on tickets/CSAT; `Gauge` on CSAT/NPS; all with `.accessibilityChartDescriptor`. (feat(ios phase-8 §15))
+- [x] Sovereignty: all compute on tenant server; no external BI tool — single network peer via `APIClient.baseURL`. (feat(ios phase-8 §15))
+- [ ] CSV / PDF export per report (CSV not yet wired).
 - [ ] "BI" sub-tab in Reports for deeper analysis
 - [ ] Built-in reports: revenue/margin by category/tech/customer segment
 - [ ] Built-in reports: repeat customer rate, time-to-repeat
@@ -1700,9 +1709,6 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Save custom query as widget
 - [ ] Swift Charts with zoom / pan / compare periods
 - [ ] Export chart as PNG / CSV
-- [ ] Drill-down: tap chart segment → underlying records list
-- [ ] Scheduled PDF snapshot email delivery
-- [ ] Sovereignty: all compute on tenant server; no external BI tool
 - [ ] Breadcrumb drill: tap chart segment → filtered records list; trail "Total revenue → October → Services → iPhone repair"; each crumb tappable to step back.
 - [ ] Context panel layout: filters narrowed-by-drill (left), records list (right).
 - [ ] Export at any level: share current filtered view as PDF / CSV.
