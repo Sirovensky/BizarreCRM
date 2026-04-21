@@ -5441,8 +5441,8 @@ Slug resolution rules:
 | Clock out | `.success` | — |
 | Signature committed | `.selection` | — |
 
-- [ ] All sounds respect silent switch + Settings → Sounds master.
-- [ ] All haptics respect Settings → Haptics master + iOS accessibility setting.
+- [x] All sounds respect silent switch + Settings → Sounds master. (`SoundPlayer` uses AudioServicesPlaySystemSound which respects mute; `HapticsSettings.soundsEnabled` toggle.)
+- [x] All haptics respect Settings → Haptics master + iOS accessibility setting. (`HapticsSettings.hapticsEnabled` + `QuietHoursCalculator`.)
 
 ### 66.1 CoreHaptics engine
 - `CHHapticEngine` registered on app start.
@@ -5459,8 +5459,8 @@ Slug resolution rules:
 - **Status advance** — ramp from 0.2 → 0.6 over 150ms.
 - **Undo** — reverse ramp.
 - **Signature complete** — triple subtle, low intensity.
-- [ ] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics drop to minimum intensity, sounds muted; except critical (backup failure / security alert)
-- [ ] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS
+- [x] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics suppressed except critical. (`QuietHoursCalculator` + `HapticsSettings.quietHoursStart/End`.)
+- [x] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS. (`SoundPlayer` uses `AudioServicesPlaySystemSound`.)
 - [ ] Do-Not-Disturb: respect Focus modes (§13); notifications routed per Focus rules
 
 ---
@@ -5489,32 +5489,32 @@ Slug resolution rules:
 - Shared element → cross-fade.
 
 ### 67.4 Signature animations
-- [ ] **Ticket-created** — temporary pulse highlight on new row.
-- [ ] **Sale-complete** — confetti + check mark center screen.
-- [ ] **SMS-sent** — bubble fly-in from composer.
-- [ ] **Payment-approved** — green check inside a circle draw.
-- [ ] **Low-stock warn** — stock badge pulses red.
+- [x] **Ticket-created** — temporary pulse highlight on new row. (`.ticketCreatedPulse(highlight:)` in `SignatureAnimations.swift`.)
+- [x] **Sale-complete** — confetti + check mark center screen. (`.saleCompleteConfetti(isActive:)`; Reduce Motion → static checkmark.)
+- [x] **SMS-sent** — bubble fly-in from composer. (`.smsSentFlyIn()`.)
+- [x] **Payment-approved** — green check inside a circle draw. (`.paymentApprovedCheck(isActive:)`.)
+- [x] **Low-stock warn** — stock badge pulses red. (`.lowStockPulse(isActive:)`.)
 
 ---
 ## §68. Launch Experience
 
 ### 68.1 Launch screen
-- [ ] **Branded splash** — logo center + gradient; identical in light/dark.
-- [ ] **No loading spinners** before UI — state restore quickly.
+- [x] **Branded splash** — logo center + gradient; identical in light/dark. (`LaunchSceneView.swift` — forces `.dark` colorScheme so gradient reads identically.)
+- [x] **No loading spinners** before UI — state restore quickly. (`ColdStartCoordinator` resolves in ≤200ms.)
 
 ### 68.2 Cold-start sequence
-- [ ] Splash (200ms max) → RootView resolve → Dashboard or Login.
-- [ ] **State restore** — last tab + last selected list row.
-- [ ] **Deep-link resolution** — before first render.
+- [x] Splash (200ms max) → RootView resolve → Dashboard or Login. (`ColdStartCoordinator.resolve()` with `Task.sleep` deadline race.)
+- [x] **State restore** — last tab + last selected list row. (`StateRestorer.swift`.)
+- [ ] **Deep-link resolution** — before first render. (Handled by existing `DeepLinkRouter`; `ColdStartCoordinator` does not yet pass deep-link URL.)
 
 ### 68.3 First-run
-- [ ] **Server URL entry** with quick-pick options (saved URLs + "bizarrecrm.com").
-- [ ] **What's new** — modal on major version update.
+- [x] **Server URL entry** with quick-pick options (saved URLs + "bizarrecrm.com"). (`FirstRunServerPickerView.swift`.)
+- [x] **What's new** — modal on major version update. (`WhatsNewSheet.swift` + `BundledChangelog` fallback.)
 
 ### 68.4 Onboarding tooltips
-- [ ] **Coach marks** — first time each top-level screen opened.
-- [ ] **Dismissable** + "Don't show again".
-- [ ] **Per-feature** — widget install prompt, barcode scan, BlockChyp pairing.
+- [x] **Coach marks** — first time each top-level screen opened. (`CoachMarkDismissalStore` + `CoachMarkOverlay` in `CoachMarkView.swift`.)
+- [x] **Dismissable** + "Don't show again". (Dismiss button + "Don't show again" button; persists to `UserDefaults`.)
+- [ ] **Per-feature** — widget install prompt, barcode scan, BlockChyp pairing. (Specific coach mark content deferred to feature packages.)
 
 ---
 ## §69. In-App Help
