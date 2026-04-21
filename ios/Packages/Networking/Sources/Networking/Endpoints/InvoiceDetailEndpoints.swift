@@ -137,6 +137,30 @@ public struct InvoiceDetail: Decodable, Sendable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Status-gating helpers (§7 toolbar actions)
+
+public extension InvoiceDetail {
+    /// Invoice can accept a payment when it is not fully paid or void.
+    var canPay: Bool {
+        let s = (status ?? "").lowercased()
+        guard s != "paid" && s != "void" else { return false }
+        return (amountDue ?? 0) > 0
+    }
+
+    /// Invoice can be refunded when it has payments.
+    var canRefund: Bool {
+        guard (status ?? "").lowercased() != "void" else { return false }
+        return (amountPaid ?? 0) > 0
+    }
+
+    /// Invoice can be voided when status is draft, or it has no payments.
+    var canVoid: Bool {
+        let s = (status ?? "").lowercased()
+        if s == "void" || s == "paid" { return false }
+        return (amountPaid ?? 0) == 0 || s == "draft"
+    }
+}
+
 public extension APIClient {
     func invoice(id: Int64) async throws -> InvoiceDetail {
         try await get("/api/v1/invoices/\(id)", as: InvoiceDetail.self)

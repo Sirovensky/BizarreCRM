@@ -6,9 +6,16 @@ import Networking
 
 public struct InvoiceDetailView: View {
     @State private var vm: InvoiceDetailViewModel
+    @State private var showPaySheet = false
+    @State private var showRefundSheet = false
+    @State private var showVoidAlert = false
+    @State private var showReceiptSheet = false
 
-    public init(repo: InvoiceDetailRepository, invoiceId: Int64) {
+    @ObservationIgnored private let api: APIClient
+
+    public init(repo: InvoiceDetailRepository, invoiceId: Int64, api: APIClient) {
         _vm = State(wrappedValue: InvoiceDetailViewModel(repo: repo, invoiceId: invoiceId))
+        self.api = api
     }
 
     public var body: some View {
@@ -20,6 +27,105 @@ public struct InvoiceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar { toolbarItems }
+        .sheet(isPresented: $showPaySheet) {
+            if case let .loaded(inv) = vm.state {
+                let balanceCents = Int(((inv.amountDue ?? 0) * 100).rounded())
+                InvoicePaymentSheet(
+                    vm: InvoicePaymentViewModel(api: api, invoiceId: inv.id, balanceCents: balanceCents)
+                ) { _ in Task { await vm.load() } }
+            }
+        }
+        .sheet(isPresented: $showRefundSheet) {
+            if case let .loaded(inv) = vm.state {
+                let paidCents = Int(((inv.amountPaid ?? 0) * 100).rounded())
+                let lineItems = (inv.lineItems ?? []).map { item in
+                    RefundLineItem(
+                        id: item.id,
+                        displayName: item.displayName,
+                        totalCents: Int(((item.total ?? 0) * 100).rounded())
+                    )
+                }
+                InvoiceRefundSheet(
+                    vm: InvoiceRefundViewModel(api: api, invoiceId: inv.id, totalPaidCents: paidCents, lineItems: lineItems)
+                ) { _ in Task { await vm.load() } }
+            }
+        }
+        .sheet(isPresented: $showReceiptSheet) {
+            if case let .loaded(inv) = vm.state {
+                InvoiceEmailReceiptSheet(
+                    vm: InvoiceEmailReceiptViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        customerEmail: inv.customerEmail,
+                        customerPhone: inv.customerPhone
+                    )
+                ) { Task { await vm.load() } }
+            }
+        }
+        .modifier(voidModifier)
+    }
+
+    @ViewBuilder
+    private var voidModifier: some View {
+        // Workaround: attach void alert modifier only when loaded
+        if case let .loaded(inv) = vm.state {
+            EmptyView()
+                .invoiceVoidAlert(
+                    isPresented: $showVoidAlert,
+                    vm: InvoiceVoidViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        canVoid: inv.canVoid
+                    )
+                ) { _ in Task { await vm.load() } }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        if case let .loaded(inv) = vm.state {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                BrandGlassContainer {
+                    if inv.canPay {
+                        Button {
+                            showPaySheet = true
+                        } label: {
+                            Label("Pay", systemImage: "creditcard")
+                        }
+                        .accessibilityLabel("Record payment")
+                    }
+
+                    if inv.canRefund {
+                        Button {
+                            showRefundSheet = true
+                        } label: {
+                            Label("Refund", systemImage: "arrow.uturn.left")
+                        }
+                        .accessibilityLabel("Issue refund")
+                    }
+
+                    Menu {
+                        if inv.canVoid {
+                            Button(role: .destructive) {
+                                showVoidAlert = true
+                            } label: {
+                                Label("Void Invoice", systemImage: "xmark.circle")
+                            }
+                            .accessibilityLabel("Void this invoice")
+                        }
+                        Button {
+                            showReceiptSheet = true
+                        } label: {
+                            Label("Email Receipt", systemImage: "envelope")
+                        }
+                        .accessibilityLabel("Email receipt to customer")
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
     }
 
     private var navTitle: String {
@@ -52,12 +158,11 @@ public struct InvoiceDetailView: View {
                         LineItemsCard(items: items)
                     }
                     TotalsCard(invoice: inv)
-                    if let payments = inv.payments, !payments.isEmpty {
-                        PaymentsCard(payments: payments)
-                    }
                     if let notes = inv.notes, !notes.isEmpty {
                         NotesCard(text: notes)
                     }
+                    // §7.7 Payment history section
+                    InvoicePaymentHistoryView(entries: buildPaymentHistory(from: inv))
                 }
                 .padding(BrandSpacing.base)
             }
@@ -247,49 +352,6 @@ private struct TotalsCard: View {
             Spacer()
             Text(formatMoney(value)).font(.brandBodyMedium()).foregroundStyle(tint).monospacedDigit()
         }
-    }
-}
-
-private struct PaymentsCard: View {
-    let payments: [InvoiceDetail.Payment]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Payments").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            ForEach(payments) { p in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text((p.method ?? "—").capitalized)
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreOnSurface)
-                        Spacer()
-                        Text(formatMoney(p.amount ?? 0))
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreSuccess)
-                            .monospacedDigit()
-                    }
-                    HStack {
-                        if let ts = p.createdAt {
-                            Text(String(ts.prefix(10)))
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
-                        if let rec = p.recordedBy, !rec.isEmpty {
-                            Text("• \(rec)")
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
-                        Spacer()
-                        if let txn = p.transactionId, !txn.isEmpty {
-                            Text(txn).font(.brandMono(size: 11)).foregroundStyle(.bizarreOnSurfaceMuted)
-                                .lineLimit(1).truncationMode(.middle)
-                        }
-                    }
-                }
-                .padding(.vertical, BrandSpacing.xxs)
-            }
-        }
-        .cardBackground()
     }
 }
 

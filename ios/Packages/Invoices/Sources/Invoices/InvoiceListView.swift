@@ -11,9 +11,11 @@ public struct InvoiceListView: View {
     @State private var path: [Int64] = []
     @State private var selectedInvoice: Int64?
     private let detailRepo: InvoiceDetailRepository
+    private let api: APIClient
 
-    public init(repo: InvoiceRepository, detailRepo: InvoiceDetailRepository) {
+    public init(repo: InvoiceRepository, detailRepo: InvoiceDetailRepository, api: APIClient) {
         self.detailRepo = detailRepo
+        self.api = api
         _vm = State(wrappedValue: InvoiceListViewModel(repo: repo))
     }
 
@@ -45,7 +47,7 @@ public struct InvoiceListView: View {
             .searchable(text: $searchText, prompt: "Search invoices")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationDestination(for: Int64.self) { id in
-                InvoiceDetailView(repo: detailRepo, invoiceId: id)
+                InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
             }
             .toolbar {
                 ToolbarItem(placement: .status) {
@@ -73,7 +75,7 @@ public struct InvoiceListView: View {
                 .searchable(text: $searchText, prompt: "Search invoices")
                 .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
                 .navigationDestination(for: Int64.self) { id in
-                    InvoiceDetailView(repo: detailRepo, invoiceId: id)
+                    InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
                 }
                 .toolbar {
                     ToolbarItem(placement: .status) {

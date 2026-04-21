@@ -1148,13 +1148,13 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Customer card** — name + phone + email + quick-actions.
 - [ ] **Line items** — editable table (if status allows); tax per line.
 - [ ] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
-- [ ] **Payment history** — method / amount / date / reference / status; tap → payment detail.
-- [ ] **Add payment** → `POST /invoices/:id/payments` (see 7.4).
-- [ ] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full.
+- [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
+- [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
+- [x] **Issue refund** — `POST /invoices/:id/refund`; role-gated; partial + full; manager PIN > $100. `InvoiceRefundSheet` + `InvoiceRefundViewModel` + `ManagerPinSheet`. (feat(ios phase-4 §7))
 - [ ] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`.
-- [ ] **Void** — `POST /invoices/:id/void` with reason; destructive confirm.
+- [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm. `InvoiceVoidConfirmAlert` + `InvoiceVoidViewModel`. Only allowed when no payments or draft. (feat(ios phase-4 §7))
 - [ ] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`.
-- [ ] **Send by email** — `MFMailComposeViewController` with PDF attached.
+- [x] **Send by email** — `InvoiceEmailReceiptSheet` — `POST /invoices/:id/email-receipt` + SMS copy toggle. (feat(ios phase-4 §7))
 - [ ] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac).
 - [ ] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer.
 - [ ] **Clone invoice** — duplicate line items for new invoice.
