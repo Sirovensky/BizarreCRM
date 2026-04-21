@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Mail, MessageSquare, Bell, AlertCircle, CheckCircle2, Clock, Ban } from 'lucide-react';
+import { RefreshCw, Mail, MessageSquare, Bell, AlertCircle, CheckCircle2, Clock, Ban, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
+import { downloadCsv, toCsv } from '@/utils/csv';
 import toast from 'react-hot-toast';
 
 interface Row {
@@ -99,14 +100,32 @@ export function NotificationsPanel({ slug }: { slug: string }) {
           <option value="sms">sms</option>
           <option value="push">push</option>
         </select>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="ml-auto p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              if (rows.length === 0) { toast('Nothing to export'); return; }
+              const csv = toCsv(
+                ['created_at', 'type', 'recipient', 'subject', 'status', 'error', 'retry_count', 'sent_at'],
+                rows as unknown as Record<string, unknown>[],
+              );
+              downloadCsv(`notifications-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, csv);
+              toast.success(`Exported ${rows.length} rows`);
+            }}
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-surface-400 border border-surface-700 rounded hover:bg-surface-800"
+            title="Export current rows to CSV"
+          >
+            <Download className="w-3 h-3" />
+            CSV
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {summary && (
