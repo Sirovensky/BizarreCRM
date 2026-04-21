@@ -200,7 +200,7 @@ private struct iPadSplit: View {
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
         } detail: {
             switch selection {
-            case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
+            case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
             case .tickets:   TicketListView(
                 repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
                 api: AppServices.shared.apiClient,
