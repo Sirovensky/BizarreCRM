@@ -2247,7 +2247,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Right-click: `Modifier.onPointerEvent(Release) { ... if (button.isSecondary) showDropdown }`.
 
 ### 22.4 Split-screen / multi-window
-- [ ] `android:resizeableActivity="true"` already required (targetSdk 24+). Verify manifest.
+- [x] `android:resizeableActivity="true"` already required (targetSdk 24+). Verify manifest.
 - [ ] Minimum window size: 400×560 dp declared via `<layout android:minWidth="400dp" android:minHeight="560dp" ... />`.
 - [ ] Test split with Messages, Calculator, Chrome, another instance of self.
 
