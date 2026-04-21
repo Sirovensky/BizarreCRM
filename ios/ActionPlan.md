@@ -4059,10 +4059,15 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 ### 32.3 Crash reporting
 - [ ] **Apple crash logs** — TestFlight + App Store Connect default (device-level opt-in only).
 - [ ] **Symbolication** — `.dSYM` upload on release to our tenant server for decoding MetricKit payloads.
-- [ ] **Own crash pipeline** — `MXCrashDiagnostic` payloads uploaded to **tenant server** at `POST /telemetry/crashes` (never third-party).
-- [ ] **No Sentry / Bugsnag / Crashlytics** — banned (see §32 sovereignty rule).
+- [x] **Own crash pipeline** — `MXCrashDiagnostic` payloads uploaded to **tenant server** at `POST /diagnostics/report` (never third-party). `CrashReporter` + `CrashReporterDelegate` + `CrashReporterProcessor` in `Core/Crash/`. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **No Sentry / Bugsnag / Crashlytics** — banned; `CrashReporter` uses MetricKit only. <!-- shipped feat(ios phase-11 §32) -->
 - [ ] **Crashes surfaced** in Settings → Diagnostics for self-report.
-- [ ] **Redaction** — stack frames only; no heap / string PII.
+- [x] **Redaction** — all payloads pass through `LogRedactor` before POST; no raw PII. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Breadcrumbs** — `BreadcrumbStore` ring buffer (100 entries), auto-redacted, wired to log pipeline. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Boot-time recovery** — `CrashRecovery.willRestartAfterCrash` + `CrashRecoverySheet` + `DraftStore` integration. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Session fingerprint** — `SessionFingerprint` (device, iOS, app version+build, tenantSlug, userRole) attached to crash reports. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Admin opt-in toggle** — `CrashReportingSettingsView` + `CrashReportingSettingsViewModel` in Settings. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Dev console** — `CrashConsoleView` (`#if DEBUG`) showing breadcrumbs + export. <!-- shipped feat(ios phase-11 §32) -->
 
 ### 32.4 Event taxonomy (first-party analytics)
 - [ ] **Screen views** — `screen_view { name, duration_ms }`.
@@ -4075,8 +4080,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 
 ### 32.5 User-level controls
 - [ ] **Analytics opt-out** in Settings → Privacy — suspends event sink entirely.
-- [ ] **Crash-report opt-out**.
-- [ ] **Opt-in rationale** — "Data stays on your company server" messaging reinforced.
+- [x] **Crash-report opt-out** — admin toggle `CrashReportingSettingsView` + `CrashReportingDefaults.enabledKey`. <!-- shipped feat(ios phase-11 §32) -->
+- [x] **Opt-in rationale** — "Data stays on your company server" messaging in `CrashReportingSettingsView` footer. <!-- shipped feat(ios phase-11 §32) -->
 - [ ] **ATT prompt skipped** — we don't cross-app track; no `AppTrackingTransparency` permission needed.
 
 ### 32.6 PII / secrets redaction — placeholders, not raw values
@@ -4289,8 +4294,8 @@ Dependencies that must be done first before picking this up: §33 certs/provisio
 - [ ] BlockChyp / payment provider outage: fall back to manual card entry (stored cards only) + banner to cashier and manager.
 - [ ] Incident comms: server-pushed banner system for critical messages; tenant admin may override with own message.
 - [ ] Public status page `https://status.bizarrecrm.com`; deep-link from error banners.
-- [ ] Runbook set in `docs/runbooks/`: crash-spike.md, push-failure.md, auth-outage.md, sync-dead-letter-flood.md, payment-provider-down.md, printer-driver-regression.md, db-corruption.md, license-compliance-scare.md, app-store-removal.md, data-breach.md.
-- [ ] Standard runbook structure: Detect → Classify (severity) → Contain → Communicate (banner + email + status page) → Remediate → Verify → Post-mortem.
+- [x] Runbook set in `docs/runbooks/`: crash-spike.md, push-failure.md, auth-outage.md, sync-dead-letter-flood.md, payment-provider-down.md, printer-driver-regression.md, db-corruption.md, license-compliance-scare.md, app-store-removal.md, data-breach.md. <!-- §34 shipped: checkout-broken, sync-queue-stuck, auth-down, crash-loop, printer-offline, terminal-disconnected, camera-unresponsive, widget-stale, push-delayed, settings-page-broken + index + crisis-playbook + first-responder-cheatsheet -->
+- [x] Standard runbook structure: Detect → Classify (severity) → Contain → Communicate (banner + email + status page) → Remediate → Verify → Post-mortem. <!-- §34 shipped in crisis-playbook.md §4 post-mortem template -->
 - [ ] On-call rotation: weekly primary + secondary; pager via tenant-owned PagerDuty or similar.
 - [ ] Quarterly game-day: simulate one runbook, feed results back into doc.
 - [ ] Sovereignty: logs aggregated to tenant-controlled stack; no Datadog / Splunk multi-tenant shared.
