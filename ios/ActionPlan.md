@@ -4921,19 +4921,19 @@ See §19.14 for settings entry. Deep features:
 ## §49. Data Export
 
 ### 49.1 Full tenant export
-- [ ] **Trigger** — Settings → Danger → "Export all data".
-- [ ] **Bundle** — JSON + CSV + photos zip; encrypted with tenant passphrase.
-- [ ] **Email / iCloud / share sheet** — delivery options.
-- [ ] **Progress** — Live Activity.
+- [x] **Trigger** — Settings → Danger → "Export all data" (`DataExportSettingsView`).
+- [x] **Bundle** — encrypted ZIP with passphrase; `FullExportConfirmSheet` collects passphrase, warns about contents.
+- [x] **Email / iCloud / share sheet** — `ExportShareSheet` with `ShareLink` + `UIDocumentPickerViewController` save-to-iCloud.
+- [x] **Progress** — `ExportProgressView` polls `GET /exports/:id` every 3s; status chip in-app. Live Activity: TODO §21 Dynamic Island.
 
 ### 49.2 Per-domain export
-- [ ] **From list views** — export filtered results as CSV.
+- [x] **From list views** — `DomainExportMenu` presents local CSV via `CSVComposer` (RFC-4180) + server-side filtered export via `POST /exports/domain/:entity`.
 
 ### 49.3 GDPR / CCPA individual export
-- [ ] **Per-customer data package** — download all linked records.
+- [x] **Per-customer data package** — `GDPRCustomerExportView` triggers `POST /exports/customer/:id`, polls, shares zip URL.
 
 ### 49.4 Scheduled recurring
-- [ ] **Daily to S3 / Dropbox / iCloud Drive** — tenant-configured.
+- [x] **Daily to S3 / Dropbox / iCloud Drive** — `ScheduledExportListView` + `ScheduledExportEditorView`; iCloud Drive functional, S3/Dropbox stubbed (TODO §49.4 comment).
 
 ---
 ## §50. Audit Logs Viewer — ADMIN ONLY
