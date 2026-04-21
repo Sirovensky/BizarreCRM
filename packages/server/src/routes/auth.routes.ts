@@ -15,6 +15,7 @@ import { validateEmail } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const logger = createLogger('auth');
 
@@ -475,7 +476,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   // Only allow if no active users exist
   const countRow = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
   if (countRow!.c > 0) {
-    res.status(400).json({ success: false, message: 'Shop is already set up' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Shop is already set up' });
     return;
   }
 
@@ -496,7 +497,7 @@ router.post('/setup', async (req: Request, res: Response) => {
   let tokenRow: { id: number; expires_at: string; consumed_at: string | null } | undefined;
   if (!isSingleTenant) {
     if (!setup_token || typeof setup_token !== 'string' || setup_token.length === 0) {
-      res.status(403).json({ success: false, message: 'Invalid setup link. Request a new one from your administrator.' });
+      res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid setup link. Request a new one from your administrator.' });
       return;
     }
     const suppliedTokenHash = crypto.createHash('sha256').update(setup_token).digest('hex');
@@ -505,7 +506,7 @@ router.post('/setup', async (req: Request, res: Response) => {
       suppliedTokenHash
     );
     if (!tokenRow || tokenRow.consumed_at || new Date(tokenRow.expires_at) <= new Date()) {
-      res.status(403).json({ success: false, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
+      res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
       return;
     }
   }
@@ -686,7 +687,7 @@ router.post('/login', async (req: Request, res: Response) => {
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     // SEC (E2): Generic error message — do not distinguish "user not found"
     // from "wrong password" in the response.
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -730,7 +731,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -792,7 +793,7 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
   const db = req.db;
   const { challengeToken, password } = req.body;
   const userId = consumeChallenge(challengeToken); // Consume immediately
-  if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
+  if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   if (!password || password.length < 8) {
     res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
@@ -814,7 +815,7 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
   if (updateResult.changes === 0) {
     // Either the user went away or password_set has already flipped to 1.
     // Return a generic 401 to avoid leaking which condition tripped.
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -834,11 +835,11 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
   const { challengeToken } = req.body;
   const pendingSecret = challenges.get(challengeToken)?.pendingTotpSecret;
   const userId = consumeChallenge(challengeToken); // Consume immediately
-  if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
+  if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   const user = await adb.get<any>('SELECT id, username, email FROM users WHERE id = ?', userId);
   // SEC (E2): Generic message + 401 to avoid account enumeration.
-  if (!user) { res.status(401).json({ success: false, message: 'Invalid credentials' }); return; }
+  if (!user) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' }); return; }
 
   // Generate new TOTP secret
   const secret = generateSecret();
@@ -886,7 +887,7 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
   const pendingSecret = challengeEntry?.pendingTotpSecret;
 
   const userId = consumeChallenge(challengeToken);
-  if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
+  if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   const tenantSlug = (req as any).tenantSlug || null;
   if (!checkTotpRateLimit(db, tenantSlug, userId)) {
@@ -1002,7 +1003,7 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
 
   const { challengeToken, code } = req.body;
   const userId = consumeChallenge(challengeToken);
-  if (!userId) { res.status(401).json({ success: false, message: 'Challenge expired' }); return; }
+  if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   // Share TOTP rate limiter
   const tenantSlug = (req as any).tenantSlug || null;
@@ -1209,7 +1210,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       // SEC (E2): Generic error — don't leak whether a user was deleted.
       audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'user_missing_or_inactive' });
       logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'user_missing_or_inactive' });
-      res.status(401).json({ success: false, message: 'Invalid credentials' });
+      res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
       return;
     }
 
@@ -1737,7 +1738,7 @@ router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Re
     userId
   );
   if (!user) {
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
   if (!user.totp_enabled || !user.totp_secret) {
@@ -1771,7 +1772,7 @@ router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Re
     audit(db, '2fa_disable_failed', userId, ip, {
       reason: !passwordValid ? 'bad_password' : 'bad_totp',
     });
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -1910,7 +1911,7 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
   const fail = () => {
     recordLoginFailure(db, ip);
     audit(db, 'backup_code_recovery_failed', user?.id ?? null, ip, { email: normalizedEmail });
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   };
 
   if (!user || !user.backup_codes) { fail(); return; }
@@ -2045,7 +2046,7 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
     userId
   );
   if (!user || !user.password_hash) {
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -2058,7 +2059,7 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
   if (!passwordValid) {
     audit(db, 'password_change_failed', userId, ip, { reason: 'bad_current_password' });
     logTenantAuthEvent('password_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -2146,7 +2147,7 @@ router.post('/change-pin', authMiddleware, async (req: Request, res: Response) =
     userId
   );
   if (!user || !user.password_hash) {
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 
@@ -2159,7 +2160,7 @@ router.post('/change-pin', authMiddleware, async (req: Request, res: Response) =
   if (!passwordValid) {
     audit(db, 'pin_change_failed', userId, ip, { reason: 'bad_current_password' });
     logTenantAuthEvent('pin_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
     return;
   }
 

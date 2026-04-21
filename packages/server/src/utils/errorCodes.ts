@@ -42,6 +42,18 @@ export const ERROR_CODES = {
   ERR_AUTH_SESSION_EXPIRED: 'ERR_AUTH_SESSION_EXPIRED',
   ERR_AUTH_SESSION_IDLE: 'ERR_AUTH_SESSION_IDLE',
   ERR_AUTH_USER_NOT_FOUND: 'ERR_AUTH_USER_NOT_FOUND',
+  /** Wrong username/password combination. */
+  ERR_AUTH_INVALID_CREDENTIALS: 'ERR_AUTH_INVALID_CREDENTIALS',
+  /** Multi-step challenge (2FA setup / PIN set / password reset) expired. */
+  ERR_AUTH_CHALLENGE_EXPIRED: 'ERR_AUTH_CHALLENGE_EXPIRED',
+  /** Invalid TOTP code during verify. */
+  ERR_AUTH_INVALID_TOTP: 'ERR_AUTH_INVALID_TOTP',
+  /** Refresh token is missing or expired. */
+  ERR_AUTH_REFRESH_MISSING: 'ERR_AUTH_REFRESH_MISSING',
+  /** Setup/activation link was invalid or already consumed. */
+  ERR_AUTH_SETUP_LINK_INVALID: 'ERR_AUTH_SETUP_LINK_INVALID',
+  /** Shop already completed first-run setup. */
+  ERR_AUTH_ALREADY_SETUP: 'ERR_AUTH_ALREADY_SETUP',
 
   // ── Permissions (403) ────────────────────────────────────────────
   ERR_PERM_INSUFFICIENT: 'ERR_PERM_INSUFFICIENT',
