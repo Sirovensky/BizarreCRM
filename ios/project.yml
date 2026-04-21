@@ -54,6 +54,7 @@ packages:
   RepairPricing: { path: Packages/RepairPricing }
   Voice:         { path: Packages/Voice }
   Loyalty:       { path: Packages/Loyalty }
+  Timeclock:     { path: Packages/Timeclock }
 
 targets:
   BizarreCRM:

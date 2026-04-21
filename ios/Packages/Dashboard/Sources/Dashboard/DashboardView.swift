@@ -2,15 +2,18 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Timeclock
 #if canImport(UIKit)
 import UIKit
 #endif
 
 public struct DashboardView: View {
     @State private var vm: DashboardViewModel
+    @State private var clockVM: ClockInOutViewModel
 
-    public init(repo: DashboardRepository) {
+    public init(repo: DashboardRepository, api: APIClient) {
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
+        _clockVM = State(wrappedValue: ClockInOutViewModel(api: api))
     }
 
     public var body: some View {
@@ -38,7 +41,7 @@ public struct DashboardView: View {
             }
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot)
+            LoadedBody(snapshot: snapshot, clockVM: clockVM)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
@@ -48,11 +51,13 @@ public struct DashboardView: View {
 
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
+    var clockVM: ClockInOutViewModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 greeting
+                ClockInOutTile(vm: clockVM)
                 heroCard
                 secondaryGrid
                 attentionCard

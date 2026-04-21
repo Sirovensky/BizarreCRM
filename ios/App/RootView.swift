@@ -145,7 +145,7 @@ private struct iPhoneTabs: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient))
+            DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
                 .tabItem { Label(MainTab.dashboard.title, systemImage: MainTab.dashboard.systemImage) }
                 .tag(MainTab.dashboard)
 
