@@ -55,7 +55,7 @@ in-progress and lags the audit.
 | 19 | Settings | ~30% | Main screen + biometric toggle + logout + notification toggles DONE. Missing: search-in-settings, change-password UI, change-PIN UI, deep links. |
 | 20 | Offline & Sync | ~50% | sync_queue + sync_metadata + dead-letter + WorkManager + WebSocket DONE. Missing: conflict resolution, delta sync, cursor pagination, dev tools drawer. |
 | 21 | Background & Push | ~55% | FCM + foreground service + WorkManager + **silent-push delta sync (NEW)** + quiet hours DONE. Missing: Live Updates (Android 16), OEM killer detection, Direct Boot. |
-| 22 | Tablet polish | ~10% | NavigationSuiteScaffold dep + **WindowMode helper (NEW)** + **hardware-keyboard chords (NEW via §17.10)** DONE. Missing: list-detail panes, drag-drop, stylus. |
+| 22 | Tablet polish | ~22% | NavigationSuiteScaffold dep + WindowMode helper + hardware-keyboard chords + **NavigationRail at \u2265600dp (NEW)** DONE. Missing: list-detail panes, drag-drop, stylus. |
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
@@ -2236,7 +2236,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Three-pane: `ThreePaneScaffoldNavigator` for Settings (list → category → item) on XL tablets.
 
 ### 22.2 Navigation rail
-- [ ] `NavigationSuiteScaffold` picks `NavigationSuiteType.NavigationRail` on Medium+.
+- [~] `NavigationSuiteScaffold` picks `NavigationSuiteType.NavigationRail` on Medium+. (Hand-rolled equivalent in `AppNavGraph`: `WindowSize.isMediumOrExpandedWidth()` swaps the bottom `NavigationBar` for a side `NavigationRail` + `VerticalDivider` at \u2265600dp. Phones still use the bottom bar.)
 - [ ] Rail items rendered with icon + label at ≥ 600dp.
 - [ ] Permanent drawer at ≥ 1240dp.
 

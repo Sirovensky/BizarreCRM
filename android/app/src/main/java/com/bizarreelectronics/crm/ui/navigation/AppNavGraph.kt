@@ -387,7 +387,12 @@ fun AppNavGraph(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
         ),
         bottomBar = {
-            if (showBottomNav) {
+            // §22.2 — drop the bottom NavigationBar at tablet+ widths; the
+            // NavigationRail rendered alongside the NavHost (below) takes
+            // over for ≥600dp. Phone width keeps the bottom bar so muscle
+            // memory + thumb-reach stays right.
+            val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
+            if (showBottomNav && !tabletNav) {
                 // [P0] NavigationBar restyle: explicit surface container so the bar
                 // stays anchored to surface1 and does not shift on scroll (Material3
                 // default is surfaceContainer which responds to scroll elevation).
@@ -473,6 +478,53 @@ fun AppNavGraph(
                 onGlobalSearch = { navController.navigate(Screen.GlobalSearch.route) },
                 onSettings = { navController.navigate(Screen.Settings.route) },
             ) {
+            // §22.2 — at tablet+ widths render NavigationRail alongside the
+            // NavHost in a Row. Phones fall through to single-column.
+            val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.weight(1f).fillMaxSize(),
+            ) {
+                if (tabletNav && showBottomNav) {
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ) {
+                        bottomNavItems.forEach { item ->
+                            val isMoreTab = item.screen == Screen.More
+                            val isSelected = if (isMoreTab) {
+                                currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                            } else {
+                                currentRoute == item.screen.route
+                            }
+                            androidx.compose.material3.NavigationRailItem(
+                                selected = isSelected,
+                                onClick = {
+                                    if (isMoreTab) {
+                                        navController.navigate(Screen.More.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = false
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = false
+                                        }
+                                    } else {
+                                        navController.navigate(item.screen.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                },
+                                icon = item.icon,
+                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                            )
+                        }
+                    }
+                    androidx.compose.material3.VerticalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    )
+                }
             NavHost(
                 navController = navController,
                 startDestination = if (authPreferences?.isLoggedIn == true && !authPreferences.serverUrl.isNullOrBlank())
@@ -1085,6 +1137,7 @@ fun AppNavGraph(
                 )
             }
         }
+        } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
         }
     }
