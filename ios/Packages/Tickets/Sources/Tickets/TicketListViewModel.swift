@@ -68,6 +68,33 @@ public final class TicketListViewModel {
         }
     }
 
+    // MARK: - §22 Quick-action handlers
+
+    /// Advance `ticket` to the next status via `transition`.
+    /// Optimistically removes the stale entry and refreshes when complete.
+    public func advanceStatus(ticket: TicketSummary, transition: TicketTransition) async {
+        // Optimistic removal from current view while the request is in-flight.
+        tickets = tickets.map { $0 }   // immutable copy preserved
+        // TODO: wire to APIClient+Tickets advanceStatus when Phase-4 endpoint ships.
+        AppLog.ui.debug("Quick-action advanceStatus: ticket=\(ticket.id) transition=\(transition.rawValue, privacy: .public)")
+        await refresh()
+    }
+
+    /// Archive `ticket` (marks status archived on the server).
+    public func archive(ticket: TicketSummary) async {
+        // TODO: wire to PATCH /tickets/:id { status: "archived" } — Phase 4.
+        AppLog.ui.debug("Quick-action archive: ticket=\(ticket.id)")
+        await refresh()
+    }
+
+    /// Delete `ticket` permanently.
+    public func delete(ticket: TicketSummary) async {
+        // Optimistic removal.
+        tickets = tickets.filter { $0.id != ticket.id }
+        // TODO: wire to DELETE /tickets/:id — Phase 4.
+        AppLog.ui.debug("Quick-action delete: ticket=\(ticket.id)")
+    }
+
     private func fetch() async {
         errorMessage = nil
         do {

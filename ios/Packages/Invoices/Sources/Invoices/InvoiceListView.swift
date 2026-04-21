@@ -133,11 +133,55 @@ public struct InvoiceListView: View {
                 ForEach(vm.invoices) { inv in
                     NavigationLink(value: inv.id) { InvoiceRow(invoice: inv) }
                         .listRowBackground(Color.bizarreSurface1)
+                        .hoverEffect(.highlight)
+                        .contextMenu { invoiceContextMenu(for: inv) }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
+    }
+
+    // MARK: - §22 Invoice context menu
+
+    @ViewBuilder
+    private func invoiceContextMenu(for inv: InvoiceSummary) -> some View {
+        // Email Receipt
+        Button {
+            // TODO: present InvoiceEmailReceiptSheet — Phase 4 / §7
+            selectedInvoice = inv.id
+        } label: {
+            Label("Email Receipt", systemImage: "envelope")
+        }
+        .accessibilityLabel("Email receipt for invoice \(inv.displayId)")
+
+        Divider()
+
+        // Refund
+        Button {
+            // TODO: present InvoiceRefundSheet — Phase 4 / §7
+            selectedInvoice = inv.id
+        } label: {
+            Label("Refund\u{2026}", systemImage: "arrow.uturn.backward.circle")
+        }
+        .accessibilityLabel("Refund invoice \(inv.displayId)")
+
+        // Void
+        Button(role: .destructive) {
+            // TODO: present InvoiceVoidConfirmAlert — Phase 4 / §7
+            selectedInvoice = inv.id
+        } label: {
+            Label("Void\u{2026}", systemImage: "xmark.circle")
+        }
+        .accessibilityLabel("Void invoice \(inv.displayId)")
+
+        // Duplicate
+        Button {
+            // TODO: POST /invoices/:id/duplicate — Phase 4 / §7
+        } label: {
+            Label("Duplicate", systemImage: "plus.square.on.square")
+        }
+        .accessibilityLabel("Duplicate invoice \(inv.displayId)")
     }
 
     private var filterChips: some View {

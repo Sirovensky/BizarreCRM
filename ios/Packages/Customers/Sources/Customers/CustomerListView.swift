@@ -152,6 +152,7 @@ public struct CustomerListView: View {
                 CustomerRow(customer: customer)
             }
             .hoverEffect(.highlight)
+            .contextMenu { customerContextMenu(for: customer, onSelect: onSelect) }
         } else {
             Button { onSelect(customer.id) } label: {
                 CustomerRow(customer: customer)
@@ -159,7 +160,60 @@ public struct CustomerListView: View {
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
             .tag(customer.id)
+            .contextMenu { customerContextMenu(for: customer, onSelect: onSelect) }
         }
+    }
+
+    // MARK: - §22 Customer context menu
+
+    @ViewBuilder
+    private func customerContextMenu(
+        for customer: CustomerSummary,
+        onSelect: @escaping (Int64) -> Void
+    ) -> some View {
+        // View Customer
+        Button {
+            onSelect(customer.id)
+        } label: {
+            Label("View Customer", systemImage: "person.circle")
+        }
+        .accessibilityLabel("View \(customer.displayName)")
+
+        // New Ticket
+        Button {
+            // TODO: deep-link to TicketCreateView pre-filled with customer — Phase 4
+        } label: {
+            Label("New Ticket", systemImage: "ticket")
+        }
+        .accessibilityLabel("Create new ticket for \(customer.displayName)")
+
+        // New SMS
+        if customer.contactLine != nil {
+            Button {
+                // TODO: open SMS compose sheet — Phase 12
+            } label: {
+                Label("New SMS", systemImage: "message")
+            }
+            .accessibilityLabel("Send SMS to \(customer.displayName)")
+        }
+
+        Divider()
+
+        // Merge
+        Button {
+            // TODO: present CustomerMergeView — Phase 4
+        } label: {
+            Label("Merge\u{2026}", systemImage: "person.2.badge.gearshape")
+        }
+        .accessibilityLabel("Merge \(customer.displayName) with another customer")
+
+        // Archive (destructive-ish)
+        Button {
+            // TODO: POST /customers/:id/archive — Phase 4
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        .accessibilityLabel("Archive \(customer.displayName)")
     }
 }
 

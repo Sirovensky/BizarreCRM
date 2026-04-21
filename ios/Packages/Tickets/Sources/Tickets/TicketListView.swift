@@ -16,6 +16,33 @@ public struct TicketListView: View {
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
+    // §22 quick-action handlers — no-op unless api is wired.
+    private var quickActionHandlers: TicketQuickActionHandlers {
+        TicketQuickActionHandlers(
+            onAdvanceStatus: { [weak vm] ticket, transition in
+                guard let vm else { return }
+                Task { await vm.advanceStatus(ticket: ticket, transition: transition) }
+            },
+            onAssign: { _, _ in
+                // TODO: POST /tickets/:id/assign — endpoint pending §4 write flow
+            },
+            onAddNote: { _ in
+                // TODO: present AddNoteSheet — §4 write flow
+            },
+            onDuplicate: { _ in
+                // TODO: POST /tickets/:id/duplicate — endpoint pending §4
+            },
+            onArchive: { [weak vm] ticket in
+                guard let vm else { return }
+                Task { await vm.archive(ticket: ticket) }
+            },
+            onDelete: { [weak vm] ticket in
+                guard let vm else { return }
+                Task { await vm.delete(ticket: ticket) }
+            }
+        )
+    }
+
     /// List + detail only. Create/Edit unavailable.
     public init(repo: TicketRepository) {
         self.repo = repo
@@ -165,7 +192,7 @@ public struct TicketListView: View {
                         .listRowBackground(Color.bizarreSurface1)
                         .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
                         .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
-                        .contextMenu { rowContextMenu(for: ticket) }
+                        // contextMenu is applied inside ticketRow via TicketQuickActionsContent
                 }
             }
             .listStyle(.plain)
@@ -175,11 +202,25 @@ public struct TicketListView: View {
 
     @ViewBuilder
     private func ticketRow(ticket: TicketSummary, onSelect: @escaping (Int64) -> Void) -> some View {
+        let currentStatus = TicketStatus(rawValue: ticket.status?.name.lowercased().replacingOccurrences(of: " ", with: "") ?? "")
         if Platform.isCompact {
             NavigationLink(value: ticket.id) {
                 TicketRow(ticket: ticket)
             }
             .hoverEffect(.highlight)
+            .contextMenu {
+                TicketQuickActionsContent(
+                    ticket: ticket,
+                    currentStatus: currentStatus,
+                    assignees: [],
+                    handlers: quickActionHandlers
+                )
+            }
+            .modifier(TicketRowSwipeActions(
+                ticket: ticket,
+                currentStatus: currentStatus,
+                handlers: quickActionHandlers
+            ))
         } else {
             Button { onSelect(ticket.id) } label: {
                 TicketRow(ticket: ticket)
@@ -187,36 +228,20 @@ public struct TicketListView: View {
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
             .tag(ticket.id)
-        }
-    }
-
-    /// Edit navigates to detail (hosts the edit toolbar). Duplicate /
-    /// Mark-complete are stubs pending one-shot backend endpoints.
-    @ViewBuilder
-    private func rowContextMenu(for ticket: TicketSummary) -> some View {
-        if api != nil {
-            Button {
-                if Platform.isCompact {
-                    path.append(ticket.id)
-                } else {
-                    selected = ticket.id
-                }
-            } label: {
-                Label("Edit", systemImage: "pencil")
+            .contextMenu {
+                TicketQuickActionsContent(
+                    ticket: ticket,
+                    currentStatus: currentStatus,
+                    assignees: [],
+                    handlers: quickActionHandlers
+                )
             }
+            .modifier(TicketRowSwipeActions(
+                ticket: ticket,
+                currentStatus: currentStatus,
+                handlers: quickActionHandlers
+            ))
         }
-        Button {
-            // TODO: POST /tickets/:id/duplicate
-        } label: {
-            Label("Duplicate", systemImage: "plus.square.on.square")
-        }
-        .disabled(true)
-        Button {
-            // TODO: one-shot status-change endpoint
-        } label: {
-            Label("Mark complete", systemImage: "checkmark.circle")
-        }
-        .disabled(true)
     }
 
     private var emptyHint: String {

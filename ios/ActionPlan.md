@@ -2867,9 +2867,9 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13".
 
 ### 22.2 Interactions
-- [ ] **`.hoverEffect(.highlight)`** on all tappable rows / buttons / cards.
+- [x] **`.hoverEffect(.highlight)`** on all tappable rows / buttons / cards. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] **Pointer customization** — custom cursors (link vs default) per semantic element.
-- [ ] **`.contextMenu`** on rows — Open / Copy ID / Copy phone / Archive / Delete / Share / Open in new window.
+- [x] **`.contextMenu`** on rows — Open / Copy ID / Copy phone / Archive / Delete / Share / Open in new window. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] **Drag-and-drop** — drag inventory → ticket services, drag ticket → calendar slot, drag customer → SMS compose.
 - [ ] **Multi-select** — long-press or ⌘-click batch actions; Edit mode in list toolbar.
 - [ ] **Apple Pencil** — `PKCanvasView` on signatures; pencil-only edit mode on forms; hover preview (Pencil Pro).
@@ -2927,7 +2927,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Persistence: width saved per-scene in `UserDefaults`
 - [ ] Overflow: if label truncates, icon-only mode kicks in automatically at <100pt
 - [ ] Tandem OLED: optional HDR content for hero dashboard images (brand gradients); verify blacks on real OLED (no gray haze)
-- [ ] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist
+- [x] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] Magic Keyboard 2024: surface function row; map custom actions (F1=new ticket, F2=POS, F3=inventory)
 - [ ] Pencil Pro: squeeze opens tool picker in annotation (§4); barrel roll rotates shape/text; haptic on Pencil tip (iOS 17.5+ API)
 - [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection

@@ -155,11 +155,44 @@ public struct AppointmentListView: View {
                 ForEach(vm.items) { appt in
                     Row(appointment: appt)
                         .listRowBackground(Color.bizarreSurface1)
+                        .brandHover()
+                        .contextMenu { appointmentContextMenu(for: appt) }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
         }
+    }
+
+    // MARK: - §22 Appointment context menu
+
+    @ViewBuilder
+    private func appointmentContextMenu(for appt: Appointment) -> some View {
+        // Reschedule
+        Button {
+            // TODO: present reschedule picker — Phase 4 / §10
+        } label: {
+            Label("Reschedule", systemImage: "calendar.badge.plus")
+        }
+        .accessibilityLabel("Reschedule \(appt.title ?? "appointment")")
+
+        // Mark Complete
+        Button {
+            // TODO: PATCH /appointments/:id { status: "completed" } — Phase 4 / §10
+        } label: {
+            Label("Mark Complete", systemImage: "checkmark.circle")
+        }
+        .accessibilityLabel("Mark \(appt.title ?? "appointment") as complete")
+
+        Divider()
+
+        // Cancel (destructive)
+        Button(role: .destructive) {
+            // TODO: PATCH /appointments/:id { status: "cancelled" } — Phase 4 / §10
+        } label: {
+            Label("Cancel", systemImage: "xmark.circle")
+        }
+        .accessibilityLabel("Cancel \(appt.title ?? "appointment")")
     }
 
     private struct Row: View {

@@ -311,33 +311,71 @@ public struct InventoryListView: View {
 
     @ViewBuilder
     private func rowContextMenu(for item: InventoryListItem) -> some View {
+        // Open / Edit
         Button {
             selected = item.id
         } label: {
             Label("Open", systemImage: "arrow.up.forward.square")
         }
+        .accessibilityLabel("Open \(item.displayName)")
+
         Button {
             selected = item.id
         } label: {
             Label("Edit", systemImage: "pencil")
         }
+        .accessibilityLabel("Edit \(item.displayName)")
+
+        Divider()
+
+        // §22 domain-relevant actions
         if api != nil {
             Button {
                 selected = item.id
+                showingAdjust = true
             } label: {
-                Label("Adjust stock", systemImage: "slider.horizontal.3")
+                Label("Adjust Stock", systemImage: "slider.horizontal.3")
             }
+            .accessibilityLabel("Adjust stock for \(item.displayName)")
+
+            Button {
+                // TODO: POST /inventory/:id/reorder — Phase 4
+            } label: {
+                Label("Reorder", systemImage: "cart.badge.plus")
+            }
+            .accessibilityLabel("Reorder \(item.displayName)")
+
+            Button {
+                // TODO: navigate to stock history — Phase 4
+            } label: {
+                Label("View History", systemImage: "clock.arrow.circlepath")
+            }
+            .accessibilityLabel("View stock history for \(item.displayName)")
+
+            Divider()
+
+            Button {
+                // TODO: PATCH /inventory/:id { archived: true } — Phase 4
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .accessibilityLabel("Archive \(item.displayName)")
         }
+
         Divider()
+
         Button {
             multiSelection = [item.id]
             isBatchSelectMode = true
             showingBatchEdit = true
         } label: {
-            Label("Batch edit", systemImage: "checkmark.circle")
+            Label("Batch Edit", systemImage: "checkmark.circle")
         }
         .disabled(api == nil)
+        .accessibilityLabel("Batch edit \(item.displayName)")
     }
+
+    @State private var showingAdjust: Bool = false
 
     // MARK: - Filter chips
 
