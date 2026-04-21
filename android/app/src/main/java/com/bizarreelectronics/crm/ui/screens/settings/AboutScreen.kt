@@ -67,6 +67,7 @@ data class AboutInfo(
 class AboutViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val appPreferences: AppPreferences,
+    private val breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs,
 ) : ViewModel() {
     fun snapshot(): AboutInfo = AboutInfo(
         appName = "Bizarre CRM",
@@ -82,6 +83,8 @@ class AboutViewModel @Inject constructor(
         role = authPreferences.userRole ?: "—",
         installId = authPreferences.installationId,
     )
+
+    fun recentBreadcrumbs(): List<String> = breadcrumbs.recent()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,9 +95,10 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val info = remember { viewModel.snapshot() }
+    val crumbs = remember { viewModel.recentBreadcrumbs() }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val bundle = remember(info) { renderBundle(info) }
+    val bundle = remember(info, crumbs) { renderBundle(info, crumbs) }
 
     Scaffold(
         topBar = {
@@ -151,6 +155,30 @@ fun AboutScreen(
                     KeyValueRow("Install ID", info.installId, mono = true)
                 }
             }
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Recent activity (last ${crumbs.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (crumbs.isEmpty()) {
+                        Text(
+                            "No breadcrumbs yet — this fills as you navigate the app.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        crumbs.takeLast(20).forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -177,7 +205,7 @@ private fun KeyValueRow(label: String, value: String, mono: Boolean = false) {
     }
 }
 
-private fun renderBundle(info: AboutInfo): String = buildString {
+private fun renderBundle(info: AboutInfo, crumbs: List<String>): String = buildString {
     appendLine("Bizarre CRM diagnostics")
     appendLine()
     appendLine("App:    ${info.versionName} (${info.versionCode}, ${info.buildType})")
@@ -187,4 +215,9 @@ private fun renderBundle(info: AboutInfo): String = buildString {
     appendLine("Server: ${info.serverUrl}")
     appendLine("User:   ${info.username} (${info.role})")
     appendLine("Inst:   ${info.installId}")
+    if (crumbs.isNotEmpty()) {
+        appendLine()
+        appendLine("--- Recent activity (last ${crumbs.size}) ---")
+        crumbs.forEach { appendLine(it) }
+    }
 }
