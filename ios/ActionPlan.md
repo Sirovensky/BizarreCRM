@@ -5688,6 +5688,16 @@ All events target tenant server (see §32).
 
 ---
 ## §72. Final UX Polish Checklist
+<!-- shipped 2026-04-20 feat(ios post-phase §72) -->
+- [x] Checklist doc: `docs/ux/polish-checklist.md` — 99 items across 16 categories.
+- [x] Lint script: `ios/scripts/ux-polish-lint.sh` — 8 anti-pattern rules, baseline 123, exits 0.
+- [x] `ToastPresenter.swift` — `@Observable`, glass pill, auto-dismiss 4s/5s, tap-to-dismiss, stack 3.
+- [x] `SkeletonShimmer.swift` — shimmer modifier + `SkeletonRow` + `SkeletonList`; Reduce Motion respected.
+- [x] `EmptyStateCard.swift` — `{icon,title,message,primaryAction?,secondaryAction?}`, 3 variants (standard/error/onboarding).
+- [x] `DragDismissIndicator.swift` — 36×4pt pill; fade-only on Reduce Motion; `.dragDismissIndicator()` convenience.
+- [x] `MonospacedDigits.swift` — `.monoNumeric()` modifier + `CentsFormatter` (Cents→Decimal, no Double drift).
+- [x] `ios/Tests/PolishTests.swift` + `DesignSystemTests/PolishTests.swift` — 30 new tests; all pass.
+- [x] CI gate: `LintScriptTests.testUXPolishLintExitsZero` runs lint in `swift test` — passes.
 
 ### 72.1 Animation
 - [ ] Every screen's entry + exit animation tested.
