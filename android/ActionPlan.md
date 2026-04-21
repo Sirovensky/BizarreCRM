@@ -36,7 +36,7 @@ in-progress and lags the audit.
 |---|---|---|---|
 | 1 | Platform & Foundation | ~78% | API envelope, OkHttp pinning, Room+SQLCipher, Hilt, WorkManager, FCM, **AppError taxonomy (NEW)**, **ProcessLifecycle ON_START hook (NEW)** DONE. Missing: draft autosave, undo stack, clock-drift, multipart upload helper. |
 | 2 | Auth & Onboarding | ~55% | Login + 2FA + setPassword + signup + logout + refresh-retry + **PIN lock end-to-end (NEW Settings + nav)** + **SessionRevoked banner (NEW)** + **/auth/me cold-start (NEW)** DONE. Missing: passkeys, SSO, magic-link, hardware key, shared-device. |
-| 3 | Dashboard | ~52% | KPIs, my-queue, FAB, sync badge, greeting, error states, onboarding checklist, **clock-in tile (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode. |
+| 3 | Dashboard | ~55% | KPIs, my-queue, FAB, sync badge, greeting, error states, onboarding checklist, clock-in tile + **KPI tile tap-through to Tickets / Appointments / Inventory (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode, filtered-list params. |
 | 4 | Tickets | ~14% | List + detail + create scaffolds; **§4.17 IMEI Luhn validator DONE (NEW)**. Missing: Paging3, signatures, bench, SLA, QC checklist, IMEI UI hookup. |
 | 5 | Customers | ~30% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. Missing: tags UI, segments, merge, bulk, communication prefs. |
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
@@ -487,7 +487,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.1 KPI grid
 - [ ] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`.
 - [~] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
-- [ ] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [~] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).

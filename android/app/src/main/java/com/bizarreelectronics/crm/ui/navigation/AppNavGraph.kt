@@ -563,6 +563,9 @@ fun AppNavGraph(
                     onScanBarcode = { navController.navigate(Screen.Scanner.route) },
                     onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
                     onClockInOut = { navController.navigate(Screen.ClockInOut.route) },
+                    // §3.1 — KPI tile taps deep-link to the filtered list.
+                    onNavigateToAppointments = { navController.navigate(Screen.Appointments.route) },
+                    onNavigateToInventory = { navController.navigate(Screen.Inventory.route) },
                 )
             }
             composable(Screen.Tickets.route) {

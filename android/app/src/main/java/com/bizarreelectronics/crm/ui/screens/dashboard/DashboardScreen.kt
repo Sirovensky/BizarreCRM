@@ -42,7 +42,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class KpiCard(val label: String, val value: String, val iconTint: Color, val icon: @Composable () -> Unit)
+data class KpiCard(
+    val label: String,
+    val value: String,
+    val iconTint: Color,
+    /**
+     * §3.1 — tile taps deep-link to a filtered list. Null = tile is inert.
+     * Used by [KpiCardView] to gate `Modifier.clickable` and give the
+     * Card a proper `Role.Button` for TalkBack.
+     */
+    val onClick: (() -> Unit)? = null,
+    val icon: @Composable () -> Unit,
+)
 
 data class DashboardUiState(
     val greeting: String = "",
@@ -239,6 +250,10 @@ fun DashboardScreen(
     // §3.11 — opens ClockInOutScreen. Tile rendered above KPI grid; null
     // hides the tile (e.g. previews, non-nav callers).
     onClockInOut: (() -> Unit)? = null,
+    // §3.1 — KPI tiles deep-link into the relevant filtered list. Nullable
+    // so previews / standalone dashboard tests can pass without a NavController.
+    onNavigateToAppointments: (() -> Unit)? = null,
+    onNavigateToInventory: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -262,6 +277,9 @@ fun DashboardScreen(
             label = "Open Tickets",
             value = state.openTickets.toString(),
             iconTint = openTicketsTint,
+            // §3.1 — tap Open Tickets tile → Tickets list. onNavigateToTickets
+            // is required on this screen so always non-null.
+            onClick = onNavigateToTickets,
         ) {
             Icon(
                 Icons.Default.ConfirmationNumber,
@@ -273,6 +291,8 @@ fun DashboardScreen(
             label = "Revenue Today",
             value = "$${String.format("%.2f", state.revenueToday)}",
             iconTint = revenueTint,
+            // Revenue tile has no detail screen on Android yet — inert tap.
+            onClick = null,
         ) {
             Icon(
                 Icons.Default.AttachMoney,
@@ -284,6 +304,7 @@ fun DashboardScreen(
             label = "Appointments",
             value = state.appointmentsToday.toString(),
             iconTint = apptsTint,
+            onClick = onNavigateToAppointments,
         ) {
             Icon(
                 Icons.Default.CalendarToday,
@@ -295,6 +316,7 @@ fun DashboardScreen(
             label = "Low Stock",
             value = state.lowStockCount.toString(),
             iconTint = lowStockTint,
+            onClick = onNavigateToInventory,
         ) {
             Icon(
                 Icons.Default.Warning,
@@ -691,13 +713,22 @@ private fun SectionErrorBanner(message: String, modifier: Modifier = Modifier) {
 // 20dp top padding so the icon breathes.
 @Composable
 fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
+    // §3.1 — clickable tile wrapper. Only applied when the KpiCard provides
+    // an onClick; inert tiles (e.g. Revenue Today) stay non-focusable so
+    // TalkBack doesn't announce a button that does nothing.
+    val clickModifier = if (kpi.onClick != null) {
+        Modifier.clickable(onClick = kpi.onClick)
+    } else {
+        Modifier
+    }
     Card(
         modifier = modifier
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline,
                 shape = MaterialTheme.shapes.medium,
-            ),
+            )
+            .then(clickModifier),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
