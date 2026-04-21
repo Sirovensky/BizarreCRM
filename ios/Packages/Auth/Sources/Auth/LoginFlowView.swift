@@ -787,89 +787,101 @@ public struct PINUnlockView: View {
     public var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: BrandSpacing.md) {
-                    // Header block — icon + title + explanation. Packed
-                    // tighter than the previous `.lg` VStack spacing which
-                    // made the keypad float near the bottom.
-                    VStack(spacing: BrandSpacing.xs) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.bizarreOrange)
-                            .accessibilityHidden(true)
-                        Text("Enter your PIN")
-                            .font(.brandHeadlineMedium())
-                            .foregroundStyle(.bizarreOnSurface)
-                            .accessibilityAddTraits(.isHeader)
-                        Text("You signed in on this device earlier. Enter your PIN to unlock.")
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, BrandSpacing.base)
-                    }
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: BrandSpacing.xl)
 
-                    dotRow
-                        .padding(.top, BrandSpacing.xs)
-                        .accessibilityLabel("Entered digits")
-                        .accessibilityValue("\(pin.count) of \(pinExpectedLength)")
+                        VStack(spacing: BrandSpacing.md) {
+                            VStack(spacing: BrandSpacing.xs) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 36))
+                                    .foregroundStyle(.bizarreOrange)
+                                    .accessibilityHidden(true)
+                                Text("Enter your PIN")
+                                    .font(.brandHeadlineMedium())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                    .accessibilityAddTraits(.isHeader)
+                                Text("You signed in on this device earlier.")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    .multilineTextAlignment(.center)
+                            }
 
-                    if let error {
-                        Text(error)
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreError)
-                            .accessibilityIdentifier("pin.error")
-                    }
+                            dotRow
+                                .padding(.top, BrandSpacing.xs)
+                                .accessibilityLabel("Entered digits")
+                                .accessibilityValue("\(pin.count) of \(pinExpectedLength)")
 
-                    if let until = lockoutEndsAt, until > tick {
-                        let remaining = Int(until.timeIntervalSince(tick).rounded(.up))
-                        Text("Too many wrong tries. Try again in \(remaining)s.")
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreWarning)
-                            .multilineTextAlignment(.center)
-                            .accessibilityIdentifier("pin.lockoutCountdown")
-                    }
+                            // Reserved status row — error / lockout never
+                            // pushes the keypad down.
+                            Group {
+                                if let error {
+                                    Text(error)
+                                        .font(.brandLabelLarge())
+                                        .foregroundStyle(.bizarreError)
+                                        .accessibilityIdentifier("pin.error")
+                                } else if let until = lockoutEndsAt, until > tick {
+                                    let remaining = Int(until.timeIntervalSince(tick).rounded(.up))
+                                    Text("Too many wrong tries. Try again in \(remaining)s.")
+                                        .font(.brandLabelLarge())
+                                        .foregroundStyle(.bizarreWarning)
+                                        .multilineTextAlignment(.center)
+                                        .accessibilityIdentifier("pin.lockoutCountdown")
+                                } else {
+                                    Text(" ")
+                                        .font(.brandLabelLarge())
+                                        .foregroundStyle(.clear)
+                                }
+                            }
+                            .frame(minHeight: 22)
 
-                    PINKeypad(
-                        onDigit: { append($0) },
-                        onBackspace: { backspace() },
-                        isLocked: isLocked
-                    )
+                            PINKeypad(
+                                onDigit: { append($0) },
+                                onBackspace: { backspace() },
+                                isLocked: isLocked
+                            )
+                            .padding(.top, BrandSpacing.xs)
 
-                    if biometricEnabledAndAvailable {
+                            if biometricEnabledAndAvailable {
+                                Button {
+                                    Task { await attemptBiometric(triggeredByUser: true) }
+                                } label: {
+                                    Label("Use \(BiometricGate.kind.label)",
+                                          systemImage: BiometricGate.kind.sfSymbol)
+                                        .font(.brandLabelLarge())
+                                        .foregroundStyle(.bizarreTeal)
+                                }
+                                .accessibilityIdentifier("pin.biometric")
+                                .padding(.top, BrandSpacing.sm)
+                            }
+                        }
+                        .padding(.horizontal, BrandSpacing.base)
+                        .frame(maxWidth: 420)
+
+                        Spacer(minLength: BrandSpacing.md)
+
+                        // Secondary-tier escape hatch sits at the bottom,
+                        // small + muted, so thumbs don't hit it while
+                        // typing digits. 44pt tap area preserved.
                         Button {
-                            Task { await attemptBiometric(triggeredByUser: true) }
+                            onRevoked?()
                         } label: {
-                            Label("Use \(BiometricGate.kind.label)",
-                                  systemImage: BiometricGate.kind.sfSymbol)
+                            Text("Forgot your PIN?  ·  Sign in again")
                                 .font(.brandLabelLarge())
-                                .foregroundStyle(.bizarreTeal)
-                        }
-                        .accessibilityIdentifier("pin.biometric")
-                    }
-
-                    // Escape hatch for users who don't remember enrolling
-                    // (common on dev builds that share Keychain across
-                    // re-installs). Same underlying action as a revoked PIN.
-                    Button {
-                        onRevoked?()
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text("Forgot your PIN? Sign in with password")
-                                .font(.brandLabelLarge())
-                                .foregroundStyle(.bizarreTeal)
-                            Text("Wipes the saved PIN and drops you to the full sign-in screen.")
-                                .font(.brandLabelSmall())
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .padding(.vertical, BrandSpacing.sm)
+                                .frame(minHeight: 44)
+                                .frame(maxWidth: .infinity)
                         }
+                        .accessibilityIdentifier("pin.reauth")
+                        .padding(.bottom, BrandSpacing.lg)
                     }
-                    .accessibilityIdentifier("pin.reauth")
-                    .padding(.top, BrandSpacing.sm)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geo.size.height)
                 }
-                .padding(BrandSpacing.base)
-                .frame(maxWidth: 420)
-                .frame(maxWidth: .infinity)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
         .onAppear {
             lockoutEndsAt = PINStore.shared.lockoutEndsAt
