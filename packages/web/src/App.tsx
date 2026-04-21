@@ -82,6 +82,10 @@ const SubscriptionsListPage = lazy(() => import('./pages/subscriptions/Subscript
 const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => ({ default: m.LoanersPage })));
 // Automations standalone page
 const AutomationsListPage = lazy(() => import('./pages/automations/AutomationsListPage').then(m => ({ default: m.AutomationsListPage })));
+// Super-admin tenant management
+const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
+// Voice calls list
+const VoiceCallsListPage = lazy(() => import('./pages/voice/VoiceCallsListPage').then(m => ({ default: m.VoiceCallsListPage })));
 
 function NotFoundPage() {
   return (
@@ -415,6 +419,10 @@ export default function App() {
                     <Route path="/loaners" element={<LoanersPage />} />
                     {/* Automations standalone page. */}
                     <Route path="/automations" element={<AutomationsListPage />} />
+                    {/* Super-admin tenant management. */}
+                    <Route path="/super-admin/tenants" element={<TenantsListPage />} />
+                    {/* Voice calls list. */}
+                    <Route path="/voice" element={<VoiceCallsListPage />} />
                     {/* Marketing / Growth enrichment (§54). */}
                     <Route path="/marketing/campaigns" element={<CampaignsPage />} />
                     <Route path="/marketing/segments" element={<SegmentsPage />} />

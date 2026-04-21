@@ -31,6 +31,7 @@ import {
   Gift,
   Wallet,
   Copy,
+  Eraser,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
@@ -218,7 +219,26 @@ export function CustomerDetailPage() {
     }
   };
 
+  const erasePiiMutation = useMutation({
+    mutationFn: (confirmName: string) =>
+      privacyApi.eraseCustomerPii({ customer_id: customerId, confirm_name: confirmName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', id] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer PII erased successfully');
+      navigate('/customers');
+    },
+    onError: (err: unknown) => {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || 'Failed to erase customer PII');
+    },
+  });
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEraseConfirm, setShowEraseConfirm] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   // FA-M26: loading flag for the wallet-pass fetch button.
@@ -375,6 +395,16 @@ export function CustomerDetailPage() {
             <Trash2 className="h-4 w-4" />
             Delete
           </button>
+          {userRole === 'admin' && (
+            <button
+              onClick={() => setShowEraseConfirm(true)}
+              disabled={erasePiiMutation.isPending}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+            >
+              <Eraser className="h-4 w-4" />
+              Erase PII (GDPR)
+            </button>
+          )}
         </div>
       </div>
 
@@ -427,6 +457,21 @@ export function CustomerDetailPage() {
         confirmText={customer ? `${customer.first_name} ${customer.last_name}`.trim() : ''}
         onConfirm={() => { setShowDeleteConfirm(false); deleteMutation.mutate(`${customer.first_name} ${customer.last_name}`.trim()); }}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showEraseConfirm}
+        title="Erase Customer PII (GDPR)"
+        message={`This will permanently remove all personally identifiable information (name, email, phone, address) for this customer. Tickets, invoices, and other business records will be retained with anonymised references. This action cannot be undone.`}
+        confirmLabel="Erase PII"
+        danger
+        requireTyping
+        confirmText={customer ? `${customer.first_name} ${customer.last_name}`.trim() : ''}
+        onConfirm={() => {
+          setShowEraseConfirm(false);
+          erasePiiMutation.mutate(`${customer.first_name} ${customer.last_name}`.trim());
+        }}
+        onCancel={() => setShowEraseConfirm(false)}
       />
 
       {showMergeModal && customer && (

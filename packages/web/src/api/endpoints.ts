@@ -3,7 +3,7 @@
 // are valid ESM but break tree-shaking heuristics in some bundlers and confuse
 // linters / refactor tools.
 import axios from 'axios';
-import { api } from './client';
+import { api, superAdminClient } from './client';
 import type {
   Customer, CreateCustomerInput, UpdateCustomerInput, CustomerAsset,
   Ticket, CreateTicketInput, TicketStatus, TicketNote,
@@ -551,12 +551,39 @@ export const smsApi = {
 };
 
 // ==================== Voice / Click-to-Call ====================
+
+export interface VoiceCall {
+  id: number;
+  from_number: string;
+  to_number: string;
+  direction: 'inbound' | 'outbound';
+  duration: number | null;
+  status: string;
+  recording_url: string | null;
+  recording_local_path: string | null;
+  created_at: string;
+  user_name: string | null;
+  conv_phone: string | null;
+  entity_type: string | null;
+  entity_id: number | null;
+}
+
+export interface VoiceCallsResponse {
+  success: boolean;
+  data: {
+    calls: VoiceCall[];
+    pagination: { page: number; per_page: number; total: number; total_pages: number };
+  };
+}
+
 export const voiceApi = {
   call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
     api.post<{ success: boolean; data?: unknown; message?: string }>('/voice/call', data),
   calls: (params?: { page?: number; pagesize?: number; conv_phone?: string; entity_type?: string; entity_id?: number }) =>
-    api.get('/voice/calls', { params }),
+    api.get<VoiceCallsResponse>('/voice/calls', { params }),
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
+  /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
+  recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
 };
 
 // ==================== POS ====================
@@ -1177,7 +1204,7 @@ export const privacyApi = {
     api.post<{ success: boolean; data: { message: string }; message?: string }>('/data-export/erase-customer-pii', data),
 };
 
-// ==================== Super-Admin Impersonation ====================
+// ==================== Super-Admin ====================
 interface ImpersonateResponse {
   token: string;
   tenant_slug: string;
@@ -1185,9 +1212,37 @@ interface ImpersonateResponse {
   target_user: { id: number; username: string; role: string };
 }
 
+export interface SuperAdminTenant {
+  id: number;
+  slug: string;
+  name: string;
+  status: string;
+  plan: string;
+  admin_email: string;
+  created_at: string;
+  db_size_mb: number;
+}
+
 export const superAdminApi = {
+  /** Login step 1 — returns challengeToken */
+  loginPassword: (username: string, password: string) =>
+    superAdminClient.post<{ success: boolean; data: { challengeToken: string; requiresPasswordSetup?: boolean; requires2faSetup?: boolean; totpEnabled?: boolean }; message?: string }>(
+      '/login',
+      { username, password },
+    ),
+  /** Login step 2 — verify TOTP, receive super-admin JWT */
+  loginTotp: (challengeToken: string, code: string) =>
+    superAdminClient.post<{ success: boolean; data: { token: string; admin: { id: number; username: string; email: string } }; message?: string }>(
+      '/login/2fa-verify',
+      { challengeToken, code },
+    ),
+  listTenants: (params?: { status?: string; plan?: string }) =>
+    superAdminClient.get<{ success: boolean; data: { tenants: SuperAdminTenant[] } }>(
+      '/tenants',
+      { params },
+    ),
   impersonate: (slug: string) =>
-    api.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
-      `/super-admin/tenants/${encodeURIComponent(slug)}/impersonate`,
+    superAdminClient.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
+      `/tenants/${encodeURIComponent(slug)}/impersonate`,
     ),
 };

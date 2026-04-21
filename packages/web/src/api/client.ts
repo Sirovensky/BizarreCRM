@@ -254,3 +254,23 @@ client.interceptors.response.use(
 
 export default client;
 export { client as api };
+
+// ──────────────────────────────────────────────────────────────────
+// Super-admin axios client — uses a separate token stored under
+// 'superAdminToken' in localStorage. Does NOT participate in the
+// regular tenant refresh pipeline.
+// ──────────────────────────────────────────────────────────────────
+export const SUPER_ADMIN_TOKEN_KEY = 'superAdminToken';
+
+export const superAdminClient = axios.create({
+  baseURL: '/super-admin',
+  headers: { 'Content-Type': 'application/json' },
+});
+
+superAdminClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});

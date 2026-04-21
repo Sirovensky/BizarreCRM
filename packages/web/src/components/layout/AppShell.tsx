@@ -16,6 +16,7 @@ import { Menu, AlertTriangle, X } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
@@ -118,6 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         style={{ '--dev-banner-h': (isDev && !devBannerDismissed) ? '28px' : '0px' } as React.CSSProperties}
       >
+        <ImpersonationBanner />
         <Header
           hamburgerButton={
             <button
