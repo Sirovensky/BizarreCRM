@@ -1831,7 +1831,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 ### 16.14 iPad-specific POS
 - [ ] **3-column layout** — catalog + cart + customer panel.
 - [ ] **Customer-facing display** — secondary iPad via AirPlay mirroring or external display shows cart + tip prompts.
-- [ ] **Magic Keyboard shortcuts** — ⌘F (search), ⌘N (new sale), ⌘R (return), ⌘P (pay), ⌘K (customer pick), ⌘H (hold), ⌘⇧V (void).
+- [x] **Magic Keyboard shortcuts** — ⌘N (new custom line), ⌘⇧R (return), ⌘P (pay/charge), ⌘K (customer pick), ⌘H (hold), ⌘⇧H (resume holds), ⌘⇧D (discount), ⌘⇧T (tip), ⌘⇧F (fee), ⌘⇧⌫ (clear cart). ⌘F search focus + ⌘⇧V void deferred.
 - [ ] **Apple Pencil** — tap to add to cart, double-tap for 2, hover for preview on iPad Pro.
 - [ ] **Drag items** — drag from catalog to cart with haptic feedback.
 
