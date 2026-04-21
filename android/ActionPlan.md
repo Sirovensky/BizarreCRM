@@ -2720,7 +2720,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
-- [~] Included with crash report.
+- [x] Included with crash report.
 
 ### 32.6 Redactor
 - [~] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens.

@@ -85,7 +85,13 @@ class CrashReporter @Inject constructor(
                 breadcrumbs.recent().forEach { pw.println(it) }
             }
         }
-        file.writeText(sw.toString())
+        // §28.6 — redact the assembled report through LogRedactor so PII
+        // accidentally embedded in exception messages / HTTP error bodies /
+        // breadcrumb strings (Breadcrumbs already redacts at ingest, but an
+        // exception message like "user foo@bar.com not found" lands here
+        // unredacted) is masked before the file is persisted. The share
+        // sheet later hands this file straight to support.
+        file.writeText(LogRedactor.redact(sw.toString()))
         // Light-weight rotation: keep newest [MAX_REPORTS] files, drop the rest.
         rotate(dir)
     }
