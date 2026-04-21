@@ -2454,8 +2454,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] First day of week respects locale.
 
 ### 27.4 RTL
-- [ ] `android:supportsRtl="true"` in manifest.
-- [ ] Compose uses `LocalLayoutDirection.current` — icons that imply direction (back arrow, chevron) flip via `androidx.compose.material.icons.AutoMirrored`.
+- [x] `android:supportsRtl="true"` in manifest.
+- [~] Compose uses `LocalLayoutDirection.current` — icons that imply direction (back arrow, chevron) flip via `androidx.compose.material.icons.AutoMirrored`.
 - [ ] Test Arabic + Hebrew layout.
 - [ ] RTL-specific strings (e.g. number parsing).
 
