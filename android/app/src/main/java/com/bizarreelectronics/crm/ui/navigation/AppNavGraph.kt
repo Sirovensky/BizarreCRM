@@ -507,6 +507,7 @@ fun AppNavGraph(
                     onLogSale = { navController.navigate(Screen.Pos.route) },
                     onScanBarcode = { navController.navigate(Screen.Scanner.route) },
                     onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
+                    onClockInOut = { navController.navigate(Screen.ClockInOut.route) },
                 )
             }
             composable(Screen.Tickets.route) {

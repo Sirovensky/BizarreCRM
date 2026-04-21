@@ -236,6 +236,9 @@ fun DashboardScreen(
     onLogSale: () -> Unit = {},
     onScanBarcode: (() -> Unit)? = null,
     onNavigateToNotifications: (() -> Unit)? = null,
+    // §3.11 — opens ClockInOutScreen. Tile rendered above KPI grid; null
+    // hides the tile (e.g. previews, non-nav callers).
+    onClockInOut: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -410,6 +413,14 @@ fun DashboardScreen(
         // it works offline.
         item {
             OnboardingChecklist()
+        }
+
+        // §3.11 — Clock in/out tile. Surfaces current state pulled from
+        // GET /employees and routes to the dedicated screen on tap.
+        if (onClockInOut != null) {
+            item {
+                ClockInTile(onOpen = onClockInOut)
+            }
         }
 
         // [P1] Date sub-line — greeting moved to top bar; only the date remains
