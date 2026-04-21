@@ -3,10 +3,13 @@ import DesignSystem
 
 /// §38 — Customer loyalty tier classification.
 ///
+/// Codable conformance uses the raw string value ("bronze" etc.) which matches
+/// the server's `tier` field and the `LoyaltyBalance` DTO.
+///
 /// Raw value matches the server's lowercase string (`tier` field on
 /// `LoyaltyBalance`). `Comparable` is synthesised via the `allCases`
 /// ordering: bronze < silver < gold < platinum.
-public enum LoyaltyTier: String, CaseIterable, Sendable, Comparable {
+public enum LoyaltyTier: String, CaseIterable, Codable, Sendable, Comparable {
     case bronze
     case silver
     case gold
@@ -59,6 +62,39 @@ public enum LoyaltyTier: String, CaseIterable, Sendable, Comparable {
         case .silver:   return "medal.fill"
         case .gold:     return "trophy"
         case .platinum: return "crown.fill"
+        }
+    }
+
+    // MARK: - Tier thresholds
+
+    /// Minimum cumulative lifetime spend (in cents) required to reach this tier.
+    ///
+    /// - bronze:   $0    (entry-level)
+    /// - silver:   $500
+    /// - gold:     $1,000
+    /// - platinum: $5,000
+    public var minLifetimeSpendCents: Int {
+        switch self {
+        case .bronze:   return 0
+        case .silver:   return 50_000
+        case .gold:     return 100_000
+        case .platinum: return 500_000
+        }
+    }
+
+    // MARK: - Perks summary
+
+    /// Short human-readable description of perks for display in cards/tooltips.
+    public var perksDescription: String {
+        switch self {
+        case .bronze:
+            return "1 point per $1 spent. Welcome bonus on sign-up."
+        case .silver:
+            return "1 point per $1 spent. 5% discount on all services."
+        case .gold:
+            return "2 points per $1 spent. 10% discount. Priority service."
+        case .platinum:
+            return "3 points per $1 spent. 15% discount. Exclusive events & concierge support."
         }
     }
 

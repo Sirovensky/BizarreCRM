@@ -4470,21 +4470,22 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /memberships/{id}/renew`, `GET /memberships/{id}/points`, `POST /memberships/{id}/points/redeem`._
 
 ### 38.1 Tiers
-- [ ] **Configure tiers** in Settings (§19.12).
-- [ ] **Auto-tier** — customer promoted on $-threshold.
+- [x] **Configure tiers** in Settings (§19.12). `LoyaltyTier` enum with `minLifetimeSpendCents`; `LoyaltyPlanSettingsView` ships. Commit `feat(ios phase-8 §38)`.
+- [x] **Auto-tier** — customer promoted on $-threshold. `LoyaltyCalculator.tier(for:)` pure function. Commit `feat(ios phase-8 §38)`.
 - [ ] **Member badge** on customer chips / POS.
 
 ### 38.2 Points
-- [ ] **Earn** — points on paid invoice (configurable rate).
+- [x] **Earn** — points on paid invoice (configurable rate). `LoyaltyCalculator.points(earned:rule:)` + `LoyaltyRule`. Commit `feat(ios phase-8 §38)`.
 - [ ] **Redeem** — at POS (see §16.15).
-- [ ] **Expiration** — configurable.
+- [x] **Expiration** — configurable. `LoyaltyCalculator.expiry(earnedAt:rule:)`. Commit `feat(ios phase-8 §38)`.
 - [x] **Point history (partial)** — `LoyaltyBalanceView` surfaces current points + tier + lifetime spend via `GET /api/v1/loyalty/balance/:customerId`. Per-transaction history endpoint TBD.
+- [x] **Points ledger view** — `LoyaltyPointsLedgerView` shows lifetime earned / redeemed / expiring-soon / balance. Commit `feat(ios phase-8 §38)`.
 
 ### 38.3 Subscription memberships
-- [ ] **Paid plans** — monthly / annual with auto-renew.
-- [ ] **Benefits** — discount %, free services (e.g., 1 battery test / month).
+- [x] **Paid plans** — monthly / annual with auto-renew. `Membership` + `MembershipPlan` models; `MembershipEnrollSheet` POS integration. Commit `feat(ios phase-8 §38)`.
+- [x] **Benefits** — discount %, free services (e.g., 1 battery test / month). `MembershipPerk` enum + `MembershipPerkApplier.discount(cart:membership:plan:)`. Commit `feat(ios phase-8 §38)`.
 - [ ] **Payment** — BlockChyp recurring or Stripe.
-- [ ] **Cancel / pause / resume**.
+- [x] **Cancel / pause / resume**. `MembershipSubscriptionManager` actor handles all three state transitions + server sync. Commit `feat(ios phase-8 §38)`.
 
 ### 38.4 Apple Wallet pass
 - [x] **`PKAddPassesViewController`** — `LoyaltyPassPresenter.present(passData:)` scaffold ships in `Packages/Loyalty`. Commit `73229b3`. Server .pkpass signing + Wallet entitlement still required for live install.
@@ -4494,8 +4495,8 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 ### 38.5 Member-only perks
 - [ ] **Exclusive products** — hidden in catalog for non-members.
 - [ ] **Priority queue** — badge in intake flow.
-- [ ] Plan builder in Settings → Memberships: name / cadence (monthly / quarterly / annual) / price / included-services count / auto-renew toggle.
-- [ ] Enroll flow from Customer detail → Plans tab → Enroll; card tokenized via BlockChyp vault (§17.3 token-only; no PAN).
+- [x] Plan builder in Settings → Memberships: name / cadence (monthly / quarterly / annual) / price / included-services count / auto-renew toggle. `LoyaltyPlanSettingsView` + `PlanEditorSheet` + `RuleEditorSheet`. Commit `feat(ios phase-8 §38)`.
+- [x] Enroll flow from Customer detail → Plans tab → Enroll; `MembershipEnrollSheet` wired to `MembershipSubscriptionManager`. Card tokenization deferred (BlockChyp §17.3). Commit `feat(ios phase-8 §38)`.
 - [ ] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
 - [ ] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption.
 - [ ] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify.
