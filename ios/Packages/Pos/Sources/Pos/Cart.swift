@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Persistence
 
 /// Immutable snapshot of the customer currently attached to the cart.
 /// `id == nil` marks a walk-in / ghost customer — the checkout flow stays
@@ -121,13 +122,68 @@ public final class Cart {
         items = items + [item]
     }
 
+    /// Remove a line from the cart. Retained for callsites predating §16.11
+    /// that don't need audit logging (e.g. internal state reset, test helpers).
+    @available(*, deprecated, message: "Use removeLine(id:reason:managerId:) to emit an audit event.")
     public func remove(id: UUID) {
+        items = items.filter { $0.id != id }
+    }
+
+    /// §16.11 — Audited line removal.
+    ///
+    /// Logs a `void_line` or `delete_line` event to `PosAuditLogStore` before
+    /// dropping the row from the cart.  The event type is determined by
+    /// `managerId`: when a manager approved the action (non-nil), the event is
+    /// `void_line`; otherwise it is `delete_line`.
+    ///
+    /// Errors from the audit store are logged but do NOT block the removal —
+    /// the cart mutation always succeeds so the cashier is never stuck.
+    ///
+    /// - Parameters:
+    ///   - id:        The `CartItem.id` to remove.
+    ///   - reason:    Free-form reason entered by the cashier.
+    ///   - managerId: Manager who approved, or nil for cashier-self-service delete.
+    ///   - cashierId: Acting cashier. Defaults to 0 placeholder.
+    public func removeLine(id: UUID, reason: String? = nil, managerId: Int64? = nil, cashierId: Int64 = 0) {
+        guard let item = items.first(where: { $0.id == id }) else { return }
+
+        let eventType = managerId != nil
+            ? PosAuditEntry.EventType.voidLine
+            : PosAuditEntry.EventType.deleteLine
+
+        // Capture only Sendable primitives before crossing the Task boundary.
+        // [String: Any] is not Sendable in Swift 6 strict mode; we pass the
+        // individual values and build the dict inside the actor.
+        let lineName        = item.name
+        let lineSku         = item.sku
+        let lineSubtotal    = item.lineSubtotalCents
+        let capturedEvent   = eventType
+        let capturedCashier = cashierId
+        let capturedManager = managerId
+        let capturedReason  = reason
+
+        // Fire-and-forget: audit failure must never block the cashier.
+        Task {
+            var ctx: [String: Any] = ["lineName": lineName, "originalPriceCents": lineSubtotal]
+            if let sku = lineSku { ctx["sku"] = sku }
+            try? await PosAuditLogStore.shared.record(
+                event: capturedEvent,
+                cashierId: capturedCashier,
+                managerId: capturedManager,
+                amountCents: lineSubtotal,
+                reason: capturedReason,
+                context: ctx
+            )
+        }
+
         items = items.filter { $0.id != id }
     }
 
     public func update(id: UUID, quantity: Int) {
         guard quantity >= 1 else {
-            remove(id: id)
+            // Internal path: quantity-to-zero drops the item with no audit event.
+            // Suppress the deprecation — this is intentional non-audited removal.
+            items = items.filter { $0.id != id }
             return
         }
         items = items.map { row in

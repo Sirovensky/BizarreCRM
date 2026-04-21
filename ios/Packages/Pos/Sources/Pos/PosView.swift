@@ -41,6 +41,10 @@ public struct PosView: View {
     /// Snapshot of the session that was just closed so `ZReportView` has
     /// something to render after `registerSession` has been cleared.
     @State private var lastClosedSession: CashSessionRecord?
+    /// §16.11 — No-sale manager PIN gate.
+    @State private var showingNoSalePin: Bool = false
+    /// §16.11 — Audit log viewer.
+    @State private var showingAuditLog: Bool = false
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -223,6 +227,30 @@ public struct PosView: View {
         }
         .sheet(isPresented: $showingFeesSheet) {
             PosCartFeesSheet(cart: cart)
+        }
+        // §16.11 — No-sale manager PIN gate.
+        .sheet(isPresented: $showingNoSalePin) {
+            ManagerPinSheet(
+                reason: "Open drawer without sale",
+                onApproved: { managerId in
+                    openDrawer()
+                    Task {
+                        try? await PosAuditLogStore.shared.record(
+                            event: PosAuditEntry.EventType.noSale,
+                            cashierId: 0,
+                            managerId: managerId,
+                            reason: "No-sale drawer open"
+                        )
+                    }
+                },
+                onCancelled: {}
+            )
+        }
+        // §16.11 — Audit log viewer.
+        .sheet(isPresented: $showingAuditLog) {
+            NavigationStack {
+                PosAuditLogView()
+            }
         }
         // §16.3 — Hold sheets
         .sheet(isPresented: $showingHoldSheet) {
@@ -416,6 +444,34 @@ public struct PosView: View {
                         }
                         .disabled(registerSession == nil && lastClosedSession == nil)
                         .accessibilityIdentifier("pos.toolbar.zReport")
+
+                        // §16.11 — No-sale / open-drawer without a transaction.
+                        Button {
+                            let limits = PosTenantLimits.current()
+                            if limits.noSaleRequiresManager {
+                                showingNoSalePin = true
+                            } else {
+                                openDrawer()
+                                Task {
+                                    try? await PosAuditLogStore.shared.record(
+                                        event: PosAuditEntry.EventType.noSale,
+                                        cashierId: 0,
+                                        reason: "No-sale drawer open"
+                                    )
+                                }
+                            }
+                        } label: {
+                            Label("No sale / open drawer", systemImage: "dollarsign.arrow.circlepath")
+                        }
+                        .disabled(registerSession == nil)
+                        .accessibilityIdentifier("pos.toolbar.noSale")
+
+                        Button {
+                            showingAuditLog = true
+                        } label: {
+                            Label("View audit log", systemImage: "list.clipboard")
+                        }
+                        .accessibilityIdentifier("pos.toolbar.auditLog")
                     }
                     // Existing destructive actions
                     Section {

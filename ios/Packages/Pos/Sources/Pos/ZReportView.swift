@@ -1,8 +1,10 @@
+import Foundation
+import Persistence
+
 #if canImport(UIKit)
 import SwiftUI
 import Core
 import DesignSystem
-import Persistence
 
 /// §39.2 — end-of-shift Z-Report summary view. PDF + print disabled
 /// pending §17.4.
@@ -25,6 +27,7 @@ public struct ZReportView: View {
                 header
                 summaryGrid
                 varianceCard
+                lossPrevTile
                 actionRow
             }
             .padding(BrandSpacing.base)
@@ -108,6 +111,66 @@ public struct ZReportView: View {
         .accessibilityIdentifier("pos.zReport.variance")
     }
 
+    /// §16.11 — Loss-prevention tile showing void / no-sale / discount counts.
+    /// Nil values render "—" rather than "0" to distinguish "no data loaded" from
+    /// "nothing happened during this shift".
+    @ViewBuilder
+    private var lossPrevTile: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            HStack {
+                Image(systemName: "shield.lefthalf.filled")
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityHidden(true)
+                Text("Loss prevention")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            LazyVGrid(columns: columns, spacing: BrandSpacing.sm) {
+                lossPrevStat("Voids",        aggregates.voidCount)
+                    .accessibilityIdentifier("pos.zReport.lossPrev.voids")
+                lossPrevStat("No sales",     aggregates.noSaleCount)
+                    .accessibilityIdentifier("pos.zReport.lossPrev.noSales")
+                lossPrevStat("Disc. overrides", aggregates.discountOverrideCount)
+                    .accessibilityIdentifier("pos.zReport.lossPrev.discounts")
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous)
+                .fill(Color.bizarreSurface1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous)
+                .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+        )
+        .accessibilityIdentifier("pos.zReport.lossPrev")
+    }
+
+    private func lossPrevStat(_ label: String, _ value: Int?) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text(label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .lineLimit(1)
+            Text(value.map(String.init) ?? "—")
+                .font(.brandTitleLarge())
+                .foregroundStyle(value.map { $0 > 0 ? Color.red : Color.bizarreOnSurface } ?? .bizarreOnSurfaceMuted)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(BrandSpacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                .fill(Color.bizarreSurface1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+        )
+    }
+
     private var actionRow: some View {
         HStack(spacing: BrandSpacing.md) {
             Button { showingPrintAlert = true } label: {
@@ -162,19 +225,81 @@ public struct ZReportView: View {
     }
 }
 
+#endif // canImport(UIKit)
+
+// ZReportAggregates is intentionally outside the UIKit guard so it can be
+// constructed and tested on macOS (swift test runs on macOS).
 public struct ZReportAggregates: Equatable, Sendable {
     public let salesCents: Int?
     public let taxCents: Int?
     public let tipsCents: Int?
     public let refundCents: Int?
     public let discountCents: Int?
-    public init(salesCents: Int? = nil, taxCents: Int? = nil, tipsCents: Int? = nil, refundCents: Int? = nil, discountCents: Int? = nil) {
+
+    // MARK: §16.11 — Loss-prevention counters
+
+    /// Number of void-line events during the shift. `nil` = not yet loaded.
+    public let voidCount: Int?
+    /// Number of no-sale (open-drawer) events during the shift. `nil` = not yet loaded.
+    public let noSaleCount: Int?
+    /// Number of manager-approved discount override events during the shift. `nil` = not yet loaded.
+    public let discountOverrideCount: Int?
+
+    public init(
+        salesCents: Int? = nil,
+        taxCents: Int? = nil,
+        tipsCents: Int? = nil,
+        refundCents: Int? = nil,
+        discountCents: Int? = nil,
+        voidCount: Int? = nil,
+        noSaleCount: Int? = nil,
+        discountOverrideCount: Int? = nil
+    ) {
         self.salesCents = salesCents
         self.taxCents = taxCents
         self.tipsCents = tipsCents
         self.refundCents = refundCents
         self.discountCents = discountCents
+        self.voidCount = voidCount
+        self.noSaleCount = noSaleCount
+        self.discountOverrideCount = discountOverrideCount
     }
+
     public static let empty = ZReportAggregates()
+
+    // MARK: - §16.11 Audit aggregation
+
+    /// Pure function that derives loss-prevention counts from a slice of audit
+    /// entries (typically the entries created between shift open and close).
+    ///
+    /// Designed as a test hook — pass in a pre-filtered `[PosAuditEntry]` and
+    /// assert on the returned aggregates without touching the DB.
+    ///
+    /// Existing financial fields (sales, tax, tips, refunds, discounts) are
+    /// preserved from `base` — only the three LP counters are overwritten.
+    public static func from(
+        auditEntries: [PosAuditEntry],
+        base: ZReportAggregates = .empty
+    ) -> ZReportAggregates {
+        let voids = auditEntries.filter {
+            $0.eventType == PosAuditEntry.EventType.voidLine
+        }.count
+        let noSales = auditEntries.filter {
+            $0.eventType == PosAuditEntry.EventType.noSale
+        }.count
+        let discountOverrides = auditEntries.filter {
+            $0.eventType == PosAuditEntry.EventType.discountOverride
+        }.count
+
+        return ZReportAggregates(
+            salesCents: base.salesCents,
+            taxCents: base.taxCents,
+            tipsCents: base.tipsCents,
+            refundCents: base.refundCents,
+            discountCents: base.discountCents,
+            voidCount: voids,
+            noSaleCount: noSales,
+            discountOverrideCount: discountOverrides
+        )
+    }
 }
-#endif

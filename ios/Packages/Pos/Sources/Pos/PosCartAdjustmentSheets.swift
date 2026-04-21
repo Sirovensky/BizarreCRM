@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Persistence
 
 // MARK: - §16.3 Discount Sheet
 
@@ -21,6 +22,12 @@ struct PosCartDiscountSheet: View {
     @State private var mode: DiscountMode = .percent
     @State private var rawInput: String = ""
     @FocusState private var isInputFocused: Bool
+
+    /// §16.11 — manager PIN gate state.
+    @State private var showingManagerPin: Bool = false
+    /// Pending apply values held while waiting for manager approval.
+    @State private var pendingMode: DiscountMode? = nil
+    @State private var pendingValue: Double? = nil
 
     private let percentPresets: [Double] = [0.05, 0.10, 0.15, 0.20]
     private let dollarPresetsCents: [Int] = [500, 1000, 2000]
@@ -62,6 +69,25 @@ struct PosCartDiscountSheet: View {
         }
         .presentationDetents(Platform.isCompact ? [.medium, .large] : [.medium])
         .presentationDragIndicator(.visible)
+        // §16.11 — nested manager PIN sheet when discount exceeds cashier ceiling.
+        .sheet(isPresented: $showingManagerPin) {
+            if let pMode = pendingMode, let pValue = pendingValue {
+                let limits = PosTenantLimits.current()
+                let reasonText = pMode == .percent
+                    ? "Discount \(Int(pValue))% exceeds cashier limit of \(Int(limits.maxCashierDiscountPercent))%"
+                    : "Discount \(CartMath.formatCents(Int((pValue * 100).rounded()))) exceeds cashier limit of \(CartMath.formatCents(limits.maxCashierDiscountCents))"
+                ManagerPinSheet(
+                    reason: reasonText,
+                    onApproved: { managerId in
+                        commitDiscount(mode: pMode, value: pValue, managerId: managerId)
+                        pendingMode = nil; pendingValue = nil
+                    },
+                    onCancelled: {
+                        pendingMode = nil; pendingValue = nil
+                    }
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -163,14 +189,60 @@ struct PosCartDiscountSheet: View {
 
     private func applyAndDismiss() {
         guard let v = parsedValue, v > 0 else { return }
-        BrandHaptics.success()
+        let limits = PosTenantLimits.current()
+
+        // §16.11 — Discount ceiling check.
+        let exceedsCeiling: Bool
         if mode == .percent {
-            let percent = min(v, 100) / 100.0
-            cart.setCartDiscountPercent(percent)
+            exceedsCeiling = v > limits.maxCashierDiscountPercent
         } else {
             let cents = Int((v * 100).rounded())
+            exceedsCeiling = cents > limits.maxCashierDiscountCents
+        }
+
+        if exceedsCeiling {
+            // Hold the pending values and ask for manager PIN before committing.
+            pendingMode = mode
+            pendingValue = v
+            showingManagerPin = true
+            return
+        }
+
+        // Under the ceiling — apply directly without manager approval.
+        commitDiscount(mode: mode, value: v, managerId: nil)
+    }
+
+    /// Apply the discount to the cart and emit the audit event.
+    private func commitDiscount(mode: DiscountMode, value: Double, managerId: Int64?) {
+        BrandHaptics.success()
+
+        let originalCents = cart.effectiveDiscountCents
+        if mode == .percent {
+            let percent = min(value, 100) / 100.0
+            cart.setCartDiscountPercent(percent)
+        } else {
+            let cents = Int((value * 100).rounded())
             cart.setCartDiscount(cents: cents)
         }
+        let appliedCents = cart.effectiveDiscountCents
+
+        // §16.11 — log discount_override when manager approved; otherwise no log
+        // (ordinary under-threshold discounts are not audited to keep the log signal-rich).
+        if let mId = managerId {
+            Task {
+                try? await PosAuditLogStore.shared.record(
+                    event: PosAuditEntry.EventType.discountOverride,
+                    cashierId: 0,
+                    managerId: mId,
+                    amountCents: appliedCents,
+                    context: [
+                        "originalCents": originalCents,
+                        "appliedCents": appliedCents
+                    ]
+                )
+            }
+        }
+
         dismiss()
     }
 }

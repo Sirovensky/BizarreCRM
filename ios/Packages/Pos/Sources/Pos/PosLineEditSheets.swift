@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import DesignSystem
+import Persistence
 
 /// Edit the quantity of a cart row. Shown from the row's `.contextMenu`.
 /// Shared form, tiny surface area — inc / dec / type-in.
@@ -59,9 +60,11 @@ struct PosEditQuantitySheet: View {
     }
 }
 
-/// Edit the price of a cart row. Stores to cents via `CartMath`. Later
-/// phases gate this behind a manager PIN for overrides beyond a threshold
-/// (§16.11) — scaffold ships unguarded.
+/// §16.11 — Edit the price of a cart row with manager PIN gate.
+///
+/// If |newPrice − originalPrice| ≥ `PosTenantLimits.current().priceOverrideThresholdCents`,
+/// a `ManagerPinSheet` is presented before the override is committed.  On
+/// approval the event is logged to `PosAuditLogStore`.
 struct PosEditPriceSheet: View {
     @Environment(\.dismiss) private var dismiss
     let currentCents: Int
@@ -69,6 +72,8 @@ struct PosEditPriceSheet: View {
 
     @State private var text: String = ""
     @State private var errorMessage: String?
+    @State private var showingManagerPin: Bool = false
+    @State private var pendingNewCents: Int? = nil
 
     init(currentCents: Int, onSave: @escaping (Int) -> Void) {
         self.currentCents = currentCents
@@ -108,6 +113,23 @@ struct PosEditPriceSheet: View {
                     text = NSDecimalNumber(decimal: dollars).stringValue
                 }
             }
+            // §16.11 — nested manager PIN sheet for large overrides.
+            .sheet(isPresented: $showingManagerPin) {
+                let limits = PosTenantLimits.current()
+                let deltaDesc = CartMath.formatCents(abs((pendingNewCents ?? 0) - currentCents))
+                ManagerPinSheet(
+                    reason: "Price override \(deltaDesc) exceeds threshold of \(CartMath.formatCents(limits.priceOverrideThresholdCents))",
+                    onApproved: { managerId in
+                        if let newCents = pendingNewCents {
+                            commitPriceOverride(newCents: newCents, managerId: managerId)
+                        }
+                        pendingNewCents = nil
+                    },
+                    onCancelled: {
+                        pendingNewCents = nil
+                    }
+                )
+            }
         }
     }
 
@@ -117,7 +139,38 @@ struct PosEditPriceSheet: View {
             errorMessage = "Price must be a non-negative number."
             return
         }
-        onSave(CartMath.toCents(value))
+        let newCents = CartMath.toCents(value)
+        let delta = abs(newCents - currentCents)
+        let limits = PosTenantLimits.current()
+
+        if delta >= limits.priceOverrideThresholdCents && newCents < currentCents {
+            // Reduction above the threshold needs manager sign-off.
+            pendingNewCents = newCents
+            showingManagerPin = true
+            return
+        }
+
+        // Either an increase or a small reduction — no manager gate.
+        commitPriceOverride(newCents: newCents, managerId: nil)
+    }
+
+    /// Apply the price and, when a manager approved, emit a `price_override` audit event.
+    private func commitPriceOverride(newCents: Int, managerId: Int64?) {
+        if let mId = managerId {
+            Task {
+                try? await PosAuditLogStore.shared.record(
+                    event: PosAuditEntry.EventType.priceOverride,
+                    cashierId: 0,
+                    managerId: mId,
+                    amountCents: abs(newCents - currentCents),
+                    context: [
+                        "originalPriceCents": currentCents,
+                        "newPriceCents": newCents
+                    ]
+                )
+            }
+        }
+        onSave(newCents)
         dismiss()
     }
 }

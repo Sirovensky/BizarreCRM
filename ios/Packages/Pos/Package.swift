@@ -23,7 +23,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PosTests",
-            dependencies: ["Pos", "Networking", "Inventory", "Customers", "Hardware"]
+            dependencies: ["Pos", "Networking", "Inventory", "Customers", "Hardware", "Persistence"]
         )
     ]
 )
