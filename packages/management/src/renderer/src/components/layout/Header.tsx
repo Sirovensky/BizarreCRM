@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Minus, Square, Server } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useServerStore } from '@/stores/serverStore';
@@ -7,7 +8,26 @@ import { getAPI } from '@/api/bridge';
 export function Header() {
   const isOnline = useServerStore((s) => s.isOnline);
   const serviceStatus = useServerStore((s) => s.serviceStatus);
+  const lastUpdated = useServerStore((s) => s.lastUpdated);
   const username = useAuthStore((s) => s.username);
+
+  // Second-resolution "freshness" tick — forces a 1 Hz re-render so the
+  // "last tick 3s ago" chip updates in real time even when no new stats
+  // have arrived. Keeps the render cost negligible by only touching the
+  // header subtree.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const ageSec = lastUpdated ? Math.max(0, Math.floor((now - lastUpdated) / 1000)) : null;
+  const ageColor = ageSec == null
+    ? 'text-surface-500 border-surface-800'
+    : ageSec < 15
+      ? 'text-emerald-400/80 border-emerald-900/50'
+      : ageSec < 60
+        ? 'text-amber-400/90 border-amber-900/50'
+        : 'text-red-400/90 border-red-900/50';
 
   // @audit-fixed: previously typed `serverState` as `string` and then cast
   // to a literal union at the JSX site (`status={serverState as 'online' |
@@ -36,6 +56,14 @@ export function Header() {
         <Server className="w-4 h-4 text-accent-400" />
         <span className="text-sm font-semibold text-surface-200">BizarreCRM</span>
         <StatusBadge status={serverState} />
+        {ageSec != null && (
+          <span
+            className={`hidden sm:inline-flex items-center gap-1 text-[10px] border rounded px-1.5 py-0.5 font-mono ${ageColor}`}
+            title="Time since last successful server-stats poll"
+          >
+            tick {ageSec}s
+          </span>
+        )}
       </div>
 
       {/* Center: Drag handle — fills all available space */}

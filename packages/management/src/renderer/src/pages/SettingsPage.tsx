@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Settings, Moon, Monitor, Info, Shield, AlertTriangle, RefreshCw,
-  CreditCard, Cloud, Globe, PowerOff, Save, Eye, EyeOff, Sliders,
+  CreditCard, Cloud, Globe, PowerOff, Save, Eye, EyeOff, Sliders, Search,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type {
@@ -74,6 +74,11 @@ export function SettingsPage() {
   const [pcSchema, setPcSchema] = useState<PlatformConfigField[] | null>(null);
   const [pcValues, setPcValues] = useState<Record<string, string>>({});
   const [pcSaving, setPcSaving] = useState<string | null>(null);
+
+  // Free-text filter across env + platform config — narrows the displayed
+  // fields by key / label / description / category. Pending edits still
+  // commit regardless of the filter view (the dirty-state survives).
+  const [filter, setFilter] = useState('');
 
   useEffect(() => {
     getAPI().system.getInfo()
@@ -292,10 +297,19 @@ export function SettingsPage() {
     );
   }
 
+  function matchesFilter(haystack: string): boolean {
+    if (!filter.trim()) return true;
+    return haystack.toLowerCase().includes(filter.toLowerCase());
+  }
+
   function renderSection(category: EnvFieldCategory) {
     if (!envFields) return null;
     const meta = CATEGORY_META[category];
-    const fields = envFields.filter((f) => f.category === category);
+    const fields = envFields.filter((f) => {
+      if (f.category !== category) return false;
+      const hay = `${f.key} ${f.label} ${f.description ?? ''} ${category} ${meta.label}`;
+      return matchesFilter(hay);
+    });
     if (fields.length === 0) return null;
     const Icon = meta.icon;
     return (
@@ -347,16 +361,28 @@ export function SettingsPage() {
 
       {/* Server env editor — sticky save bar appears below sections when dirty */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <h2 className="text-sm font-semibold text-surface-200">Server Configuration</h2>
-          <button
-            onClick={refreshEnv}
-            disabled={envLoading || saving}
-            className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
-            title="Reload from .env"
-          >
-            <RefreshCw className={`w-4 h-4 ${envLoading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-500" />
+              <input
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter settings (key, label, description)"
+                className="w-full pl-7 pr-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
+              />
+            </div>
+            <button
+              onClick={refreshEnv}
+              disabled={envLoading || saving}
+              className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
+              title="Reload from .env"
+            >
+              <RefreshCw className={`w-4 h-4 ${envLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
         {envLoading && !envFields ? (
           <p className="text-xs text-surface-500">Loading server .env…</p>
@@ -429,7 +455,9 @@ export function SettingsPage() {
             Database-backed toggles applied immediately, no server restart required.
           </p>
           <div className="space-y-4 pl-6">
-            {pcSchema.map((f) => {
+            {pcSchema
+              .filter((f) => matchesFilter(`${f.key} ${f.label} ${f.description}`))
+              .map((f) => {
               const current = pcDisplayValue(f);
               const busy = pcSaving === f.key;
               if (f.kind === 'flag') {
