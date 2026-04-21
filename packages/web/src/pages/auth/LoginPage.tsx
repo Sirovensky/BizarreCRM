@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+import { formatApiError } from '@/utils/apiError';
 
 type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
 
@@ -210,7 +211,7 @@ export function LoginPage() {
         setError('Invalid username or password.');
       } else {
         setErrorKind('server');
-        setError(err.response.data?.message || 'Login failed. Please try again.');
+        setError(formatApiError(err));
       }
     } finally {
       setLoading(false);
@@ -229,7 +230,7 @@ export function LoginPage() {
       completeLogin(data.accessToken, data.refreshToken, data.user);
       navigate('/');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Invalid code';
+      const msg = formatApiError(err) || 'Invalid code';
       const newToken = err?.response?.data?.data?.challengeToken;
       if (newToken) setChallengeToken(newToken);
       setError(msg);
@@ -258,7 +259,7 @@ export function LoginPage() {
       setManualSecret(setupData.secret);
       setStep('setup');
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to set password');
+      setError(formatApiError(err) || 'Failed to set password');
     } finally {
       setLoading(false);
     }
@@ -363,7 +364,7 @@ export function LoginPage() {
                 setSetupPassword('');
                 window.history.replaceState(null, '', '/login');
               } catch (err: any) {
-                setError(err?.response?.data?.message || 'Setup failed');
+                setError(formatApiError(err) || 'Setup failed');
               } finally {
                 setLoading(false);
               }
