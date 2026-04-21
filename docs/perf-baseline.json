@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-04-21T09:02:54Z",
+  "status": "no-result",
+  "result_bundle": "/tmp/ios-perf.xcresult",
+  "budgets": {
+    "scroll_frame_p95_ms": 16.67,
+    "cold_start_ms": 1500,
+    "warm_start_ms": 250,
+    "list_render_ms": 500,
+    "idle_memory_mb": 200,
+    "request_timeout_ms": 10000,
+    "progress_show_ms": 500
+  },
+  "notes": "Full metrics in /tmp/ios-perf.xcresult — open in Xcode or run xcresulttool get --path /tmp/ios-perf.xcresult"
+}
