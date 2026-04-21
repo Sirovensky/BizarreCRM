@@ -34,9 +34,9 @@ in-progress and lags the audit.
 
 | § | Domain | Coverage | Notes |
 |---|---|---|---|
-| 1 | Platform & Foundation | ~70% | API envelope, OkHttp pinning, Room+SQLCipher, Hilt, WorkManager, FCM all DONE. Missing: AppError taxonomy, draft autosave, undo stack, clock-drift, multipart upload helper. |
-| 2 | Auth & Onboarding | ~38% | Login + 2FA verify + setPassword + signup + logout + refresh-retry DONE. **§2.5 PIN lock scaffolded (NEW)**. Missing: passkeys, SSO, magic-link, hardware key, shared-device, session timeout policy. |
-| 3 | Dashboard | ~37% | KPI grid (4 of 12 tiles), my-queue, FAB, sync badge, greeting, error states DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode. |
+| 1 | Platform & Foundation | ~78% | API envelope, OkHttp pinning, Room+SQLCipher, Hilt, WorkManager, FCM, **AppError taxonomy (NEW)**, **ProcessLifecycle ON_START hook (NEW)** DONE. Missing: draft autosave, undo stack, clock-drift, multipart upload helper. |
+| 2 | Auth & Onboarding | ~55% | Login + 2FA + setPassword + signup + logout + refresh-retry + **PIN lock end-to-end (NEW Settings + nav)** + **SessionRevoked banner (NEW)** + **/auth/me cold-start (NEW)** DONE. Missing: passkeys, SSO, magic-link, hardware key, shared-device. |
+| 3 | Dashboard | ~45% | KPIs, my-queue, FAB, sync badge, greeting, error states, **onboarding checklist (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode, clock-in tile. |
 | 4 | Tickets | ~14% | List + detail + create scaffolds; **§4.17 IMEI Luhn validator DONE (NEW)**. Missing: Paging3, signatures, bench, SLA, QC checklist, IMEI UI hookup. |
 | 5 | Customers | ~30% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. Missing: tags UI, segments, merge, bulk, communication prefs. |
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
@@ -50,22 +50,22 @@ in-progress and lags the audit.
 | 14 | Employees & Timeclock | ~45% | List, clock in/out, **detail screen (NEW)** DONE. Missing: real-time presence, permissions matrix, edit/reset-PIN/deactivate (server endpoints pending). |
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
 | 16 | POS | ~5% | Read-only "Recent Tickets" only. Missing: cart, catalog, checkout, payment, drawer. |
-| 17 | Hardware | ~10% | HID barcode passthrough only. Missing: CameraX wire, ML Kit wire, printers, stylus. |
+| 17 | Hardware | ~20% | HID barcode passthrough + **Ctrl+N/Shift+N/Shift+S/Shift+M/F/, keyboard chords (NEW)** DONE. Missing: CameraX wire, ML Kit wire, printers, stylus. |
 | 18 | Global Search | ~50% | Debounced search + offline FTS DONE. Missing: scoped search, recent, voice. |
 | 19 | Settings | ~30% | Main screen + biometric toggle + logout + notification toggles DONE. Missing: search-in-settings, change-password UI, change-PIN UI, deep links. |
 | 20 | Offline & Sync | ~50% | sync_queue + sync_metadata + dead-letter + WorkManager + WebSocket DONE. Missing: conflict resolution, delta sync, cursor pagination, dev tools drawer. |
-| 21 | Background & Push | ~40% | FCM + foreground service + WorkManager DONE. Missing: Live Updates (Android 16), quiet hours, OEM killer detection, Direct Boot. |
-| 22 | Tablet polish | ~5% | NavigationSuiteScaffold dep present. Missing: WindowSizeClass usage, list-detail panes, hardware-keyboard map. |
+| 21 | Background & Push | ~55% | FCM + foreground service + WorkManager + **silent-push delta sync (NEW)** + quiet hours DONE. Missing: Live Updates (Android 16), OEM killer detection, Direct Boot. |
+| 22 | Tablet polish | ~10% | NavigationSuiteScaffold dep + **WindowMode helper (NEW)** + **hardware-keyboard chords (NEW via §17.10)** DONE. Missing: list-detail panes, drag-drop, stylus. |
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
 | 26 | Accessibility | ~5% | Basic Material widgets only. Missing: full contentDescription sweep, fontScale, Reduce Motion. |
 | 27 | i18n | 0% | Not started. |
-| 28 | Security | ~50% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE, **setRecentsScreenshotEnabled (NEW)**, ProGuard Firebase ban DONE. Missing: Timber redactor, Play Integrity, GDPR endpoints. |
+| 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~10% | minifyEnabled true. Missing: Macrobenchmark, JankStats, baseline profiles. |
 | 30 | Design System | ~50% | M3 theme, brand colors, typography, semantic colors DONE. Missing: dynamic color, MotionScheme.expressive, component library. |
 | 31 | Testing | ~5% | Schema guard rail only. Missing: unit, integration, UI, E2E, perf, a11y, security tests. |
-| 32 | Telemetry | ~10% | ProGuard bans Firebase Crashlytics. Missing: TelemetryClient, crash handler, PII redactor. |
+| 32 | Telemetry | ~40% | ProGuard bans Firebase Crashlytics + **CrashReporter + Crash Reports screen (NEW)** + **RedactingHttpLogger (NEW)** DONE. Missing: TelemetryClient + tenant upload path. |
 | 33 | Play Store | ~25% | Versioning + signing config DONE. Missing: Fastlane, store listing, phased rollout. |
 
 §§36-75 not yet audited. Next pass.
