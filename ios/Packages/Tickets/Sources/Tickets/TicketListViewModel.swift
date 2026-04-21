@@ -12,12 +12,16 @@ public final class TicketListViewModel {
     public private(set) var errorMessage: String?
     public var filter: TicketListFilter = .all
     public var searchQuery: String = ""
+    /// Exposed for `StalenessIndicator` in the toolbar.
+    public var lastSyncedAt: Date?
 
     @ObservationIgnored private let repo: TicketRepository
+    @ObservationIgnored private let cachedRepo: TicketCachedRepository?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
     public init(repo: TicketRepository) {
         self.repo = repo
+        self.cachedRepo = repo as? TicketCachedRepository
     }
 
     public func load() async {
@@ -26,10 +30,25 @@ public final class TicketListViewModel {
         await fetch()
     }
 
+    /// Called by `.refreshable` — always hits remote when cache-aware.
     public func refresh() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        await fetch()
+        if let cached = cachedRepo {
+            do {
+                let results = try await cached.forceRefresh(
+                    filter: filter,
+                    keyword: searchQuery.isEmpty ? nil : searchQuery
+                )
+                tickets = results
+                lastSyncedAt = await cached.lastSyncedAt
+            } catch {
+                AppLog.ui.error("Ticket force-refresh failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = error.localizedDescription
+            }
+        } else {
+            await fetch()
+        }
     }
 
     public func applyFilter(_ newFilter: TicketListFilter) async {
@@ -57,6 +76,9 @@ public final class TicketListViewModel {
                 keyword: searchQuery.isEmpty ? nil : searchQuery
             )
             tickets = results
+            if let cached = cachedRepo {
+                lastSyncedAt = await cached.lastSyncedAt
+            }
         } catch {
             AppLog.ui.error("Ticket list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

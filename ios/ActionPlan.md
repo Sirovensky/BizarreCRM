@@ -452,7 +452,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
-- [ ] **Pull-to-refresh** via `.refreshable`.
+- [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [ ] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present.
 - [ ] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column.
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
@@ -607,7 +607,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
 - [ ] **Empty state** — "No tickets yet. Create one." CTA.
-- [ ] **Offline state** — list renders from GRDB; banner "Showing cached tickets" + last-sync time.
+- [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
@@ -2744,7 +2744,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 
 ### 20.8 Manual sync controls
 - [ ] **Sync now** — Settings → Data + pull-down on Dashboard.
-- [ ] **Per-tab pull-to-refresh** — standard `.refreshable`.
+- [x] **Per-tab pull-to-refresh** — standard `.refreshable`. (Dashboard/Tickets/Customers wired to forceRefresh() via CachedRepository; phase-3 PR)
 - [ ] **Last-sync timestamp** footer in Settings → Data.
 - [ ] **Unsynced writes count** — tab badge red dot.
 

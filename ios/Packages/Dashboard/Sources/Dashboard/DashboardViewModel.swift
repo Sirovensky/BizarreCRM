@@ -13,11 +13,16 @@ public final class DashboardViewModel {
     }
 
     public var state: State = .loading
+    /// Exposed for `StalenessIndicator` in the toolbar.
+    public var lastSyncedAt: Date?
 
     @ObservationIgnored private let repo: DashboardRepository
+    /// Non-nil when repo is cache-aware (used by forceRefresh on pull-to-refresh).
+    @ObservationIgnored private let cachedRepo: DashboardCachedRepository?
 
     public init(repo: DashboardRepository) {
         self.repo = repo
+        self.cachedRepo = repo as? DashboardCachedRepository
     }
 
     public func load() async {
@@ -27,12 +32,41 @@ public final class DashboardViewModel {
             state = .loading
         }
 
+        // Read lastSyncedAt before the fetch so the chip updates on success.
+        if let cached = cachedRepo {
+            lastSyncedAt = await cached.lastSyncedAt
+        }
+
         do {
             let snapshot = try await repo.load()
             state = .loaded(snapshot)
+            if let cached = cachedRepo {
+                lastSyncedAt = await cached.lastSyncedAt
+            }
         } catch {
             AppLog.ui.error("Dashboard load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Called by `.refreshable` — always fetches fresh data when cache-aware.
+    public func forceRefresh() async {
+        if let cached = cachedRepo {
+            if case .loaded = state {
+                // Keep visible while refreshing.
+            } else {
+                state = .loading
+            }
+            do {
+                let snapshot = try await cached.forceRefresh()
+                state = .loaded(snapshot)
+                lastSyncedAt = await cached.lastSyncedAt
+            } catch {
+                AppLog.ui.error("Dashboard force-refresh failed: \(error.localizedDescription, privacy: .public)")
+                state = .failed(error.localizedDescription)
+            }
+        } else {
+            await load()
         }
     }
 }

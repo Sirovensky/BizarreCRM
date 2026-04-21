@@ -3,6 +3,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 import Customers
 
 public struct TicketListView: View {
@@ -62,7 +63,10 @@ public struct TicketListView: View {
             .navigationDestination(for: Int64.self) { id in
                 detailView(for: id)
             }
-            .toolbar { newTicketToolbar }
+            .toolbar {
+                newTicketToolbar
+                stalenessToolbarItem
+            }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
                     TicketCreateView(api: api, customerRepo: customerRepo)
@@ -89,7 +93,10 @@ public struct TicketListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
-            .toolbar { newTicketToolbar }
+            .toolbar {
+                newTicketToolbar
+                stalenessToolbarItem
+            }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
@@ -132,12 +139,20 @@ public struct TicketListView: View {
         }
     }
 
+    private var stalenessToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+    }
+
     @ViewBuilder
     private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
             TicketErrorState(message: err) { Task { await vm.load() } }
+        } else if vm.tickets.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "tickets")
         } else if vm.tickets.isEmpty {
             TicketEmptyState(hint: emptyHint)
         } else {

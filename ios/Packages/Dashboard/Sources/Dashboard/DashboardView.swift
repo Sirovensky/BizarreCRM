@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 import Timeclock
 #if canImport(UIKit)
 import UIKit
@@ -23,8 +24,13 @@ public struct DashboardView: View {
                 #if canImport(UIKit)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
-                .refreshable { await vm.load() }
+                .refreshable { await vm.forceRefresh() }
                 .task { await vm.load() }
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                    }
+                }
         }
     }
 
@@ -35,11 +41,18 @@ public struct DashboardView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-        case .failed(let message):
-            DashboardErrorPane(message: message) {
-                Task { await vm.load() }
+        case .failed:
+            // When offline with no cached data, show the offline empty state.
+            // Otherwise show the error pane with retry.
+            if !Reachability.shared.isOnline && vm.lastSyncedAt == nil {
+                OfflineEmptyStateView(entityName: "dashboard data")
+                    .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            } else if case let .failed(message) = vm.state {
+                DashboardErrorPane(message: message) {
+                    Task { await vm.load() }
+                }
+                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
-            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .loaded(let snapshot):
             LoadedBody(snapshot: snapshot, clockVM: clockVM)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())

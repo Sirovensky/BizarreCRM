@@ -3,6 +3,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 public struct CustomerListView: View {
     @State private var vm: CustomerListViewModel
@@ -49,7 +50,10 @@ public struct CustomerListView: View {
             .navigationDestination(for: Int64.self) { id in
                 CustomerDetailView(repo: detailRepo, customerId: id, api: api)
             }
-            .toolbar { newCustomerToolbar }
+            .toolbar {
+                newCustomerToolbar
+                stalenessToolbarItem
+            }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 CustomerCreateView(api: api)
             }
@@ -71,7 +75,10 @@ public struct CustomerListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
-            .toolbar { newCustomerToolbar }
+            .toolbar {
+                newCustomerToolbar
+                stalenessToolbarItem
+            }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 CustomerCreateView(api: api)
@@ -100,12 +107,20 @@ public struct CustomerListView: View {
         }
     }
 
+    private var stalenessToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+    }
+
     @ViewBuilder
     private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
             CustomerErrorState(message: err) { Task { await vm.load() } }
+        } else if vm.customers.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "customers")
         } else if vm.customers.isEmpty {
             CustomerEmptyState(isSearching: !searchText.isEmpty, query: searchText)
         } else {
