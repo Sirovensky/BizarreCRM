@@ -550,7 +550,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.10 Sync-status badge
 - [x] Small pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
-- [~] Tap → Settings → Data → Sync Issues.
+- [x] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
 - [~] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` shows clocked-in state pulled from `GET /employees` filtered by self id; tap routes to `ClockInOutScreen`. "Since X" timestamp pending — needs server-side clock-in started_at.)

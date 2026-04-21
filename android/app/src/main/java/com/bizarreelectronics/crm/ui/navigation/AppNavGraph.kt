@@ -570,6 +570,9 @@ fun AppNavGraph(
                     // has a one-tap path to edit their name / avatar from the
                     // dashboard without drilling through Settings.
                     onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                    // §3.10 — when pending rows are stuck, the badge tap
+                    // routes to Sync Issues instead of force-syncing again.
+                    onNavigateToSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                 )
             }
             composable(Screen.Tickets.route) {

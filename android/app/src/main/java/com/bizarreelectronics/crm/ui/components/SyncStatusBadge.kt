@@ -52,11 +52,25 @@ fun SyncStatusBadge(
     pendingCountFlow: Flow<Int>,
     onForceSync: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * §3.10 — route tap to Settings → Data → Sync Issues when the queue
+     * has unsynced rows (pending count > 0). The default behavior is to
+     * force a sync, which is fine when everything's already clean but
+     * the wrong action when a row is stuck and the user actually wants
+     * to diagnose. Null disables the redirect (keeps legacy callers
+     * unchanged).
+     */
+    onOpenIssues: (() -> Unit)? = null,
 ) {
     val isSyncing by isSyncingFlow.collectAsState()
     val pendingCount by pendingCountFlow.collectAsState(initial = 0)
 
     val isPending = !isSyncing && pendingCount > 0
+    // When the queue is pending and the caller wired an issues route, a tap
+    // on the badge should land the user on Sync Issues rather than kick off
+    // yet another sync attempt that will likely land in the same pending
+    // state. Any other state (syncing / clean) still fires force-sync.
+    val onTap: () -> Unit = if (isPending && onOpenIssues != null) onOpenIssues else onForceSync
 
     // 600ms gentle pulse for pending state (0.9 → 1.0 alpha)
     val infiniteTransition = rememberInfiniteTransition(label = "syncPulse")
@@ -95,7 +109,7 @@ fun SyncStatusBadge(
     // on tap. Layering .clickable on top of Surface suppressed the indication
     // because the Surface's own surface layer drew over the ripple target.
     Surface(
-        onClick = onForceSync,
+        onClick = onTap,
         enabled = !isSyncing,
         modifier = modifier
             .then(if (isPending) Modifier.alpha(pulseAlpha) else Modifier),

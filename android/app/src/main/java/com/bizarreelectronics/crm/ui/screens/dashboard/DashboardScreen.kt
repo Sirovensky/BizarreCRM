@@ -261,6 +261,9 @@ fun DashboardScreen(
     // §3.9 — tap greeting → Settings → Profile. Nullable keeps previews +
     // isolated tests composable without a NavController.
     onNavigateToProfile: (() -> Unit)? = null,
+    // §3.10 — sync badge redirects to Settings → Data → Sync Issues when
+    // pending rows are stuck; force-sync stays the default for clean state.
+    onNavigateToSyncIssues: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -392,6 +395,7 @@ fun DashboardScreen(
                             isSyncingFlow = viewModel.isSyncing,
                             pendingCountFlow = viewModel.pendingSyncCount,
                             onForceSync = { viewModel.forceSync() },
+                            onOpenIssues = onNavigateToSyncIssues,
                         )
                     },
                 )
