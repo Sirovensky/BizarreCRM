@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Loader2, AlertCircle, Upload, X } from 'lucide-react';
+import { Save, Loader2, AlertCircle, Upload, X, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -139,6 +139,118 @@ function ToggleRow({ label, desc, configKey, val, set, comingSoon = false }: { l
       <button role="switch" aria-checked={isOn} disabled={comingSoon} onClick={() => !comingSoon && set(configKey, isOn ? '0' : '1')} className={cn('relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors', isOn ? 'bg-teal-500' : 'bg-surface-300 dark:bg-surface-600', comingSoon && 'opacity-50 cursor-not-allowed')}>
         <span className={cn('pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform', isOn ? 'translate-x-5' : 'translate-x-0')} />
       </button>
+    </div>
+  );
+}
+
+// ─── Receipt Templates Editor ────────────────────────────────────────────────
+
+interface ReceiptTemplate {
+  id: number;
+  name: string;
+  type: string;
+  header_text: string | null;
+  footer_text: string | null;
+  show_warranty_info: number;
+  show_trade_in_info: number;
+  is_default: number;
+}
+
+function ReceiptTemplatesEditor() {
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<number, { header_text: string; footer_text: string }>>({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['receipt-templates'],
+    queryFn: async () => {
+      const res = await settingsApi.getReceiptTemplates();
+      return res.data.data as ReceiptTemplate[];
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, header_text, footer_text }: { id: number; header_text: string; footer_text: string }) =>
+      settingsApi.updateReceiptTemplate(id, { header_text, footer_text }),
+    onSuccess: (_res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['receipt-templates'] });
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[vars.id];
+        return next;
+      });
+      toast.success('Template saved');
+    },
+    onError: () => toast.error('Failed to save template'),
+  });
+
+  if (isLoading) return <div className="py-4 flex items-center gap-2 text-surface-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading templates…</div>;
+  if (!data?.length) return <p className="text-sm text-surface-400 py-2">No templates found.</p>;
+
+  return (
+    <div className="space-y-4">
+      {data.map((tpl) => {
+        const draft = drafts[tpl.id];
+        const header = draft?.header_text ?? (tpl.header_text || '');
+        const footer = draft?.footer_text ?? (tpl.footer_text || '');
+        const isDirty = !!draft;
+
+        function update(field: 'header_text' | 'footer_text', value: string) {
+          setDrafts((prev) => ({
+            ...prev,
+            [tpl.id]: {
+              header_text: field === 'header_text' ? value : (prev[tpl.id]?.header_text ?? (tpl.header_text || '')),
+              footer_text: field === 'footer_text' ? value : (prev[tpl.id]?.footer_text ?? (tpl.footer_text || '')),
+            },
+          }));
+        }
+
+        return (
+          <div key={tpl.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="h-4 w-4 text-primary-500" />
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">{tpl.name}</p>
+              <span className="ml-auto text-xs text-surface-400 bg-surface-100 dark:bg-surface-800 px-2 py-0.5 rounded-full">{tpl.type}</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Header text</label>
+                <textarea
+                  rows={2}
+                  value={header}
+                  onChange={(e) => update('header_text', e.target.value)}
+                  placeholder="Printed above line items on this receipt type"
+                  className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Footer text</label>
+                <textarea
+                  rows={2}
+                  value={footer}
+                  onChange={(e) => update('footer_text', e.target.value)}
+                  placeholder="Printed at the bottom of this receipt type"
+                  className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => saveMutation.mutate({ id: tpl.id, header_text: header, footer_text: footer })}
+                  disabled={!isDirty || saveMutation.isPending}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                    isDirty
+                      ? 'bg-primary-600 text-white hover:bg-primary-700'
+                      : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
+                  )}
+                >
+                  <Save className="h-3 w-3" />
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -290,6 +402,13 @@ export function ReceiptSettings() {
           description="Title displayed at the top of receipts"
           value={val('receipt_title', 'Receipt')}
           onChange={(v) => set('receipt_title', v)}
+        />
+        <TextareaRow
+          label="Receipt Header"
+          description="Message shown at the top of every receipt (thermal and email), below the store name"
+          value={val('receipt_header')}
+          onChange={(v) => set('receipt_header', v)}
+          placeholder="e.g. Thank you for choosing our shop!"
         />
         <div className="flex items-center justify-between py-3 border-b border-surface-100 dark:border-surface-800">
           <div>
@@ -444,6 +563,15 @@ export function ReceiptSettings() {
             </div>
           </div>
         </div>
+
+        {/* ─── Receipt Templates ────────────────────────────────────── */}
+        <SectionHeader title="Receipt Templates" />
+        <p className="text-xs text-surface-500 dark:text-surface-400 mb-3">
+          Per-transaction-type overrides for header and footer text. The matching template is
+          applied automatically (warranty tickets use the Warranty template, trade-ins use
+          Trade-In, everything else uses Standard).
+        </p>
+        <ReceiptTemplatesEditor />
       </div>}
 
       {activeTab === 'configuration' && <div className="p-6">

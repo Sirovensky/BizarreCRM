@@ -137,10 +137,26 @@ export function useWebSocket() {
   const unmountedRef = useRef(false);
   const authRejectedRef = useRef(false);
   const invalidationMap = useRef(buildInvalidationMap());
+  // Stable ref so connect() can call scheduleReconnect() without a circular
+  // useCallback dependency or capturing a stale closure value.
+  const scheduleReconnectRef = useRef<() => void>(() => { /* populated below */ });
 
   const { setConnected, setLastMessage } = useWsStore();
 
   const getToken = useCallback(() => localStorage.getItem('accessToken'), []);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // Prevent reconnect on intentional close
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setConnected(false);
+  }, [setConnected]);
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
@@ -159,7 +175,7 @@ export function useWebSocket() {
     try {
       ws = new WebSocket(url);
     } catch {
-      scheduleReconnect();
+      scheduleReconnectRef.current();
       return;
     }
     wsRef.current = ws;
@@ -233,13 +249,13 @@ export function useWebSocket() {
         authRejectedRef.current = true;
         return;
       }
-      scheduleReconnect();
+      scheduleReconnectRef.current();
     };
 
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [getToken, queryClient, setConnected, setLastMessage]); // intentional: scheduleReconnect omitted to break circular dep
+  }, [getToken, queryClient, setConnected, setLastMessage]); // scheduleReconnect accessed via ref, not in dep array
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;
@@ -255,7 +271,10 @@ export function useWebSocket() {
       reconnectTimerRef.current = null;
       connect();
     }, delay);
-  }, [connect]); // intentional: refs are stable, only connect matters
+  }, [connect]);
+
+  // Keep the ref in sync so connect()'s closure always calls the latest version.
+  scheduleReconnectRef.current = scheduleReconnect;
 
   useEffect(() => {
     unmountedRef.current = false;
@@ -270,21 +289,21 @@ export function useWebSocket() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Close the socket immediately when the user logs out so it does not
+    // linger as an authenticated connection after credentials are cleared.
+    const handleAuthCleared = () => {
+      authRejectedRef.current = false; // allow reconnect on next login
+      disconnect();
+    };
+    window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
+
     return () => {
       unmountedRef.current = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.onclose = null; // Prevent reconnect on intentional close
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      setConnected(false);
+      window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
+      disconnect();
     };
-  }, [connect]); // mount-only: setConnected is stable (zustand)
+  }, [connect, disconnect]); // mount-only: disconnect is stable (useCallback with stable deps)
 }
 
 // ---------------------------------------------------------------------------

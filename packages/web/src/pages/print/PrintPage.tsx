@@ -176,6 +176,14 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
 
       <div style={thick} />
 
+      {/* Receipt header message (receipt_header from store_config) */}
+      {cfgText('receipt_header') && (
+        <>
+          <div style={{ ...center, fontSize: '0.85em', whiteSpace: 'pre-wrap' }}>{sanitizePrintText(cfgText('receipt_header'))}</div>
+          <div style={dash} />
+        </>
+      )}
+
       {/* Customer */}
       <div style={{ fontWeight: 'bold' }}>{customer.first_name} {customer.last_name}</div>
       {(customer.mobile || customer.phone) && (

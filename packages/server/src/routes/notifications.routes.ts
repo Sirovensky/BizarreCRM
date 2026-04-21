@@ -199,16 +199,22 @@ router.post(
       throw new AppError('SMTP is not configured. Set up email in Settings.', 400);
     }
 
-    // Fetch line items + store name in parallel
-    const [lineItems, storeNameRow] = await Promise.all([
-      adb.all<any>(`
+    // Fetch line items + receipt config rows in parallel
+    const [lineItems, configRows] = await Promise.all([
+      adb.all<{ description: string; quantity: number; unit_price: number; tax_amount: number; total: number }>(`
         SELECT description, quantity, unit_price, tax_amount, total
         FROM invoice_line_items WHERE invoice_id = ?
         ORDER BY id ASC
       `, invoice_id),
-      adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+      adb.all<{ key: string; value: string }>(
+        `SELECT key, value FROM store_config WHERE key IN ('store_name','receipt_header','receipt_footer','receipt_thermal_footer')`
+      ),
     ]);
-    const storeName = storeNameRow?.value || 'Your Shop';
+    const cfgMap = Object.fromEntries(configRows.map((r) => [r.key, r.value]));
+    const storeName = cfgMap['store_name'] || 'Your Shop';
+    const receiptHeader = cfgMap['receipt_header'] || '';
+    // Prefer thermal footer; fall back to page footer; then a generic default.
+    const receiptFooter = cfgMap['receipt_thermal_footer'] || cfgMap['receipt_footer'] || 'Thank you for your business!';
 
     // Build receipt HTML
     // @audit-fixed: §37 — escape every user-controlled field. li.description,
@@ -226,6 +232,7 @@ router.post(
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;color:#333;">
         <h2 style="color:#0d9488;">${escapeHtml(storeName)}</h2>
+        ${receiptHeader ? `<p style="font-size:13px;color:#555;margin-bottom:12px;">${escapeHtml(receiptHeader)}</p>` : ''}
         <p>Receipt for Invoice <strong>${escapeHtml(invoice.order_id)}</strong></p>
         <p>Customer: ${escapeHtml(invoice.first_name || '')} ${escapeHtml(invoice.last_name || '')}</p>
         <p>Date: ${escapeHtml(new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</p>
@@ -249,7 +256,7 @@ router.post(
           ${invoice.amount_due > 0 ? `<p style="color:#dc2626;">Balance Due: <strong>$${Number(invoice.amount_due).toFixed(2)}</strong></p>` : ''}
         </div>
         <hr style="margin:24px 0;border:none;border-top:1px solid #ddd;" />
-        <p style="font-size:12px;color:#999;">Thank you for your business!</p>
+        <p style="font-size:12px;color:#999;">${escapeHtml(receiptFooter)}</p>
       </div>
     `;
 

@@ -425,6 +425,12 @@ export const settingsApi = {
   // ENR-S7: Role-based module visibility
   getModuleVisibility: () => api.get('/settings/module-visibility'),
   updateModuleVisibility: (data: Record<string, string[]>) => api.put('/settings/module-visibility', data),
+  // Receipt templates (migration 067)
+  getReceiptTemplates: () => api.get('/settings/receipt-templates'),
+  getReceiptTemplateForType: (type: 'default' | 'warranty' | 'trade_in' | 'credit_note') =>
+    api.get(`/settings/receipt-templates/for-type/${type}`),
+  updateReceiptTemplate: (id: number, data: { name?: string; header_text?: string; footer_text?: string }) =>
+    api.put(`/settings/receipt-templates/${id}`, data),
 };
 
 // ==================== Automations ====================

@@ -2058,6 +2058,92 @@ router.post('/webhook-failures/:id/retry', adminOnly, async (req: Request, res: 
   res.json({ success: true, data: result });
 });
 
+// ---------------------------------------------------------------------------
+// GET /receipt-templates — list all receipt templates
+// GET /receipt-templates/for-type/:type — return the best template for a
+//   given transaction type ('default' | 'warranty' | 'trade_in'), with
+//   fallback: exact type → default+is_default → first row.
+// PUT /receipt-templates/:id — update a template's header/footer text
+// ---------------------------------------------------------------------------
+
+interface ReceiptTemplateRow {
+  id: number;
+  name: string;
+  type: string;
+  header_text: string | null;
+  footer_text: string | null;
+  show_warranty_info: number;
+  show_trade_in_info: number;
+  is_default: number;
+  created_at: string;
+}
+
+router.get('/receipt-templates', async (req: Request, res: Response) => {
+  const rows = await req.asyncDb.all<ReceiptTemplateRow>(
+    'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC'
+  );
+  res.json({ success: true, data: rows });
+});
+
+router.get('/receipt-templates/for-type/:type', async (req: Request, res: Response) => {
+  const type = req.params.type as string;
+  const validTypes = new Set(['default', 'warranty', 'trade_in', 'credit_note']);
+  const safeType = validTypes.has(type) ? type : 'default';
+
+  // 1. Exact type match
+  let tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+    'SELECT * FROM receipt_templates WHERE type = ? LIMIT 1', safeType
+  );
+  // 2. Fallback: default row with is_default=1
+  if (!tpl) {
+    tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+      "SELECT * FROM receipt_templates WHERE type = 'default' AND is_default = 1 LIMIT 1"
+    );
+  }
+  // 3. Fallback: any row
+  if (!tpl) {
+    tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+      'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC LIMIT 1'
+    );
+  }
+
+  if (!tpl) throw new AppError('No receipt templates found', 404);
+  res.json({ success: true, data: tpl });
+});
+
+router.put('/receipt-templates/:id', adminOnly, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
+
+  const { header_text, footer_text, name } = req.body as {
+    header_text?: string;
+    footer_text?: string;
+    name?: string;
+  };
+
+  const existing = await req.asyncDb.get<ReceiptTemplateRow>(
+    'SELECT * FROM receipt_templates WHERE id = ?', id
+  );
+  if (!existing) throw new AppError('Template not found', 404);
+
+  await req.asyncDb.run(
+    `UPDATE receipt_templates
+       SET header_text = COALESCE(?, header_text),
+           footer_text = COALESCE(?, footer_text),
+           name        = COALESCE(?, name)
+     WHERE id = ?`,
+    header_text ?? null,
+    footer_text ?? null,
+    name ?? null,
+    id
+  );
+
+  const updated = await req.asyncDb.get<ReceiptTemplateRow>(
+    'SELECT * FROM receipt_templates WHERE id = ?', id
+  );
+  res.json({ success: true, data: updated });
+});
+
 // POST /webhook-test — fire a synthetic test delivery to the configured URL
 router.post('/webhook-test', adminOnly, async (req: Request, res: Response) => {
   const db = req.db;

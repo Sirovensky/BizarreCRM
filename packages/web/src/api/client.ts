@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_BASE = '/api/v1';
@@ -233,6 +234,20 @@ client.interceptors.response.use(
         forceLogout('refresh-failed');
       }
     }
+
+    // Show a user-visible toast for 5xx server errors so failures are never
+    // silently swallowed. We skip auth endpoints (already handled above) and
+    // network errors where response is undefined (offline, CORS, etc.) since
+    // those have no status code to inspect.
+    const status = error.response?.status;
+    if (status !== undefined && status >= 500) {
+      const serverMsg =
+        typeof error.response?.data?.message === 'string'
+          ? error.response.data.message
+          : null;
+      toast.error(serverMsg ?? 'Server error — please try again.');
+    }
+
     return Promise.reject(error);
   },
 );

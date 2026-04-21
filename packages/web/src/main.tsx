@@ -9,10 +9,32 @@ import './styles/globals.css';
 
 // D4-10: dismiss oldest visible toast when count exceeds `max`. Prevents
 // the 20+ toast stack from rapid barcode scans or network error storms.
+// Also mirrors the most-recent toast into the sr-only aria-live region so
+// screen readers announce notifications without relying on react-hot-toast's
+// DOM structure (which has no aria-live attribute).
 function ToastAvalancheGuard({ max }: { max: number }): null {
   const { toasts } = useToasterStore();
   useEffect(() => {
     const visible = toasts.filter((t) => t.visible);
+
+    // Announce the newest visible toast to screen readers via the live region.
+    const liveRegion = document.getElementById('toast-live-region');
+    if (liveRegion) {
+      const newest = visible[0];
+      const msg = newest
+        ? typeof newest.message === 'string'
+          ? newest.message
+          : ''
+        : '';
+      // Toggling to empty then back forces the AT to re-announce even when
+      // the same message fires twice in a row (e.g. repeated save errors).
+      if (liveRegion.textContent !== msg) {
+        liveRegion.textContent = '';
+        // Micro-task flush so the empty update is processed first.
+        Promise.resolve().then(() => { liveRegion.textContent = msg; });
+      }
+    }
+
     if (visible.length <= max) return;
     const overflow = visible.length - max;
     // Oldest first — react-hot-toast pushes new toasts to the front of the
@@ -95,6 +117,22 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />
+          {/*
+            react-hot-toast renders its portal outside the React tree and does
+            not add aria-live to the container, so screen readers never hear
+            toasts. Wrap with a visually-hidden live region that mirrors the
+            latest visible toast message so AT users get the same feedback.
+            role="status" maps to aria-live="polite" which is correct for
+            non-urgent notifications; error toasts are already prefixed with
+            the toast icon / "Error" text so severity is communicated.
+          */}
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+            id="toast-live-region"
+          />
           <Toaster
             position="top-right"
             toastOptions={{

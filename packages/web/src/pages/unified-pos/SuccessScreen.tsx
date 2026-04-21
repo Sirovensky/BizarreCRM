@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
-import { serverInfoApi, smsApi, notificationApi, ticketApi } from '@/api/endpoints';
+import { serverInfoApi, smsApi, notificationApi, ticketApi, settingsApi } from '@/api/endpoints';
 // FA-L4: QrReceiptCode on the POS success screen lets the customer scan the
 // receipt URL from the counter. It's a secondary channel — email/SMS remain
 // the primary delivery — but works offline for walk-up customers.
@@ -26,6 +26,17 @@ export function SuccessScreen() {
   const _firstDevice = _devices[0];
   const _ticketId: number | null = _ticket?.id ?? _data?.ticket_id ?? null;
   const _firstDeviceId: number | null = _firstDevice?.id ?? null;
+
+  // Fetch store config for SMS receipt branding — must be above early return (hook rules).
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const storeConfig = configData ?? {};
 
   // Fetch server info for QR code URL — must be above early return (hook rules).
   const { data: serverInfo } = useQuery({
@@ -85,7 +96,9 @@ export function SuccessScreen() {
     if (!customerPhone || !invoiceId) return;
     setSmsSending(true);
     try {
-      const msg = `Receipt for Invoice #${invoiceOrderId || invoiceId}: Total $${total.toFixed(2)}. Paid: $${total.toFixed(2)}. Thank you for your business!`;
+      const shopName = storeConfig['store_name'] || 'our shop';
+      const smsFooter = storeConfig['receipt_thermal_footer'] || storeConfig['receipt_footer'] || '';
+      const msg = `Receipt for Invoice #${invoiceOrderId || invoiceId}: Total $${total.toFixed(2)}. Paid: $${total.toFixed(2)}. Thank you for choosing ${shopName}!${smsFooter ? ` ${smsFooter}` : ''}`;
       await smsApi.send({ to: customerPhone, message: msg, entity_type: 'invoice', entity_id: invoiceId });
       toast.success('Receipt sent via SMS');
     } catch {
@@ -134,7 +147,7 @@ export function SuccessScreen() {
     if (ticketId) {
       const id = ticketId;
       resetAll();
-      navigate(`/print/ticket/${id}?size=receipt80`);
+      navigate(`/print/ticket/${id}?size=receipt80&type=receipt`);
     }
   };
 
