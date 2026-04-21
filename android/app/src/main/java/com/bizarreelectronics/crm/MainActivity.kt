@@ -274,7 +274,9 @@ class MainActivity : FragmentActivity() {
         val path = data.path?.trimStart('/').orEmpty()
         val candidate = if (path.isEmpty()) host else "$host/$path"
 
-        return if (candidate in ALLOWED_DEEP_LINK_ROUTES) candidate else null
+        // §68.3 — delegate to the testable allow-list util so the check
+        // can be exercised from a JVM unit test without needing a Context.
+        return com.bizarreelectronics.crm.util.DeepLinkAllowlist.resolve(candidate)
     }
 
     /**
@@ -333,10 +335,7 @@ class MainActivity : FragmentActivity() {
          * routes should only be added here after the nav graph is confirmed
          * to handle them safely without trusting any caller-supplied data.
          */
-        private val ALLOWED_DEEP_LINK_ROUTES: Set<String> = setOf(
-            "ticket/new",
-            "customer/new",
-            "scan",
-        )
+        // Historical allow-list moved to [com.bizarreelectronics.crm.util.DeepLinkAllowlist]
+        // so it can be unit-tested without touching Activity lifecycle.
     }
 }
