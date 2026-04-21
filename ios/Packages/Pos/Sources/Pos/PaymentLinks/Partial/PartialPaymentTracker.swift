@@ -65,7 +65,7 @@ public struct PartialPaymentTracker: View {
                                 .font(.brandLabelLarge())
                                 .foregroundStyle(.bizarreOnSurface)
                             Text("Remaining balance \(CartMath.formatCents(vm.remainingCents)) is past the link expiry.")
-                                .font(.brandBodySmall())
+                                .font(.brandLabelSmall())
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
                         }
                     }

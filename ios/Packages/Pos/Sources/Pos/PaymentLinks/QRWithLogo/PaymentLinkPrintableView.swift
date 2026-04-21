@@ -103,7 +103,7 @@ public struct PaymentLinkPrintableView: View {
 
             if let expiresAt = link.expiresAt {
                 Text("Expires: \(expiresAt.prefix(10))")
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
 
