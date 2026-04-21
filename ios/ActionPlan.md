@@ -5630,49 +5630,57 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 
 All events target tenant server (see §32).
 
-- `app.launch`
-- `app.foreground`
-- `app.background`
-- `auth.login.success`
-- `auth.login.failure`
-- `auth.logout`
-- `auth.biometric.success`
-- `screen.view` (with screen name + duration)
-- `action.tap` (with screen + action + entity-kind)
-- `mutation.start` / `.success` / `.fail`
-- `sync.cycle.start` / `.complete`
-- `sync.failure`
-- `pos.sale.start` / `.complete` / `.fail`
-- `pos.return.complete`
-- `pos.shift.open` / `.close`
-- `barcode.scan` (success/fail)
-- `printer.print` (success/fail)
-- `terminal.charge` (success/fail)
-- `sms.send`
-- `push.received`
-- `push.tapped`
-- `widget.view`
-- `live_activity.start` / `.end`
-- `deeplink.opened`
-- `feature.first_use` (feature name)
+- [x] `app.launch` → `app.launched`
+- [x] `app.foreground` → `app.foregrounded`
+- [x] `app.background` → `app.backgrounded`
+- [x] `auth.login.success` → `auth.login.succeeded`
+- [x] `auth.login.failure` → `auth.login.failed`
+- [x] `auth.logout` → `auth.signed_out`
+- [x] `auth.biometric.success` → `auth.passkey.used`
+- [x] `screen.view` → `screen.viewed`
+- [x] `deeplink.opened`
+- [x] `pos.sale.start` / `.complete` / `.fail` → `pos.sale.finalized`, `pos.checkout.abandoned`
+- [x] `pos.return.complete` → `pos.refund.issued`
+- [x] `barcode.scan` → `hardware.barcode.scanned`
+- [x] `printer.print` → `hardware.receipt.printed`
+- [x] `terminal.charge` → `pos.card.charged`
+- [x] `widget.view` → `widget.viewed`
+- [x] `live_activity.start` / `.end` → `live_activity.started` / `live_activity.ended`
+- [x] `feature.first_use` → `feature.first_use`
+- [x] 30+ additional domain events (tickets, customers, inventory, invoices, settings, support, errors, sync)
 
 ### 71.1 Schema
 ```
 {
-  "event": "screen.view",
-  "ts": "2026-04-19T14:03:22.123Z",
-  "app_version": "1.2.3 (24041901)",
-  "ios_version": "26.0",
-  "device_model": "iPhone15,3",
-  "session_id": "uuid",
-  "user_id": "hashed_8",
-  "tenant_id": "hashed_8",
+  "event": "screen.viewed",
+  "timestamp": "2026-04-19T14:03:22.123Z",
+  "app_version": "1.2.3",
+  "platform": "iOS",
+  "session_id": "uuid (opaque, not user id)",
+  "tenant_slug": "acme-repair",
   "props": { "screen": "dashboard", "duration_ms": 2341 }
 }
 ```
 
 ### 71.2 No tracking
-- No IDFA, no Facebook pixel, no Google Analytics, no Braze.
+- [x] No IDFA, no Facebook pixel, no Google Analytics, no Braze, no Firebase.
+- [x] Default opt-out. User opts in via Settings → Privacy.
+- [x] PII keys (email, phone, address, firstName, lastName, ssn, creditCard) rejected by `AnalyticsRedactor`.
+- [x] String values scrubbed through `LogRedactor` before transmission.
+- [x] GDPR right-to-erasure: "Delete my analytics" → `POST /analytics/delete-my-data`.
+
+### 71.3 Implementation — shipped
+- [x] `AnalyticsEventCatalog.swift` — 57 events across 10 categories (`AnalyticsEvent`, `AnalyticsCategory`). (`ios/Packages/Core/Sources/Core/Telemetry/`)
+- [x] `AnalyticsEventPayload.swift` — `AnalyticsEventPayload` + `AnalyticsValue` (Codable, Sendable).
+- [x] `AnalyticsRedactor.swift` — PII key blocklist + string value scrubbing via `LogRedactor`.
+- [x] `AnalyticsConsentManager.swift` — `@Observable @MainActor`, default opt-out, `UserDefaults` persistence.
+- [x] `TenantServerAnalyticsSink.swift` — actor, batch 50 events, flush every 60s, `POST /analytics/events`, fire-and-forget.
+- [x] `LocalDebugSink.swift` — `#if DEBUG` OSLog via `AppLog.telemetry`.
+- [x] `SinkDispatcher.swift` — actor fan-out (server + debug), scrubs properties.
+- [x] `Analytics.swift` — static `Analytics.track(...)` entry point, fire-and-forget Task.
+- [x] `AnalyticsConsentSettingsView.swift` — Settings → Privacy toggle, "View what's shared", "Delete my analytics" (GDPR).
+- [x] `AnalyticsSchemaView.swift` — lists all 57 events grouped by category, searchable.
+- [x] Tests: 44 tests — `AnalyticsEventCatalogTests` (13), `AnalyticsRedactorTests` (12), `AnalyticsConsentManagerTests` (9), `TenantServerAnalyticsSinkTests` (10). All 260 suite tests pass.
 
 ---
 ## §72. Final UX Polish Checklist

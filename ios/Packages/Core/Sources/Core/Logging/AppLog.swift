@@ -20,6 +20,7 @@ public enum AppLog {
     public static let hardware    = Logger(subsystem: subsystem, category: "hardware")
     public static let ui          = Logger(subsystem: subsystem, category: "ui")
     public static let perf        = Logger(subsystem: subsystem, category: "performance")
+    public static let telemetry   = Logger(subsystem: subsystem, category: "telemetry")
 
     // MARK: — §32.6 PII redaction helper (new)
 
