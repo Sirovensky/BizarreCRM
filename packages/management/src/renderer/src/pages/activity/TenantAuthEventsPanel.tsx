@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { UserCheck, RefreshCw, Filter } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
+import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
 
@@ -123,7 +124,9 @@ export function TenantAuthEventsPanel() {
                   <td className={`py-2 px-3 font-mono ${e.event.includes('failure') ? 'text-red-400' : 'text-emerald-400'}`}>
                     {e.event}
                   </td>
-                  <td className="py-2 px-3 font-mono text-surface-500">{e.ip_address}</td>
+                  <td className="py-2 px-3 font-mono text-surface-500">
+                    {e.ip_address ? <CopyText value={e.ip_address}>{e.ip_address}</CopyText> : '—'}
+                  </td>
                   <td className="py-2 px-3 text-surface-500 max-w-xs truncate" title={e.user_agent ?? ''}>
                     {e.user_agent ?? '—'}
                   </td>

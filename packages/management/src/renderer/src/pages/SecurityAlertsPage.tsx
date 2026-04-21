@@ -3,6 +3,7 @@ import { Shield, RefreshCw, CheckCircle2, CheckCheck, AlertTriangle, Info } from
 import { getAPI } from '@/api/bridge';
 import type { SecurityAlert, SecurityAlertSeverity } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
+import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
 
@@ -224,7 +225,7 @@ export function SecurityAlertsPage() {
                       )}
                       {alert.ip_address && (
                         <span className="text-xs text-surface-500">
-                          ip: <span className="font-mono text-surface-400">{alert.ip_address}</span>
+                          ip: <CopyText value={alert.ip_address} className="font-mono text-surface-400">{alert.ip_address}</CopyText>
                         </span>
                       )}
                     </div>
