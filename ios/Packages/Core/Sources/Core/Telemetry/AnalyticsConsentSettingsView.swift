@@ -12,7 +12,7 @@ import SwiftUI
 /// - "Delete my analytics" triggers GDPR right-to-erasure via API.
 public struct AnalyticsConsentSettingsView: View {
 
-    @Environment(\.analyticsConsentManager) private var consentManager
+    @State private var consentManager = AnalyticsConsentManager()
     @State private var showingSchema = false
     @State private var showingDeleteConfirm = false
     @State private var isDeletingData = false
@@ -148,15 +148,5 @@ public extension Notification.Name {
 }
 
 // MARK: — Environment key
-
-private struct AnalyticsConsentManagerKey: EnvironmentKey {
-    static let defaultValue = AnalyticsConsentManager()
-}
-
-public extension EnvironmentValues {
-    var analyticsConsentManager: AnalyticsConsentManager {
-        get { self[AnalyticsConsentManagerKey.self] }
-        set { self[AnalyticsConsentManagerKey.self] = newValue }
-    }
-}
+// (Removed — use `@Environment(AnalyticsConsentManager.self)` via @Observable.)
 #endif
