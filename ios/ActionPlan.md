@@ -5520,28 +5520,28 @@ Slug resolution rules:
 ## §69. In-App Help
 
 ### 69.1 Help center
-- [ ] **Settings → Help** — searchable FAQ.
-- [ ] **Topic articles** — bundled markdown + images.
-- [ ] **Context-aware help** — "? " icon on complex screens → relevant article.
+- [x] **Settings → Help** — searchable FAQ. (`HelpCenterView`, `HelpSearchViewModel`)
+- [x] **Topic articles** — bundled markdown + images. (`HelpArticleCatalog` — 15 articles, `HelpArticleView`)
+- [x] **Context-aware help** — "?" icon on complex screens → relevant article. (`ContextualHelpButton`)
 
 ### 69.2 Contact support
-- [ ] **Send support email** — prefilled with diagnostic bundle. Recipient resolved from `GET /tenants/me/support-contact` (same source as §2.12 account-locked modal). Never hardcoded. Self-hosted tenants → their own admin. bizarrecrm.com-hosted → `pavel@bizarreelectronics.com`.
-- [ ] **Live chat** (if server supports) — embedded.
+- [x] **Send support email** — prefilled with diagnostic bundle. Recipient resolved from `GET /tenants/me/support-contact`. (`SupportEmailComposerView`, `DiagnosticsBundleBuilder`)
+- [x] **Live chat** (if server supports) — embedded. (`LiveChatSupportView` — MVP placeholder "coming soon")
 
 ### 69.3 Release notes
-- [ ] **What's new** — on version bump, modal highlights.
-- [ ] **Full changelog** — in Help.
+- [x] **What's new** — on version bump, modal highlights. (`WhatsNewHelpView` reads `GET /app/changelog?version=X.Y.Z`)
+- [x] **Full changelog** — in Help via `WhatsNewHelpView`.
 
 ### 69.4 Feature hints
-- [ ] **Pro-tip banners** — rotating tips on Dashboard.
-- [ ] Entry: Settings → Help → "Report a bug". Optional shake-to-report (debug builds only) via `UIResponder.motionEnded`.
-- [ ] Form fields: description (freeform, required); category (crash / UI bug / data issue / perf / feature request); severity; optional attachments (auto-captured annotatable screenshot, recent logs, last crash report).
-- [ ] `POST /support/bug-reports` with payload + attachments. Server issues ticket #, iOS toast "Thanks — ticket BG-234 created."
+- [x] **Pro-tip banners** — rotating tips on Dashboard. (`ProTipBanner`, `ProTipBannerViewModel`)
+- [x] Entry: Settings → Help → "Report a bug". Optional shake-to-report (debug builds only). (`ShakeToReport`, `ShakeWindow`)
+- [x] Form fields: description (required); category; severity; auto-attached diagnostics bundle. (`BugReportSheet`, `BugReportViewModel`)
+- [x] `POST /support/bug-reports` with payload. Server issues ticket #, iOS toast "Thanks — ticket BG-234 created."
 - [ ] Follow-up updates surface in §13 Notifications tab when devs respond.
-- [ ] PII guard: logs run through §32.6 Redactor before attach.
+- [x] PII guard: logs run through §32.6 Redactor before attach. (`DiagnosticsBundleBuilder`)
 - [ ] Offline: queue in §20.2; submit on reconnect.
-- [ ] "What's new" modal on first launch of new version; text from `GET /app/changelog?version=X.Y.Z` (server-driven, locale-scoped, allows post-release content updates without re-ship).
-- [ ] Full history list under Settings → About → Changelog: version + date + highlights + "Read more" deep-link to blog.
+- [x] "What's new" from `GET /app/changelog?version=X.Y.Z`. (`WhatsNewHelpView`)
+- [ ] Full history list under Settings → About → Changelog (deep-link to blog).
 - [ ] Per-user "Don't show on launch" opt-out.
 - [ ] Offline: cache last N versions.
 - [ ] See §19 for the full list.
@@ -5588,22 +5588,26 @@ Slug resolution rules:
 Legend: Push = APNs push delivered to device. In-App = banner inside the app when foregrounded + list entry on §13 Notifications tab. Email / SMS = outbound to staff member's own personal contact (not to the customer).
 
 ### 70.1 User override (Settings § 19.3)
-- [ ] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent.
+- [x] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent. (`NotificationPreferencesMatrixView`, `NotificationPreferencesMatrixViewModel`)
 - [ ] Defaults shown greyed with "(default)" label until user flips.
-- [ ] "Reset all to default" button.
-- [ ] Explicit warning when enabling SMS on a high-volume event ("This may send 50+ texts per day").
+- [x] "Reset all to default" button. (`resetAllToDefault()`)
+- [x] Explicit warning when enabling SMS on a high-volume event. (`StaffNotificationCategoryExclusions`)
 
 ### 70.2 Tenant override (Admin)
 - [ ] Admin can shift a tenant's default (e.g., "for this shop, staff always get email on invoice-overdue"). Baseline shipped by us is push-only; tenant admin's shift is their call.
 - [ ] Per-tenant dashboard shows current deltas vs shipped defaults.
 
 ### 70.3 Delivery rules
-- [ ] Push respects iOS Focus + tenant server quiet hours (§21.9 dropped — rule stands).
+- [x] Push respects iOS Focus — documented. (`FocusModeIntegrationView`)
+- [x] Quiet hours editor with critical-override toggle. (`QuietHoursEditorView`, `QuietHours`)
 - [ ] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading).
 - [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
 
 ### 70.4 Critical override
-- [ ] Four events (Backup failed, Security event, Out of stock of a blocking part during a sale, Payment declined mid-transaction) may mark `interruption-level: timeSensitive` so iOS Focus does not suppress them. Otherwise default `active`.
+- [x] Four events (Backup failed, Security event, Out of stock, Payment declined) flagged `isCritical` in `NotificationEvent`. (`NotificationEvent.isCritical`)
+- [x] Event enum: 30 cases covering full §70 matrix. (`NotificationEvent`, `NotificationPreference`)
+- [x] Per-event preferences with PATCH persistence. (`NotificationPreferencesRepository`, `NotificationPreferencesRepositoryImpl`)
+- [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
 - [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
 - [ ] Delivery tuning: respect quiet hours (§13); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
 - [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status

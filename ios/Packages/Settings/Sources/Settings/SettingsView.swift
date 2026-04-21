@@ -150,6 +150,37 @@ public struct SettingsView: View {
                 BiometricToggleRow()
             }
 
+            // §69 Help center
+            Section("Help") {
+                NavigationLink {
+                    HelpCenterView()
+                } label: {
+                    Label("Help Center", systemImage: "questionmark.circle")
+                }
+                .accessibilityIdentifier("settings.helpCenter")
+
+                NavigationLink {
+                    SupportEmailComposerView()
+                } label: {
+                    Label("Contact Support", systemImage: "envelope")
+                }
+                .accessibilityIdentifier("settings.contactSupport")
+
+                NavigationLink {
+                    BugReportSheet()
+                } label: {
+                    Label("Report a Bug", systemImage: "ladybug")
+                }
+                .accessibilityIdentifier("settings.bugReport")
+
+                NavigationLink {
+                    WhatsNewHelpView()
+                } label: {
+                    Label("What's New", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("settings.whatsNew")
+            }
+
             Section("App") {
                 LabeledRow(label: "Version", value: "\(Platform.appVersion) (\(Platform.buildNumber))")
                 NavigationLink("Sync diagnostics") { SyncDiagnosticsView() }
