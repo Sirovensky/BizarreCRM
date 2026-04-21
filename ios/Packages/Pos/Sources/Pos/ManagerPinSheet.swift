@@ -193,7 +193,7 @@ public struct ManagerPinSheet: View {
             dismiss()
 
         case .wrong(let remaining):
-            BrandHaptics.failure()
+            BrandHaptics.error()
             pinInput = ""
             isPinFocused = true
             errorMessage = remaining > 0
@@ -201,7 +201,7 @@ public struct ManagerPinSheet: View {
                 : "Incorrect PIN."
 
         case .lockedOut(let until):
-            BrandHaptics.failure()
+            BrandHaptics.error()
             pinInput = ""
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .short
@@ -209,7 +209,7 @@ public struct ManagerPinSheet: View {
             errorMessage = "Locked out — try again \(whenStr)."
 
         case .revoked:
-            BrandHaptics.failure()
+            BrandHaptics.error()
             pinInput = ""
             errorMessage = "PIN revoked — full re-authentication required."
         }

@@ -1,5 +1,5 @@
 #if canImport(UIKit)
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreImage
 import UIKit
 import Core
@@ -22,7 +22,10 @@ public actor CameraService: NSObject {
 
     // MARK: Properties
 
-    private let session = AVCaptureSession()
+    // AVCaptureSession is thread-safe for the operations we perform; expose
+    // `nonisolated` so `makePreviewLayer()` and `Task.detached` capture sites
+    // don't need to hop back to the actor.
+    private nonisolated let session = AVCaptureSession()
     private var photoOutput: AVCapturePhotoOutput?
     private var currentDevice: AVCaptureDevice?
 
@@ -32,7 +35,7 @@ public actor CameraService: NSObject {
     // MARK: Constants
 
     private static let maxBytes: Int = 1_500_000          // 1.5 MB
-    private static let heicQuality: Double = 0.6
+    static let heicQuality: Double = 0.6
     private static let jpegQuality: Double = 0.7
     private static let qualityStep: Double = 0.1
     private static let minQuality: Double = 0.1
@@ -101,16 +104,18 @@ public actor CameraService: NSObject {
         session.commitConfiguration()
 
         // Run session on background thread — never block the main actor.
+        let localSession = session
         await Task.detached(priority: .userInitiated) {
-            self.session.startRunning()
+            localSession.startRunning()
         }.value
         AppLog.ui.info("CameraService: session started")
     }
 
     /// Stops the capture session and releases resources.
     public func stopSession() async {
+        let localSession = session
         await Task.detached(priority: .userInitiated) {
-            self.session.stopRunning()
+            localSession.stopRunning()
         }.value
         photoOutput = nil
         currentDevice = nil
@@ -129,7 +134,7 @@ public actor CameraService: NSObject {
     /// - Throws: ``CameraError`` on permission or hardware issues.
     public func capturePhoto(
         format: PhotoFormat = .heic,
-        quality: Double = CameraService.heicQuality
+        quality: Double = 0.6
     ) async throws -> Data {
         guard let output = photoOutput else {
             throw CameraError.captureFailed("Session not started")
@@ -236,8 +241,8 @@ public actor CameraService: NSObject {
         guard let device = currentDevice else {
             throw CameraError.hardwareUnavailable
         }
-        let max = device.activeFormat.videoMaxZoomFactor
-        let clamped = min(max(factor, 1.0), max)
+        let deviceMax = device.activeFormat.videoMaxZoomFactor
+        let clamped = min(max(factor, 1.0), deviceMax)
         do {
             try device.lockForConfiguration()
             device.videoZoomFactor = clamped

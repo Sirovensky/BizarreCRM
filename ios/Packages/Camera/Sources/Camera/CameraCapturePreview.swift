@@ -44,6 +44,7 @@ public struct CameraCapturePreview: UIViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     public final class Coordinator: NSObject {
         private let service: CameraService
         /// Zoom factor accumulator — persists between pinch gestures.

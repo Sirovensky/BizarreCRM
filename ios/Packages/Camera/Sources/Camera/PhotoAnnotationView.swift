@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 import PencilKit
 import Core
+import DesignSystem
 
 /// PencilKit overlay allowing freehand annotation (arrows, circles, highlighter)
 /// on top of a captured ticket photo.

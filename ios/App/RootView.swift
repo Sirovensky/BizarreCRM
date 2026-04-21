@@ -20,6 +20,7 @@ import Settings
 import Notifications
 import Employees
 import Search
+import Voice
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
@@ -255,6 +256,8 @@ struct MoreMenuView: View {
                         )
                     }
                     NavigationLink("Notifications") { NotificationListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Calls") { CallLogView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Voicemail") { VoicemailListView(api: AppServices.shared.apiClient) }
                 }
                 Section {
                     NavigationLink("Settings") {

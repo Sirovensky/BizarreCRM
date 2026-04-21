@@ -60,16 +60,21 @@ public struct LiveTextView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     public final class Coordinator: NSObject {
         let onTextRecognized: ((String) -> Void)?
         weak var imageView: UIImageView?
 
         #if canImport(VisionKit)
-        let interaction = ImageAnalysisInteraction()
+        let interaction: ImageAnalysisInteraction
         #endif
 
         init(onTextRecognized: ((String) -> Void)?) {
             self.onTextRecognized = onTextRecognized
+            #if canImport(VisionKit)
+            self.interaction = ImageAnalysisInteraction()
+            #endif
+            super.init()
         }
 
         func analyzeImage(_ image: UIImage) async {

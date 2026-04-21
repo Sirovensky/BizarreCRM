@@ -150,7 +150,7 @@ private struct VoicemailRow: View {
             Button(action: onPlay) {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 36))
-                    .foregroundStyle(entry.heard ? .secondary : .blue)
+                    .foregroundStyle(entry.heard ? Color.secondary : Color.blue)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play voicemail from \(entry.customerName ?? entry.phoneNumber)")
