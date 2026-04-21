@@ -1934,13 +1934,17 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
   if (!status_id) throw new AppError('status_id is required');
+  const statusIdInt = typeof status_id === 'string' ? parseInt(status_id, 10) : Number(status_id);
+  if (!Number.isInteger(statusIdInt) || statusIdInt <= 0) {
+    throw new AppError('status_id must be a positive integer', 400);
+  }
 
   // SEC-H122: all guards + UPDATE + audit + broadcast + webhook + automations
   // are handled by the shared helper so the automation path runs the same logic.
   const { ticket } = await applyTicketStatusChange(
     db,
     ticketId,
-    status_id,
+    statusIdInt,
     userId,
     req.tenantSlug || null,
   );
@@ -1950,7 +1954,7 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
   // Fetch newStatus for notify_customer flag — the helper already validated it.
   const newStatus = await adb.get<AnyRow>(
     'SELECT name, notify_customer, is_closed FROM ticket_statuses WHERE id = ?',
-    status_id,
+    statusIdInt,
   );
   if (newStatus?.notify_customer) {
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {

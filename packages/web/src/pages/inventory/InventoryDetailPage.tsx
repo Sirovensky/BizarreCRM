@@ -37,7 +37,8 @@ export function InventoryDetailPage() {
     if (loadedItem && !form) {
       setForm(loadedItem);
     }
-  }, [data]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]); // intentional: only seed form on first load (guarded by !form)
 
   const { data: taxData } = useQuery({
     queryKey: ['tax-classes'],
@@ -46,7 +47,7 @@ export function InventoryDetailPage() {
 
   const item: any = data?.data?.data?.item;
   const movements: any[] = data?.data?.data?.movements || [];
-  const taxClasses: any[] = taxData?.data?.data?.tax_classes || [];
+  const taxClasses: any[] = taxData?.data?.data || [];
 
   const updateMutation = useMutation({
     mutationFn: (d: any) => inventoryApi.update(itemId, d),

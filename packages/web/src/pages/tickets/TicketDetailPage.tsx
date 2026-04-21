@@ -566,7 +566,7 @@ export function TicketDetailPage() {
     <ConfirmDialog
       open={showDeleteConfirm}
       title={`Delete Ticket ${ticket ? `T-${String(ticket.order_id).padStart(4, '0')}` : ''}`}
-      message="This action cannot be undone. All ticket data, notes, photos, and parts will be permanently deleted."
+      message="This ticket will be removed from all views. All associated notes, photos, and parts will no longer be accessible."
       confirmLabel="Delete"
       danger
       requireTyping

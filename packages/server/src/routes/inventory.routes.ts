@@ -948,7 +948,7 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
     name, description, item_type = 'product', category, manufacturer, device_type,
     sku, upc, cost_price: rawCostPrice = 0, retail_price: rawRetailPrice = 0, in_stock: rawInStock = 0,
     reorder_level: rawReorderLevel = 0, stock_warning: rawStockWarning = 5, tax_class_id, tax_inclusive = 0,
-    is_serialized = 0, supplier_id, image_url,
+    is_serialized = 0, is_reorderable = 1, supplier_id, image_url,
     location, shelf, bin,
   } = req.body;
 
@@ -985,12 +985,13 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
   const result = await adb.run(`
     INSERT INTO inventory_items (name, description, item_type, category, manufacturer, device_type,
       sku, upc, cost_price, retail_price, in_stock, reorder_level, stock_warning,
-      tax_class_id, tax_inclusive, is_serialized, supplier_id, image_url,
+      tax_class_id, tax_inclusive, is_serialized, is_reorderable, supplier_id, image_url,
       location, shelf, bin)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, safeName, safeDescription || null, item_type, safeCategory || null, safeManufacturer || null,
     device_type || null, finalSku, safeUpc || null, cost_price, retail_price, in_stock,
     reorder_level, stock_warning, tax_class_id || null, tax_inclusive, is_serialized,
+    item_type === 'service' ? 0 : (is_reorderable ? 1 : 0),
     supplier_id || null, image_url || null,
     location || '', shelf || '', bin || '');
 
@@ -1018,7 +1019,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
   const {
     name, description, item_type, category, manufacturer, device_type,
     sku, upc, cost_price, retail_price, reorder_level, stock_warning,
-    tax_class_id, tax_inclusive, is_serialized, supplier_id, image_url,
+    tax_class_id, tax_inclusive, is_serialized, is_reorderable, supplier_id, image_url,
     location, shelf, bin, cost_locked,
   } = req.body;
 
@@ -1074,6 +1075,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       tax_class_id = COALESCE(?, tax_class_id),
       tax_inclusive = COALESCE(?, tax_inclusive),
       is_serialized = COALESCE(?, is_serialized),
+      is_reorderable = COALESCE(?, is_reorderable),
       supplier_id = COALESCE(?, supplier_id),
       image_url = COALESCE(?, image_url),
       location = COALESCE(?, location),
@@ -1086,6 +1088,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
     manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
     effectiveCostPrice, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
     tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
+    is_reorderable !== undefined && is_reorderable !== null ? (Number(is_reorderable) ? 1 : 0) : null,
     supplier_id ?? null, image_url ?? null,
     location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked, req.params.id);
 

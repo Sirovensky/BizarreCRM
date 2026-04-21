@@ -356,19 +356,28 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
   if (!phone) return; // No phone to send to
 
   // AU4: Respect customer opt-in flags BEFORE doing any work.
-  //   sms_opt_in (migration 001)              → global customer opt-in
+  //   sms_opt_in (migration 001)              → global customer opt-in (DEFAULT 0 = opted-out)
   //   sms_consent_transactional (migration 063) → per-channel consent for transactional SMS
-  // Both must be truthy for us to auto-send a status update.
+  //                                              (DEFAULT 1 = opted-in)
+  //
+  // Only block when a flag is EXPLICITLY set to 0 (opted-out). NULL means the
+  // column did not exist at customer creation time (pre-migration rows) — treat
+  // as opted-in rather than silently dropping every notification for legacy data.
+  // Using Number(null) === 0 was the original bug: it blocked all customers whose
+  // sms_opt_in was NULL even though they never clicked "opt out".
   if (ticket.customer_id != null) {
     const customer = db
       .prepare('SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE id = ?')
       .get(ticket.customer_id) as AnyRow | undefined;
-    if (customer && (Number(customer.sms_opt_in) === 0 || Number(customer.sms_consent_transactional) === 0)) {
+    const optedOut =
+      customer != null &&
+      (customer.sms_opt_in === 0 || customer.sms_consent_transactional === 0);
+    if (optedOut) {
       logger.info('SMS skipped: customer opted out', {
         customerId: ticket.customer_id,
         ticketId: ctx.ticketId,
-        smsOptIn: customer.sms_opt_in,
-        smsConsentTransactional: customer.sms_consent_transactional,
+        smsOptIn: customer!.sms_opt_in,
+        smsConsentTransactional: customer!.sms_consent_transactional,
       });
       return;
     }
@@ -391,9 +400,10 @@ export async function sendTicketStatusNotification(db: any, ctx: NotifyContext):
     template = templates.find(t => t.event_key === status.notification_template);
   }
 
-  // Fallback: use a generic status_change template if no specific one is mapped
+  // Fallback: use a generic status_changed template if no specific one is mapped.
+  // The seeded event key (migration 012) is 'status_changed', not 'status_change'.
   if (!template) {
-    template = templates.find(t => t.event_key === 'status_change');
+    template = templates.find(t => t.event_key === 'status_changed');
   }
 
   if (!template || !template.sms_body) return;

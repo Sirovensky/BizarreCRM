@@ -74,7 +74,7 @@ export function TicketNotes({
         const clone = JSON.parse(JSON.stringify(old));
         const t = clone?.data?.data;
         if (t) {
-          const noteType = (vars.type === 'diagnostic' || vars.type === 'email')
+          const noteType = (vars.type === 'diagnostic' || vars.type === 'email' || vars.type === 'customer')
             ? vars.type
             : 'internal';
           const optimisticNote: TicketNote = {
@@ -109,6 +109,8 @@ export function TicketNotes({
       toast.error('Failed to add note');
     },
     onSuccess: () => {
+      // Reset the flag toggle so a subsequent plain "Save" doesn't re-send is_flagged: true.
+      setNoteFlagged(false);
       toast.success('Note added');
     },
     onSettled: () => {

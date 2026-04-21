@@ -152,7 +152,7 @@ export interface CreatePurchaseOrderInput {
 
 export interface ReceivePurchaseOrderInput {
   items?: Array<{
-    id: number;
+    purchase_order_item_id: number;
     quantity_received: number;
   }>;
   notes?: string;
