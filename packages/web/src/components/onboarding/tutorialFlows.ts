@@ -197,6 +197,15 @@ export type TutorialFlowId = keyof typeof SPOTLIGHT_FLOWS;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Returns the key of the first step in the given flow. Use this to build
+ * tutorial deep-links so the SpotlightCoach can look up the step by string key
+ * instead of a numeric `step=0` index which it doesn't understand.
+ */
+export function firstStepKey(flowId: TutorialFlowId): string {
+  return SPOTLIGHT_FLOWS[flowId].steps[0].key;
+}
+
+/**
  * Dismisses every tutorial permanently. Called by the "Skip all tutorials"
  * button in SpotlightCoach and can be reused by any other surface.
  *

@@ -54,6 +54,8 @@ interface OnboardingStateResponse {
   nudge_day7_seen: boolean;
   advanced_settings_unlocked: boolean;
   intro_video_dismissed: boolean;
+  /** ISO timestamp when the row was first created; used by DailyNudge for day-3/5/7 timing. */
+  created_at: string | null;
 }
 
 /** Raw row as stored in SQLite (0/1 ints for booleans). */
@@ -73,6 +75,7 @@ interface OnboardingRow {
   nudge_day7_seen: number;
   advanced_settings_unlocked: number;
   intro_video_dismissed: number;
+  created_at: string | null;
 }
 
 const SHOP_TYPES = ['phone_repair', 'computer_repair', 'watch_repair', 'general_electronics'] as const;
@@ -171,6 +174,7 @@ function rowToResponse(row: OnboardingRow): OnboardingStateResponse {
     nudge_day7_seen: Boolean(row.nudge_day7_seen),
     advanced_settings_unlocked: Boolean(row.advanced_settings_unlocked),
     intro_video_dismissed: Boolean(row.intro_video_dismissed),
+    created_at: row.created_at ?? null,
   };
 }
 

@@ -567,7 +567,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <p className="mb-2 text-sm text-surface-400">
             Custom device - enter price manually:
           </p>
-          <div className="relative" data-tutorial-target="ticket:repair-price-input">
+          <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
               type="text" inputMode="decimal" pattern="[0-9.]*"

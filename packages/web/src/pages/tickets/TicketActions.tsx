@@ -255,6 +255,7 @@ export function TicketActions({
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => navigate(`/pos?ticket=${ticketId}`)}
+              data-tutorial-target="checkout:load-ticket-in-pos"
               className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-700 active:bg-teal-800"
             >
               <ShoppingCart className="h-4 w-4" />

@@ -342,6 +342,8 @@ export function SpotlightCoach() {
   }, [step, flowId, dismissed, updateRect]);
 
   // ── Reposition on scroll/resize ─────────────────────────────────────────────
+  // Depend on `targetRect` (not just `targetElRef.current`) so this re-runs
+  // when the target transitions from null to non-null after the 300ms retry.
   useEffect(() => {
     if (dismissed || !targetElRef.current) return;
     window.addEventListener('scroll', updateRect, { passive: true });
@@ -350,7 +352,8 @@ export function SpotlightCoach() {
       window.removeEventListener('scroll', updateRect);
       window.removeEventListener('resize', updateRect);
     };
-  }, [dismissed, updateRect]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dismissed, updateRect, targetRect]);
 
   // ── Action gating ────────────────────────────────────────────────────────────
   const advance = useCallback(() => {
@@ -358,7 +361,8 @@ export function SpotlightCoach() {
     const nextIndex = stepIndex + 1;
     if (nextIndex >= steps.length) {
       // Last step — flow complete
-      handleTutorialComplete(flowId as TutorialFlowId, 'done', navigate);
+      Promise.resolve(handleTutorialComplete(flowId as TutorialFlowId, 'done', navigate))
+        .catch((err) => { console.error('[SpotlightCoach] handleTutorialComplete failed:', err); });
       return;
     }
     const nextStep = steps[nextIndex];
@@ -395,12 +399,14 @@ export function SpotlightCoach() {
     if (!flowId) return;
     setFlowDismissed(flowId);
     setDismissed(true);
-    handleTutorialComplete(flowId as TutorialFlowId, 'skip', navigate);
+    Promise.resolve(handleTutorialComplete(flowId as TutorialFlowId, 'skip', navigate))
+      .catch((err) => { console.error('[SpotlightCoach] handleTutorialComplete failed:', err); });
   }, [flowId, navigate]);
 
   const handleSkipAll = useCallback(() => {
     setDismissed(true);
-    dismissAllTutorials(navigate);
+    Promise.resolve(dismissAllTutorials(navigate))
+      .catch((err) => { console.error('[SpotlightCoach] dismissAllTutorials failed:', err); });
   }, [navigate]);
 
   // ── Keyboard: Escape = skip flow ─────────────────────────────────────────────

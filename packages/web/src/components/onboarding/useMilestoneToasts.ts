@@ -109,6 +109,7 @@ export function useMilestoneToasts(state: OnboardingState | null): void {
     const prev = prevStateRef.current;
     prevStateRef.current = state;
 
+    // NOTE: read-modify-write on sessionStorage has a theoretical cross-tab race (two tabs may both read before either writes).
     const next = { ...snap };
     let changed = false;
 

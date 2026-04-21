@@ -34,7 +34,7 @@ const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
     title: 'Invite your first technician',
     body: 'Add a team member so they can create tickets and view their queue.',
     ctaLabel: 'Go to Users',
-    ctaHref: '/settings?tab=users',
+    ctaHref: '/settings/users',
     patchKey: 'nudge_day3_seen',
   },
   day5: {
@@ -43,7 +43,7 @@ const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
     title: 'Set up customer notifications',
     body: 'Send automatic SMS updates when a ticket status changes.',
     ctaLabel: 'Configure SMS',
-    ctaHref: '/settings?tab=sms',
+    ctaHref: '/settings/sms-voice',
     patchKey: 'nudge_day5_seen',
   },
   day7: {

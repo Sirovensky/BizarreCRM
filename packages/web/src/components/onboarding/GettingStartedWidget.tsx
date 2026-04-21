@@ -38,7 +38,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { onboardingApi, type OnboardingState } from '@/api/endpoints';
+import { firstStepKey } from './tutorialFlows';
 import { cn } from '@/utils/cn';
+import type { AxiosResponse } from 'axios';
 
 interface ChecklistStep {
   id: 'settings' | 'ticket' | 'checkout';
@@ -52,36 +54,9 @@ interface ChecklistStep {
   > | null;
 }
 
-// Three-step onboarding: finish advanced store configuration, create a ticket
-// from POS, then run a full checkout (edit + add part + pay). Each step deep-
-// links with `?tutorial=1&step=<id>` so the target page can surface a hint
-// overlay keyed to that step id without needing its own onboarding logic.
-const STEPS: ReadonlyArray<ChecklistStep> = [
-  {
-    id: 'settings',
-    title: 'Finish store setup',
-    description: 'Tour advanced settings — tax, labels, notifications, printers.',
-    icon: Settings,
-    route: '/settings?tutorial=settings&step=0',
-    doneKey: 'advanced_settings_unlocked',
-  },
-  {
-    id: 'ticket',
-    title: 'Create a ticket in POS',
-    description: 'Pick a customer, pick a device, set a price.',
-    icon: Ticket,
-    route: '/pos?tutorial=ticket&step=0',
-    doneKey: 'first_ticket_at',
-  },
-  {
-    id: 'checkout',
-    title: 'Edit a ticket and check out',
-    description: 'Add a comment, change the price, add a part, then take payment.',
-    icon: ShoppingCart,
-    route: '/pos?tutorial=checkout&step=0',
-    doneKey: 'first_payment_at',
-  },
-];
+// STEPS is built inside the component (see buildSteps()) so that firstStepKey()
+// is called at render time rather than at module evaluation time (tree-shaking
+// friendly, and avoids any circular-import timing issues).
 
 interface GettingStartedWidgetProps {
   /**
@@ -99,15 +74,45 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
 
   const { data: stateResponse, isLoading } = useQuery({
     queryKey: ['onboarding-state'],
-    queryFn: () => onboardingApi.getState(),
+    queryFn: () => onboardingApi.getState() as Promise<AxiosResponse<{ success: boolean; data: OnboardingState }>>,
     enabled: !preloadedState,
     staleTime: 30_000,
   });
 
   const state: OnboardingState | null = useMemo(() => {
     if (preloadedState) return preloadedState;
-    return (stateResponse as any)?.data?.data ?? null;
+    return stateResponse?.data?.data ?? null;
   }, [preloadedState, stateResponse]);
+
+  // Three-step onboarding: finish advanced store configuration, create a ticket
+  // from POS, then run a full checkout (edit + add part + pay). Routes use the
+  // actual first-step key so SpotlightCoach's string-key lookup works correctly.
+  const STEPS = useMemo((): ReadonlyArray<ChecklistStep> => [
+    {
+      id: 'settings',
+      title: 'Finish store setup',
+      description: 'Tour advanced settings — tax, labels, notifications, printers.',
+      icon: Settings,
+      route: `/settings?tutorial=settings&step=${firstStepKey('settings')}`,
+      doneKey: 'advanced_settings_unlocked',
+    },
+    {
+      id: 'ticket',
+      title: 'Create a ticket in POS',
+      description: 'Pick a customer, pick a device, set a price.',
+      icon: Ticket,
+      route: `/pos?tutorial=ticket&step=${firstStepKey('ticket')}`,
+      doneKey: 'first_ticket_at',
+    },
+    {
+      id: 'checkout',
+      title: 'Edit a ticket and check out',
+      description: 'Add a comment, change the price, add a part, then take payment.',
+      icon: ShoppingCart,
+      route: `/pos?tutorial=checkout&step=${firstStepKey('checkout')}`,
+      doneKey: 'first_payment_at',
+    },
+  ], []);
 
   const dismissMutation = useMutation({
     mutationFn: () => onboardingApi.patchState({ checklist_dismissed: true }),
@@ -137,6 +142,14 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
   const trackableCount = STEPS.filter((s) => s.doneKey).length;
   const progressPct = Math.round((completedCount / trackableCount) * 100);
   const allDone = completedCount === trackableCount;
+
+  // Stable ref to dismissMutation.mutate so the auto-dismiss effect doesn't
+  // need to list the whole mutation object as a dependency (its reference
+  // changes on every render, causing the effect to re-run unnecessarily).
+  const dismissMutateRef = useRef(dismissMutation.mutate);
+  useEffect(() => {
+    dismissMutateRef.current = dismissMutation.mutate;
+  });
 
   // Phase E2: fire confetti once and auto-dismiss 10 s after checklist completes.
   const celebratedRef = useRef(false);
@@ -178,12 +191,12 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
       window.setTimeout(() => host.remove(), 4000);
     }
 
-    // Auto-dismiss after 10 s.
+    // Auto-dismiss after 10 s. Uses the ref so the effect only re-runs when
+    // allDone changes, not on every mutation object identity change.
     const timer = window.setTimeout(() => {
-      dismissMutation.mutate();
+      dismissMutateRef.current();
     }, 10_000);
     return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allDone]);
 
   // Hide in any of these cases:

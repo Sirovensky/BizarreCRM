@@ -52,7 +52,7 @@ function DeviceTemplateNudge() {
       </p>
       <button
         type="button"
-        onClick={() => navigate('/settings?tab=device-templates')}
+        onClick={() => navigate('/settings/device-templates')}
         className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
       >
         Go to templates
@@ -289,8 +289,10 @@ export function UnifiedPosPage() {
 
     // Clear the URL param so refresh doesn't re-hydrate
     setSearchParams({}, { replace: true });
-    // Advance the checkout tutorial when a ticket is loaded into POS.
-    window.dispatchEvent(new CustomEvent('pos:cart-loaded'));
+    // Advance the checkout tutorial only when the ticket had devices (non-empty cart).
+    if ((ticket.devices?.length ?? 0) > 0) {
+      window.dispatchEvent(new CustomEvent('pos:cart-loaded'));
+    }
   }, [ticketParam, ticketData, resetAll, setCustomer, addRepair, setSearchParams, setSourceTicketId]);
 
   // Hydrate POS from ?customer= param (pre-select customer for new ticket)
