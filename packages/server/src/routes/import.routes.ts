@@ -27,6 +27,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { readJobState, buildJobId } from '../services/importJobState.js';
 
 const router = Router();
 const logger = createLogger('import');
@@ -372,12 +373,24 @@ router.get(
       };
     }
 
+    // SA7-1: include per-entity checkpoint state from import_job_state so
+    // callers can see fine-grained progress (step/total/cursor) for the
+    // long-running ticket-import which checkpoints on every ticket.
+    const db = req.db;
+    const tenantSlug = (req as any).tenantSlug || 'default';
+    const checkpoints: Record<string, ReturnType<typeof readJobState>> = {};
+    for (const entity of ['customers', 'inventory', 'tickets', 'invoices', 'history']) {
+      const jobId = buildJobId('repairdesk', entity, tenantSlug);
+      checkpoints[entity] = readJobState(db, jobId);
+    }
+
     res.json({
       success: true,
       data: {
         is_active: !!activeRun,
         overall,
         runs: parsed,
+        checkpoints,
       },
     });
   }),

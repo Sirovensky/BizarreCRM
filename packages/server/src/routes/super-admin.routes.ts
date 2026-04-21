@@ -174,7 +174,10 @@ function consumeChallenge(token: string): Challenge | null {
 
 function createSession(masterDb: any, adminId: number, ip: string, userAgent: string): string {
   const sessionId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(); // 4 hours
+  // SEC-H20: session TTL aligned to JWT TTL (30m). Previously 4h, which
+  // allowed session lookups to succeed long after the JWT had expired —
+  // defeating the short-lived-token guarantee added by SEC-H20.
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
   masterDb.prepare(
     'INSERT INTO super_admin_sessions (id, super_admin_id, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, adminId, ip, userAgent?.substring(0, 200) || '', expiresAt);

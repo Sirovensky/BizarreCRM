@@ -3061,6 +3061,11 @@ router.delete('/scheduled/:id', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid id', 400);
 
+  // Verify the row exists before deleting so we can return a proper 404
+  // instead of a silent 200 when the id is stale or already deleted.
+  const existing = await adb.get<{ id: number }>(`SELECT id FROM scheduled_email_reports WHERE id = ?`, id);
+  if (!existing) throw new AppError('Scheduled report not found', 404);
+
   await adb.run(`DELETE FROM scheduled_email_reports WHERE id = ?`, id);
   audit(req.db, 'scheduled_email_deleted', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: { id } });

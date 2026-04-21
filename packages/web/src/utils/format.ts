@@ -11,18 +11,27 @@
 // ─── Currency ───────────────────────────────────────────────────────────────
 
 let _currencyCode = 'USD';
-let _currencyFmt = buildFormatter(_currencyCode);
+let _locale: string = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+let _currencyFmt = buildFormatter(_currencyCode, _locale);
 
-function buildFormatter(code: string): Intl.NumberFormat {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
+function buildFormatter(code: string, locale: string = _locale): Intl.NumberFormat {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: code });
 }
 
 /** Call once at app startup (e.g. from AppShell) after settings load. */
-export function initCurrencyFromSettings(code: string | undefined | null): void {
+export function initCurrencyFromSettings(code: string | undefined | null, locale?: string): void {
   const normalized = (code ?? '').trim().toUpperCase();
+  let changed = false;
   if (normalized && /^[A-Z]{3}$/.test(normalized) && normalized !== _currencyCode) {
     _currencyCode = normalized;
-    _currencyFmt = buildFormatter(_currencyCode);
+    changed = true;
+  }
+  if (locale && locale !== _locale) {
+    _locale = locale;
+    changed = true;
+  }
+  if (changed) {
+    _currencyFmt = buildFormatter(_currencyCode, _locale);
   }
 }
 

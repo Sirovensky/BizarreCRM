@@ -27,6 +27,9 @@
 
 import crypto from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('idempotency');
 
 /** Maximum byte length of a stored response body (64 KB). */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -120,6 +123,12 @@ export function idempotent(req: Request, res: Response, next: NextFunction): voi
       // Unexpected DB error — fail open so the route still executes, but log it.
       // We deliberately do NOT short-circuit here because silently swallowing a
       // DB error and blocking the request would be worse than a potential retry.
+      logger.error('idempotency: unexpected DB error on INSERT', {
+        code: sqliteErr.code,
+        error: err instanceof Error ? err.message : String(err),
+        userId,
+        path: req.originalUrl,
+      });
       next();
       return;
     }

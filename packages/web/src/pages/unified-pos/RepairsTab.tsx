@@ -1064,7 +1064,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     const s = String(oid);
     return s.startsWith('T-') ? s : `T-${s.padStart(4, '0')}`;
   };
-  const fmtCurrency = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+  const fmtCurrency = (n: number) => formatCurrency(n);
 
   return (
     <div className="flex flex-col space-y-5 py-2">

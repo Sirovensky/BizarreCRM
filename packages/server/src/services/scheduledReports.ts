@@ -198,13 +198,47 @@ function buildEmailBody(summary: DailySummary, currency: string = 'USD'): string
   `.trim();
 }
 
-export async function sendDailyReport(db: any): Promise<void> {
-  // Check if scheduled reports are configured
-  const emailSetting = (db.prepare(
-    "SELECT value FROM store_config WHERE key = 'scheduled_report_email'"
-  ).get() as any)?.value;
+/**
+ * Resolve the list of enabled recipient addresses for the daily report.
+ *
+ * SEC-M47: Migration 105 introduced `scheduled_report_recipients` so
+ * operators can manage multiple addresses via the UI. This function reads
+ * that table first. If the table doesn't exist yet (pre-migration tenant)
+ * it falls back to the legacy `store_config.scheduled_report_email` single-
+ * address string so existing deployments keep working without manual action.
+ */
+function resolveRecipients(db: any): string[] {
+  try {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_report_recipients'")
+      .get() as { name?: string } | undefined;
+    if (tableExists?.name) {
+      const rows = db
+        .prepare("SELECT email FROM scheduled_report_recipients WHERE enabled = 1")
+        .all() as Array<{ email: string }>;
+      if (rows.length > 0) {
+        return rows.map((r) => r.email);
+      }
+      // Table exists but no enabled recipients — fall through to legacy key
+      // so an operator who cleared the table but still has the old config key
+      // doesn't silently stop receiving reports.
+    }
+  } catch (err) {
+    log.warn('Failed to read scheduled_report_recipients, falling back to legacy key', {
+      error: String(err),
+    });
+  }
 
-  if (!emailSetting) {
+  const legacy = (db.prepare(
+    "SELECT value FROM store_config WHERE key = 'scheduled_report_email'"
+  ).get() as any)?.value as string | undefined;
+  return legacy ? [legacy] : [];
+}
+
+export async function sendDailyReport(db: any): Promise<void> {
+  const recipients = resolveRecipients(db);
+
+  if (recipients.length === 0) {
     log.debug('Scheduled report email not configured, skipping');
     return;
   }
@@ -229,13 +263,17 @@ export async function sendDailyReport(db: any): Promise<void> {
       "SELECT value FROM store_config WHERE key = 'store_currency'"
     ).get() as any)?.value || 'USD';
 
-    await sendEmail(db, {
-      to: emailSetting,
-      subject: `${storeName} Daily Report - ${summary.date}`,
-      html: buildEmailBody(summary, storeCurrency),
-    });
+    const subject = `${storeName} Daily Report - ${summary.date}`;
+    const html = buildEmailBody(summary, storeCurrency);
 
-    log.info('Daily report sent', { to: emailSetting, date: summary.date });
+    for (const to of recipients) {
+      try {
+        await sendEmail(db, { to, subject, html });
+        log.info('Daily report sent', { to, date: summary.date });
+      } catch (err) {
+        log.error('Failed to send daily report to recipient', { to, error: String(err) });
+      }
+    }
   } catch (err) {
     log.error('Failed to send daily report', { error: String(err) });
   }

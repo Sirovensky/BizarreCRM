@@ -20,7 +20,8 @@ export const ACCESS_TOKEN_EXPIRY = '1h';
 export const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 export const CHALLENGE_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const ADMIN_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
-export const IDEMPOTENCY_KEY_TTL_MS = 5 * 60 * 1000; // 5 minutes
+/** TTL for idempotency key rows. Must stay in sync with retentionSweeper RULES (retentionDays: 1). */
+export const IDEMPOTENCY_KEY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ─── Timeouts ────────────────────────────────────────────────────────────────
 export const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour

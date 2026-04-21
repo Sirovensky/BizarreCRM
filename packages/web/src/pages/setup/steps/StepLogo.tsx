@@ -68,7 +68,7 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
       <div className="space-y-5 rounded-2xl border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">
-            Logo image (PNG, JPG, SVG, max 2 MB)
+            Logo image (PNG, JPG, WebP, GIF, max 2 MB)
           </label>
           {logoUrl ? (
             <div className="flex items-center gap-4 rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-700/30">
@@ -79,14 +79,14 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
               </div>
               <label className="cursor-pointer rounded-lg border border-surface-300 px-3 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700">
                 Replace
-                <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFileChange} className="hidden" />
               </label>
             </div>
           ) : (
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-surface-300 bg-surface-50 p-6 text-sm text-surface-500 hover:border-primary-400 hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700/30 dark:text-surface-400 dark:hover:border-primary-500/60">
               <Upload className="h-5 w-5" />
               {uploading ? 'Uploading...' : 'Click to upload logo'}
-              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={uploading} />
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFileChange} className="hidden" disabled={uploading} />
             </label>
           )}
         </div>

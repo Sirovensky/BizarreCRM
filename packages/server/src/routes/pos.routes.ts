@@ -2210,4 +2210,102 @@ router.post('/open-drawer', async (req, res) => {
   });
 });
 
+// ─── Workstations CRUD ───────────────────────────────────────────────────────
+// The workstations table was seeded in seed.ts with a single "Main Workstation"
+// row but had no API routes, so the UI could not create, edit, or set a default
+// workstation. These four endpoints complete the CRUD surface.
+
+/** Guard: only admin and manager may mutate workstation config. */
+function requireAdminOrManagerRole(req: any): void {
+  const role = req.user?.role ?? '';
+  if (role !== 'admin' && role !== 'manager' && role !== 'owner') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
+
+router.get('/workstations', async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const rows = await adb.all<{
+    id: number;
+    name: string;
+    is_default: number;
+    is_active: number;
+    created_at: string;
+    updated_at: string;
+  }>('SELECT id, name, is_default, is_active, created_at, updated_at FROM workstations ORDER BY is_default DESC, name ASC');
+  res.json({ success: true, data: rows });
+});
+
+router.post('/workstations', async (req, res) => {
+  requireAdminOrManagerRole(req);
+  const adb: AsyncDb = req.asyncDb;
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name || name.length > 100) {
+    throw new AppError('name must be a non-empty string (max 100 chars)', 400);
+  }
+  const result = await adb.run(
+    "INSERT INTO workstations (name, is_default, is_active) VALUES (?, 0, 1)",
+    name,
+  );
+  const row = await adb.get<{ id: number; name: string; is_default: number; is_active: number; created_at: string; updated_at: string }>(
+    'SELECT id, name, is_default, is_active, created_at, updated_at FROM workstations WHERE id = ?',
+    result.lastInsertRowid,
+  );
+  audit(req.db, 'workstation_created', req.user?.id ?? null, req.ip || '', { id: result.lastInsertRowid, name });
+  res.status(201).json({ success: true, data: row });
+});
+
+router.put('/workstations/:id', async (req, res) => {
+  requireAdminOrManagerRole(req);
+  const adb: AsyncDb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid id', 400);
+
+  const existing = await adb.get<{ id: number }>('SELECT id FROM workstations WHERE id = ?', id);
+  if (!existing) throw new AppError('Workstation not found', 404);
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+
+  if (req.body?.name !== undefined) {
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    if (!name || name.length > 100) throw new AppError('name must be a non-empty string (max 100 chars)', 400);
+    updates.push('name = ?');
+    params.push(name);
+  }
+  if (req.body?.is_active !== undefined) {
+    updates.push('is_active = ?');
+    params.push(req.body.is_active ? 1 : 0);
+  }
+  if (updates.length === 0) throw new AppError('No updatable fields provided', 400);
+
+  updates.push("updated_at = datetime('now')");
+  params.push(id);
+  await adb.run(`UPDATE workstations SET ${updates.join(', ')} WHERE id = ?`, ...params);
+
+  const row = await adb.get<{ id: number; name: string; is_default: number; is_active: number; created_at: string; updated_at: string }>(
+    'SELECT id, name, is_default, is_active, created_at, updated_at FROM workstations WHERE id = ?',
+    id,
+  );
+  audit(req.db, 'workstation_updated', req.user?.id ?? null, req.ip || '', { id });
+  res.json({ success: true, data: row });
+});
+
+router.post('/workstations/:id/set-default', async (req, res) => {
+  requireAdminOrManagerRole(req);
+  const adb: AsyncDb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid id', 400);
+
+  const existing = await adb.get<{ id: number }>('SELECT id FROM workstations WHERE id = ?', id);
+  if (!existing) throw new AppError('Workstation not found', 404);
+
+  // Clear existing default, then set the new one atomically.
+  await adb.run("UPDATE workstations SET is_default = 0, updated_at = datetime('now')");
+  await adb.run("UPDATE workstations SET is_default = 1, updated_at = datetime('now') WHERE id = ?", id);
+
+  audit(req.db, 'workstation_set_default', req.user?.id ?? null, req.ip || '', { id });
+  res.json({ success: true, data: { id, is_default: true } });
+});
+
 export default router;
