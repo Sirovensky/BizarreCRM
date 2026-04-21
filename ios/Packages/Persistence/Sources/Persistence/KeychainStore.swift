@@ -13,6 +13,10 @@ public enum KeychainKey: String, Sendable {
     case dbPassphrase   = "db.passphrase"
     case backupCodes    = "auth.backup_codes"
     case blockChypAuth  = "hardware.blockchyp_auth"
+    /// §79 Multi-tenant: ID of the last-active tenant.
+    case activeTenantId  = "auth.active_tenant_id"
+    /// §2 Remember-me: last-used email for login pre-fill. Never stores password.
+    case rememberedEmail = "auth.remembered_email"
 }
 
 public final class KeychainStore: @unchecked Sendable {

@@ -5882,9 +5882,11 @@ No in-app live switcher. Sign out + sign in handles tenant change. Keychain cach
 
 **Scope decision (2026-04-20):** In-app live multi-tenant switching dropped (see §19.22, §77). Rationale: near-zero real-world usage, complicates security scoping, and the sign-out → sign-in path (with last-used server + username prefilled + biometric) handles franchise operator / freelance tech cases in ~3 seconds.
 
+**[x] §79 Phase 1 TenantSwitcher shipped** — `Auth/TenantSwitcher/` (Tenant, TenantStore, TenantRepository, TenantSwitcherViewModel, TenantSwitcherView, TenantPickerSheet, TenantEndpoints, TenantSwitchNotification). 36 tests pass (TenantStoreTests 13, TenantSwitcherViewModelTests 16, TenantRepositoryTests 7).
+
 ### 79.1 What stays
-- **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
-- **Last-used persistence** — Keychain stores last server URL + username (never tokens) so re-login is one tap + biometric.
+- [x] **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
+- [x] **Last-used persistence** — Keychain stores `activeTenantId`; `TenantStore.load()` reconciles on startup.
 - **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick.
 - **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants).
 
