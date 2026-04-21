@@ -126,6 +126,24 @@ export function LogsPage() {
     return content.split('\n').filter((l) => l.toLowerCase().includes(needle));
   }, [content, filter]);
 
+  // Extract ERR_* codes that appear in the current tail so operators can
+  // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
+  // and one-click filter to just those lines. Only scans what's loaded.
+  const errorCodeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    // Match ERR_<UPPER_WITH_UNDERSCORES> — mirrors the server's errorCodes registry shape.
+    // Bounded to 4..40 chars to avoid matching tail-end junk like `ERR_` with no suffix.
+    const re = /\bERR_[A-Z][A-Z0-9_]{3,40}\b/g;
+    for (const line of content.split('\n')) {
+      const matches = line.match(re);
+      if (!matches) continue;
+      for (const code of matches) {
+        counts.set(code, (counts.get(code) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [content]);
+
   const selectedFile = files.find((f) => f.name === selected);
 
   return (
@@ -229,6 +247,33 @@ export function LogsPage() {
       {meta?.truncated && (
         <div className="px-3 py-2 rounded border border-amber-900/50 bg-amber-950/30 text-xs text-amber-300">
           Output truncated at 4 MiB. Lower the line count or grep with the filter to narrow.
+        </div>
+      )}
+
+      {/* Error-code chip bar — surfaces ERR_* occurrences in the current tail
+          so operators see at a glance which failure mode dominates. Each chip
+          is a one-click filter shortcut. */}
+      {errorCodeCounts.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+          <span className="text-surface-500">error codes:</span>
+          {errorCodeCounts.slice(0, 12).map(([code, count]) => (
+            <button
+              key={code}
+              onClick={() => setFilter(filter === code ? '' : code)}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${
+                filter === code
+                  ? 'border-accent-600 bg-accent-950/40 text-accent-300'
+                  : 'border-surface-700 text-surface-400 hover:text-surface-200 hover:border-surface-600'
+              }`}
+              title={`Filter tail to ${code}`}
+            >
+              <span className="font-mono">{count}</span>
+              <span className="font-mono text-[10px]">{code}</span>
+            </button>
+          ))}
+          {errorCodeCounts.length > 12 && (
+            <span className="text-surface-600">+{errorCodeCounts.length - 12} more</span>
+          )}
         </div>
       )}
 
