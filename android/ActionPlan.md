@@ -2610,8 +2610,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Timing tokens see §70.
 
 ### 30.5 Elevation / surfaces
-- [ ] 3 levels max: `surface` / `surfaceContainer` / `surfaceContainerHighest`.
-- [ ] Tonal elevation (Material 3) — no drop shadows except on FABs.
+- [~] 3 levels max: `surface` / `surfaceContainer` / `surfaceContainerHighest`.
+- [~] Tonal elevation (Material 3) — no drop shadows except on FABs.
 
 ### 30.6 Iconography
 - [x] Material Symbols (rounded variant) via `androidx.compose.material.icons.*` + `androidx.compose.material:material-icons-extended`.
@@ -2643,7 +2643,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 31. Testing Strategy
 
 ### 31.1 Unit
-- [ ] JUnit5 + MockK for ViewModels + Repositories + Utils.
+- [~] JUnit5 + MockK for ViewModels + Repositories + Utils. (Currently on JUnit4 — 13+ unit test files cover pure-Kotlin utils. Upgrade to JUnit5 + MockK for ViewModels pending.)
 - [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`).
 - [ ] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`.
 
