@@ -1807,11 +1807,11 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN.
 
 ### 16.11 Anti-theft / loss prevention
-- [ ] **Void audit** — every voided line logged with cashier + manager-approval name.
-- [ ] **No-sale audit** — opening drawer without sale requires reason + manager PIN; event logged.
-- [ ] **Discount ceiling** — cashier limit $X / %X; above → manager PIN.
-- [ ] **Price override alert** — log every override ≥ threshold.
-- [ ] **Delete-line audit** — deleted lines ghosted on Z-report.
+- [x] **Void audit** — `Cart.removeLine(id:reason:managerId:)` logs `void_line`/`delete_line` via `PosAuditLogStore` (GRDB migration 005). Fire-and-forget Task never blocks cashier.
+- [x] **No-sale audit** — POS overflow ⋯ "No sale / open drawer" presents `ManagerPinSheet`; on approval logs `no_sale` event.
+- [x] **Discount ceiling** — `PosCartDiscountSheet` checks `PosTenantLimits.maxCashierDiscountPercent/Cents`; over → nested `ManagerPinSheet`; on approval logs `discount_override` with originalCents + appliedCents.
+- [x] **Price override alert** — `PosEditPriceSheet` gates override when delta ≥ `priceOverrideThresholdCents`; logs `price_override`.
+- [x] **Delete-line audit** — `Cart.removeLine` without `managerId` logs `delete_line`; ghosted on Z-report via `ZReportAggregates` loss-prevention tile (void/no-sale/discount-override counts).
 
 ### 16.12 Offline POS mode
 - [ ] **Local catalog** — full inventory + pricing cached (GRDB), daily refresh on launch.
