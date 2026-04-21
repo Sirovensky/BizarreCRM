@@ -182,7 +182,7 @@ async function assembleWalletPassData(
     referralCode,
     ltvTier: (customer.ltv_tier as string | null) ?? null,
     healthTier: (customer.health_tier as string | null) ?? null,
-    storeName: storeNameRow?.value ?? 'Bizarre Electronics',
+    storeName: storeNameRow?.value ?? 'Your Shop',
   };
 }
 

@@ -940,7 +940,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
   const [requireReferral, customerRow, defaultTaxClass, membershipEnabled, customerMembership] = await Promise.all([
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_referral'"),
     customer_id ? adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
-    adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE name LIKE '%Colorado%' OR rate = 8.865 LIMIT 1"),
+    adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE is_default = 1 LIMIT 1"),
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'membership_enabled'"),
     customer_id ? adb.get<AnyRow>(`
       SELECT cs.status, mt.discount_pct, mt.discount_applies_to, mt.name AS tier_name

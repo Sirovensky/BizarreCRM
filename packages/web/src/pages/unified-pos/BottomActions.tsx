@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, LockOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, blockchypApi } from '@/api/endpoints';
@@ -194,6 +194,9 @@ export function BottomActions() {
   const [creatingTicket, setCreatingTicket] = useState(false);
   const [pinAction, setPinAction] = useState<'ticket' | 'checkout' | 'manager' | null>(null);
   const [managerVerified, setManagerVerified] = useState(false);
+  // Tracks the cart total (cents) at the moment manager approval was granted.
+  // If the cart grows past this amount, re-approval is required.
+  const approvedAtCentsRef = useRef<number>(0);
   const { getSetting } = useSettings();
   const isTraining = useIsTraining();
 
@@ -214,6 +217,14 @@ export function BottomActions() {
     }
     return cents;
   }, [cartItems]);
+  // Reset manager approval when the cart grows beyond the amount that was approved.
+  useEffect(() => {
+    if (managerVerified && cartTotalCents > approvedAtCentsRef.current) {
+      setManagerVerified(false);
+      approvedAtCentsRef.current = 0;
+    }
+  }, [cartTotalCents, managerVerified]);
+
   const needsManagerPin =
     managerThresholdCents > 0 && cartTotalCents >= managerThresholdCents && !managerVerified;
 
@@ -448,6 +459,7 @@ export function BottomActions() {
           saleCents={cartTotalCents}
           thresholdCents={managerThresholdCents}
           onSuccess={() => {
+            approvedAtCentsRef.current = cartTotalCents;
             setPinAction(null);
             setManagerVerified(true);
             if (requirePinSale) { setPinAction('checkout'); return; }

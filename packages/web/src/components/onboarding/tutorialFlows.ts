@@ -23,6 +23,12 @@ export interface SpotlightStep {
   /** Required when advanceOn === 'custom-event' */
   customEventName?: string;
   hint?: string;
+  /**
+   * When true, skip the DOM target lookup entirely and always render the
+   * floating-card fallback. Use for steps whose target element lives on a
+   * different page that the user still needs to navigate to.
+   */
+  floatOnly?: boolean;
 }
 
 export interface SpotlightFlow {
@@ -134,8 +140,9 @@ const checkoutFlow: SpotlightFlow = {
       title: 'Pull the ticket back up',
       body: 'Go to the Tickets page or use Held Carts and load the ticket you just created into POS. The repair line will reappear in the cart.',
       target: 'checkout:load-ticket-in-pos',
-      // NOTE: this target wraps a "Load in POS" button on the TicketDetailPage or HeldCarts panel.
-      // If the user navigates via a different path the element may be absent — falls back gracefully.
+      // The target button lives on TicketDetailPage / HeldCarts, not on the current POS page.
+      // Use floatOnly so the card renders immediately without attempting a DOM lookup.
+      floatOnly: true,
       advanceOn: 'custom-event',
       customEventName: 'pos:cart-loaded',
       hint: 'You can also use the Held Carts button at the bottom of POS to reload a saved cart directly.',

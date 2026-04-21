@@ -2369,6 +2369,27 @@ server.listen(config.port, config.host, async () => {
       });
   }
 
+  // TP§26: Daily archive sweep — moves tenant DB files queued for deletion to
+  // the deleted/ directory once their grace period has elapsed. Only meaningful
+  // in multi-tenant mode (single-tenant has no tenant lifecycle).
+  // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
+  if (config.multiTenant && process.env.NODE_ENV !== 'test') {
+    trackInterval(async () => {
+      try {
+        if (!shouldRunDaily('archive-due-tenants', 'UTC')) return;
+        const { archiveDueTenants } = await import('./services/tenant-provisioning.js');
+        const archived = await archiveDueTenants();
+        if (archived.length > 0) {
+          log.info('archiveDueTenants: archived tenants', { slugs: archived });
+        }
+      } catch (err) {
+        log.error('archiveDueTenants: daily sweep failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, 24 * 60 * 60 * 1000);
+  }
+
   // Audit issue #23: Retention sweeper for unbounded log/queue tables.
   // Separate cron from the audit_logs purge above because:
   //  (1) runRetentionSweep is async (forEachDbAsync), the audit purge uses sync forEachDb,

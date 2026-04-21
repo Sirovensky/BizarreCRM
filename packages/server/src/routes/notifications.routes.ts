@@ -160,7 +160,7 @@ router.post(
       `, invoice_id),
       adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
     ]);
-    const storeName = storeNameRow?.value || 'Bizarre Electronics';
+    const storeName = storeNameRow?.value || 'Your Shop';
 
     // Build receipt HTML
     // @audit-fixed: §37 — escape every user-controlled field. li.description,

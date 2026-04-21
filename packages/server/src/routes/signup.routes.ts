@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateSlug, isSlugAvailable, provisionTenant } from '../services/tenant-provisioning.js';
-import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import { validateEmail, validateRequiredString } from '../utils/validate.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
@@ -116,7 +116,7 @@ function signupLimiter(req: Request, res: Response, next: NextFunction): void {
     res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
     return;
   }
-  recordWindowFailure(req.db, 'signup', ip, SIGNUP_WINDOW_MS);
+  recordWindowAttempt(req.db, 'signup', ip, SIGNUP_WINDOW_MS);
   next();
 }
 
@@ -129,7 +129,7 @@ function slugCheckLimiter(req: Request, res: Response, next: NextFunction): void
     res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
     return;
   }
-  recordWindowFailure(req.db, 'slug_check', ip, SLUG_CHECK_MIN_INTERVAL_MS);
+  recordWindowAttempt(req.db, 'slug_check', ip, SLUG_CHECK_MIN_INTERVAL_MS);
   next();
 }
 
@@ -429,7 +429,7 @@ async function sendVerificationEmail(
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="margin-top:0">Confirm your shop</h2>
-      <p>Thanks for signing up for Bizarre Electronics CRM. Please confirm your email to finish creating <strong>${shopName}</strong> (${slug}).</p>
+      <p>Thanks for signing up for BizarreCRM. Please confirm your email to finish creating <strong>${shopName}</strong> (${slug}).</p>
       <p style="margin:24px 0">
         <a href="${verifyUrl}" style="background:#3b82f6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block">Confirm and create my shop</a>
       </p>
@@ -439,7 +439,7 @@ async function sendVerificationEmail(
   try {
     return await sendEmail(db, {
       to: toEmail,
-      subject: 'Confirm your Bizarre Electronics CRM shop',
+      subject: 'Confirm your BizarreCRM shop',
       html,
     });
   } catch (err) {

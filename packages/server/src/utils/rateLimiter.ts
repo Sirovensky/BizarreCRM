@@ -35,7 +35,11 @@ export function checkWindowRate(
   return row.count < maxAttempts;
 }
 
-/** Record a failed attempt for window-based rate limiting. */
+/**
+ * Record an attempt for window-based rate limiting.
+ * @deprecated Use recordWindowAttempt — the "Failure" suffix was a misnomer;
+ *   this function counts every attempt (successful or not) toward the window cap.
+ */
 export function recordWindowFailure(
   db: Database.Database, category: string, key: string,
   windowMs: number,
@@ -63,6 +67,13 @@ export function recordWindowFailure(
   });
   tx(category, key, windowMs);
 }
+
+/**
+ * Record an attempt (success or failure) for window-based rate limiting.
+ * Alias for recordWindowFailure with a name that matches the actual behavior:
+ * every call to this function counts toward the per-window cap.
+ */
+export const recordWindowAttempt = recordWindowFailure;
 
 /** Clear rate limit entries for a key (e.g., on successful login). */
 export function clearRateLimit(db: Database.Database, category: string, key: string): void {

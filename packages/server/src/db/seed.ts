@@ -29,7 +29,10 @@ export function seedDatabase(db: any): void {
     }
 
     // Tax classes
-    db.prepare(`INSERT OR IGNORE INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)`).run('Colorado Sales Tax', 8.865, 1);
+    // Rate is seeded as 0 — shop owner must set the actual rate in Settings → Tax
+    // before going live. Using a location-specific rate here (e.g. Colorado 8.865%)
+    // would silently charge incorrect tax to every new tenant regardless of location.
+    db.prepare(`INSERT OR IGNORE INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)`).run('Sales Tax', 0, 1);
     db.prepare(`INSERT OR IGNORE INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)`).run('Tax Exempt', 0, 0);
 
     // Payment methods

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -130,12 +130,12 @@ export function SetupPage() {
   const handleSkip = useCallback(() => flushAndExit('skip'), [flushAndExit]);
   const handleComplete = useCallback(() => flushAndExit('complete'), [flushAndExit]);
 
-  // Pre-fill store_name from the existing store_config value on first render
-  // (signup sets this from the form). This runs once on mount via useMemo guard.
-  useMemo(() => {
+  // Pre-fill store_name from the existing store_config value once data arrives.
+  useEffect(() => {
     if (existingStoreName && !pending.store_name) {
       setPending((prev) => ({ ...prev, store_name: existingStoreName }));
     }
+    // Run only when existingStoreName changes (i.e. when the query resolves).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingStoreName]);
 

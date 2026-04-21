@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 import { Calculator } from 'lucide-react';
 import type { SubStepProps } from '../wizardTypes';
 import { SubStepHeader, SubStepFooter } from './StepBusinessHours';
@@ -26,17 +27,12 @@ export function StepTax({ onComplete, onCancel }: SubStepProps) {
       if (Number.isNaN(parsedRate) || parsedRate < 0 || parsedRate > 100) {
         throw new Error('Tax rate must be a number between 0 and 100.');
       }
-      // Endpoint may vary across installs; if it doesn't exist, fall through and tell the user
-      // to configure in Settings -> Tax. Either way, mark the card complete so they can move on.
-      try {
-        await api.post('/settings/tax-classes', { name: name.trim(), rate: parsedRate });
-      } catch (innerErr: any) {
-        // If the endpoint isn't available, log and keep going -- this sub-step is optional
-        console.warn('[setup] Could not save tax class via /settings/tax-classes. Please add it in Settings -> Tax.', innerErr);
-      }
+      await api.post('/settings/tax-classes', { name: name.trim(), rate: parsedRate });
       onComplete();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save tax rate.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save tax rate.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

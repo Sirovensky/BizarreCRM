@@ -307,6 +307,12 @@ export function SpotlightCoach() {
 
     if (!step || !flowId || dismissed) return;
 
+    // If the step requests float-only mode, skip DOM lookup entirely.
+    if (step.floatOnly) {
+      setIsFallback(true);
+      return;
+    }
+
     const selector = `[data-tutorial-target="${step.target}"]`;
 
     // Immediate attempt

@@ -1605,7 +1605,7 @@ export function TicketWizard() {
                               className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
                             />
                             <span className="text-sm text-surface-700 dark:text-surface-300">
-                              Colorado {((defaultTaxClass?.rate ?? 8.865)).toFixed(3)}%
+                              {defaultTaxClass?.name ?? 'Tax'} {(defaultTaxClass?.rate ?? 0).toFixed(3)}%
                             </span>
                           </label>
                         </div>

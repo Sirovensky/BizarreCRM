@@ -207,7 +207,7 @@ function renderHtml(m: WeeklyMetrics): string {
   <tbody>${techRows}</tbody>
 </table>
 
-<footer>Sent automatically by Bizarre Electronics CRM. Manage or unsubscribe in Reports &gt; Scheduled Delivery.</footer>
+<footer>Sent automatically by BizarreCRM. Manage or unsubscribe in Reports &gt; Scheduled Delivery.</footer>
 </body></html>`;
 }
 
@@ -227,7 +227,7 @@ function renderText(m: WeeklyMetrics): string {
     'TOP TECHNICIANS',
     ...(m.top_techs.length === 0 ? ['(none)'] : m.top_techs.map(t => `  ${t.name} — ${t.closed} closed — ${fmtUsd(t.revenue)}`)),
     '',
-    '-- Bizarre Electronics CRM',
+    '-- BizarreCRM',
   ];
   return lines.join('\n');
 }
