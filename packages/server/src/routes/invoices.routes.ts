@@ -10,7 +10,7 @@ import {
   roundCents,
   toCents,
 } from '../utils/validate.js';
-import { writeCommission } from '../utils/commissions.js';
+import { writeCommission, reverseCommission } from '../utils/commissions.js';
 import { allocateCounter, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
@@ -621,15 +621,21 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
         }
       }
     } catch (err: unknown) {
-      // Payroll lock is a hard 403 — propagate so the UI sees it. Other
-      // bookkeeping errors are logged but don't roll back the payment, since
-      // the payment row itself is the authoritative record.
+      // Payroll lock is a hard 403 — propagate so the UI sees it.
       if (err instanceof AppError) throw err;
-      console.warn(
-        `[invoices] failed to write commission for payment on invoice ${req.params.id}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      // SQLITE_CONSTRAINT_UNIQUE means the unique partial index (migration 119)
+      // blocked a duplicate commission row — treat as a benign no-op (the
+      // concurrent write already wrote the row).
+      const code = (err as NodeJS.ErrnoException & { code?: string }).code;
+      if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT') {
+        // No-op: commission already recorded by a concurrent request.
+      } else {
+        console.warn(
+          `[invoices] failed to write commission for payment on invoice ${req.params.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
   }
 
@@ -763,6 +769,26 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
 
   // Mark payments as voided (keep records for audit trail)
   await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", req.params.id);
+
+  // Reverse commissions for the voided invoice (full reversal, fraction=1).
+  // Best-effort: payroll-lock throws AppError which we propagate; other errors
+  // are logged but do not roll back the void because the void itself is
+  // already committed above.
+  try {
+    await reverseCommission(adb, {
+      sourceType: 'invoice',
+      sourceId: Number(req.params.id),
+      fraction: 1,
+      at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    });
+  } catch (err: unknown) {
+    if (err instanceof AppError) throw err;
+    console.warn(
+      `[invoices] failed to reverse commissions on void for invoice ${req.params.id}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 
   recordWindowFailure(db, 'invoice_void', String(userId), 60000);
   audit(db, 'invoice_voided', req.user!.id, req.ip || 'unknown', { invoice_id: Number(req.params.id) });

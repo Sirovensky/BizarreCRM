@@ -123,6 +123,54 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// GET /focus-policies – Fetch stored focus-filter descriptor for current user
+// PUT /focus-policies – Persist focus-filter descriptor for current user
+// Called by iOS FocusFilterEndpoints. Stored as a single JSON blob per user
+// in user_preferences table (key = 'focus_policies').
+// ---------------------------------------------------------------------------
+router.get(
+  '/focus-policies',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const userId = req.user!.id;
+
+    const row = await adb.get<{ value: string }>(
+      "SELECT value FROM user_preferences WHERE user_id = ? AND key = 'focus_policies'",
+      userId,
+    );
+
+    // Return empty policies object when none stored — client builds its own defaults
+    const policies: unknown = row?.value ? JSON.parse(row.value) : { policies: [] };
+    res.json({ success: true, data: policies });
+  }),
+);
+
+router.put(
+  '/focus-policies',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const userId = req.user!.id;
+    const body = req.body;
+
+    if (!body || typeof body !== 'object') {
+      throw new AppError('Request body is required', 400);
+    }
+
+    const json = JSON.stringify(body);
+
+    await adb.run(
+      `INSERT INTO user_preferences (user_id, key, value)
+       VALUES (?, 'focus_policies', ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+      userId,
+      json,
+    );
+
+    res.json({ success: true, data: null });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // POST /send-receipt – Email a receipt for an invoice
 // ---------------------------------------------------------------------------
 router.post(

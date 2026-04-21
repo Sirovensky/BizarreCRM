@@ -246,6 +246,25 @@ router.patch('/:id/status', requirePermission('inventory.edit'), asyncHandler(as
     throw new AppError('RMA status changed concurrently. Refresh and retry.', 409);
   }
 
+  // S-RMA-1: When the supplier ships defective items back to us and we mark
+  // the RMA as 'received', credit stock back for each item that has a linked
+  // inventory_item_id. Without this, the stock deduction from the original
+  // fault/removal is never reversed and the item stays out-of-stock forever.
+  if (fromStatus !== nextStatus && nextStatus === 'received') {
+    const rmaItems = await adb.all<{ inventory_item_id: number | null; quantity: number }>(
+      'SELECT inventory_item_id, quantity FROM rma_items WHERE rma_id = ? AND inventory_item_id IS NOT NULL',
+      rmaId,
+    );
+    for (const item of rmaItems) {
+      if (!item.inventory_item_id) continue;
+      await adb.run(
+        "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+        item.quantity,
+        item.inventory_item_id,
+      );
+    }
+  }
+
   audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', {
     rma_id: rmaId,
     from_status: fromStatus,

@@ -87,7 +87,7 @@ import settingsExportRoutes from './routes/settingsExport.routes.js';
 // PER TENANT after tenantResolver + authMiddleware resolve the shop DB.
 import dataExportRoutes from './routes/dataExport.routes.js';
 // SEC-H59 / P3-PII-16: Full tenant export (encrypted zip, signed download token).
-import tenantExportRoutes from './routes/tenantExport.routes.js';
+import tenantExportRoutes, { downloadRouter as tenantExportDownloadRouter } from './routes/tenantExport.routes.js';
 import automationRoutes from './routes/automations.routes.js';
 import snippetRoutes from './routes/snippets.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
@@ -1540,7 +1540,10 @@ app.use('/api/v1/settings-ext', authMiddleware, settingsExportRoutes);
 app.use('/api/v1/data-export', authMiddleware, dataExportRoutes);
 // SEC-H59 / P3-PII-16: Full encrypted tenant export (all tables + uploads,
 // passphrase-encrypted zip, signed single-use download token).
-// Mounted under /tenant/export; admin + step-up TOTP enforced inside the router.
+// The /download/:signedToken path is public (token IS the credential — no JWT
+// required). Mount it WITHOUT authMiddleware so browsers can follow the link
+// directly. All other tenant/export endpoints require admin + step-up TOTP.
+app.use('/api/v1/tenant/export', tenantExportDownloadRouter);
 app.use('/api/v1/tenant/export', authMiddleware, tenantExportRoutes);
 app.use('/api/v1/automations', authMiddleware, requireFeature('automations'), automationRoutes);
 app.use('/api/v1/snippets', authMiddleware, snippetRoutes);

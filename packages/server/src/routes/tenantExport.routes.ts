@@ -268,4 +268,72 @@ router.get(
   },
 );
 
+// ─── Public download router (no authMiddleware) ───────────────────────────────
+// Mounted separately in index.ts so the token-authenticated download endpoint
+// is reachable without a Bearer JWT. Only the /download/:signedToken path is
+// exported here; all admin routes stay in the default (auth-protected) router.
+
+export const downloadRouter = Router();
+
+downloadRouter.get(
+  '/download/:signedToken',
+  (req: Request, res: Response): void => {
+    const signedToken = String(req.params['signedToken'] ?? '');
+
+    if (!/^[0-9a-f]{64}$/.test(signedToken)) {
+      throw new AppError('Invalid download token', 400);
+    }
+
+    const db = req.db;
+    const job = lookupDownloadToken(db, signedToken);
+
+    if (!job) {
+      throw new AppError('Download token is invalid, expired, or already used', 410);
+    }
+
+    if (!job.file_path) {
+      throw new AppError('Export file path not recorded — contact support', 500);
+    }
+
+    if (!fs.existsSync(job.file_path)) {
+      logger.error('tenant export: file missing for complete job', {
+        jobId: job.id,
+        filePath: job.file_path,
+      });
+      throw new AppError('Export file not found — it may have expired', 410);
+    }
+
+    consumeDownloadToken(db, job.id);
+
+    const dateToken = new Date(job.started_at).toISOString().slice(0, 10);
+    const slugToken = safeFilenameToken(
+      (req.tenantSlug ?? 'tenant') + '-' + String(job.id),
+    );
+    const filename = `bizarre-crm-export-${slugToken}-${dateToken}.enc`;
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+
+    const fileSize = fs.statSync(job.file_path).size;
+    res.setHeader('Content-Length', String(fileSize));
+
+    const stream = fs.createReadStream(job.file_path);
+
+    stream.on('error', (err) => {
+      logger.error('tenant export: stream error (public router)', {
+        jobId: job.id,
+        error: err.message,
+      });
+      if (!res.writableEnded) res.end();
+    });
+
+    stream.pipe(res);
+
+    logger.info('tenant export: download streamed', { jobId: job.id });
+  },
+);
+
 export default router;

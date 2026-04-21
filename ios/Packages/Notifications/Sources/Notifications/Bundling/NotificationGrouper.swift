@@ -120,21 +120,26 @@ public enum NotificationGrouper {
             }
 
             // Collect candidates: same category, within window, not yet processed, non-critical
+            // Window: [anchor - windowSeconds, anchor]. Since sorted is newest-first,
+            // 'item' is the anchor (newest in the remaining pool). Candidates must be
+            // no older than windowSeconds before the anchor and no newer than the anchor.
             let windowStart = item.receivedAt.addingTimeInterval(-windowSeconds)
             let candidates = sorted.filter { candidate in
                 !processed.contains(candidate.id)
                     && candidate.category == item.category
                     && candidate.priority != .critical
                     && candidate.receivedAt >= windowStart
-                    && candidate.receivedAt <= item.receivedAt.addingTimeInterval(windowSeconds)
+                    && candidate.receivedAt <= item.receivedAt
             }
 
             if candidates.count >= minGroupSize {
                 candidates.forEach { processed.insert($0.id) }
+                // Sort candidates newest-first so latestAt is candidates[0].receivedAt
+                let sortedCandidates = candidates.sorted { $0.receivedAt > $1.receivedAt }
                 let bundle = NotificationBundle(
                     category: item.category,
-                    items: candidates,
-                    latestAt: candidates[0].receivedAt
+                    items: sortedCandidates,
+                    latestAt: sortedCandidates[0].receivedAt
                 )
                 bundles.append(bundle)
             } else {

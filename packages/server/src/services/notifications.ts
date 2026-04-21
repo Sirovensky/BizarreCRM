@@ -246,14 +246,18 @@ export async function processRetryQueue(db: any, tenantSlug: string | null): Pro
     // SEC-H69: Atomic claim — increment retry_count only if it still matches
     // the value we read. If another worker already processed this row its
     // retry_count will differ and changes===0, so we skip safely.
-    const jitter = retryJitterSeconds();
+    // Use the backoff schedule for the claim update too, so that a crash
+    // between claim and send doesn't cause the item to re-fire after just
+    // the jitter window (which burns a retry attempt prematurely).
+    const claimedCount = item.retry_count + 1;
+    const claimBackoffSeconds = Math.pow(5, claimedCount) * 60 + retryJitterSeconds();
     const claimResult = db.prepare(`
       UPDATE notification_retry_queue
       SET retry_count = retry_count + 1,
           next_retry_at = datetime('now', '+' || ? || ' seconds'),
           last_error = 'processing'
       WHERE id = ? AND retry_count = ?
-    `).run(jitter, item.id, item.retry_count) as { changes: number };
+    `).run(claimBackoffSeconds, item.id, item.retry_count) as { changes: number };
 
     if (claimResult.changes === 0) {
       // Another worker claimed this row — skip without processing.
@@ -264,29 +268,27 @@ export async function processRetryQueue(db: any, tenantSlug: string | null): Pro
       continue;
     }
 
-    const claimedRetryCount = item.retry_count + 1;
-
     try {
       await sendSmsTenant(db, tenantSlug, item.recipient_phone, item.message);
       // Success — remove from retry queue (dead-letter never triggered)
       db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
       logger.info('Retry succeeded', {
-        retryAttempt: claimedRetryCount,
+        retryAttempt: claimedCount,
         phone: item.recipient_phone,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (claimedRetryCount >= item.max_retries) {
+      if (claimedCount >= item.max_retries) {
         // SEC-H69: Dead-letter: max attempts exhausted — delete (logged below).
         db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
         logger.error('Retry permanently failed — dead-lettered', {
-          retryCount: claimedRetryCount,
+          retryCount: claimedCount,
           phone: item.recipient_phone,
           error: errorMessage,
         });
       } else {
         // Exponential backoff (5^retryCount minutes) + jitter seconds.
-        const backoffMinutes = Math.pow(5, claimedRetryCount);
+        const backoffMinutes = Math.pow(5, claimedCount);
         const backoffSeconds = backoffMinutes * 60 + retryJitterSeconds();
         db.prepare(`
           UPDATE notification_retry_queue
@@ -294,7 +296,7 @@ export async function processRetryQueue(db: any, tenantSlug: string | null): Pro
           WHERE id = ?
         `).run(backoffSeconds, errorMessage, item.id);
         logger.warn('Retry failed, scheduled next attempt', {
-          retryCount: claimedRetryCount,
+          retryCount: claimedCount,
           phone: item.recipient_phone,
           nextInSeconds: backoffSeconds,
           error: errorMessage,

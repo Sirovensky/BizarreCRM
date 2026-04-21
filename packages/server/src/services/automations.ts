@@ -354,12 +354,26 @@ function executeCreateNotification(
   if (!actionConfig.message) {
     return { success: false, error: 'missing message' };
   }
+  // user_id is required by the notifications table (NOT NULL). When the action
+  // config omits it we broadcast to all active users instead of failing silently.
+  const targetUserId = actionConfig.user_id ? Number(actionConfig.user_id) : null;
   try {
     const message = interpolate(actionConfig.message, vars, 'raw');
-    db.prepare(`
-      INSERT INTO notifications (type, title, message, created_at)
-      VALUES ('automation', 'Automation', ?, datetime('now'))
-    `).run(message);
+
+    if (targetUserId) {
+      db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, created_at, updated_at)
+        VALUES (?, 'automation', 'Automation', ?, datetime('now'), datetime('now'))
+      `).run(targetUserId, message);
+    } else {
+      // No target user configured — insert for every active (non-deleted) user
+      const users = db.prepare("SELECT id FROM users WHERE is_active = 1").all() as Array<{ id: number }>;
+      const stmt = db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, created_at, updated_at)
+        VALUES (?, 'automation', 'Automation', ?, datetime('now'), datetime('now'))
+      `);
+      for (const u of users) stmt.run(u.id, message);
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
