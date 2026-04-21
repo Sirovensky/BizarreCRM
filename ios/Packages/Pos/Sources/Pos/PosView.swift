@@ -4,14 +4,14 @@ import Core
 import DesignSystem
 import Networking
 import Inventory
+import Customers
 
 /// Point-of-Sale root screen. iPhone: single stacked column with the cart
 /// on top and the item picker under. iPad / Mac: balanced split view with
 /// the picker on the leading side and the cart on the trailing side.
 ///
-/// Scaffold only — customer attach, holds, payment rails, and receipt
-/// print land in later phases. See `ios/ActionPlan.md` §16 for the full
-/// scope.
+/// §40 — "Gift card & store credit" opens from the toolbar.
+/// §41 — "Send payment link" opens from the toolbar.
 public struct PosView: View {
     @State private var cart = Cart()
     @State private var search: PosSearchViewModel
@@ -20,13 +20,32 @@ public struct PosView: View {
     @State private var editQuantityFor: CartItem?
     @State private var editPriceFor: CartItem?
     @State private var showingCartSheet: Bool = false
+    /// §40 — when true, the Gift card / store credit sheet is presented.
+    @State private var showingGiftCardSheet: Bool = false
+    /// §41 — when true, the Send-payment-link sheet is presented.
+    @State private var showingPaymentLink: Bool = false
 
-    public init(repo: InventoryRepository? = nil) {
+    /// Optional — only non-nil when the host wires a real network stack.
+    /// The gift-card / payment-link sheets need an `APIClient`. When nil,
+    /// both toolbar entries are disabled so preview / no-net builds still
+    /// compile.
+    private let api: APIClient?
+    /// Optional customer repository — reserved for the customer-pick
+    /// wiring on this screen.
+    private let customerRepo: CustomerRepository?
+
+    public init(
+        repo: InventoryRepository? = nil,
+        api: APIClient? = nil,
+        customerRepo: CustomerRepository? = nil
+    ) {
         if let repo {
             _search = State(wrappedValue: PosSearchViewModel(repo: repo))
         } else {
             _search = State(wrappedValue: PosSearchViewModel(repo: PosDisabledRepository()))
         }
+        self.api = api
+        self.customerRepo = customerRepo
     }
 
     public var body: some View {
@@ -89,17 +108,34 @@ public struct PosView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingGiftCardSheet) {
+            if let api {
+                PosGiftCardSheet(cart: cart, api: api)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(isPresented: $showingPaymentLink) {
+            if let api {
+                PosPaymentLinkSheet(
+                    api: api,
+                    amountCents: cart.totalCents,
+                    customerEmail: cart.customer?.email ?? "",
+                    customerPhone: cart.customer?.phone ?? "",
+                    customerId: cart.customer?.id,
+                    onLinkCreated: { link in
+                        cart.markPendingPaymentLink(id: link.id, token: link.shortId ?? "")
+                    },
+                    onPaid: { _ in
+                        cart.clearPendingPaymentLink()
+                        cart.clear()
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - iPhone (compact)
-    //
-    // Search-first layout. Staff arrive here to add items to a cart — the
-    // search bar + scan CTA live at the top, results fill the remaining
-    // space, and the cart only surfaces as a compact floating pill at the
-    // bottom once it has items. Empty cart = zero chrome.
-    //
-    // Tapping the pill expands a sheet with the line items + totals + the
-    // Charge action, following the Square / Shopify POS pattern.
 
     private var compactLayout: some View {
         NavigationStack {
@@ -174,6 +210,27 @@ public struct PosView: View {
                 .keyboardShortcut("N", modifiers: .command)
                 .accessibilityLabel("Add custom line")
             }
+            // §40 — gift card / store credit.
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingGiftCardSheet = true
+                } label: {
+                    Label("Gift card / credit", systemImage: "giftcard")
+                }
+                .disabled(api == nil || cart.isEmpty)
+                .accessibilityIdentifier("pos.toolbar.giftCard")
+            }
+            // §41 — send payment link. Disabled when total is zero or no
+            // API client is wired (previews / no-net builds).
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingPaymentLink = true
+                } label: {
+                    Label("Send payment link", systemImage: "link.badge.plus")
+                }
+                .disabled(api == nil || cart.totalCents == 0)
+                .accessibilityIdentifier("pos.toolbar.paymentLink")
+            }
             ToolbarItem(placement: .secondaryAction) {
                 Button(role: .destructive) {
                     cart.clear()
@@ -202,18 +259,11 @@ public struct PosView: View {
     }
 
     private func openDrawer() {
-        // Stub: real implementation pulses the MFi printer kick opcode
-        // (§17.4). Button is wired disabled with a hint, so this closure
-        // should never actually fire — keep as a no-op so the shape of the
-        // call site is obvious to reviewers.
+        // Stub: §17.4 pulses the MFi printer kick opcode.
     }
 }
 
-/// Compact cart pill anchored to the bottom-safe-area on iPhone. Only
-/// surfaces when the cart has items. Shows the rolled-up item count +
-/// total on the leading side and a chevron → on the trailing to signal
-/// tap-to-expand. Uses brand glass so it reads as chrome floating over
-/// the scrolling search results.
+/// Compact cart pill anchored to the bottom-safe-area on iPhone.
 private struct CartPill: View {
     let itemCount: Int
     let totalCents: Int
@@ -288,10 +338,7 @@ private struct CartPill: View {
         .previewInterfaceOrientation(.landscapeLeft)
 }
 
-/// Null-object repository used when `PosView()` is constructed without an
-/// `InventoryRepository` (previews, Mac Designed-for-iPad builds without a
-/// network stack wired). Always returns an empty list. Production call
-/// sites must pass the real `InventoryRepositoryImpl`.
+/// Null-object repository used for previews / no-network builds.
 private struct PosDisabledRepository: InventoryRepository {
     func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] {
         []
