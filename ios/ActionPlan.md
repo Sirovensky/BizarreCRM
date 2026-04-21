@@ -4631,12 +4631,12 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 ## §44. CRM Health Score & LTV
 
 ### 44.1 Health score
-- [ ] **Per-customer** 0–100 based on: last visit, total spend, NPS, open issues, complaint count.
-- [ ] **Color tier** — Green / Yellow / Red.
-- [ ] **Action recommendations** — "Haven't seen in 180 days — send follow-up".
+- [x] **Per-customer 0-100** — `CustomerHealth.compute(detail:)` + server-side `health_score` override. Commit `c0c4f56`.
+- [x] **Color tier** — `CustomerHealthTier` green/yellow/red with brand tokens `bizarreSuccess/Warning/Error`.
+- [x] **Action recommendations** — >180-day absence → "Haven't seen in 180+ days — send follow-up"; complaint count > 0 → complaint banner.
 
 ### 44.2 LTV
-- [ ] **Lifetime value** computed server-side; displayed on customer chip.
+- [x] **Lifetime value** — `CustomerLTVChip` with server analytics `lifetime_value` + DTO `ltv_cents` fallback; rendered on CustomerDetailView header.
 - [ ] **Tier** — Bronze / Silver / Gold / Platinum by LTV threshold.
 - [ ] **Perks per tier** — auto discounts, priority queue.
 
