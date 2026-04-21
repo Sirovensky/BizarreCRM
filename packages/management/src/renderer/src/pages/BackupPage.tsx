@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Database, FolderOpen, Clock, Trash2, Download, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Database, FolderOpen, Clock, Trash2, Download, RefreshCw, AlertTriangle, CheckCircle2, Undo2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -26,6 +26,8 @@ export function BackupPage() {
   const [loading, setLoading] = useState(true);
   const [backing, setBacking] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -92,6 +94,30 @@ export function BackupPage() {
       refresh();
     } else {
       toast.error(res.message ?? 'Failed');
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      const res = await getAPI().admin.restoreBackup(restoreTarget);
+      if (res.success) {
+        toast.success(
+          res.data?.safetyBackup
+            ? `Restore complete. Pre-restore snapshot saved as ${res.data.safetyBackup}.`
+            : 'Restore complete.',
+          { duration: 8000 },
+        );
+        setRestoreTarget(null);
+        refresh();
+      } else {
+        toast.error(res.message ?? 'Restore failed');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Restore failed');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -221,13 +247,22 @@ export function BackupPage() {
                     {formatBytes(b.size)} | {formatDateTime(b.created)}
                   </div>
                 </div>
-                <button
-                  onClick={() => setDeleteTarget(b.filename)}
-                  className="p-1.5 rounded text-surface-500 hover:text-red-400 hover:bg-surface-700 transition-colors"
-                  title="Delete backup"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setRestoreTarget(b.filename)}
+                    className="p-1.5 rounded text-surface-500 hover:text-amber-400 hover:bg-surface-700 transition-colors"
+                    title="Restore from this backup (current DB is safety-copied first)"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(b.filename)}
+                    className="p-1.5 rounded text-surface-500 hover:text-red-400 hover:bg-surface-700 transition-colors"
+                    title="Delete backup"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -241,6 +276,22 @@ export function BackupPage() {
         danger confirmLabel="Delete"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={restoreTarget !== null}
+        title="Restore backup"
+        message={
+          `Replace the current database with "${restoreTarget}"?\n\n` +
+          `The server will safety-copy the current DB before swapping in. ` +
+          `Active tenant sessions may see a brief outage while the switch happens. ` +
+          `Type the filename below to confirm.`
+        }
+        danger
+        requireTyping={restoreTarget ?? undefined}
+        confirmLabel={restoring ? 'Restoring…' : 'Restore'}
+        onConfirm={handleRestore}
+        onCancel={() => setRestoreTarget(null)}
       />
     </div>
   );

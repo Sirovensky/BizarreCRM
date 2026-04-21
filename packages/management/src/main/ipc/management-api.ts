@@ -1701,6 +1701,16 @@ export function registerManagementIpc(): void {
     return res.body;
   }));
 
+  ipcMain.handle('admin:restore-backup', wrapHandler(async (event, filename: unknown) => {
+    assertRendererOrigin(event);
+    const { filename: f } = SchemaFilename.parse({ filename });
+    // Server guards this with a global mutex + safety-copy of the current DB
+    // before swapping in the restore target, so a mid-restore crash still
+    // leaves a rollback path. UI still confirms with type-the-filename below.
+    const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`);
+    return res.body;
+  }));
+
   // ── Generic Env Settings Editor (SEC-H94 et al) ────────────────
   // These read and mutate the project-root .env directly because every key
   // in ENV_FIELDS is evaluated at server boot (before the DB is opened),

@@ -341,6 +341,8 @@ interface ElectronAPI {
     runBackup(): Promise<ApiResponse>;
     updateBackupSettings(settings: unknown): Promise<ApiResponse>;
     deleteBackup(filename: string): Promise<ApiResponse>;
+    /** Restore a backup — server safety-copies the current DB first, then swaps in. */
+    restoreBackup(filename: string): Promise<ApiResponse<{ message?: string; safetyBackup?: string }>>;
     /** Read every whitelisted env field. Secrets return only `hasValue`+`length`. */
     getEnvSettings(): Promise<ApiResponse<{ fields: EnvSettingField[] }>>;
     /** Bulk-write env keys to .env. Caller must restart the server to apply. */

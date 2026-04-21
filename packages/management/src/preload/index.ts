@@ -82,6 +82,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'admin:run-backup',
   'admin:update-backup-settings',
   'admin:delete-backup',
+  'admin:restore-backup',
   // admin:* (env-settings editor — edits .env directly)
   'admin:get-env-settings',
   'admin:set-env-settings',
@@ -207,6 +208,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateBackupSettings: (settings: unknown) =>
       safeInvoke('admin:update-backup-settings', settings),
     deleteBackup: (filename: string) => safeInvoke('admin:delete-backup', filename),
+    restoreBackup: (filename: string) => safeInvoke('admin:restore-backup', filename),
     getEnvSettings: () => safeInvoke('admin:get-env-settings'),
     setEnvSettings: (updates: Record<string, string>) =>
       safeInvoke('admin:set-env-settings', updates),
