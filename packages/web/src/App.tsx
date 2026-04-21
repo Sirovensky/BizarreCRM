@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
+import { extractApiError } from './utils/apiError';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
@@ -98,7 +99,7 @@ function PageLoader() {
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   const location = useLocation();
-  const { data: setupData, isLoading: setupLoading, isError: setupError } = useQuery<
+  const { data: setupData, isLoading: setupLoading, isError: setupError, error: setupErrorObj, refetch: refetchSetup } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
   >({
     queryKey: ['setup-status'],
@@ -109,9 +110,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   });
 
   // AUDIT-WEB-011: if setup-status fails (server unreachable) don't spin
-  // forever — send the user to /login so they can retry after a reload.
+  // forever. Previously we silently redirected to /login which looked like
+  // an infinite-loop post-2FA to the user because the login page would
+  // immediately succeed again and ProtectedRoute would retry the failing
+  // setup-status query. Surface the actual error code + request_id with
+  // a retry button so the operator can fix the underlying issue (origin
+  // guard, tenant context, rate limit) instead of bouncing between login
+  // and loading screens.
   if (isLoading || (setupLoading && !setupError)) return <LoadingScreen />;
-  if (setupError && !setupData) return <Navigate to="/login" replace />;
+  if (setupError && !setupData) {
+    return <SetupFailedScreen error={setupErrorObj} onRetry={() => refetchSetup()} />;
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const setupCompleted = setupData?.data?.data?.setup_completed;
@@ -150,6 +159,62 @@ function LoadingScreen() {
       <div className="flex flex-col items-center gap-4">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
         <p className="text-sm text-surface-500">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when the mount-time /settings/setup-status query fails. Replaces the
+ * old silent `<Navigate to="/login">` which caused an infinite login↔loading
+ * loop when the failure was persistent (origin guard, tenant-context, rate
+ * limit, offline server). Surface the exact server code + request id so the
+ * user can send a support ticket with a traceable reference instead of a
+ * screenshot of a blank loading spinner.
+ */
+function SetupFailedScreen({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { code, requestId, message, status } = extractApiError(error);
+  return (
+    <div className="flex h-screen items-center justify-center bg-white dark:bg-surface-950 px-4">
+      <div className="max-w-md w-full flex flex-col items-start gap-4 p-6 rounded-lg border border-surface-200 dark:border-surface-800 bg-surface-50 dark:bg-surface-900">
+        <div>
+          <h1 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Unable to load the app</h1>
+          <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">{message}</p>
+        </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono text-surface-500 dark:text-surface-400">
+          {status !== null && (
+            <>
+              <dt className="text-surface-400">status</dt>
+              <dd>{status}</dd>
+            </>
+          )}
+          {code && (
+            <>
+              <dt className="text-surface-400">code</dt>
+              <dd>{code}</dd>
+            </>
+          )}
+          {requestId && (
+            <>
+              <dt className="text-surface-400">ref</dt>
+              <dd className="break-all">{requestId}</dd>
+            </>
+          )}
+        </dl>
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            onClick={onRetry}
+            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded"
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => { window.location.href = '/login'; }}
+            className="px-3 py-1.5 text-sm text-surface-700 dark:text-surface-300 border border-surface-300 dark:border-surface-700 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );

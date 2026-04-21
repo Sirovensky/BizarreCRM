@@ -184,6 +184,23 @@ client.interceptors.response.use(
       }
       const xrid = error.response?.headers?.['x-request-id'];
       if (!error.requestId && typeof xrid === 'string') error.requestId = xrid;
+
+      // Dev-mode trace: every rejected request logs `{status, code, request_id,
+      // url}` to the browser console. Production stays quiet to avoid leaking
+      // correlation ids into log shippers that forward browser errors to
+      // less-trusted sinks. Import check for Vite's import.meta.env.DEV keeps
+      // this tree-shakable in production bundles.
+      if (import.meta.env.DEV && error.response?.status && error.response.status >= 400) {
+        // eslint-disable-next-line no-console
+        console.warn('[api]', {
+          status: error.response.status,
+          method: error.config?.method?.toUpperCase(),
+          url: error.config?.url,
+          code: error.errorCode,
+          requestId: error.requestId,
+          message: error.response?.data?.message ?? error.message,
+        });
+      }
     } catch { /* best-effort tagging — never let this throw */ }
 
     // Tier gate 403: open the upgrade modal globally so the user sees it
