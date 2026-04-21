@@ -3,11 +3,22 @@ import GRDB
 import Core
 
 enum Migrator {
+    /// Number of SQL migration files in the bundle.
+    /// `BackupManager` embeds this in backup metadata for schema-drift detection.
+    static var schemaVersion: Int {
+        let bundle = Bundle.module
+        guard let folderURL = bundle.url(forResource: "Migrations", withExtension: nil),
+              let files = try? FileManager.default.contentsOfDirectory(
+                  at: folderURL, includingPropertiesForKeys: nil)
+        else { return 0 }
+        return files.filter { $0.pathExtension.lowercased() == "sql" }.count
+    }
+
     static func register(on pool: DatabasePool) throws {
         var migrator = DatabaseMigrator()
         try migrator.registerFromResources()
         try migrator.migrate(pool)
-        AppLog.persistence.info("GRDB migrations applied")
+        AppLog.persistence.info("GRDB migrations applied (schema version \(schemaVersion))")
     }
 }
 

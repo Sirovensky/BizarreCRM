@@ -185,7 +185,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
 - [ ] CI runs every migration against minimal + large fixture DBs (§31 fixtures).
-- [ ] Factory DI with `Container` + `@Injected(\.apiClient)` key style. All services registered in `Container+Registrations.swift` at launch.
+- [x] Factory DI with `Container` + `@Injected(\.apiClient)` key style. All services registered in `Container+Registrations.swift` at launch.
 - [ ] Scopes: `cached` (process-wide: APIClient / DB / Keychain), `shared` (weak per-object-graph: ViewModels), `unique` (each resolve builds fresh).
 - [ ] Test doubles: test bundle swaps registrations via `Container.mock { ... }` per test; no global-state leaks (assertions in `setUp`).
 - [ ] SwiftLint rule bans `static shared = ...` except for `Container` itself.
@@ -223,8 +223,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative.
 - [ ] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile.
 - [ ] Purpose: protect server from accidental client storm (over-scroll fetch); improve UX on flaky networks.
-- [ ] Impl: token-bucket per endpoint category — read 60/min, write 20/min; excess requests queued with backoff.
-- [ ] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal.
+- [x] Impl: token-bucket per endpoint category — read 60/min, write 20/min; excess requests queued with backoff.
+- [x] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal.
 - [ ] UI: silent unless sustained; show "Slow down" banner if queue > 10.
 - [ ] Debug drawer exposes current bucket state per endpoint.
 - [ ] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead).
@@ -2511,7 +2511,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§69); production is opt-in via Settings → Accessibility (subway riders)
 - [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
 - [ ] Accidental-trigger protection: debounce; ignore shakes during active gestures (scroll/pan)
-- [ ] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
+- [x] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
 - [ ] Automatic schedule daily/weekly/off; runs in `BGProcessingTask`; skipped if low battery
 - [ ] Restore: Settings → Data → Restore from backup; picker from Files; decrypts via user-supplied passphrase prompt; replaces local DB after confirm; does NOT change server, only local cache
 - [ ] Server-side backup orthogonal: tenant server does own cloud backups per tenant; iOS backup is for device-lost recovery onto new phone
@@ -5863,6 +5863,19 @@ No in-app live switcher. Sign out + sign in handles tenant change. Keychain cach
 ### 78.6 Versioning
 - `updated_at` per entity used for sync delta.
 - `version_hash` optional for conflict detection.
+
+### 78.7 Implementation status
+- [x] Core/Models: Customer, Ticket, InventoryItem (pre-existing)
+- [x] Core/Models: Invoice, InvoiceLineItem, InvoicePayment, InvoiceStatus (4f4a11a)
+- [x] Core/Models: Estimate, EstimateLineItem, EstimateStatus (4f4a11a)
+- [x] Core/Models: Lead, LeadStatus, LeadSource (4f4a11a)
+- [x] Core/Models: Appointment, AppointmentStatus (4f4a11a)
+- [x] Core/Models: Expense, ExpenseCategory (4f4a11a)
+- [x] Core/Models: Employee, EmployeeRole (4f4a11a)
+- [x] Core/Models: CashSession, CashSessionStatus (4f4a11a)
+- Campaign, Segment — defined in Marketing/Models.swift (skip duplicate)
+- AuditLogEntry — defined in AuditLogs/AuditLogEntry.swift (skip duplicate)
+- Role — defined in RolesEditor/Role.swift (skip duplicate)
 
 ---
 ## §79. Multi-tenant user session mgmt — SCOPE REDUCED
