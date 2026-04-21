@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, UserSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, ticketApi, customerApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -752,10 +752,32 @@ function useTotals(): Totals {
   }, [cartItems, discount, customer, memberDiscountApplied, taxRate]);
 }
 
+// ─── LeftPanelCustomerPicker ────────────────────────────────────────
+// Inline customer selection shown in the left panel when no customer is selected.
+
+function LeftPanelCustomerPicker({ onNewCustomer }: { onNewCustomer?: () => void }) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50">
+        <UserSearch className="h-4 w-4 text-surface-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+          Select Customer
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <p className="mb-3 text-xs text-surface-400 dark:text-surface-500">
+          Search for an existing customer or continue as walk-in.
+        </p>
+        <CustomerSelector onNewCustomer={onNewCustomer} inline />
+      </div>
+    </div>
+  );
+}
+
 // ─── LeftPanel ──────────────────────────────────────────────────────
 
-export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onToggle?: () => void }) {
-  const { cartItems } = useUnifiedPosStore();
+export function LeftPanel({ collapsed, onToggle, onNewCustomer }: { collapsed?: boolean; onToggle?: () => void; onNewCustomer?: () => void }) {
+  const { cartItems, customer } = useUnifiedPosStore();
   const totals = useTotals();
   const taxRate = useDefaultTaxRate();
 
@@ -781,8 +803,20 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
     );
   }
 
+  // No customer selected and cart is empty → show inline customer picker
+  if (!customer && cartItems.length === 0) {
+    return <LeftPanelCustomerPicker onNewCustomer={onNewCustomer} />;
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* Customer badge (shown when customer is set) */}
+      {customer && (
+        <div className="px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-primary-50/60 dark:bg-primary-900/10">
+          <CustomerSelector />
+        </div>
+      )}
+
       {/* Cart header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50">
         {onToggle && (

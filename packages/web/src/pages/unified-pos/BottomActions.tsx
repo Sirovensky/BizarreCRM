@@ -273,7 +273,7 @@ export function BottomActions() {
 
     return {
       mode: 'create_ticket' as const,
-      customer_id: customer?.id ?? null,
+      customer_id: customer !== null ? customer.id : null,
       signature_file: signatureFile ?? undefined,
       ticket: {
         devices,
@@ -295,7 +295,8 @@ export function BottomActions() {
   const doCreateTicket = async (signatureFile?: string | null) => {
     const repairs = cartItems.filter((i): i is RepairCartItem => i.type === 'repair');
     if (repairs.length === 0) return;
-    if (!customer?.id) {
+    // Allow walk-in (id === 0) and any real customer id. Only block when customer is null.
+    if (customer === null) {
       toast.error('Please select or create a customer first');
       return;
     }
@@ -339,7 +340,8 @@ export function BottomActions() {
   const handleCreateTicketFlow = () => {
     const repairs = cartItems.filter((i): i is RepairCartItem => i.type === 'repair');
     if (repairs.length === 0) return;
-    if (!customer?.id) {
+    // Allow walk-in (id === 0) and any real customer id. Only block when customer is null.
+    if (customer === null) {
       toast.error('Please select or create a customer first');
       return;
     }
@@ -403,7 +405,7 @@ export function BottomActions() {
           <button
             data-tutorial-target="checkout:checkout-button"
             onClick={() => {
-              if (!customer?.id && cartItems.some(i => i.type === 'repair')) {
+              if (customer === null && cartItems.some(i => i.type === 'repair')) {
                 toast.error('Please select or create a customer first');
                 return;
               }

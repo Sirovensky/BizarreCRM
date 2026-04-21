@@ -1,16 +1,57 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, User, Users } from 'lucide-react';
+import { Search, X, User, Users, UserPlus, UserX } from 'lucide-react';
 import { customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import type { CustomerResult } from './types';
 
-export function CustomerSelector() {
+// Walk-in sentinel: loaded from backend (customers.code = 'WALK-IN').
+// We cache it in module scope so we only fetch once per page load.
+let walkinCustomerCache: CustomerResult | null = null;
+
+async function fetchOrCreateWalkinCustomer(): Promise<CustomerResult | null> {
+  if (walkinCustomerCache) return walkinCustomerCache;
+  try {
+    const res = await customerApi.search('WALK-IN');
+    const data = res.data?.data;
+    const list: CustomerResult[] = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { customers?: CustomerResult[] })?.customers)
+        ? (data as { customers: CustomerResult[] }).customers
+        : [];
+    const match = list.find(
+      (c) =>
+        (c.first_name + ' ' + c.last_name).toLowerCase().includes('walk') ||
+        c.email?.toLowerCase().includes('walk-in') ||
+        false,
+    );
+    if (match) {
+      walkinCustomerCache = match;
+      return match;
+    }
+    // Fallback: use the first result or a synthetic object with id=0
+    const fallback = list[0] ?? null;
+    walkinCustomerCache = fallback;
+    return fallback;
+  } catch {
+    return null;
+  }
+}
+
+interface CustomerSelectorProps {
+  /** Called when user clicks "New Customer". If omitted the button is hidden. */
+  onNewCustomer?: () => void;
+  /** When true, renders in compact inline mode for LeftPanel embedding */
+  inline?: boolean;
+}
+
+export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSelectorProps = {}) {
   const { customer, setCustomer, setMemberDiscountApplied } = useUnifiedPosStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [walkInLoading, setWalkInLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Debounced search
@@ -75,6 +116,30 @@ export function CustomerSelector() {
     setQuery('');
   };
 
+  const handleWalkIn = async () => {
+    setWalkInLoading(true);
+    try {
+      const walkin = await fetchOrCreateWalkinCustomer();
+      if (walkin) {
+        selectCustomer(walkin);
+      } else {
+        // Fallback synthetic walk-in if backend has no WALK-IN row yet
+        const synthetic: CustomerResult = {
+          id: 0,
+          first_name: 'Walk-in',
+          last_name: 'Customer',
+          phone: null,
+          mobile: null,
+          email: null,
+          organization: null,
+        };
+        selectCustomer(synthetic);
+      }
+    } finally {
+      setWalkInLoading(false);
+    }
+  };
+
   const displayPhone = (c: CustomerResult): string =>
     c.mobile || c.phone || '';
 
@@ -114,9 +179,10 @@ export function CustomerSelector() {
     );
   }
 
-  // Search input + dropdown
+  // Search input + dropdown + action buttons
   return (
-    <div ref={wrapperRef} className="relative" data-tutorial-target="ticket:customer-picker">
+    <div ref={wrapperRef} className={cn('flex flex-col gap-2', inline ? '' : 'relative')} data-tutorial-target="ticket:customer-picker">
+      {/* Search input */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
         <input
@@ -124,7 +190,7 @@ export function CustomerSelector() {
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => { if (results.length) setIsOpen(true); }}
-          placeholder="Walk-in Customer — search to assign"
+          placeholder="Search by name, phone, or email…"
           className={cn(
             'w-full rounded-lg border border-surface-200 dark:border-surface-700',
             'bg-white dark:bg-surface-800 pl-9 pr-3 py-2 text-sm',
@@ -140,8 +206,12 @@ export function CustomerSelector() {
         )}
       </div>
 
+      {/* Search dropdown results */}
       {isOpen && results.length > 0 && (
-        <ul className="absolute z-30 mt-1 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg max-h-60 overflow-auto">
+        <ul className={cn(
+          'z-30 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg max-h-60 overflow-auto',
+          inline ? 'relative' : 'absolute mt-1',
+        )}>
           {results.map((c) => (
             <li key={c.id}>
               <button
@@ -175,10 +245,36 @@ export function CustomerSelector() {
       )}
 
       {isOpen && query.length >= 2 && results.length === 0 && !loading && (
-        <div className="absolute z-30 mt-1 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg p-3 text-center text-sm text-surface-500">
+        <div className={cn(
+          'z-30 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg p-3 text-center text-sm text-surface-500',
+          inline ? 'relative' : 'absolute mt-1',
+        )}>
           No customers found
         </div>
       )}
+
+      {/* Action buttons: New Customer (primary) + Walk-in (ghost) */}
+      <div className="flex flex-col gap-1.5">
+        {onNewCustomer && (
+          <button
+            type="button"
+            onClick={onNewCustomer}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800"
+          >
+            <UserPlus className="h-4 w-4" />
+            New Customer
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleWalkIn}
+          disabled={walkInLoading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2 text-sm font-medium text-surface-500 transition-colors hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50"
+        >
+          <UserX className="h-4 w-4" />
+          {walkInLoading ? 'Loading…' : 'Walk-in (no customer info)'}
+        </button>
+      </div>
     </div>
   );
 }

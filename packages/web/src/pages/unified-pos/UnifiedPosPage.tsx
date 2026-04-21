@@ -353,7 +353,11 @@ export function UnifiedPosPage() {
             cartCollapsed ? 'w-12' : 'w-[40%]',
           )}
         >
-          <LeftPanel collapsed={cartCollapsed} onToggle={toggleCart} />
+          <LeftPanel
+            collapsed={cartCollapsed}
+            onToggle={toggleCart}
+            onNewCustomer={() => navigate('/customers/new')}
+          />
         </div>
 
         {/* Right: tabs (repairs / products / misc) — audit §43.1 tiles above */}
