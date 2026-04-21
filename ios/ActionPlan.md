@@ -4580,28 +4580,28 @@ See §16.10 for core flow. Additional items:
 ## §42. Voice & Calls
 
 ### 42.1 Call log (if server tracks)
-- [ ] **Server**: `GET /calls`, `POST /calls/:id/transcript`.
-- [ ] **List** — inbound/outbound calls with customer match.
+- [x] **Server**: `GET /voice/calls` wired via `CallsEndpoints.listCalls()`. `/calls/:id/transcript` 404 → `State.comingSoon` fallback.
+- [x] **List** — `CallLogView` with inbound/outbound arrow icons, direction colors, customer/phone match, debounced 300ms search. Commit `f0ea6e0`.
 - [ ] **Recording playback** — audio file streamed.
-- [ ] **Transcription** — `Speech` framework locally OR server Whisper.
-- [ ] **Search transcripts**.
+- [x] **Transcription (partial)** — `getCallTranscript(id:)` wired; Speech / Whisper pipeline deferred.
+- [x] **Search transcripts** — in-memory filter on `transcriptText` via `CallLogViewModel.filteredCalls(_:)`.
 
 ### 42.2 Outbound call (from app)
-- [ ] **Tap phone number** — system call placed; log recorded.
-- [ ] **Click-to-call on customer / ticket detail**.
+- [x] **Tap phone number** — `CallQuickAction.placeCall(to:)` opens `tel:` URL via `UIApplication.shared.open(_:)`. `cleanPhoneNumber(_:)` strips formatting + US country code.
+- [ ] **Click-to-call on customer / ticket detail** — helper shipped, callsite wiring deferred.
 
 ### 42.3 CallKit integration
-- [ ] **Inbound VoIP** — CallKit card shows customer name / photo / recent ticket.
+- [ ] **Inbound VoIP** — CallKit card shows customer name / photo / recent ticket. (Needs entitlement — deferred.)
 - [ ] **Outbound recent calls** appear in native Phone app.
 
 ### 42.4 PushKit (VoIP push)
-- [ ] **Server pushes VoIP** → iOS wakes app → CallKit invocation.
+- [ ] **Server pushes VoIP** → iOS wakes app → CallKit invocation. (Needs entitlement — deferred.)
 - [ ] **Required entitlement**.
 
 ### 42.5 Voicemail
-- [ ] **List + playback** — `AVPlayer`.
-- [ ] **Transcription**.
-- [ ] **Mark heard / delete / forward**.
+- [x] **List + playback** — `VoicemailListView` + `VoicemailPlayerView` with `AVPlayer`, scrubber, play/pause, 1x/1.5x/2x speed chips, Reduce Motion aware.
+- [ ] **Transcription** — placeholder field shown if server returns it; on-device Speech pipeline deferred.
+- [x] **Mark heard** — swipe action calls `PATCH /api/v1/voicemails/:id/heard`. Delete / forward deferred.
 
 ---
 ## §43. Device Templates / Repair-Pricing Catalog
@@ -4609,12 +4609,12 @@ See §16.10 for core flow. Additional items:
 _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing/services`._
 
 ### 43.1 Catalog browser
-- [ ] **Device family** — Apple / Samsung / Google / etc.
-- [ ] **Model list** per family with thumbnail.
-- [ ] **Service list** per model with default price + part SKU.
+- [x] **Device family** — `RepairPricingCatalogView` family chips row derived from `DeviceTemplate.family` dedup. Commit `df61f91`.
+- [x] **Model list** — `LazyVGrid(.adaptive(minimum: 140))` with `AsyncImage` thumbnails + SF Symbol fallback.
+- [x] **Service list** — `RepairPricingDeviceDetailView` lists services with default price via `CartMath` formatting + part SKU.
 
 ### 43.2 Template selection at intake
-- [ ] **Device picker** → fills IMEI pattern / conditions list / service presets.
+- [x] **Device picker (standalone)** — `RepairPricingServicePicker` multi-select sheet ready for §16.2 POS wiring. IMEI pattern + conditions list display in detail view.
 
 ### 43.3 Price overrides
 - [ ] **Per-tenant price** — override service default.
