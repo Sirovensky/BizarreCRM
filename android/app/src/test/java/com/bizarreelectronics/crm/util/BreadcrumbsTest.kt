@@ -57,4 +57,19 @@ class BreadcrumbsTest {
         assertTrue(out[0].contains("[nav] /dashboard"))
         assertTrue(out[1].contains("[push] type=ticket_assigned"))
     }
+
+    @Test fun `messages with PII are redacted via LogRedactor before storage`() {
+        // §28.6 — Breadcrumbs is a crash-report ingredient; any PII that
+        // lands here would travel off-device via share sheet. Verify the
+        // LogRedactor wrapper strips canonical PII patterns before the
+        // entry hits the ring buffer.
+        val crumbs = Breadcrumbs()
+        crumbs.log(Breadcrumbs.CAT_TAP, "dial 555-555-1234 from ticket")
+        crumbs.log(Breadcrumbs.CAT_SYNC, "email foo@bar.com failed")
+        crumbs.log(Breadcrumbs.CAT_AUTH, "IMEI 490154203237518 bad")
+        val out = crumbs.recent()
+        assertTrue(out[0].contains("[PHONE]"))
+        assertTrue(out[1].contains("[EMAIL]"))
+        assertTrue(out[2].contains("[IMEI]"))
+    }
 }

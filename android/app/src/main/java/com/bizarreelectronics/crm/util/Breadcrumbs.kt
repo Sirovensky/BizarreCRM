@@ -29,9 +29,14 @@ class Breadcrumbs @Inject constructor() {
 
     fun log(category: String, message: String) {
         if (message.isBlank()) return
+        // §28.6 — redact PII before storing so a later crash dump can be
+        // shared with support without leaking customer phone numbers /
+        // emails / IMEIs that sometimes land in breadcrumb strings by
+        // mistake (e.g. "dial 555-555-1234 from ticket 42").
+        val redacted = LogRedactor.redact(message)
         // Trim oldest if we're past the cap. ConcurrentLinkedDeque doesn't
         // have a fixed-size constructor so we cull on add.
-        ring.addLast(Entry(System.currentTimeMillis(), category, message))
+        ring.addLast(Entry(System.currentTimeMillis(), category, redacted))
         while (ring.size > MAX_ENTRIES) {
             ring.pollFirst()
         }
