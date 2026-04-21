@@ -61,9 +61,9 @@ public final class SpotlightCoordinator {
     /// Clears existing entries first, then hands off to the caller-provided
     /// `provider` closures to fetch fresh items per domain.
     public func rebuildAll(
-        ticketProvider:    @Sendable () async -> [Ticket],
-        customerProvider:  @Sendable () async -> [Customer],
-        inventoryProvider: @Sendable () async -> [InventoryItem]
+        ticketProvider:    @Sendable @escaping () async -> [Ticket],
+        customerProvider:  @Sendable @escaping () async -> [Customer],
+        inventoryProvider: @Sendable @escaping () async -> [InventoryItem]
     ) {
         Task {
             if enabledDomains.contains("tickets") {
@@ -92,10 +92,9 @@ public final class SpotlightCoordinator {
             queue: nil
         ) { [weak self] notification in
             guard let self else { return }
+            let ticket = notification.userInfo?["ticket"] as? Ticket
             Task { @MainActor in
-                if let ticket = notification.userInfo?["ticket"] as? Ticket {
-                    self.enqueueTicket(ticket)
-                }
+                if let ticket { self.enqueueTicket(ticket) }
             }
         }
 
@@ -105,10 +104,9 @@ public final class SpotlightCoordinator {
             queue: nil
         ) { [weak self] notification in
             guard let self else { return }
+            let customer = notification.userInfo?["customer"] as? Customer
             Task { @MainActor in
-                if let customer = notification.userInfo?["customer"] as? Customer {
-                    self.enqueueCustomer(customer)
-                }
+                if let customer { self.enqueueCustomer(customer) }
             }
         }
 
@@ -118,10 +116,9 @@ public final class SpotlightCoordinator {
             queue: nil
         ) { [weak self] notification in
             guard let self else { return }
+            let item = notification.userInfo?["inventoryItem"] as? InventoryItem
             Task { @MainActor in
-                if let item = notification.userInfo?["inventoryItem"] as? InventoryItem {
-                    self.enqueueInventoryItem(item)
-                }
+                if let item { self.enqueueInventoryItem(item) }
             }
         }
     }

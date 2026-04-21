@@ -44,7 +44,7 @@ public struct RecordPaymentRequest: Encodable, Sendable {
     }
 }
 
-public struct PaymentResult: Decodable, Sendable {
+public struct PaymentResult: Decodable, Sendable, Equatable {
     public let id: Int64
     public let status: String?
     public let amountCents: Int?
@@ -81,7 +81,7 @@ public final class InvoicePaymentViewModel {
 
     // MARK: - State
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case submitting
         case success(PaymentResult)

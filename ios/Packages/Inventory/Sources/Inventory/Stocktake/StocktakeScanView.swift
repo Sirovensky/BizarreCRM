@@ -46,7 +46,7 @@ public struct StocktakeScanView: View {
             InventoryBarcodeScanSheet { value in
                 let found = vm.applyBarcode(value)
                 barcodeFeedback = found ? "Found: \(value)" : "SKU \(value) not in session"
-                BrandHaptics.light()
+                BrandHaptics.tap()
                 showingBarcodeScanner = false
                 Task {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -78,7 +78,7 @@ public struct StocktakeScanView: View {
         }
         .padding(.horizontal, BrandSpacing.base)
         .padding(.vertical, BrandSpacing.sm)
-        .brandGlass(.regular, tint: .bizarreOrange.opacity(0.3), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous), tint: .bizarreOrange.opacity(0.3))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "Progress: \(s.countedRows) of \(s.totalRows) counted, \(s.discrepancyCount) discrepancies, net variance \(s.netVariance)"
@@ -105,7 +105,7 @@ public struct StocktakeScanView: View {
             .padding(.horizontal, BrandSpacing.base)
             .padding(.vertical, BrandSpacing.sm)
             .frame(maxWidth: .infinity)
-            .brandGlass(.regular, tint: .bizarreOrange, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous), tint: .bizarreOrange)
             .accessibilityLabel(text)
     }
 

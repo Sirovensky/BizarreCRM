@@ -129,7 +129,7 @@ struct CustomerDeviceDetailView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Ticket \(t.orderId)\(t.status?.name.map { ", \($0)" } ?? "")")
+        .accessibilityLabel("Ticket \(t.orderId)\(t.status.map { ", \($0.name)" } ?? "")")
     }
 
     private func loadTickets() async {

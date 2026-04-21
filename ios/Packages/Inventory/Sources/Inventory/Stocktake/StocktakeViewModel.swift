@@ -61,7 +61,7 @@ public final class StocktakeScanViewModel {
     public private(set) var isLoading: Bool = false
     public private(set) var isSubmitting: Bool = false
     public private(set) var errorMessage: String?
-    public private(set) var showReview: Bool = false
+    public var showReview: Bool = false
     public private(set) var isOffline: Bool = false
 
     /// Live mutable counts: key = sku, value = operator-entered qty.

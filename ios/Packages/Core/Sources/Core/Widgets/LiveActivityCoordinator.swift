@@ -1,7 +1,7 @@
 import Foundation
 
 #if os(iOS)
-import ActivityKit
+@preconcurrency import ActivityKit
 
 // MARK: - Shift activity
 
@@ -121,8 +121,9 @@ public final class LiveActivityCoordinator {
     public func updateShiftActivity(durationMinutes: Int) async throws {
         guard let activity = shiftActivity else { return }
         let newState = ShiftActivityAttributes.ContentState(elapsedMinutes: durationMinutes)
-        let content = ActivityContent(state: newState, staleDate: nil)
-        await activity.update(content)
+        await Task { @MainActor in
+            await activity.update(ActivityContent(state: newState, staleDate: nil))
+        }.value
     }
 
     /// End the shift Live Activity.
@@ -131,8 +132,12 @@ public final class LiveActivityCoordinator {
         let finalState = ShiftActivityAttributes.ContentState(
             elapsedMinutes: activity.content.state.elapsedMinutes
         )
-        let content = ActivityContent(state: finalState, staleDate: nil)
-        await activity.end(content, dismissalPolicy: .after(Date.now.addingTimeInterval(5)))
+        await Task { @MainActor in
+            await activity.end(
+                ActivityContent(state: finalState, staleDate: nil),
+                dismissalPolicy: .after(Date.now.addingTimeInterval(5))
+            )
+        }.value
         shiftActivity = nil
         isShiftActive = false
     }
@@ -173,16 +178,21 @@ public final class LiveActivityCoordinator {
             cartTotalCents: cartTotalCents,
             itemCount: itemCount
         )
-        let content = ActivityContent(state: newState, staleDate: nil)
-        await activity.update(content)
+        await Task { @MainActor in
+            await activity.update(ActivityContent(state: newState, staleDate: nil))
+        }.value
     }
 
     /// End the sale Live Activity (call on sale finalize or cancel).
     public func endSaleActivity() async {
         guard let activity = saleActivity else { return }
         let finalState = activity.content.state
-        let content = ActivityContent(state: finalState, staleDate: nil)
-        await activity.end(content, dismissalPolicy: .immediate)
+        await Task { @MainActor in
+            await activity.end(
+                ActivityContent(state: finalState, staleDate: nil),
+                dismissalPolicy: .immediate
+            )
+        }.value
         saleActivity = nil
         isSaleActive = false
     }

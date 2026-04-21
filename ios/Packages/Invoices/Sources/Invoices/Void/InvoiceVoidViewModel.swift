@@ -9,7 +9,7 @@ public struct VoidRequest: Encodable, Sendable {
     public let reason: String
 }
 
-public struct VoidResult: Decodable, Sendable {
+public struct VoidResult: Decodable, Sendable, Equatable {
     public let id: Int64
     public let status: String?
 }
@@ -24,7 +24,7 @@ public final class InvoiceVoidViewModel {
 
     // MARK: - State
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case submitting
         case success(VoidResult)

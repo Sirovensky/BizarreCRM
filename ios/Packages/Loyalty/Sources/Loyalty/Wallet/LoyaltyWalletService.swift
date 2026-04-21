@@ -88,15 +88,24 @@ public actor LoyaltyWalletService {
             throw LoyaltyWalletError.invalidPass
         }
 
-        guard let controller = PKAddPassesViewController(pass: pass) else {
-            throw LoyaltyWalletError.invalidPass
-        }
-
-        guard let root = await rootViewController() else {
-            throw LoyaltyWalletError.noRootViewController
-        }
-
-        await MainActor.run {
+        try await MainActor.run {
+            guard let controller = PKAddPassesViewController(pass: pass) else {
+                throw LoyaltyWalletError.invalidPass
+            }
+            guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive })
+                ?? UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first else {
+                throw LoyaltyWalletError.noRootViewController
+            }
+            guard let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else {
+                throw LoyaltyWalletError.noRootViewController
+            }
+            var top = window.rootViewController
+            while let presented = top?.presentedViewController { top = presented }
+            guard let root = top else { throw LoyaltyWalletError.noRootViewController }
             root.present(controller, animated: true)
         }
     }
@@ -173,11 +182,11 @@ public struct LivePassLibrary: PassLibraryProtocol {
     public init() {}
 
     public func containsPass(_ pass: PKPass) -> Bool {
-        PKPassLibrary.default().containsPass(pass)
+        PKPassLibrary().containsPass(pass)
     }
 
     public func replacePass(with pass: PKPass) -> Bool {
-        PKPassLibrary.default().replacePass(with: pass)
+        PKPassLibrary().replacePass(with: pass)
     }
 }
 

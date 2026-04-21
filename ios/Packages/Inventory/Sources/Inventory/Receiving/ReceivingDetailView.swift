@@ -30,7 +30,7 @@ public struct ReceivingDetailView: View {
                 barcodeFeedback = found
                     ? "Found: \(value)"
                     : "SKU \(value) not in this order"
-                BrandHaptics.light()
+                BrandHaptics.tap()
                 showingBarcodeScanner = false
             }
         }

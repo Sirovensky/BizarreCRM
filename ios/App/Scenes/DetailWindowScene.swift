@@ -49,7 +49,7 @@ public struct DetailWindowScene: View {
     @ViewBuilder
     private func routedView(for route: DeepLinkRoute) -> some View {
         switch route {
-        case .ticketDetail(let id):
+        case .ticket(_, let id):
             // Ticket detail view — wired to TicketRepositoryImpl upstream.
             // The label is purely informational; the real view is injected
             // by the feature package once it is instantiated.
@@ -57,12 +57,12 @@ public struct DetailWindowScene: View {
                 .navigationTitle("Ticket")
                 .accessibilityLabel("Ticket detail for ID \(id)")
 
-        case .customerDetail(let id):
+        case .customer(_, let id):
             Text("Customer \(id)")
                 .navigationTitle("Customer")
                 .accessibilityLabel("Customer detail for ID \(id)")
 
-        case .invoiceDetail(let id):
+        case .invoice(_, let id):
             Text("Invoice \(id)")
                 .navigationTitle("Invoice")
                 .accessibilityLabel("Invoice detail for ID \(id)")

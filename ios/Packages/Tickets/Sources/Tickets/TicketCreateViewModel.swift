@@ -28,6 +28,7 @@ public final class TicketCreateViewModel {
 
     // §63 ext — draft recovery
     public internal(set) var _draftRecord: DraftRecord?
+    public var draftRecord: DraftRecord? { _draftRecord }
     public internal(set) var _pendingDraft: TicketDraft?
     public internal(set) var validationErrors: [String: String] = [:]
 

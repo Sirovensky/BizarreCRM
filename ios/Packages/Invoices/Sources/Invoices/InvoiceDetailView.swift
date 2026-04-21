@@ -19,6 +19,12 @@ public struct InvoiceDetailView: View {
     }
 
     public var body: some View {
+        let voidVM: InvoiceVoidViewModel? = {
+            if case let .loaded(inv) = vm.state {
+                return InvoiceVoidViewModel(api: api, invoiceId: inv.id, canVoid: inv.canVoid)
+            }
+            return nil
+        }()
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             content
@@ -63,23 +69,10 @@ public struct InvoiceDetailView: View {
                 ) { Task { await vm.load() } }
             }
         }
-        .modifier(voidModifier)
-    }
-
-    @ViewBuilder
-    private var voidModifier: some View {
-        // Workaround: attach void alert modifier only when loaded
-        if case let .loaded(inv) = vm.state {
-            EmptyView()
-                .invoiceVoidAlert(
-                    isPresented: $showVoidAlert,
-                    vm: InvoiceVoidViewModel(
-                        api: api,
-                        invoiceId: inv.id,
-                        canVoid: inv.canVoid
-                    )
-                ) { _ in Task { await vm.load() } }
-        }
+        .invoiceVoidAlert(
+            isPresented: $showVoidAlert,
+            vm: voidVM ?? InvoiceVoidViewModel(api: api, invoiceId: 0, canVoid: false)
+        ) { _ in Task { await vm.load() } }
     }
 
     @ToolbarContentBuilder

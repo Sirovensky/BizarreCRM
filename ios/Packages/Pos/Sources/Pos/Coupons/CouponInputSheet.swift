@@ -92,9 +92,9 @@ public struct CouponInputSheet: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(.horizontal, BrandSpacing.base)
                 .padding(.vertical, BrandSpacing.md)
-                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: BrandRadius.md))
+                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .overlay(
-                    RoundedRectangle(cornerRadius: BrandRadius.md)
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
                         .strokeBorder(inputBorderColor, lineWidth: 1.5)
                 )
                 .disabled(vm.isApplied || vm.state.isLoading)
@@ -126,7 +126,7 @@ public struct CouponInputSheet: View {
             appliedChip(coupon: coupon, discountCents: cents)
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .animation(.spring(duration: 0.35), value: vm.isApplied)
-                .accessibilityAnnouncement("Coupon applied, saving \(CartMath.formatCents(cents))")
+                .accessibilityLabel("Coupon applied, saving \(CartMath.formatCents(cents))")
 
         case .error(let message):
             HStack(spacing: BrandSpacing.xs) {
@@ -152,7 +152,7 @@ public struct CouponInputSheet: View {
                     .font(.brandLabelLarge().monospacedDigit())
                     .foregroundStyle(.bizarreOnSurface)
                 Text("\(coupon.ruleName) — saves \(CartMath.formatCents(discountCents))")
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
             Spacer()
@@ -167,9 +167,9 @@ public struct CouponInputSheet: View {
             .accessibilityIdentifier("couponInput.remove")
         }
         .padding(BrandSpacing.md)
-        .background(Color.bizarreSuccess.opacity(0.08), in: RoundedRectangle(cornerRadius: BrandRadius.md))
+        .background(Color.bizarreSuccess.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
         .overlay(
-            RoundedRectangle(cornerRadius: BrandRadius.md)
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
                 .strokeBorder(Color.bizarreSuccess.opacity(0.3), lineWidth: 1)
         )
         .accessibilityIdentifier("couponInput.appliedChip")

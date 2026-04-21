@@ -14,6 +14,14 @@ public struct AppKeyboardShortcut: Identifiable, Sendable, Hashable {
     public let modifiers: EventModifiers
     public let description: String
 
+    public static func == (lhs: AppKeyboardShortcut, rhs: AppKeyboardShortcut) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
     /// Human-readable display label, e.g. "⌘N".
     public var displayLabel: String {
         modifiers.displayString + key.character.displayString

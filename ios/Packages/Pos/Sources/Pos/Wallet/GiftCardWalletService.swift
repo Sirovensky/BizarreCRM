@@ -81,16 +81,21 @@ public actor GiftCardWalletService {
             throw GiftCardWalletError.invalidPass
         }
 
-        guard let controller = PKAddPassesViewController(pass: pass) else {
-            throw GiftCardWalletError.invalidPass
-        }
-
-        guard let root = await rootViewController() else {
-            throw GiftCardWalletError.noRootViewController
-        }
-
-        await MainActor.run {
+        let presented: Bool = await MainActor.run {
+            guard let controller = PKAddPassesViewController(pass: pass) else {
+                return false
+            }
+            guard let root = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow })?.rootViewController else {
+                return false
+            }
             root.present(controller, animated: true)
+            return true
+        }
+        if !presented {
+            throw GiftCardWalletError.noRootViewController
         }
     }
 
@@ -148,11 +153,11 @@ public struct LiveGiftCardPassLibrary: GiftCardPassLibraryProtocol {
     public init() {}
 
     public func containsPass(_ pass: PKPass) -> Bool {
-        PKPassLibrary.default().containsPass(pass)
+        PKPassLibrary().containsPass(pass)
     }
 
     public func replacePass(with pass: PKPass) -> Bool {
-        PKPassLibrary.default().replacePass(with: pass)
+        PKPassLibrary().replacePass(with: pass)
     }
 }
 

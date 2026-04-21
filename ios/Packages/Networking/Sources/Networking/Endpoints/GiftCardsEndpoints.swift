@@ -352,7 +352,7 @@ public struct InvoiceRefundRequest: Encodable, Sendable {
 }
 
 /// Server response from invoice refund (includes optional new gift card when `toGiftCard: true`).
-public struct InvoiceRefundResponse: Decodable, Sendable {
+public struct InvoiceRefundResponse: Decodable, Sendable, Equatable {
     public let refundId: Int64?
     public let issuedGiftCard: GiftCard?
 

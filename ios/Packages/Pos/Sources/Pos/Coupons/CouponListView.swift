@@ -271,16 +271,16 @@ private struct CouponRow: View {
                 statusBadge
             }
             Text(coupon.ruleName)
-                .font(.brandBodySmall())
+                .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
             if let uses = coupon.usesRemaining {
                 Text("\(uses) use\(uses == 1 ? "" : "s") remaining")
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
             if let exp = coupon.expiresAt {
                 Text("Expires \(exp.formatted(.relative(presentation: .named)))")
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(coupon.isExpired() ? .bizarreError : .bizarreOnSurfaceMuted)
             }
         }

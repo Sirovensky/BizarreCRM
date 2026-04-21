@@ -350,7 +350,8 @@ struct MoreMenuView: View {
                     NavigationLink("Invoices") {
                         InvoiceListView(
                             repo: InvoiceRepositoryImpl(api: AppServices.shared.apiClient),
-                            detailRepo: InvoiceDetailRepositoryImpl(api: AppServices.shared.apiClient)
+                            detailRepo: InvoiceDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                            api: AppServices.shared.apiClient
                         )
                     }
                     NavigationLink("Estimates") { EstimateListView(api: AppServices.shared.apiClient) }
@@ -359,7 +360,9 @@ struct MoreMenuView: View {
                     NavigationLink("Expenses") { ExpenseListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Payment links") { PaymentLinksListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Marketing") { CampaignListView(api: AppServices.shared.apiClient) }
-                    NavigationLink("Reports") { ReportsView() }
+                    NavigationLink("Reports") {
+                        ReportsView(repository: LiveReportsRepository(api: AppServices.shared.apiClient))
+                    }
                 }
                 Section("Admin") {
                     NavigationLink("Audit Logs") {
@@ -401,7 +404,8 @@ struct MoreMenuView: View {
                     NavigationLink("SMS") {
                         SmsListView(
                             repo: SmsRepositoryImpl(api: AppServices.shared.apiClient),
-                            threadRepo: SmsThreadRepositoryImpl(api: AppServices.shared.apiClient)
+                            threadRepo: SmsThreadRepositoryImpl(api: AppServices.shared.apiClient),
+                            api: AppServices.shared.apiClient
                         )
                     }
                     NavigationLink("Notifications") { NotificationListView(api: AppServices.shared.apiClient) }

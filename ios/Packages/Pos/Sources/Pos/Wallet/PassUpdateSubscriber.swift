@@ -136,7 +136,7 @@ public struct PassUpdatePayload: Sendable {
 public func replacePassSilently(from url: URL) throws -> Bool {
     let data = try Data(contentsOf: url)
     let pass = try PKPass(data: data)
-    return PKPassLibrary.default().replacePass(with: pass)
+    return PKPassLibrary().replacePass(with: pass)
 }
 
 public enum PassReplaceError: Error, LocalizedError, Sendable {

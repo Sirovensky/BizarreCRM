@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import UIKit
 import Core
 
 // MARK: - Persisted Printer Record
@@ -47,7 +48,7 @@ public final class PrinterSettingsViewModel {
 
     public private(set) var printers: [PersistedPrinter] = []
     public private(set) var isLoading = false
-    public private(set) var errorMessage: String?
+    public var errorMessage: String?
 
     // Network ESC/POS add-form fields (bound from view)
     public var newPrinterHost: String = ""

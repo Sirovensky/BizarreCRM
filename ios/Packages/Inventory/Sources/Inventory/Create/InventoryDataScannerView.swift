@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import VisionKit
+import DesignSystem
 
 /// Lightweight `UIViewControllerRepresentable` wrapper around
 /// `DataScannerViewController` restricted to barcode recognition.
@@ -44,20 +45,18 @@ struct InventoryDataScannerView: UIViewControllerRepresentable {
             self.onScan = onScan
         }
 
-        nonisolated func dataScanner(
+        func dataScanner(
             _ dataScanner: DataScannerViewController,
             didAdd addedItems: [RecognizedItem],
             allItems: [RecognizedItem]
         ) {
             guard let item = addedItems.first, case .barcode(let barcode) = item else { return }
             guard let value = barcode.payloadStringValue, !value.isEmpty else { return }
-            MainActor.assumeIsolated {
-                guard !didDeliver else { return }
-                didDeliver = true
-                dataScanner.stopScanning()
-                BrandHaptics.light()
-                onScan(value)
-            }
+            guard !didDeliver else { return }
+            didDeliver = true
+            dataScanner.stopScanning()
+            BrandHaptics.tap()
+            onScan(value)
         }
     }
 }

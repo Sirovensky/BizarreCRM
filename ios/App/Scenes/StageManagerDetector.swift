@@ -46,7 +46,7 @@ public class StageManagerDetector: @unchecked Sendable {
 
     // MARK: Init
 
-    private var observations: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var observations: [NSObjectProtocol] = []
 
     /// Designated initialiser. `internal` so test doubles can call `super.init()`.
     init() {

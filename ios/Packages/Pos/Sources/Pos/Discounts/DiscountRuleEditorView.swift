@@ -15,7 +15,7 @@ public final class DiscountRuleEditorViewModel {
 
     public private(set) var mode: Mode
     public private(set) var isSaving: Bool = false
-    public private(set) var errorMessage: String? = nil
+    public var errorMessage: String? = nil
     public private(set) var savedRule: DiscountRule? = nil
 
     // MARK: - Form fields

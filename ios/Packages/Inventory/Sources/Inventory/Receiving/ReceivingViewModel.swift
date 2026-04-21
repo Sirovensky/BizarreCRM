@@ -40,7 +40,7 @@ public final class ReceivingDetailViewModel {
     public private(set) var isLoading: Bool = false
     public private(set) var isSubmitting: Bool = false
     public private(set) var errorMessage: String?
-    public private(set) var showReconciliation: Bool = false
+    public var showReconciliation: Bool = false
     public private(set) var finalizeResult: [ReconciliationEntry] = []
 
     /// Operator-entered received quantities, keyed by line-item id.

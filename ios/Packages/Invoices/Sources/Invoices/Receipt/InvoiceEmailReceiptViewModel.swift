@@ -27,7 +27,7 @@ public final class InvoiceEmailReceiptViewModel {
     public var sendSmsCopy: Bool = false
     public var customerPhone: String?
 
-    public enum State: Sendable {
+    public enum State: Sendable, Equatable {
         case idle
         case sending
         case success

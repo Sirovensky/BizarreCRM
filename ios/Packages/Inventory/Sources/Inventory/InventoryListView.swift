@@ -180,8 +180,8 @@ public struct InventoryListView: View {
         }
         .padding(.horizontal, BrandSpacing.base)
         .padding(.vertical, BrandSpacing.sm)
-        .brandGlass(.regular, tint: .bizarreOrange.opacity(0.3),
-                    in: RoundedRectangle(cornerRadius: 0, style: .continuous))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 0, style: .continuous),
+                    tint: .bizarreOrange.opacity(0.3))
     }
 
     // MARK: - Shared toolbar

@@ -104,7 +104,7 @@ public struct SaleTenderRecord: Identifiable, Equatable, Sendable {
 // MARK: - SaleSummary (search results)
 
 /// Lightweight version of a sale for display in the reprint search list.
-public struct SaleSummary: Identifiable, Equatable, Sendable {
+public struct SaleSummary: Identifiable, Equatable, Hashable, Sendable {
     public let id: Int64
     public let receiptNumber: String
     public let date: Date
