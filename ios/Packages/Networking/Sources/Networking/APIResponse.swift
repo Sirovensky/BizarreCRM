@@ -21,6 +21,8 @@ public enum APITransportError: Error, LocalizedError, Sendable {
     case networkUnavailable
     case certificatePinFailed
     case noBaseURL
+    /// Server returned 404 or 501 — endpoint not yet deployed.
+    case notImplemented
 
     public var errorDescription: String? {
         switch self {
@@ -40,6 +42,8 @@ public enum APITransportError: Error, LocalizedError, Sendable {
             return "The server's certificate did not match the pinned key."
         case .noBaseURL:
             return "No server selected — enter your server address."
+        case .notImplemented:
+            return "This feature is not yet available on the server."
         }
     }
 }

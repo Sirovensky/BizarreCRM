@@ -7,6 +7,7 @@ import Networking
 public struct InventoryDetailView: View {
     @State private var vm: InventoryDetailViewModel
     @State private var showingEdit: Bool = false
+    @State private var showingAdjust: Bool = false
     private let api: APIClient?
 
     public init(repo: InventoryDetailRepository, itemId: Int64, api: APIClient? = nil) {
@@ -31,6 +32,13 @@ public struct InventoryDetailView: View {
                     }
                     .accessibilityLabel("Edit item")
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button { showingAdjust = true } label: {
+                        Label("Adjust stock", systemImage: "slider.horizontal.3")
+                    }
+                    .keyboardShortcut("A", modifiers: .command)
+                    .accessibilityLabel("Adjust stock quantity")
+                }
             }
         }
         .sheet(isPresented: $showingEdit) {
@@ -38,6 +46,16 @@ public struct InventoryDetailView: View {
                 InventoryEditView(api: api, item: resp.item) {
                     Task { await vm.load() }
                 }
+            }
+        }
+        .sheet(isPresented: $showingAdjust) {
+            if let api, case let .loaded(resp) = vm.state {
+                InventoryAdjustSheet(
+                    itemId: resp.item.id,
+                    itemName: resp.item.displayName,
+                    api: api,
+                    onSuccess: { Task { await vm.load() } }
+                )
             }
         }
     }

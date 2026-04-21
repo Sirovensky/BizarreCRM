@@ -10,6 +10,7 @@ public struct InventoryListView: View {
     @State private var path: [Int64] = []
     @State private var selected: Int64?
     @State private var showingCreate: Bool = false
+    @State private var showingLowStock: Bool = false
     private let detailRepo: InventoryDetailRepository
     private let api: APIClient?
 
@@ -49,10 +50,15 @@ public struct InventoryListView: View {
             .navigationDestination(for: Int64.self) { id in
                 InventoryDetailView(repo: detailRepo, itemId: id, api: api)
             }
-            .toolbar { newItemToolbar }
+            .toolbar { listToolbar }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api {
                     InventoryCreateView(api: api)
+                }
+            }
+            .sheet(isPresented: $showingLowStock) {
+                if let api {
+                    InventoryLowStockView(api: api)
                 }
             }
         }
@@ -75,11 +81,16 @@ public struct InventoryListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
-            .toolbar { newItemToolbar }
+            .toolbar { listToolbar }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api {
                     InventoryCreateView(api: api)
+                }
+            }
+            .sheet(isPresented: $showingLowStock) {
+                if let api {
+                    InventoryLowStockView(api: api)
                 }
             }
         } detail: {
@@ -96,13 +107,22 @@ public struct InventoryListView: View {
 
     // MARK: - Shared toolbar / content
 
-    private var newItemToolbar: some ToolbarContent {
+    @ToolbarContentBuilder
+    private var listToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button { showingCreate = true } label: {
                 Image(systemName: "plus")
             }
             .keyboardShortcut("N", modifiers: .command)
             .accessibilityLabel("New item")
+            .disabled(api == nil)
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button { showingLowStock = true } label: {
+                Label("Low stock", systemImage: "exclamationmark.triangle")
+            }
+            .keyboardShortcut("L", modifiers: [.command, .shift])
+            .accessibilityLabel("View low stock items")
             .disabled(api == nil)
         }
     }
@@ -163,13 +183,15 @@ public struct InventoryListView: View {
         } label: {
             Label("Edit", systemImage: "pencil")
         }
-        // Stock-adjust endpoint exists on the server but is gated behind an
-        // admin/manager permission; wire it in a later phase. Shown disabled
-        // so operators know it's coming without expecting it to work yet.
-        Button {} label: {
-            Label("Adjust stock", systemImage: "slider.horizontal.3")
+        if let api {
+            Button {
+                // Jump to detail — InventoryDetailView owns the adjust sheet.
+                selected = item.id
+            } label: {
+                Label("Adjust stock", systemImage: "slider.horizontal.3")
+            }
+            .disabled(api == nil)
         }
-        .disabled(true)
     }
 
     private var filterChips: some View {
