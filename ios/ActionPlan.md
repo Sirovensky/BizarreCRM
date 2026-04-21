@@ -4421,20 +4421,21 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Presets** — VIPs / Dormant / New / High-LTV / Repeat / At-risk.
 
 ### 37.3 NPS / Surveys
-- [ ] **Post-service SMS survey** — "Rate us 1–10".
+- [x] **Post-service SMS survey** — `CSATSurveyView` (5-star + comment, POST /surveys/csat) + `NPSSurveyView` (0-10 + chips + free-text, POST /surveys/nps). `SurveyAutoSender` handles 24h-delayed push trigger.
 - [ ] **Response tracking** — `GET /surveys/responses`.
-- [ ] **Detractor alert** — score ≤ 6 pings manager.
+- [x] **Detractor alert** — `DetractorAlertView` (manager-role push `kind:"survey.detractor"`) with Call / SMS / Assign CTAs.
 - [ ] **NPS dashboard** — score + trend + themes.
 
 ### 37.4 Referrals
-- [ ] **Referral code** per customer.
-- [ ] **Share link** — deep link + QR to public signup.
-- [ ] **Credit on qualifying sale** — sender + receiver.
-- [ ] **Leaderboard**.
+- [x] **Referral code** per customer — `ReferralCode` model + `ReferralService.getOrGenerateCode`.
+- [x] **Share link** — `generateShareLink` (universal https link) + `generateQR` (CIFilter QR); `ReferralCardView` with Share sheet.
+- [x] **Credit on qualifying sale** — `ReferralCreditCalculator` (flat / percentage / min-sale); `ReferralRule` + `ReferralRuleEditorView`.
+- [x] **Leaderboard** — `ReferralLeaderboardView` (iPhone list + iPad Table, top 10 + revenue).
 
 ### 37.5 Reviews
-- [ ] **After paid invoice** — prompt for Google/Yelp review.
-- [ ] **Gate by rating** — if user says 5★, deep-link to Google; else in-app feedback form.
+- [x] **After paid invoice** — `SendReviewLinkSheet` (platform chip selector + rate-limited send via `ReviewSolicitationService`).
+- [x] **Gate by rating** — `ExternalReviewAlert` (push `kind:"review.new"`) with draft-response + Open-in-Safari. `ReviewSettingsView` admin config.
+- [x] **Review platforms** — `ReviewPlatform` enum (google/yelp/facebook/other); `ReviewSettingsView` admin URL editor.
 
 ### 37.6 Public profile / landing
 - [ ] **Share my shop** — generates short URL with intake form + reviews.
