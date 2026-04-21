@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   Command, Search, ArrowRight, LayoutDashboard, Users, Power, Database,
   AlertTriangle, Download, Activity, FileText, Stethoscope, Wrench, Settings,
-  RefreshCw, PlayCircle, StopCircle,
+  RefreshCw, PlayCircle, StopCircle, LogOut, X,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useServerStore } from '@/stores/serverStore';
+import { useAuthStore } from '@/stores/authStore';
 import toast from 'react-hot-toast';
 
 interface CommandEntry {
@@ -35,6 +36,7 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const isMultiTenant = useServerStore((s) => s.stats?.multiTenant) ?? false;
+  const logout = useAuthStore((s) => s.logout);
 
   const commands = useMemo<CommandEntry[]>(() => {
     const list: CommandEntry[] = [
@@ -97,9 +99,25 @@ export function CommandPalette() {
           else toast.error(res.message ?? 'Stop failed');
         },
       },
+      {
+        id: 'act-logout', group: 'Actions', label: 'Log out',
+        icon: LogOut, keywords: 'sign out',
+        onRun: async () => {
+          try { await getAPI().management.logout(); } catch { /* ignore — local logout still fires */ }
+          logout();
+          navigate('/login', { replace: true });
+        },
+      },
+      {
+        id: 'act-close-dashboard', group: 'Actions', label: 'Close dashboard',
+        icon: X, keywords: 'quit exit',
+        onRun: async () => {
+          await getAPI().system.closeDashboard();
+        },
+      },
     );
     return list;
-  }, [isMultiTenant, navigate]);
+  }, [isMultiTenant, navigate, logout]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
