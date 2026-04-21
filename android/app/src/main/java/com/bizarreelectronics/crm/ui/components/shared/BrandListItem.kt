@@ -11,6 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /**
@@ -70,11 +73,21 @@ fun BrandListItem(
             .fillMaxWidth()
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = ripple(),
-                        onClick = onClick,
-                    )
+                    // §26.1 — merge descendants + Role.Button so TalkBack
+                    // announces the headline + support + trailing-badge text
+                    // as one labeled button instead of focusing each
+                    // composable individually and reading them as unrelated
+                    // pieces. clickable() is still applied on top so the
+                    // ripple / tap target keeps working.
+                    Modifier
+                        .semantics(mergeDescendants = true) {
+                            role = Role.Button
+                        }
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = ripple(),
+                            onClick = onClick,
+                        )
                 } else {
                     Modifier
                 },

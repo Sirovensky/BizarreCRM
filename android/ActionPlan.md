@@ -59,7 +59,7 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~12% | ReduceMotion util + Settings toggle + tests + **BrandTopAppBar heading() semantics (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
+| 26 | Accessibility | ~16% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + **BrandListItem mergeDescendants/Role.Button (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~65% | SQLCipher, EncryptedSharedPrefs, Network Security Config, FLAG_SECURE + setRecentsScreenshotEnabled, **RedactingHttpLogger (NEW)** + ClipboardUtil sensitive-clear + OTP detect, **SessionRevoked banner (NEW)**, ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
@@ -1589,7 +1589,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `backup_failed` (High, timeSensitive).
   - `security_event` (Max).
 - [ ] Each channel exposes vibration pattern + sound + bypass DND (for critical only) + badge enabled.
-- [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
+- [x] **Entity allowlist** on deep-link parse (security — prevent injected types).
 - [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (`util/QuietHours.kt` + Settings → Notifications → Quiet hours card with toggle + start/end TimePicker rows. SLA breach + security alerts allow-listed. System DND check still pending.)
 - [ ] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach.
 - [x] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
@@ -2391,8 +2391,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] `semantics { heading() }` on screen titles.
 - [ ] `semantics { stateDescription = ... }` on toggle-like rows.
 - [ ] Touch target ≥ 48dp.
-- [ ] Linear reading order: `mergeDescendants = true` on compound composables where parent has label.
-- [ ] Custom `semantics { role = Role.Button/Checkbox/... }` where Material3 default wrong.
+- [~] Linear reading order: `mergeDescendants = true` on compound composables where parent has label.
+- [~] Custom `semantics { role = Role.Button/Checkbox/... }` where Material3 default wrong.
 - [ ] Announce state change: `LiveRegionMode.Polite` for Snackbars, `.Assertive` for errors.
 - [ ] Focus management: `FocusRequester` sets first-responder on screen open; focus returns to opener on dismiss.
 - [ ] Skip-nav: big "Skip to main" anchor on dashboard.
