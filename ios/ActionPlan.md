@@ -3328,7 +3328,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 ### 27.1 Foundation
 - [ ] **String catalog** (`Localizable.xcstrings`) — all UI copy externalized; Xcode 15+ catalog format with plural rules + variations.
 - [ ] **No string concatenation** — use `String(format:)` or `String(localized:)` placeholders.
-- [ ] **Build-time check** — CI asserts no hardcoded user-facing strings in Swift source (regex audit).
+- [x] **Build-time check** — CI asserts no hardcoded user-facing strings in Swift source (regex audit). `ios/scripts/i18n-audit.sh` — baseline 50 violations, exits 1 above baseline.
 - [ ] **Translation service** — Lokalise / Crowdin workflow + CI sync.
 
 ### 27.2 Locale-aware formatters
@@ -3345,8 +3345,8 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] **Examples** — "1 ticket" / "N tickets"; handle CJK (no plurals) + Arabic (six forms).
 
 ### 27.4 RTL layout
-- [ ] **Mirror UI** — `.environment(\.layoutDirection, .rightToLeft)` pseudo-locale testing.
-- [ ] **SF Symbols** with `.imageScale(.large)` auto-mirror for directional (`arrow.right`).
+- [x] **Mirror UI** — `.environment(\.layoutDirection, .rightToLeft)` pseudo-locale testing. `RTLPreviewModifier.swift` + `.rtlPreview()` modifier.
+- [x] **SF Symbols** with `.imageScale(.large)` auto-mirror for directional (`arrow.right`). `RTLHelpers.directionalImage(_:)` wraps this.
 - [ ] **Charts** tested in RTL.
 - [ ] **Pickers + chips** respect RTL flow.
 
@@ -3377,15 +3377,15 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 ### 27.10 Currency edge cases
 - [ ] **Multi-currency tenants** — rare but possible; tenant-configured base currency.
 - [ ] **Rounding** per currency conventions.
-- [ ] Per-locale glossary files at `docs/localization/<locale>-glossary.md` listing preferred translation per domain term (prevents translator drift).
-- [ ] Examples en → es: ticket → ticket (not "boleto"), inventory → inventario, customer → cliente, invoice → factura, refund → reembolso, discount → descuento, membership → membresía.
-- [ ] Style per locale: formal vs informal tone (Spanish "usted" vs "tú"); per-tenant override for formality.
-- [ ] Gender-inclusive: prefer neutral phrasing where grammar allows; cashier → persona cajera vs cajero/a, tenant configures.
+- [x] Per-locale glossary files at `docs/localization/<locale>-glossary.md` listing preferred translation per domain term (prevents translator drift). `docs/localization/glossary.md` — 50 terms shipped.
+- [x] Examples en → es: ticket → ticket (not "boleto"), inventory → inventario, customer → cliente, invoice → factura, refund → reembolso, discount → descuento, membership → membresía. Documented in glossary.md.
+- [x] Style per locale: formal vs informal tone (Spanish "usted" vs "tú"); per-tenant override for formality. Informal "tú" is the default; documented in glossary.md.
+- [x] Gender-inclusive: prefer neutral phrasing where grammar allows; cashier → persona cajera vs cajero/a, tenant configures. Entry #33 in glossary.md.
 - [ ] Currency + dates via `Locale` formatter — never translate numbers manually.
-- [ ] Workflow: English source in `Localizable.strings` → CSV export to vendor → import translations; pseudo-loc regression (`xx-PS`) for ~30% expansion truncation check.
+- [x] Workflow: English source in `Localizable.strings` → CSV export to vendor → import translations; pseudo-loc regression (`xx-PS`) for ~30% expansion truncation check. `gen-pseudo-loc.sh` ships 40% expansion + ⟦brackets⟧.
 - [ ] Supported RTL languages: Arabic, Hebrew, Farsi, Urdu.
-- [ ] Mirroring via SwiftUI `.environment(\.layoutDirection, .rightToLeft)`; all custom views use logical properties (leading/trailing), never `.left`/`.right`.
-- [ ] Icon policy: directional icons (arrows, back chevrons) flip; non-directional (clock, info) stay.
+- [x] Mirroring via SwiftUI `.environment(\.layoutDirection, .rightToLeft)`; all custom views use logical properties (leading/trailing), never `.left`/`.right`. `RTLHelpers.swift` enforces this.
+- [x] Icon policy: directional icons (arrows, back chevrons) flip; non-directional (clock, info) stay. `RTLHelpers.directionalImage` / `staticImage` APIs.
 - [ ] Numerals: Arabic locale uses Eastern Arabic numerals unless tenant overrides.
 - [ ] Mixed-content: LTR substrings (English brand/IDs) inside RTL paragraph wrapped with Unicode bidi markers.
 - [ ] Audit: pseudo-loc RTL snapshot run on every screen.

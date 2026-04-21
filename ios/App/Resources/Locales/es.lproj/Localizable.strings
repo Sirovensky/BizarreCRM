@@ -1,0 +1,204 @@
+/* BizarreCRM — Spanish (es) Localizable.strings
+   §27 i18n scaffold — idiomatic Latin-American Spanish (es-419 base).
+   Tone: professional, informal "tú" register.  See docs/localization/glossary.md
+   for term decisions (e.g. "ticket" kept as-is, "boleto" never used).
+*/
+
+// MARK: - Common actions
+"action.save"               = "Guardar";
+"action.cancel"             = "Cancelar";
+"action.delete"             = "Eliminar";
+"action.edit"               = "Editar";
+"action.done"               = "Listo";
+"action.add"                = "Agregar";
+"action.remove"             = "Quitar";
+"action.close"              = "Cerrar";
+"action.retry"              = "Reintentar";
+"action.refresh"            = "Actualizar";
+"action.search"             = "Buscar";
+"action.filter"             = "Filtrar";
+"action.sort"               = "Ordenar";
+"action.share"              = "Compartir";
+"action.export"             = "Exportar";
+"action.import"             = "Importar";
+"action.print"              = "Imprimir";
+"action.scan"               = "Escanear";
+"action.send"               = "Enviar";
+"action.submit"             = "Enviar";
+"action.confirm"            = "Confirmar";
+"action.archive"            = "Archivar";
+"action.unarchive"          = "Desarchivar";
+"action.duplicate"          = "Duplicar";
+"action.merge"              = "Fusionar";
+"action.convert"            = "Convertir";
+"action.assign"             = "Asignar";
+"action.signIn"             = "Iniciar sesión";
+"action.signOut"            = "Cerrar sesión";
+"action.continue"           = "Continuar";
+"action.back"               = "Atrás";
+"action.next"               = "Siguiente";
+"action.previous"           = "Anterior";
+"action.apply"              = "Aplicar";
+"action.reset"              = "Restablecer";
+
+// MARK: - Common status
+"status.loading"            = "Cargando…";
+"status.empty"              = "Sin elementos";
+"status.error"              = "Algo salió mal";
+"status.offline"            = "Sin conexión";
+"status.online"             = "En línea";
+"status.syncing"            = "Sincronizando…";
+"status.synced"             = "Sincronizado";
+"status.pending"            = "Pendiente";
+"status.failed"             = "Fallido";
+"status.success"            = "Éxito";
+"status.active"             = "Activo";
+"status.inactive"           = "Inactivo";
+"status.draft"              = "Borrador";
+"status.archived"           = "Archivado";
+
+// MARK: - Field labels
+"field.customer.name"       = "Nombre del cliente";
+"field.first.name"          = "Nombre";
+"field.last.name"           = "Apellido";
+"field.company"             = "Empresa";
+"field.email"               = "Correo electrónico";
+"field.phone"               = "Número de teléfono";
+"field.address"             = "Dirección";
+"field.city"                = "Ciudad";
+"field.state"               = "Estado";
+"field.zip"                 = "Código postal";
+"field.country"             = "País";
+"field.notes"               = "Notas";
+"field.description"         = "Descripción";
+"field.title"               = "Título";
+"field.amount"              = "Monto";
+"field.price"               = "Precio";
+"field.quantity"            = "Cantidad";
+"field.sku"                 = "SKU";
+"field.barcode"             = "Código de barras";
+"field.serial.number"       = "Número de serie";
+"field.date"                = "Fecha";
+"field.time"                = "Hora";
+"field.due.date"            = "Fecha de vencimiento";
+"field.password"            = "Contraseña";
+"field.search"              = "Buscar";
+"field.tax"                 = "Impuesto";
+"field.discount"            = "Descuento";
+"field.subtotal"            = "Subtotal";
+"field.total"               = "Total";
+
+// MARK: - Ticket status
+"ticket.status.intake"          = "Recepción";
+"ticket.status.diagnosing"      = "Diagnóstico";
+"ticket.status.waitingForParts" = "En espera de piezas";
+"ticket.status.inRepair"        = "En reparación";
+"ticket.status.repairComplete"  = "Reparación completa";
+"ticket.status.readyForPickup"  = "Listo para recoger";
+"ticket.status.pickedUp"        = "Entregado";
+"ticket.status.cancelled"       = "Cancelado";
+"ticket.status.unrepairable"    = "Sin reparación posible";
+
+// MARK: - Ticket labels
+"ticket.title"              = "Ticket";
+"ticket.list.title"         = "Tickets";
+"ticket.new"                = "Nuevo ticket";
+"ticket.detail.title"       = "Detalles del ticket";
+"ticket.device"             = "Dispositivo";
+"ticket.technician"         = "Técnico";
+"ticket.priority"           = "Prioridad";
+"ticket.priority.low"       = "Baja";
+"ticket.priority.medium"    = "Media";
+"ticket.priority.high"      = "Alta";
+"ticket.priority.urgent"    = "Urgente";
+
+// MARK: - Customer labels
+"customer.title"            = "Cliente";
+"customer.list.title"       = "Clientes";
+"customer.new"              = "Nuevo cliente";
+"customer.detail.title"     = "Detalles del cliente";
+"customer.ltv"              = "Valor de por vida";
+"customer.since"            = "Cliente desde";
+
+// MARK: - Invoice labels
+"invoice.title"             = "Factura";
+"invoice.list.title"        = "Facturas";
+"invoice.new"               = "Nueva factura";
+"invoice.status.unpaid"     = "Sin pagar";
+"invoice.status.paid"       = "Pagada";
+"invoice.status.overdue"    = "Vencida";
+"invoice.status.voided"     = "Anulada";
+"invoice.status.refunded"   = "Reembolsada";
+
+// MARK: - Inventory labels
+"inventory.title"           = "Inventario";
+"inventory.list.title"      = "Inventario";
+"inventory.new"             = "Nuevo artículo";
+"inventory.inStock"         = "En existencia";
+"inventory.outOfStock"      = "Sin existencia";
+"inventory.lowStock"        = "Stock bajo";
+
+// MARK: - Expense labels
+"expense.title"             = "Gasto";
+"expense.list.title"        = "Gastos";
+"expense.new"               = "Nuevo gasto";
+"expense.category"          = "Categoría";
+"expense.receipt"           = "Comprobante";
+
+// MARK: - Appointment labels
+"appointment.title"         = "Cita";
+"appointment.list.title"    = "Citas";
+"appointment.new"           = "Nueva cita";
+"appointment.status.scheduled"  = "Programada";
+"appointment.status.confirmed"  = "Confirmada";
+"appointment.status.cancelled"  = "Cancelada";
+"appointment.status.completed"  = "Completada";
+"appointment.status.noShow"     = "No se presentó";
+
+// MARK: - Employee labels
+"employee.title"            = "Empleado";
+"employee.list.title"       = "Empleados";
+"employee.clockIn"          = "Registrar entrada";
+"employee.clockOut"         = "Registrar salida";
+"employee.clockedIn"        = "Entrada registrada";
+"employee.clockedOut"       = "Salida registrada";
+
+// MARK: - Dashboard
+"dashboard.title"           = "Panel";
+"dashboard.revenue.today"   = "Ingresos de hoy";
+"dashboard.tickets.open"    = "Tickets abiertos";
+"dashboard.recentActivity"  = "Actividad reciente";
+
+// MARK: - Navigation / tabs
+"nav.dashboard"             = "Panel";
+"nav.tickets"               = "Tickets";
+"nav.customers"             = "Clientes";
+"nav.inventory"             = "Inventario";
+"nav.invoices"              = "Facturas";
+"nav.expenses"              = "Gastos";
+"nav.appointments"          = "Citas";
+"nav.reports"               = "Reportes";
+"nav.settings"              = "Configuración";
+"nav.pos"                   = "Punto de venta";
+
+// MARK: - Settings
+"settings.title"            = "Configuración";
+"settings.account"          = "Cuenta";
+"settings.notifications"    = "Notificaciones";
+"settings.appearance"       = "Apariencia";
+"settings.language"         = "Idioma";
+"settings.security"         = "Seguridad";
+"settings.help"             = "Ayuda";
+"settings.about"            = "Acerca de";
+
+// MARK: - Errors / alerts
+"error.generic"             = "Ocurrió un error inesperado. Por favor, intenta de nuevo.";
+"error.network"             = "Error de red. Verifica tu conexión e intenta de nuevo.";
+"error.notFound"            = "Elemento no encontrado.";
+"error.unauthorized"        = "No tienes permiso para realizar esta acción.";
+"error.validation"          = "Por favor, corrige los campos marcados.";
+"alert.deleteConfirm.title" = "¿Eliminar?";
+"alert.deleteConfirm.message" = "Esta acción no se puede deshacer.";
+"alert.unsavedChanges.title" = "Cambios sin guardar";
+"alert.unsavedChanges.message" = "Tienes cambios sin guardar. ¿Descartarlos?";
+"alert.discard"             = "Descartar";
