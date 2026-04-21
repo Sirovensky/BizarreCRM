@@ -12,6 +12,7 @@ let package = Package(
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
         .package(path: "../Persistence"),
+        .package(path: "../Sync"),
         .package(path: "../Inventory"),
         .package(path: "../Customers"),
         .package(path: "../Hardware")
@@ -19,11 +20,11 @@ let package = Package(
     targets: [
         .target(
             name: "Pos",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Inventory", "Customers", "Hardware"]
+            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Sync", "Inventory", "Customers", "Hardware"]
         ),
         .testTarget(
             name: "PosTests",
-            dependencies: ["Pos", "Networking", "Inventory", "Customers", "Hardware", "Persistence"]
+            dependencies: ["Pos", "Networking", "Inventory", "Customers", "Hardware", "Persistence", "Sync"]
         )
     ]
 )

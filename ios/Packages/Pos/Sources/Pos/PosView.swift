@@ -5,12 +5,16 @@ import DesignSystem
 import Hardware
 import Networking
 import Persistence
+import Sync
 import Inventory
 import Customers
 
 /// POS root screen. §16.4 wires the customer attach flow.
 public struct PosView: View {
     @State private var cart = Cart()
+    /// §16.12 — offline-aware checkout + cart persistence.
+    @State private var cartVM = CartViewModel()
+    @State private var showingOfflineQueue: Bool = false
     @State private var search: PosSearchViewModel
     @State private var showingCustomLine: Bool = false
     @State private var postSale: PosPostSaleViewModel?
@@ -84,6 +88,34 @@ public struct PosView: View {
         }
         .task { await search.load() }
         .task { await loadRegisterSession() }
+        .task { await cartVM.restoreSnapshotIfAvailable(into: cart) }
+        .sheet(isPresented: $showingOfflineQueue) {
+            OfflineSaleQueueView()
+        }
+        .overlay(alignment: .top) {
+            // §16.12 — offline sale indicator chip.
+            if SyncManager.shared.pendingCount > 0 {
+                OfflineSaleIndicator(queueCount: SyncManager.shared.pendingCount) {
+                    showingOfflineQueue = true
+                }
+                .padding(.top, BrandSpacing.sm)
+                .animation(BrandMotion.snappy, value: SyncManager.shared.pendingCount)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            // §16.12 — offline sale toast
+            if let msg = cartVM.toastMessage {
+                Text(msg)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.sm)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, BrandSpacing.xxl)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("pos.offlineToast")
+            }
+        }
         .fullScreenCover(isPresented: $showingOpenRegister) {
             // §16.10 — drawer-lock sheet. Cashier ID 0 is a placeholder
             // until the `/auth/me` propagation path wires the real user
@@ -505,7 +537,21 @@ public struct PosView: View {
     private func startCharge() {
         guard !cart.isEmpty else { return }
         BrandHaptics.tapMedium()
-        postSale = buildPostSaleViewModel()
+        Task {
+            // §16.12 — offline path: if offline, enqueue instead of opening the charge sheet.
+            let handledOffline = await cartVM.checkoutIfOffline(
+                cart: cart,
+                cashSession: registerSession
+            )
+            if handledOffline {
+                BrandHaptics.success()
+                // Persist the snapshot so the op survives app kill.
+                await cartVM.saveSnapshot(cart: cart, cashSessionId: registerSession?.id)
+                return
+            }
+            // Online path — proceed with the normal post-sale sheet.
+            postSale = buildPostSaleViewModel()
+        }
     }
 
     /// Assemble the post-sale view model from the current cart. Snapshots

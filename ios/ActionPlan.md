@@ -1816,9 +1816,9 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.12 Offline POS mode
 - [ ] **Local catalog** — full inventory + pricing cached (GRDB), daily refresh on launch.
-- [ ] **Offline sale** — queue to GRDB sync-queue; temp IDs; BlockChyp offline-auth or skip card (cash only).
-- [ ] **Sync replay** — when online, push sales in order; handle server rejection (price changed, item OOS) with staff dialog.
-- [ ] **Offline banner** — persistent glass chip "Offline — sales will sync" at top of POS.
+- [x] **Offline sale** — queue to GRDB sync-queue via `PosSyncOpExecutor` + `CartViewModel.checkoutIfOffline`; `PosCartSnapshotStore` persists cart across kills; auto-drain via `SyncManager.autoStart()` on reconnect. (SHA: pending commit)
+- [x] **Sync replay** — `SyncManager` drain loop + `PosSyncOpExecutor` dispatch; 409-conflict dead-lettered; `OfflineSaleQueueView` + `OfflineSaleDetailView` for manual retry/cancel.
+- [x] **Offline banner** — `OfflineSaleIndicator` glass chip in POS chrome; taps into `OfflineSaleQueueView`. (SHA: pending commit)
 - [ ] **Stop-sell** — if any part of catalog > 24h stale, warn before sale.
 
 ### 16.13 Hardware integration points (see §17 for detail)
