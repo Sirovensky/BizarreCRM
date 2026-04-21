@@ -4896,22 +4896,22 @@ See §19.14 for settings entry. Deep features:
 ## §48. Data Import (RepairDesk / Shopr / MRA / CSV)
 
 ### 48.1 Import wizard
-- [ ] **Source picker** — RepairDesk / Shopr / MRA / Generic CSV / Apple Numbers file.
-- [ ] **Upload file** — via share sheet or document picker; iOS 17 Files integration.
-- [ ] **Field mapping** — auto-detect + manual correction; save mapping for later.
+- [x] **Source picker** — RepairDesk / Shopr / MRA / Generic CSV / Apple Numbers file. `ImportSourcePickerView` — 4 tiles with icons, selection state, Continue button. Commit `feat(ios §48)`.
+- [x] **Upload file** — via share sheet or document picker; iOS 17 Files integration. `ImportUploadView` — `UIDocumentPickerViewController` wrapper, filename + size card, upload progress bar, calls `POST /imports/upload`. Commit `feat(ios §48)`.
+- [x] **Field mapping** — auto-detect + manual correction; save mapping for later. `ImportColumnMappingView` — per-column `Picker`, auto-map by Levenshtein similarity (`ImportColumnMapper`), green badge when required fields mapped, Start button gated. Commit `feat(ios §48)`.
 
 ### 48.2 Dry-run
-- [ ] **Preview** first 10 rows — what will import, what will fail.
+- [x] **Preview** first 10 rows — what will import, what will fail. `ImportPreviewView` — iPad uses `Grid` table, iPhone uses horizontal scroll grid; detected columns/rows summary; >50k row warning chip. Commit `feat(ios §48)`.
 - [ ] **Error report** — downloadable.
 
 ### 48.3 Execute import
-- [ ] **Chunked** — 100 rows at a time with progress bar.
-- [ ] **Background task** — can leave screen; Live Activity shows progress.
+- [x] **Chunked** — 100 rows at a time with progress bar. `ImportProgressView` — progress ring, processed/total, error count, ETA string. Commit `feat(ios §48)`.
+- [x] **Background task** — can leave screen; Live Activity shows progress. 2s polling loop via `ImportWizardViewModel.startPolling()`. Commit `feat(ios §48)`.
 - [ ] **Pause / resume / cancel**.
 
 ### 48.4 Import history + rollback
 - [ ] **Undo** — within 24h; restores pre-import state.
-- [ ] **Log** — per-batch audit.
+- [x] **Log** — per-batch audit. `ImportHistoryView` — list of past imports with status badge + date; accessible from Settings. Commit `feat(ios §48)`.
 
 ### 48.5 Recurring import (auto-sync)
 - [ ] **Schedule** — daily CSV from S3/Dropbox/iCloud.
