@@ -2369,7 +2369,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Timezone** — `TimeZone.knownTimeZoneIdentifiers` picker. (`Settings/Pages/LanguageRegionPage.swift`)
 - [x] **Currency** — `Locale.commonISOCurrencyCodes` picker. (`LanguageRegionPage.swift`)
 - [x] **Locale** — `Locale.availableIdentifiers` picker. (`LanguageRegionPage.swift`)
-- [ ] **Business hours** — per day of week (sibling agent: `Settings/Hours/`).
+- [x] **Business hours** — per day of week with multiple blocks, holiday exceptions, presets, open/closed indicator. (`Settings/Hours/`: `HoursModels`, `BusinessHoursEditorView`, `HolidayListView`, `HolidayEditorSheet`, `HolidayPresetsSheet`, `OpenClosedIndicator`, `HoursCalculator`, `HoursValidator`, `HoursRepository`, `HoursEndpoints`. 27 pure-logic tests passing.)
 - [ ] **Location management** — sibling agent: `Settings/Locations/`.
 - [ ] **Receipt footer** + invoice footer text.
 - [ ] **Terms & policies** — warranty, return, privacy printed on receipts.
@@ -2396,9 +2396,9 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Accepted payment methods surface** on customer portal.
 
 ### 19.8 Tax
-- [ ] **Tax rates** — list (name, rate, applies-to); add/edit/archive.
+- [x] **Tax rates** — list (name, rate, applies-to); add/edit/archive. (`Settings/Pages/TaxSettingsPage.swift`; `TaxSettingsViewModel`; `POST/PATCH /tax-rates`.)
 - [ ] **Nested tax** — state + county + city stacking.
-- [ ] **Tax-exempt categories** — services-only vs parts-only.
+- [x] **Tax-exempt categories** — isExempt toggle per rate. (`TaxSettingsPage.swift` draftIsExempt field.)
 - [ ] **Per-customer override** — default handled in customer record.
 - [ ] **Automated rate lookup** (Avalara/TaxJar integration toggle — stretch).
 
