@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollText, RefreshCw, Filter, Trash2 } from 'lucide-react';
+import { ScrollText, RefreshCw, Filter, Trash2, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
+import { downloadCsv, toCsv } from '@/utils/csv';
 import toast from 'react-hot-toast';
 
 interface AuditEntry {
@@ -78,9 +79,28 @@ export function AuditLogPage() {
             ({filtered.length}{filtered.length !== entries.length ? ` of ${entries.length}` : ''})
           </span>
         </h1>
-        <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (filtered.length === 0) { toast('Nothing to export'); return; }
+              const csv = toCsv(
+                ['created_at', 'admin_username', 'action', 'details', 'ip_address'],
+                filtered as unknown as Record<string, unknown>[],
+              );
+              const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+              downloadCsv(`audit-log-${stamp}.csv`, csv);
+              toast.success(`Exported ${filtered.length} rows`);
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-surface-400 border border-surface-700 rounded hover:bg-surface-800"
+            title="Export the currently filtered rows to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
+          <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap text-xs">

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AlertTriangle, RefreshCw, Trash2, RotateCw, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Trash2, RotateCw, TrendingUp, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { CrashEntry, CrashStats, DisabledRoute } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Sparkline } from '@/components/Sparkline';
 import { formatDateTime, formatRelativeTime } from '@/utils/format';
+import { downloadCsv, toCsv } from '@/utils/csv';
 import { cn } from '@/utils/cn';
 import toast from 'react-hot-toast';
 
@@ -120,6 +121,23 @@ export function CrashMonitorPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-base lg:text-lg font-bold text-surface-100">Crash Monitor</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (crashes.length === 0) { toast('No crashes to export'); return; }
+              const csv = toCsv(
+                ['timestamp', 'route', 'type', 'recovered', 'errorMessage', 'errorStack'],
+                crashes as unknown as Record<string, unknown>[],
+              );
+              const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+              downloadCsv(`crashes-${stamp}.csv`, csv);
+              toast.success(`Exported ${crashes.length} rows`);
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-surface-400 border border-surface-700 rounded hover:bg-surface-800"
+            title="Export all loaded crash entries to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors">
             <RefreshCw className="w-4 h-4" />
           </button>
