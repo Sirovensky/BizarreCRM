@@ -22,6 +22,7 @@ import {
   validateIntegerQuantity,
 } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('portal-enrich');
@@ -74,7 +75,7 @@ async function portalAuth(
     : cookieToken;
 
   if (!token) {
-    res.status(401).json({ success: false, message: 'Authentication required' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_SESSION_REQUIRED, message: 'Authentication required' });
     return;
   }
 
@@ -86,7 +87,7 @@ async function portalAuth(
   );
 
   if (!session) {
-    res.status(401).json({ success: false, message: 'Session expired or invalid' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_SESSION_REQUIRED, message: 'Session expired or invalid' });
     return;
   }
 
@@ -105,7 +106,7 @@ function requireTicketScopeMatches(
   if (req.portalScope === 'ticket') {
     const ticketId = parseInt(req.params.id as string, 10);
     if (isNaN(ticketId)) {
-      res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
       return;
     }
     if (req.portalTicketId !== ticketId) {
@@ -222,7 +223,7 @@ function generateReferralCode(): string {
  * Returns true if the response was sent (caller should `return`).
  */
 function respondTicketInaccessible(res: Response): true {
-  res.status(404).json({ success: false, message: 'Ticket not found' });
+  res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
   return true;
 }
 
@@ -706,7 +707,7 @@ router.post(
   asyncHandler(async (req: PortalRequest, res: Response) => {
     const ticketId = parseInt(qs(req.params.id), 10);
     if (!Number.isFinite(ticketId) || ticketId <= 0) {
-      res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
       return;
     }
 

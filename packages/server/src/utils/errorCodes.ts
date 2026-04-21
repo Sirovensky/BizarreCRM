@@ -81,6 +81,20 @@ export const ERROR_CODES = {
   ERR_TENANT_DB_FAILED: 'ERR_TENANT_DB_FAILED',
   ERR_TENANT_CONTEXT_MISSING: 'ERR_TENANT_CONTEXT_MISSING',
 
+  // ── Portal / customer-facing (401 / 404 / 409) ───────────────────
+  /** Customer portal session expired or not provided. */
+  ERR_PORTAL_SESSION_REQUIRED: 'ERR_PORTAL_SESSION_REQUIRED',
+  /** Wrong phone + PIN / ticket-id + phone combination on portal lookup. */
+  ERR_PORTAL_AUTH_FAILED: 'ERR_PORTAL_AUTH_FAILED',
+  /** Portal account is guest-only; requires full-account upgrade for this action. */
+  ERR_PORTAL_ACCOUNT_REQUIRED: 'ERR_PORTAL_ACCOUNT_REQUIRED',
+
+  // ── Resource (404 / 409) — generic record-level errors ──────────
+  /** Requested record does not exist (ticket / invoice / estimate / customer). */
+  ERR_RESOURCE_NOT_FOUND: 'ERR_RESOURCE_NOT_FOUND',
+  /** Operation conflicts with current resource state (already paid, already reviewed). */
+  ERR_RESOURCE_CONFLICT: 'ERR_RESOURCE_CONFLICT',
+
   // ── Route / service (503) ────────────────────────────────────────
   ERR_ROUTE_DISABLED: 'ERR_ROUTE_DISABLED',
   ERR_SERVER_BUSY: 'ERR_SERVER_BUSY',

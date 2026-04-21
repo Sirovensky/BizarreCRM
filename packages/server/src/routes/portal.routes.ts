@@ -14,6 +14,7 @@ import {
   CSRF_COOKIE_NAME,
 } from '../utils/csrf.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const router = Router();
 const logger = createLogger('portal');
@@ -106,7 +107,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
 
   if (!token) {
-    res.status(401).json({ success: false, message: 'Authentication required' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_SESSION_REQUIRED, message: 'Authentication required' });
     return;
   }
 
@@ -121,7 +122,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   `, token);
 
   if (!session) {
-    res.status(401).json({ success: false, message: 'Session expired or invalid' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_SESSION_REQUIRED, message: 'Session expired or invalid' });
     return;
   }
 
@@ -154,7 +155,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
 /** Require full scope (account login) */
 function requireFullScope(req: PortalRequest, res: Response, next: NextFunction): void {
   if (req.portalScope !== 'full') {
-    res.status(403).json({ success: false, message: 'Full account access required. Create a free account for full access.' });
+    res.status(403).json({ success: false, code: ERROR_CODES.ERR_PORTAL_ACCOUNT_REQUIRED, message: 'Full account access required. Create a free account for full access.' });
     return;
   }
   next();
@@ -177,7 +178,7 @@ function requireTicketScopeMatches(
   if (req.portalScope === 'ticket') {
     const ticketId = parseInt(req.params.id as string, 10);
     if (isNaN(ticketId)) {
-      res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
       return;
     }
     if (req.portalTicketId !== ticketId) {
@@ -404,7 +405,7 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const { order_id, phone_last4 } = req.body as { order_id?: string; phone_last4?: string };
 
   if (!order_id || !phone_last4) {
-    res.status(400).json({ success: false, message: 'Ticket ID and last 4 digits of phone are required' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Ticket ID and last 4 digits of phone are required' });
     return;
   }
 
@@ -446,7 +447,7 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   if (!ticket || !ticket.customer_id) {
     // Don't reveal whether ticket exists or not
     audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'ticket_not_found' });
-    res.status(404).json({ success: false, message: 'No matching repair found. Please check your ticket ID and phone number.' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'No matching repair found. Please check your ticket ID and phone number.' });
     return;
   }
 
@@ -467,7 +468,7 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
 
   if (!phoneMatch) {
     audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'phone_mismatch' });
-    res.status(404).json({ success: false, message: 'No matching repair found. Please check your ticket ID and phone number.' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'No matching repair found. Please check your ticket ID and phone number.' });
     return;
   }
 
@@ -510,7 +511,7 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
 
   const normalized = normalizePhone(phone);
   if (normalized.length < 10) {
-    res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Please enter a valid phone number' });
     return;
   }
 
@@ -551,7 +552,7 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
 
   if (!foundCustomer || !foundCustomer.portal_pin) {
     // Generic error — don't reveal whether account exists
-    res.status(401).json({ success: false, message: 'Invalid phone number or PIN' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
     return;
   }
 
@@ -608,7 +609,7 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
 
   const pinValid = await bcrypt.compare(pin, foundCustomer.portal_pin);
   if (!pinValid) {
-    res.status(401).json({ success: false, message: 'Invalid phone number or PIN' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
     return;
   }
 
@@ -656,7 +657,7 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
 
   const normalized = normalizePhone(phone);
   if (normalized.length < 10) {
-    res.status(400).json({ success: false, message: 'Please enter a valid phone number' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Please enter a valid phone number' });
     return;
   }
 
@@ -810,7 +811,7 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
   }
 
   if (!/^\d{6}$/.test(code)) {
-    res.status(400).json({ success: false, message: 'Verification code must be 6 digits' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Verification code must be 6 digits' });
     return;
   }
 
@@ -929,7 +930,7 @@ router.post('/verify', asyncHandler(async (req: PortalRequest, res: Response) =>
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : bodyToken;
 
   if (!token || typeof token !== 'string') {
-    res.status(400).json({ success: false, message: 'Token is required' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Token is required' });
     return;
   }
 
@@ -947,7 +948,7 @@ router.get('/verify', asyncHandler(async (req: PortalRequest, res: Response) => 
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
 
   if (!token) {
-    res.status(400).json({ success: false, message: 'Token is required' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Token is required' });
     return;
   }
 
@@ -1080,7 +1081,7 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
-    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
     return;
   }
 
@@ -1090,7 +1091,7 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
     ticketId);
 
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -1108,14 +1109,14 @@ router.post('/tickets/:id/comments', portalAuth, requireCsrfToken, requireTicket
   // Ticket-scoped sessions come from quick-track (not a full account login).
   // Writing comments requires a verified account — reject them explicitly.
   if (req.portalScope === 'ticket') {
-    res.status(401).json({ success: false, message: 'Portal session required to post comments' });
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_SESSION_REQUIRED, message: 'Portal session required to post comments' });
     return;
   }
 
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
-    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
     return;
   }
 
@@ -1135,7 +1136,7 @@ router.post('/tickets/:id/comments', portalAuth, requireCsrfToken, requireTicket
     ticketId);
 
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -1154,13 +1155,13 @@ router.post('/tickets/:id/pay-link', portalAuth, requireCsrfToken, requireTicket
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
-    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
     return;
   }
 
   const ticket = await adb.get<AnyRow>('SELECT id, customer_id, invoice_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
@@ -1173,11 +1174,11 @@ router.post('/tickets/:id/pay-link', portalAuth, requireCsrfToken, requireTicket
   }
 
   if (!invoice) {
-    res.status(404).json({ success: false, message: 'No invoice found to pay' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'No invoice found to pay' });
     return;
   }
   if (invoice.amount_due <= 0) {
-    res.status(409).json({ success: false, message: 'Invoice is already paid' });
+    res.status(409).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_CONFLICT, message: 'Invoice is already paid' });
     return;
   }
 
@@ -1216,13 +1217,13 @@ router.post('/tickets/:id/feedback', portalAuth, requireCsrfToken, requireTicket
   const adb = req.asyncDb;
   const ticketId = parseInt(req.params.id as string, 10);
   if (isNaN(ticketId)) {
-    res.status(400).json({ success: false, message: 'Invalid ticket ID' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid ticket ID' });
     return;
   }
 
   const { rating, comment } = req.body as { rating?: number; comment?: string };
   if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
-    res.status(400).json({ success: false, message: 'Rating must be an integer from 1 to 5' });
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Rating must be an integer from 1 to 5' });
     return;
   }
 
@@ -1237,12 +1238,12 @@ router.post('/tickets/:id/feedback', portalAuth, requireCsrfToken, requireTicket
   ]);
 
   if (!ticket || ticket.customer_id !== req.portalCustomerId) {
-    res.status(404).json({ success: false, message: 'Ticket not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
     return;
   }
 
   if (existing) {
-    res.status(409).json({ success: false, message: 'You have already left feedback for this repair' });
+    res.status(409).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_CONFLICT, message: 'You have already left feedback for this repair' });
     return;
   }
 
@@ -1333,7 +1334,7 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
     estimateId);
 
   if (!estimate || estimate.customer_id !== req.portalCustomerId) {
-    res.status(404).json({ success: false, message: 'Estimate not found or already processed' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Estimate not found or already processed' });
     return;
   }
 
@@ -1420,7 +1421,7 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
   `, invoiceId, cid, cid);
 
   if (!invoice) {
-    res.status(404).json({ success: false, message: 'Invoice not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Invoice not found' });
     return;
   }
 
@@ -1477,7 +1478,7 @@ router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) =>
 
   const store = await getStoreConfig(adb);
   if (store.portal_embed_enabled !== '1') {
-    res.status(404).json({ success: false, message: 'Not found' });
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Not found' });
     return;
   }
 
