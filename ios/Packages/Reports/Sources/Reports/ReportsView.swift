@@ -1,14 +1,28 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
+import Sync
 
 /// Reports home surface. Today it lists the read-only snapshots that are
 /// already wired up elsewhere (Dashboard totals, Needs-attention) and
 /// cross-links to the domain lists where richer views live. Dedicated
 /// report builders (pie charts, date-range pickers, CSV export) arrive in
 /// a later phase — we ship a functional index now rather than a stub.
+///
+/// Staleness note: Reports is a static shortcut index — no dedicated
+/// `ReportsRepository` or cached repo exists yet (see §15). A
+/// `StalenessIndicator` is shown in the header to signal that the underlying
+/// domain data (Dashboard, Inventory, Invoices) may be stale. Each of those
+/// domains shows its own freshness chip in their list views.
 public struct ReportsView: View {
-    public init() {}
+    /// Injected from parent when available (e.g. DashboardViewModel.lastSyncedAt).
+    /// Nil = no connected data source yet; chip shows "Never synced".
+    public let referenceSyncedAt: Date?
+
+    public init(referenceSyncedAt: Date? = nil) {
+        self.referenceSyncedAt = referenceSyncedAt
+    }
 
     public var body: some View {
         NavigationStack {
@@ -25,6 +39,11 @@ public struct ReportsView: View {
                 }
             }
             .navigationTitle("Reports")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: referenceSyncedAt)
+                }
+            }
         }
     }
 
@@ -37,6 +56,19 @@ public struct ReportsView: View {
             Text("Quick links to the live numbers already on your dashboard + domain lists. Full report builders with date ranges and CSV export land in a later release.")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+            // Offline hint — report data requires a live connection to refresh.
+            if !Reachability.shared.isOnline {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "wifi.slash")
+                        .foregroundStyle(.bizarreWarning)
+                        .accessibilityHidden(true)
+                    Text("Offline — connect to refresh report data.")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreWarning)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Offline. Connect to refresh report data.")
+            }
         }
     }
 

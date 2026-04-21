@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -11,10 +12,16 @@ public final class NotificationListViewModel {
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?
     public private(set) var successBanner: String?
+    /// Exposed for `StalenessIndicator` chip in toolbar.
+    public private(set) var lastSyncedAt: Date?
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private let cachedRepo: NotificationCachedRepository?
 
-    public init(api: APIClient) { self.api = api }
+    public init(api: APIClient, cachedRepo: NotificationCachedRepository? = nil) {
+        self.api = api
+        self.cachedRepo = cachedRepo
+    }
 
     public var unreadCount: Int { items.filter { !$0.read }.count }
 
@@ -23,9 +30,30 @@ public final class NotificationListViewModel {
         defer { isLoading = false }
         errorMessage = nil
         do {
-            items = try await api.listNotifications()
+            if let repo = cachedRepo {
+                items = try await repo.listNotifications()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listNotifications()
+            }
         } catch {
             AppLog.ui.error("Notifications load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func forceRefresh() async {
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            if let repo = cachedRepo {
+                items = try await repo.forceRefresh()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listNotifications()
+            }
+        } catch {
+            AppLog.ui.error("Notifications force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -85,8 +113,8 @@ private extension NotificationItem {
 public struct NotificationListView: View {
     @State private var vm: NotificationListViewModel
 
-    public init(api: APIClient) {
-        _vm = State(wrappedValue: NotificationListViewModel(api: api))
+    public init(api: APIClient, cachedRepo: NotificationCachedRepository? = nil) {
+        _vm = State(wrappedValue: NotificationListViewModel(api: api, cachedRepo: cachedRepo))
     }
 
     public var body: some View {
@@ -96,6 +124,9 @@ public struct NotificationListView: View {
         }
         .navigationTitle("Notifications")
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+            }
             if vm.unreadCount > 0 {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Mark all read") { Task { await vm.markAllRead() } }
@@ -105,7 +136,7 @@ public struct NotificationListView: View {
             }
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.forceRefresh() }
         .overlay(alignment: .top) {
             if let msg = vm.successBanner {
                 Text(msg)
@@ -128,7 +159,9 @@ public struct NotificationListView: View {
     private var content: some View {
         if vm.isLoading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
         else if let err = vm.errorMessage { errorPane(err) }
-        else if vm.items.isEmpty {
+        else if vm.items.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "notifications")
+        } else if vm.items.isEmpty {
             emptyState(icon: "bell.slash", text: "You're all caught up")
         } else {
             List {

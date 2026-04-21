@@ -20,7 +20,9 @@ public struct SmsThreadView: View {
             }
         }
         .navigationTitle(threadTitle)
+#if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
+#endif
         .task { await vm.load() }
         .refreshable { await vm.load() }
     }

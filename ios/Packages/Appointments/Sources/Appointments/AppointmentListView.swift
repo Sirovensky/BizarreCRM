@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -10,17 +11,46 @@ public final class AppointmentListViewModel {
     public private(set) var items: [Appointment] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
+    /// Exposed for `StalenessIndicator` chip in toolbar.
+    public private(set) var lastSyncedAt: Date?
 
     @ObservationIgnored private let api: APIClient
-    public init(api: APIClient) { self.api = api }
+    @ObservationIgnored private let cachedRepo: AppointmentCachedRepository?
+
+    public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
+        self.api = api
+        self.cachedRepo = cachedRepo
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
-        do { items = try await api.listAppointments() }
-        catch {
+        do {
+            if let repo = cachedRepo {
+                items = try await repo.listAppointments()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listAppointments()
+            }
+        } catch {
             AppLog.ui.error("Appointments load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func forceRefresh() async {
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            if let repo = cachedRepo {
+                items = try await repo.forceRefresh()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listAppointments()
+            }
+        } catch {
+            AppLog.ui.error("Appointments force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -31,9 +61,9 @@ public struct AppointmentListView: View {
     @State private var showingCreate: Bool = false
     private let api: APIClient
 
-    public init(api: APIClient) {
+    public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
         self.api = api
-        _vm = State(wrappedValue: AppointmentListViewModel(api: api))
+        _vm = State(wrappedValue: AppointmentListViewModel(api: api, cachedRepo: cachedRepo))
     }
 
     public var body: some View {
@@ -45,7 +75,7 @@ public struct AppointmentListView: View {
             }
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.forceRefresh() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             AppointmentCreateView(api: api)
         }
@@ -58,7 +88,12 @@ public struct AppointmentListView: View {
                 content
             }
             .navigationTitle("Appointments")
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         }
     }
 
@@ -70,7 +105,12 @@ public struct AppointmentListView: View {
             }
             .navigationTitle("Appointments")
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -105,6 +145,8 @@ public struct AppointmentListView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
             PhaseErrorView(message: err) { Task { await vm.load() } }
+        } else if vm.items.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "appointments")
         } else if vm.items.isEmpty {
             PhaseEmptyView(icon: "calendar", text: "No appointments")
         } else {

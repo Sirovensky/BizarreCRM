@@ -63,7 +63,9 @@ public struct AppointmentCreateView: View {
             Form {
                 Section("Appointment") {
                     TextField("Title", text: $vm.title)
+#if !os(macOS)
                         .textInputAutocapitalization(.sentences)
+#endif
                     DatePicker("Start", selection: $vm.startDate)
                     DatePicker("End", selection: $vm.endDate)
                 }
@@ -78,7 +80,9 @@ public struct AppointmentCreateView: View {
             .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .navigationTitle("New appointment")
+#if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
+#endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

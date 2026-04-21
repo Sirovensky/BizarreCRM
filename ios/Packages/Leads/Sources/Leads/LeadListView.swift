@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -11,18 +12,49 @@ public final class LeadListViewModel {
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    /// Exposed for `StalenessIndicator` chip in toolbar.
+    public private(set) var lastSyncedAt: Date?
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private let cachedRepo: LeadCachedRepository?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
-    public init(api: APIClient) { self.api = api }
+
+    public init(api: APIClient, cachedRepo: LeadCachedRepository? = nil) {
+        self.api = api
+        self.cachedRepo = cachedRepo
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
-        do { items = try await api.listLeads(keyword: searchQuery.isEmpty ? nil : searchQuery) }
-        catch {
+        do {
+            let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
+            if let repo = cachedRepo {
+                items = try await repo.listLeads(keyword: keyword)
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listLeads(keyword: keyword)
+            }
+        } catch {
             AppLog.ui.error("Leads load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func forceRefresh() async {
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
+            if let repo = cachedRepo {
+                items = try await repo.forceRefresh(keyword: keyword)
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listLeads(keyword: keyword)
+            }
+        } catch {
+            AppLog.ui.error("Leads force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -44,9 +76,9 @@ public struct LeadListView: View {
     @State private var showingCreate: Bool = false
     private let api: APIClient
 
-    public init(api: APIClient) {
+    public init(api: APIClient, cachedRepo: LeadCachedRepository? = nil) {
         self.api = api
-        _vm = State(wrappedValue: LeadListViewModel(api: api))
+        _vm = State(wrappedValue: LeadListViewModel(api: api, cachedRepo: cachedRepo))
     }
 
     public var body: some View {
@@ -58,7 +90,7 @@ public struct LeadListView: View {
             }
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.forceRefresh() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             LeadCreateView(api: api)
         }
@@ -73,7 +105,12 @@ public struct LeadListView: View {
             .navigationTitle("Leads")
             .searchable(text: $searchText, prompt: "Search leads")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         }
     }
 
@@ -87,7 +124,12 @@ public struct LeadListView: View {
             .searchable(text: $searchText, prompt: "Search leads")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -129,6 +171,8 @@ public struct LeadListView: View {
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.items.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "leads")
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "sparkles").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)

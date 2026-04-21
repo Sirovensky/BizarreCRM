@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -12,21 +13,55 @@ public final class ExpenseListViewModel {
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    /// Exposed for `StalenessIndicator` chip in toolbar.
+    public private(set) var lastSyncedAt: Date?
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private let cachedRepo: ExpenseCachedRepository?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
-    public init(api: APIClient) { self.api = api }
+
+    public init(api: APIClient, cachedRepo: ExpenseCachedRepository? = nil) {
+        self.api = api
+        self.cachedRepo = cachedRepo
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
         do {
-            let resp = try await api.listExpenses(keyword: searchQuery.isEmpty ? nil : searchQuery)
+            let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
+            let resp: ExpensesListResponse
+            if let repo = cachedRepo {
+                resp = try await repo.listExpenses(keyword: keyword)
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                resp = try await api.listExpenses(keyword: keyword)
+            }
             items = resp.expenses
             summary = resp.summary
         } catch {
             AppLog.ui.error("Expenses load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func forceRefresh() async {
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
+            let resp: ExpensesListResponse
+            if let repo = cachedRepo {
+                resp = try await repo.forceRefresh(keyword: keyword)
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                resp = try await api.listExpenses(keyword: keyword)
+            }
+            items = resp.expenses
+            summary = resp.summary
+        } catch {
+            AppLog.ui.error("Expenses force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -48,9 +83,9 @@ public struct ExpenseListView: View {
     @State private var showingCreate: Bool = false
     private let api: APIClient
 
-    public init(api: APIClient) {
+    public init(api: APIClient, cachedRepo: ExpenseCachedRepository? = nil) {
         self.api = api
-        _vm = State(wrappedValue: ExpenseListViewModel(api: api))
+        _vm = State(wrappedValue: ExpenseListViewModel(api: api, cachedRepo: cachedRepo))
     }
 
     public var body: some View {
@@ -58,7 +93,7 @@ public struct ExpenseListView: View {
             if Platform.isCompact { compactLayout } else { regularLayout }
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.forceRefresh() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             ExpenseCreateView(api: api)
         }
@@ -73,7 +108,12 @@ public struct ExpenseListView: View {
             .navigationTitle("Expenses")
             .searchable(text: $searchText, prompt: "Search expenses")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
             .navigationDestination(for: Int64.self) { id in
                 ExpenseDetailView(api: api, id: id)
             }
@@ -90,7 +130,12 @@ public struct ExpenseListView: View {
             .searchable(text: $searchText, prompt: "Search expenses")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
-            .toolbar { newButton }
+            .toolbar {
+                newButton
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -135,6 +180,8 @@ public struct ExpenseListView: View {
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.items.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "expenses")
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "dollarsign.circle").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)

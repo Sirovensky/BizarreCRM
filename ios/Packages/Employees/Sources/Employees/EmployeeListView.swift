@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 @MainActor
 @Observable
@@ -10,17 +11,46 @@ public final class EmployeeListViewModel {
     public private(set) var items: [Employee] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
+    /// Exposed for `StalenessIndicator` chip in toolbar.
+    public private(set) var lastSyncedAt: Date?
 
     @ObservationIgnored private let api: APIClient
-    public init(api: APIClient) { self.api = api }
+    @ObservationIgnored private let cachedRepo: EmployeeCachedRepository?
+
+    public init(api: APIClient, cachedRepo: EmployeeCachedRepository? = nil) {
+        self.api = api
+        self.cachedRepo = cachedRepo
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
-        do { items = try await api.listEmployees() }
-        catch {
+        do {
+            if let repo = cachedRepo {
+                items = try await repo.listEmployees()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listEmployees()
+            }
+        } catch {
             AppLog.ui.error("Employees load failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func forceRefresh() async {
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            if let repo = cachedRepo {
+                items = try await repo.forceRefresh()
+                lastSyncedAt = await repo.lastSyncedAt
+            } else {
+                items = try await api.listEmployees()
+            }
+        } catch {
+            AppLog.ui.error("Employees force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -29,7 +59,9 @@ public final class EmployeeListViewModel {
 public struct EmployeeListView: View {
     @State private var vm: EmployeeListViewModel
 
-    public init(api: APIClient) { _vm = State(wrappedValue: EmployeeListViewModel(api: api)) }
+    public init(api: APIClient, cachedRepo: EmployeeCachedRepository? = nil) {
+        _vm = State(wrappedValue: EmployeeListViewModel(api: api, cachedRepo: cachedRepo))
+    }
 
     public var body: some View {
         ZStack {
@@ -37,8 +69,13 @@ public struct EmployeeListView: View {
             content
         }
         .navigationTitle("Employees")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+            }
+        }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.forceRefresh() }
     }
 
     @ViewBuilder
@@ -56,6 +93,8 @@ public struct EmployeeListView: View {
                 Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.items.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "employees")
         } else if vm.items.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "person.3")

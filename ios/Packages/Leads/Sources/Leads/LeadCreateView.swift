@@ -71,10 +71,16 @@ public struct LeadCreateView: View {
                     TextField("First name", text: $vm.firstName).textContentType(.givenName)
                     TextField("Last name", text: $vm.lastName).textContentType(.familyName)
                     TextField("Phone", text: $vm.phone)
-                        .textContentType(.telephoneNumber).keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
+#if !os(macOS)
+                        .keyboardType(.phonePad)
+#endif
                     TextField("Email", text: $vm.email)
-                        .textContentType(.emailAddress).keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+#if !os(macOS)
+                        .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
+#endif
                     TextField("Source (Google, Yelp, walk-in…)", text: $vm.source)
                 }
                 Section("Notes") {
@@ -87,7 +93,9 @@ public struct LeadCreateView: View {
             .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .navigationTitle("New lead")
+#if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
+#endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

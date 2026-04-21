@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 public struct SmsListView: View {
     @State private var vm: SmsListViewModel
@@ -28,6 +29,11 @@ public struct SmsListView: View {
             .navigationDestination(for: String.self) { phone in
                 SmsThreadView(repo: threadRepo, phoneNumber: phone)
             }
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
         }
     }
 
@@ -48,6 +54,8 @@ public struct SmsListView: View {
                     .buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.conversations.isEmpty && !Reachability.shared.isOnline {
+            OfflineEmptyStateView(entityName: "conversations")
         } else if vm.conversations.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "message")

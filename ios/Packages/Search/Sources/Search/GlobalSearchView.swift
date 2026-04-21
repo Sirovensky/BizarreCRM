@@ -3,6 +3,7 @@ import Observation
 import Core
 import DesignSystem
 import Networking
+import Sync
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -76,7 +77,26 @@ public struct GlobalSearchView: View {
 
     @ViewBuilder
     private var content: some View {
-        if queryText.isEmpty {
+        if queryText.isEmpty && !Reachability.shared.isOnline {
+            // Offline + no query: search requires network, show inline hint.
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "magnifyingglass.circle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.bizarreWarning)
+                    .accessibilityHidden(true)
+                Text("Search requires network")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Connect to the internet to search tickets, customers, inventory, and invoices.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Offline. Search requires a network connection.")
+        } else if queryText.isEmpty {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 48))
