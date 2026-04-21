@@ -2071,15 +2071,38 @@ private fun DetailsStep(
             }
         }
 
-        // IMEI / Serial
+        // IMEI / Serial — §4.17: live Luhn validation + TAC device-model lookup.
+        // Feedback is non-blocking: we always let the user save a bogus IMEI
+        // (server rejects if it cares) but surface the check + suggested
+        // model below the field so mis-typed numbers are caught at entry.
         val showImei = category in listOf("phone", "tablet")
         if (showImei) {
+            val imeiResult = com.bizarreelectronics.crm.util.ImeiValidator.validate(state.imei)
+            val tacModel = com.bizarreelectronics.crm.util.ImeiValidator.lookupTacModel(state.imei)
+            val imeiIsError = state.imei.isNotBlank() &&
+                imeiResult != com.bizarreelectronics.crm.util.ImeiValidator.Result.Ok &&
+                imeiResult != com.bizarreelectronics.crm.util.ImeiValidator.Result.WrongLength
             OutlinedTextField(
                 value = state.imei,
                 onValueChange = onImeiChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("IMEI") },
                 singleLine = true,
+                isError = imeiIsError,
+                supportingText = {
+                    val msg = when {
+                        state.imei.isBlank() -> ""
+                        imeiResult == com.bizarreelectronics.crm.util.ImeiValidator.Result.WrongLength ->
+                            "${state.imei.count { it.isDigit() }}/15 digits"
+                        imeiResult == com.bizarreelectronics.crm.util.ImeiValidator.Result.NonDigit ->
+                            "IMEI must be digits only"
+                        imeiResult == com.bizarreelectronics.crm.util.ImeiValidator.Result.ChecksumFailed ->
+                            "Checksum failed — re-check the number"
+                        tacModel != null -> "Looks like a $tacModel"
+                        else -> "Valid IMEI"
+                    }
+                    if (msg.isNotEmpty()) Text(msg)
+                },
             )
         }
 

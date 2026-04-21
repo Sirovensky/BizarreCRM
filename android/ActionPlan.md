@@ -37,7 +37,7 @@ in-progress and lags the audit.
 | 1 | Platform & Foundation | ~78% | API envelope, OkHttp pinning, Room+SQLCipher, Hilt, WorkManager, FCM, **AppError taxonomy (NEW)**, **ProcessLifecycle ON_START hook (NEW)** DONE. Missing: draft autosave, undo stack, clock-drift, multipart upload helper. |
 | 2 | Auth & Onboarding | ~55% | Login + 2FA + setPassword + signup + logout + refresh-retry + **PIN lock end-to-end (NEW Settings + nav)** + **SessionRevoked banner (NEW)** + **/auth/me cold-start (NEW)** DONE. Missing: passkeys, SSO, magic-link, hardware key, shared-device. |
 | 3 | Dashboard | ~55% | KPIs, my-queue, FAB, sync badge, greeting, error states, onboarding checklist, clock-in tile + **KPI tile tap-through to Tickets / Appointments / Inventory (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode, filtered-list params. |
-| 4 | Tickets | ~14% | List + detail + create scaffolds; **§4.17 IMEI Luhn validator DONE (NEW)**. Missing: Paging3, signatures, bench, SLA, QC checklist, IMEI UI hookup. |
+| 4 | Tickets | ~16% | List + detail + create scaffolds; §4.17 IMEI Luhn validator + **live IMEI supportingText + TAC model suggestion in TicketCreate (NEW)** DONE. Missing: Paging3, signatures, bench, SLA, QC checklist, inventory trade-in hookup. |
 | 5 | Customers | ~30% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. Missing: tags UI, segments, merge, bulk, communication prefs. |
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
 | 7 | Invoices | ~30% | List (status tabs), detail w/ payments DONE. Missing: create, refund, send, dunning, pagination. |
@@ -805,7 +805,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 ### 4.17 IMEI validation (identification only)
 - [x] Local IMEI validation only: Luhn checksum + 15-digit length. (`util/ImeiValidator.kt`)
 - [x] Optional TAC lookup (first 8 digits) via offline table to name device model. (`ImeiValidator.lookupTacModel`; ~40-entry table — grows via §44 Device Templates.)
-- [~] Called from ticket create / inventory trade-in purely for device identification + autofill make/model. (Utility ready; UI call-sites pending.)
+- [~] Called from ticket create / inventory trade-in purely for device identification + autofill make/model. (TicketCreate now surfaces Luhn + TAC-match as supportingText under the IMEI field; inventory trade-in call-site still pending.)
 - [x] No stolen/lost/carrier-blacklist provider lookup — scope intentionally dropped. Shop does not gate intake on external device-status services.
 
 ### 4.18 Warranty tracking
@@ -1467,8 +1467,8 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DELETE /expenses/{id}`._
 
 ### 11.1 List
-- [ ] Base list + summary header.
-- [ ] **Filters** — category / date range / employee / reimbursable flag / approval status.
+- [x] Base list + summary header.
+- [~] **Filters** — category / date range / employee / reimbursable flag / approval status.
 - [ ] **Sort** — date / amount / category.
 - [ ] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending.
 - [ ] **Category breakdown pie** (tablet/ChromeOS).
@@ -1911,9 +1911,9 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`).
 
 ### 17.10 HID keyboard / barcode scanner
-- [ ] External Bluetooth / USB-C keyboard full support across all text fields.
-- [ ] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target.
-- [ ] Shortcut overlay help (Ctrl+/) lists all shortcuts.
+- [x] External Bluetooth / USB-C keyboard full support across all text fields.
+- [~] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target.
+- [x] Shortcut overlay help (Ctrl+/) lists all shortcuts.
 
 ### 17.11 Hardware pairing wizard
 - [ ] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save.
@@ -2241,8 +2241,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Permanent drawer at ≥ 1240dp.
 
 ### 22.3 Keyboard & mouse
-- [ ] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape.
-- [ ] Shortcut overlay (Ctrl+/) lists every shortcut for current screen.
+- [~] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape.
+- [x] Shortcut overlay (Ctrl+/) lists every shortcut for current screen.
 - [ ] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons.
 - [ ] Right-click: `Modifier.onPointerEvent(Release) { ... if (button.isSecondary) showDropdown }`.
 
