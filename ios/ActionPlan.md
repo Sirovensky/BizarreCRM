@@ -516,9 +516,9 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
-- [ ] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)".
-- [ ] One-tap toggle; PIN prompt if Settings requires it.
-- [ ] Success haptic + toast.
+- [x] **Big tile** — `ClockInOutTile` in `Packages/Timeclock` shows "Clock in" (idle) / "Clock out · HH:MM AM/PM + Nh Mm" (active). 30s tick, Reduce-Motion aware. Commit `d1d3392`.
+- [x] **One-tap toggle + PIN** — `ClockInOutPinSheet` 4-digit entry; `POST /employees/:id/clock-in|out` with body `{ pin }`. `userId: 0` placeholder pending `/auth/me`.
+- [x] **Success haptic + toast** — `BrandHaptics.success()` + 2.5s toast on state transition.
 
 ### 3.12 Unread-SMS / team-inbox tile
 - [ ] `GET /sms/unread-count` drives a small pill badge; tap → SMS tab.
