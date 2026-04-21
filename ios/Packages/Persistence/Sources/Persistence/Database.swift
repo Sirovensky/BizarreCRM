@@ -33,12 +33,23 @@ public actor Database {
     /// Integration tests hand in a temp directory so they don't clobber
     /// the user's on-device DB. Also used by `reopen(at:)` below.
     public func open(at url: URL) async throws {
+        // Fetch (or generate) the 256-bit passphrase from the Keychain.
+        // `dbPassphrase()` creates a new random key on first launch and
+        // returns the cached one on every subsequent launch.
+        //
+        // Migration path for existing installs that ran without a passphrase:
+        // If GRDB opens an unencrypted file with `usePassphrase`, it will
+        // throw SQLITE_NOTADB. Callers that catch that error should call
+        // `reopen(at:)` after deleting or migrating the DB file. The
+        // schema-version table (`grdb_migrations`) survives a wipe because
+        // Migrator.register re-creates it from scratch; only local offline
+        // data is lost, which is also what would happen on a re-install.
+        let passphrase = try KeychainStore.shared.dbPassphrase()
+
         var config = Configuration()
         config.label = "bizarrecrm"
         config.prepareDatabase { db in
-            // When migrating to GRDB/SQLCipher, wire the passphrase here:
-            //   let passphrase = try KeychainStore.shared.dbPassphrase()
-            //   try db.usePassphrase(passphrase)
+            try db.usePassphrase(passphrase)
             try db.execute(sql: "PRAGMA foreign_keys = ON")
         }
 
