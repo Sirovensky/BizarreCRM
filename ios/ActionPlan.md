@@ -1670,6 +1670,34 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 ### 13.4 Badge count
 - [x] App icon badge = unread count across inbox + notifications + SMS.
 
+### §13.5 Focus filter integration
+- [x] `FocusFilterDescriptor.swift` — per-Focus-mode notification policies; `shouldShow(item:activeMode:)` pure predicate; immutable update via `updatingPolicy`. (feat(ios post-phase §13): Notifications — Focus filters + bundling + priority + snooze + grouping + daily digest)
+- [x] `FocusFilterSettingsView.swift` — admin/user editor: per-mode category allow-list + critical-override toggle; `FocusFilterSettingsViewModel` (`@Observable`). (feat(ios post-phase §13))
+- [x] `FocusFilterEndpoints.swift` — `GET/PUT /notifications/focus-policies` server persistence. (feat(ios post-phase §13))
+- [x] Entitlement note documented: `com.apple.developer.focus` NOT set in `BizarreCRM.entitlements`; descriptor operates in policy-only mode until provisioned. (feat(ios post-phase §13))
+
+### §13.6 Notification bundling
+- [x] `NotificationGrouper.swift` — pure grouper: same-category within 30s window, minGroupSize=2, critical never bundled; `GroupableNotification` + `NotificationBundle` + `GroupedNotifications`. (feat(ios post-phase §13))
+- [x] `BundledNotificationView.swift` — expandable bundle card; Reduce Motion; A11y count announcement. (feat(ios post-phase §13))
+- [x] `NotificationBundleViewModel.swift` — `@Observable`; aggregates within 30s window via real-time `receive(_:)`. (feat(ios post-phase §13))
+
+### §13.7 Priority levels
+- [x] `NotificationPriority.swift` — `{ low, normal, timeSensitive, critical }` Comparable; §70 event mapping; `apns-priority` header value. (feat(ios post-phase §13))
+- [x] `PriorityBadge.swift` — color + icon per priority; tinted capsule; A11y announces level. (feat(ios post-phase §13))
+
+### §13.8 Snooze
+- [x] `SnoozeActionHandler.swift` — extends Phase 6A snooze: fires local notification at `now + duration`; `pendingSnoozes()` for list view; `cancelSnooze(for:)`. (feat(ios post-phase §13))
+- [x] `SnoozeDurationPickerSheet.swift` — 15min / 1hr / Tomorrow 9am / Custom slider; `SnoozeDurationPickerViewModel` (`@Observable`); glass snooze button. (feat(ios post-phase §13))
+- [x] `SnoozedNotificationsListView.swift` — Settings → Notifications → Snoozed; cancel action; swipe-to-cancel; A11y. (feat(ios post-phase §13))
+
+### §13.9 Grouping by source
+- [x] `NotificationListGrouping.swift` — enum `{ byTime, byCategory, bySource }`; `apply(to:calendar:)` returns `[(header, items)]`; user toggles via sort menu. (feat(ios post-phase §13))
+
+### §13.10 Summary digest
+- [x] `NotificationDigestScheduler.swift` — schedules daily summary local notification at user-configured time; `nextFireDate(from:policy:calendar:)` pure; `DigestPolicy` + `DigestTime`. (feat(ios post-phase §13))
+- [x] `NotificationDigestPreviewView.swift` — glass card: "Morning digest: 3 tickets, 2 SMS, 1 invoice paid"; A11y summary. (feat(ios post-phase §13))
+- [x] `DigestPolicyEditorView.swift` — pick send time + per-category include; `DigestPolicyEditorViewModel` (`@Observable`). (feat(ios post-phase §13))
+
 ---
 ## §14. Employees & Timeclock
 
