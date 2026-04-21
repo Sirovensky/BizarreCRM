@@ -169,6 +169,13 @@ class FcmService : FirebaseMessagingService() {
         // doesn't wake them. SLA breaches + security alerts ignore this and
         // keep priority HIGH per QuietHours.shouldSilence's allowlist.
         val silenced = quietHours.shouldSilence(channelId)
+        // §13.4: launcher dot count — Samsung One UI + a few skins read
+        // setNumber as the badge integer. Pass total active app
+        // notifications + 1 (this one) so the dot stays accurate.
+        val activeBefore = runCatching {
+            (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                .activeNotifications.size
+        }.getOrDefault(0)
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -182,6 +189,7 @@ class FcmService : FirebaseMessagingService() {
             }
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            .setNumber(activeBefore + 1)
             // M1 fix: keep the full payload off the lock screen.
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicNotification)
