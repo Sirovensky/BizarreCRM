@@ -111,6 +111,37 @@ public final class Cart {
     /// Token of the pending payment link.
     public private(set) var pendingPaymentLinkToken: String?
 
+    // MARK: - §16 Discount engine results
+
+    /// Per-line discount applications written by `DiscountEngine` + `CartViewModel`.
+    /// Keyed by `CartItem.id`. Empty until the engine runs for the first time.
+    public private(set) var appliedDiscounts: [UUID: [DiscountApplication]] = [:]
+
+    /// Cart-level (`.whole` scope) discount applications.
+    public private(set) var cartDiscountApplications: [DiscountApplication] = []
+
+    /// When `true`, at least one applied discount rule requires manager approval
+    /// before the cart may proceed to checkout.
+    public private(set) var discountRequiresManagerApproval: Bool = false
+
+    // MARK: - §37 Applied coupons
+
+    /// Coupon codes applied to this cart.  At most one coupon per rule is
+    /// allowed (the input sheet enforces this at the UX level); the array
+    /// permits multiple distinct coupons from different rules.
+    public private(set) var appliedCoupons: [CouponCode] = []
+
+    /// Total cents saved from applied coupons.
+    public private(set) var couponDiscountCents: Int = 0
+
+    // MARK: - §6 Pricing engine results
+
+    /// Pricing adjustments (BOGO / tiered / bundle) produced by `PricingEngine`.
+    public private(set) var pricingAdjustments: [UUID: [PricingAdjustment]] = [:]
+
+    /// Total savings from pricing rules (computed by engine).
+    public private(set) var pricingSavingCents: Int = 0
+
     public init(items: [CartItem] = [], customer: PosCustomer? = nil) {
         self.items = items
         self.customer = customer
@@ -223,6 +254,57 @@ public final class Cart {
         feesLabel = nil
         holdId = nil
         holdNote = nil
+        appliedDiscounts = [:]
+        cartDiscountApplications = []
+        discountRequiresManagerApproval = false
+        appliedCoupons = []
+        couponDiscountCents = 0
+        pricingAdjustments = [:]
+        pricingSavingCents = 0
+    }
+
+    // MARK: - §16 Discount engine integration
+
+    /// Write back results from `DiscountEngine.apply(cart:rules:)`.
+    public func applyDiscountResult(_ result: DiscountResult) {
+        appliedDiscounts = result.lineApplications
+        cartDiscountApplications = result.cartApplications
+        discountRequiresManagerApproval = result.requiresManagerApproval
+        // Merge engine discount into cartDiscountCents so totals footer
+        // remains the single source of truth.
+        cartDiscountCents = result.totalDiscountCents
+        cartDiscountPercent = nil  // engine result takes precedence
+    }
+
+    // MARK: - §37 Coupon mutators
+
+    /// Attach a validated coupon to the cart. Replaces any existing coupon
+    /// from the same rule (same `ruleId`).
+    public func applyCoupon(_ coupon: CouponCode, discountCents: Int) {
+        appliedCoupons = appliedCoupons.filter { $0.ruleId != coupon.ruleId } + [coupon]
+        couponDiscountCents = appliedCoupons.count > 0
+            ? couponDiscountCents + discountCents
+            : discountCents
+    }
+
+    /// Remove a coupon by its id and reduce the coupon discount accordingly.
+    public func removeCoupon(id: String, discountCents: Int) {
+        appliedCoupons = appliedCoupons.filter { $0.id != id }
+        couponDiscountCents = max(0, couponDiscountCents - discountCents)
+    }
+
+    /// Clear all applied coupons.
+    public func clearCoupons() {
+        appliedCoupons = []
+        couponDiscountCents = 0
+    }
+
+    // MARK: - §6 Pricing engine integration
+
+    /// Write back results from `PricingEngine.apply(cart:rules:)`.
+    public func applyPricingResult(_ result: PricingResult) {
+        pricingAdjustments = result.adjustments
+        pricingSavingCents = result.totalSavingCents
     }
 
     // MARK: - §16.3 — Cart-level adjustment mutators
@@ -376,11 +458,17 @@ public final class Cart {
         return min(cartDiscountCents, subtotalCents)
     }
 
-    /// §16.3 — Cart total includes discount, tax, tip, and fees.
+    /// §16.3 — Cart total includes discount, tax, tip, fees, coupon and pricing savings.
     /// `max(0, ...)` guards the discounted-past-zero edge case.
     public var totalCents: Int {
-        let discounted = max(0, subtotalCents - effectiveDiscountCents)
+        let allDiscounts = effectiveDiscountCents + couponDiscountCents + pricingSavingCents
+        let discounted = max(0, subtotalCents - allDiscounts)
         return discounted + taxCents + tipCents + feesCents
+    }
+
+    /// Combined discount in cents from all sources (manual + engine + coupons + pricing).
+    public var totalSavingsCents: Int {
+        effectiveDiscountCents + couponDiscountCents + pricingSavingCents
     }
 
     public var isEmpty: Bool { items.isEmpty }

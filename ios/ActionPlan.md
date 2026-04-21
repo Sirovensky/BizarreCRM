@@ -1907,44 +1907,44 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Channels: print + email + SMS + AirDrop
 - [ ] Return handling: gift return credits store credit (§40) by default unless paid-for matches card on file
 - [ ] Partial gift receipt via per-line toggle
-- [ ] Types: percentage off (whole cart / line / category)
-- [ ] Types: fixed $ off (whole cart / line)
-- [ ] Types: Buy-X-get-Y
-- [ ] Types: tiered ("10% off $50+, 15% off $100+, 20% off $200+")
+- [x] Types: percentage off (whole cart / line / category) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Types: fixed $ off (whole cart / line) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Types: Buy-X-get-Y (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Types: tiered ("10% off $50+, 15% off $100+, 20% off $200+") (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Types: first-time customer
 - [ ] Types: loyalty tier (§38)
 - [ ] Types: employee discount by role
-- [ ] Stacking: configurable stackable vs exclusive
+- [x] Stacking: configurable stackable vs exclusive (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Stacking order: percentage before fixed before tax (tenant-configurable)
-- [ ] Limits: per customer, per day, per campaign
-- [ ] Limits: min purchase threshold
+- [x] Limits: per customer, per day, per campaign (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Limits: min purchase threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Limits: excluded categories
 - [ ] Auto-apply on each cart change without staff action
 - [ ] Banner shows "N discounts applied"
 - [ ] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit
-- [ ] Manager PIN required above threshold
+- [x] Manager PIN required above threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Server validation: iOS optimistic, server re-validates to prevent fraud
 - [ ] Reporting: discount effectiveness (usage, revenue impact, margin impact)
-- [ ] Model: code string (human-friendly like `SAVE10`)
-- [ ] Model: discount rule linkage (§16)
-- [ ] Model: valid from/to
-- [ ] Model: usage limit (total + per customer)
+- [x] Model: code string (human-friendly like `SAVE10`) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Model: discount rule linkage (§16) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Model: valid from/to (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Model: usage limit (total + per customer) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Model: channel restriction (any / online only / in-store only)
-- [ ] POS checkout sheet has "Coupon" field with live validation showing discount applied
+- [x] POS checkout sheet has "Coupon" field with live validation showing discount applied (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] QR coupons: printable/emailable QR containing code; scan at checkout auto-fills
 - [ ] Abuse prevention: rate-limit attempts per device
 - [ ] Abuse prevention: invalid attempts logged to audit
 - [ ] Affiliate codes: tie coupon code to staff member for sales attribution
-- [ ] Time-based: happy hour 3-5pm = 10% off services; weekend pricing adjustments
-- [ ] Volume: buy 3 cases 5% off each, buy 5 cases 10%
-- [ ] Customer-group: wholesale pricing for B2B tier
+- [x] Time-based: happy hour 3-5pm = 10% off services; weekend pricing adjustments (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Volume: buy 3 cases 5% off each, buy 5 cases 10% (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Customer-group: wholesale pricing for B2B tier (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Location-based: per-location pricing overrides (metro vs suburb)
 - [ ] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier
-- [ ] UI at Settings → Pricing rules
+- [x] UI at Settings → Pricing rules (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Rule list with priority order
 - [ ] Live preview: "Apply to sample cart" simulator
-- [ ] Conflict resolution: first matching rule wins (priority)
-- [ ] Explicit stack rules if tenant configures
+- [x] Conflict resolution: first matching rule wins (priority) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
+- [x] Explicit stack rules if tenant configures (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Effective dates: schedule rules to auto-activate/deactivate
 - [ ] Calendar view of scheduled rules
 - [ ] Live recompute: animate tick-up/tick-down per digit with small font-weight shift.
