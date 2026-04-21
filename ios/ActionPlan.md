@@ -1015,9 +1015,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.3 Create
 - [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part / service), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag — shipped via `Inventory/InventoryCreateView` + `InventoryFormView`.
-- [ ] **Inline barcode scan** — `DataScannerViewController` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
+- [x] **Inline barcode scan** — `InventoryDataScannerView` (VisionKit `DataScannerViewController` wrapper) fills SKU field; barcode button in SKU row auto-maps result. (feat(ios phase-4 §6))
 - [ ] **Photo capture** up to 4 per item; first = primary.
 - [x] **Validation** — decimal for prices (2 places), integer for stock. Name + SKU required.
+- [x] **Category Picker** + **currency TextField** for cost/retail cents. **Draft autosave** to `UserDefaults` on every field change; restored on re-open. (feat(ios phase-4 §6))
 - [ ] **Save & add another** secondary CTA.
 - [x] **Offline create** — temp ID + queue via `InventoryOfflineQueue`; `PendingSyncInventoryId = -1` sentinel.
 
@@ -1035,15 +1036,18 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Vibrate haptic** on successful scan.
 
 ### 6.6 Stocktake / audit
-- [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary.
-- [ ] **New session** — name, optional location, start.
-- [ ] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards.
-- [ ] **Summary** — items counted / items-with-variance / total variance / surplus / shortage.
+- [x] **Sessions list** — `ReceivingListView` (open PO list); `StocktakeStartView` picks scope → `POST /inventory/stocktake/start`. (feat(ios phase-4 §6))
+- [x] **New session** — name, optional category / location, start button wired to `StocktakeStartViewModel`. (feat(ios phase-4 §6))
+- [x] **Session detail** — `StocktakeScanView` barcode scan loop with `InventoryDataScannerView`; expected qty per row; actual qty typed; discrepancy highlighted red; Liquid Glass progress header; Reduce Motion honored. `StocktakeDiscrepancyCalculator` pure arithmetic helper. (feat(ios phase-4 §6))
+- [x] **Summary + reconciliation** — `StocktakeReviewSheet` lists discrepancies; per-shortage write-off reason Picker; offline-pending banner; `POST /inventory/stocktake/:id/finalize`. (feat(ios phase-4 §6))
+- [x] **Receiving** — `ReceivingListView` + `ReceivingDetailView` (scan/enter qty per PO line, over-receipt warning) + `ReceivingReconciliationSheet`; `POST /inventory/receiving/:id/finalize`; offline-queue on network error. (feat(ios phase-4 §6))
 - [ ] **Multi-user** — multiple scanners feeding same session via WS events.
 
 ### 6.7 Purchase orders
 - [ ] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date.
 - [ ] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes.
+- [x] **Batch edit** — `BatchEditSheet` + `BatchEditViewModel`; multi-select in `InventoryListView`; adjust price %, reassign category, retag; `POST /inventory/items/batch { ids, updates }`. (feat(ios phase-4 §6))
+- [x] **SKU picker component** — `SkuPicker` reusable: search + 300ms debounce + barcode scan button + Recent 10; used in POS / RepairPricing / receiving. (feat(ios phase-4 §6))
 - [ ] **Send** — email to supplier.
 - [ ] **Receive** — scan items to increment; partial receipt supported.
 - [ ] **Cancel** — confirm.
@@ -1246,7 +1250,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] **Send** — SMS / email; body includes approval link (customer portal).
 - [ ] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (`PKCanvasView`).
 - [ ] **Reject** — reason required.
-- [ ] **Convert to ticket** — prefill ticket; inventory reservation.
+- [x] **Convert to ticket** — `EstimateConvertSheet` + `EstimateConvertViewModel` (`POST /estimates/:id/convert-to-ticket`); sheet summary, conflict/validation error handling, dismiss+navigate on success. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [ ] **Convert to invoice**.
 - [ ] **Versioning** — revise estimate; keep prior versions visible.
 - [ ] **Customer-facing PDF preview** — "See what customer sees" button.
@@ -1349,7 +1353,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 
 ### 10.3 Create
 - [x] Minimal — shipped.
-- [ ] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom), notes.
+- [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom), notes. `AppointmentCreateFullView` + `AppointmentCreateFullViewModel` + `AppointmentRepeatRuleSheet` + `AppointmentConflictResolver`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [ ] **EventKit mirror** — "Add to my Calendar" toggle writes `EKEvent` to user's default calendar (requires `NSCalendarsUsageDescription`).
 - [ ] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time".
 - [ ] **Idempotency** + offline temp-id.

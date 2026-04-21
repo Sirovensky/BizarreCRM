@@ -12,6 +12,11 @@ public struct InventoryListView: View {
     @State private var selected: Int64?
     @State private var showingCreate: Bool = false
     @State private var showingLowStock: Bool = false
+    @State private var showingReceiving: Bool = false
+    @State private var showingStocktake: Bool = false
+    @State private var showingBatchEdit: Bool = false
+    @State private var multiSelection: Set<Int64> = []
+    @State private var isBatchSelectMode: Bool = false
     private let detailRepo: InventoryDetailRepository
     private let api: APIClient?
 
@@ -40,6 +45,9 @@ public struct InventoryListView: View {
                 VStack(spacing: 0) {
                     filterChips
                         .padding(.vertical, BrandSpacing.sm)
+                    if isBatchSelectMode {
+                        batchSelectionBanner
+                    }
                     listContent { id in path.append(id) }
                 }
                 if vm.isOffline {
@@ -60,13 +68,24 @@ public struct InventoryListView: View {
             }
             .toolbar { listToolbar }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
-                if let api {
-                    InventoryCreateView(api: api)
-                }
+                if let api { InventoryCreateView(api: api) }
             }
             .sheet(isPresented: $showingLowStock) {
+                if let api { InventoryLowStockView(api: api) }
+            }
+            .sheet(isPresented: $showingReceiving) {
+                if let api { ReceivingListView(api: api) }
+            }
+            .sheet(isPresented: $showingStocktake) {
+                if let api { StocktakeStartView(api: api) }
+            }
+            .sheet(isPresented: $showingBatchEdit, onDismiss: {
+                isBatchSelectMode = false
+                multiSelection = []
+                Task { await vm.refresh() }
+            }) {
                 if let api {
-                    InventoryLowStockView(api: api)
+                    BatchEditSheet(api: api, selectedIds: Array(multiSelection))
                 }
             }
         }
@@ -81,6 +100,9 @@ public struct InventoryListView: View {
                 VStack(spacing: 0) {
                     filterChips
                         .padding(.vertical, BrandSpacing.sm)
+                    if isBatchSelectMode {
+                        batchSelectionBanner
+                    }
                     listContent { id in selected = id }
                 }
                 if vm.isOffline {
@@ -99,13 +121,24 @@ public struct InventoryListView: View {
             .toolbar { listToolbar }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
-                if let api {
-                    InventoryCreateView(api: api)
-                }
+                if let api { InventoryCreateView(api: api) }
             }
             .sheet(isPresented: $showingLowStock) {
+                if let api { InventoryLowStockView(api: api) }
+            }
+            .sheet(isPresented: $showingReceiving) {
+                if let api { ReceivingListView(api: api) }
+            }
+            .sheet(isPresented: $showingStocktake) {
+                if let api { StocktakeStartView(api: api) }
+            }
+            .sheet(isPresented: $showingBatchEdit, onDismiss: {
+                isBatchSelectMode = false
+                multiSelection = []
+                Task { await vm.refresh() }
+            }) {
                 if let api {
-                    InventoryLowStockView(api: api)
+                    BatchEditSheet(api: api, selectedIds: Array(multiSelection))
                 }
             }
         } detail: {
@@ -120,7 +153,38 @@ public struct InventoryListView: View {
         .navigationSplitViewStyle(.balanced)
     }
 
-    // MARK: - Shared toolbar / content
+    // MARK: - Batch selection banner (Liquid Glass chrome)
+
+    private var batchSelectionBanner: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Text("\(multiSelection.count) selected")
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityLabel("\(multiSelection.count) items selected")
+            Spacer()
+            Button("Edit batch") {
+                guard !multiSelection.isEmpty else { return }
+                showingBatchEdit = true
+            }
+            .buttonStyle(BrandGlassButtonStyle())
+            .disabled(multiSelection.isEmpty)
+            .accessibilityLabel("Edit selected items in batch")
+
+            Button("Cancel") {
+                isBatchSelectMode = false
+                multiSelection = []
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+            .accessibilityLabel("Cancel batch selection")
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.sm)
+        .brandGlass(.regular, tint: .bizarreOrange.opacity(0.3),
+                    in: RoundedRectangle(cornerRadius: 0, style: .continuous))
+    }
+
+    // MARK: - Shared toolbar
 
     @ToolbarContentBuilder
     private var listToolbar: some ToolbarContent {
@@ -140,10 +204,40 @@ public struct InventoryListView: View {
             .accessibilityLabel("View low stock items")
             .disabled(api == nil)
         }
+        ToolbarItem(placement: .secondaryAction) {
+            Button { showingReceiving = true } label: {
+                Label("Receiving", systemImage: "shippingbox.and.arrow.backward")
+            }
+            .keyboardShortcut("R", modifiers: [.command, .shift])
+            .accessibilityLabel("Open receiving orders")
+            .disabled(api == nil)
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button { showingStocktake = true } label: {
+                Label("Stocktake", systemImage: "checklist")
+            }
+            .keyboardShortcut("T", modifiers: [.command, .shift])
+            .accessibilityLabel("Start stocktake")
+            .disabled(api == nil)
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                isBatchSelectMode.toggle()
+                if !isBatchSelectMode { multiSelection = [] }
+            } label: {
+                Label(isBatchSelectMode ? "Cancel select" : "Select items",
+                      systemImage: isBatchSelectMode ? "xmark.circle" : "checkmark.circle")
+            }
+            .keyboardShortcut("E", modifiers: [.command, .shift])
+            .accessibilityLabel(isBatchSelectMode ? "Cancel batch selection" : "Select items for batch edit")
+            .disabled(api == nil)
+        }
         ToolbarItem(placement: .status) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
     }
+
+    // MARK: - Content
 
     @ViewBuilder
     private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
@@ -156,23 +250,49 @@ public struct InventoryListView: View {
         } else if vm.items.isEmpty {
             InventoryEmptyState(isSearching: !searchText.isEmpty)
         } else {
-            List(selection: Binding<Int64?>(
-                get: { Platform.isCompact ? nil : selected },
-                set: { if let id = $0 { selected = id } }
-            )) {
+            List(selection: isBatchSelectMode
+                 ? $multiSelection
+                 : Binding<Set<Int64>>(
+                    get: { selected.map { [$0] } ?? [] },
+                    set: { if let id = $0.first { selected = id } }
+                 )
+            ) {
                 ForEach(vm.items) { item in
                     row(for: item, onSelect: onSelect)
                         .listRowBackground(Color.bizarreSurface1)
+                        .tag(item.id)
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .environment(\.editMode, isBatchSelectMode ? .constant(.active) : .constant(.inactive))
         }
     }
 
     @ViewBuilder
     private func row(for item: InventoryListItem, onSelect: @escaping (Int64) -> Void) -> some View {
-        if Platform.isCompact {
+        if isBatchSelectMode {
+            InventoryRow(item: item)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if multiSelection.contains(item.id) {
+                        multiSelection.remove(item.id)
+                    } else {
+                        multiSelection.insert(item.id)
+                    }
+                }
+                .overlay(alignment: .leading) {
+                    if multiSelection.contains(item.id) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.bizarreOrange)
+                            .padding(.leading, BrandSpacing.sm)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(item.displayName)\(multiSelection.contains(item.id) ? ", selected" : "")")
+                .accessibilityAddTraits(multiSelection.contains(item.id) ? .isSelected : [])
+        } else if Platform.isCompact {
             NavigationLink(value: item.id) {
                 InventoryRow(item: item)
             }
@@ -196,23 +316,30 @@ public struct InventoryListView: View {
         } label: {
             Label("Open", systemImage: "arrow.up.forward.square")
         }
-        // "Edit" is a deep-link into the detail sheet — the detail view owns
-        // the edit sheet state. We jump there by selecting the row.
         Button {
             selected = item.id
         } label: {
             Label("Edit", systemImage: "pencil")
         }
-        if let api {
+        if api != nil {
             Button {
-                // Jump to detail — InventoryDetailView owns the adjust sheet.
                 selected = item.id
             } label: {
                 Label("Adjust stock", systemImage: "slider.horizontal.3")
             }
-            .disabled(api == nil)
         }
+        Divider()
+        Button {
+            multiSelection = [item.id]
+            isBatchSelectMode = true
+            showingBatchEdit = true
+        } label: {
+            Label("Batch edit", systemImage: "checkmark.circle")
+        }
+        .disabled(api == nil)
     }
+
+    // MARK: - Filter chips
 
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -266,6 +393,10 @@ private struct InventoryRow: View {
         }
         .padding(.vertical, BrandSpacing.xs)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(item.displayName)\(item.sku.map { ", SKU \($0)" } ?? ""). \(stockAccessibilityLabel)"
+        )
     }
 
     @ViewBuilder
@@ -286,6 +417,13 @@ private struct InventoryRow: View {
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
+    }
+
+    private var stockAccessibilityLabel: String {
+        let stock = item.inStock ?? 0
+        if item.isLowStock { return "Low stock, \(stock) remaining" }
+        if stock > 0 { return "\(stock) in stock" }
+        return "Out of stock"
     }
 
     private func formatMoney(_ cents: Int) -> String {
@@ -316,6 +454,8 @@ private struct InventoryFilterChip: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(label) filter\(selected ? ", selected" : "")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -383,4 +523,3 @@ private struct EmptyInventoryDetailPlaceholder: View {
     }
 }
 #endif
-
