@@ -243,6 +243,7 @@ struct MoreMenuView: View {
                     NavigationLink("Leads") { LeadListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Appointments") { AppointmentListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Expenses") { ExpenseListView(api: AppServices.shared.apiClient) }
+                    NavigationLink("Payment links") { PaymentLinksListView(api: AppServices.shared.apiClient) }
                     NavigationLink("Reports") { ReportsView() }
                 }
                 Section("People") {
