@@ -161,6 +161,212 @@ public struct RedeemGiftCardResponse: Decodable, Sendable, Equatable {
     }
 }
 
+// MARK: - Sell / Activate
+
+/// Body for `POST /gift-cards` — creates a new virtual gift card and sends
+/// recipient email (+ optional SMS).
+public struct CreateVirtualGiftCardRequest: Encodable, Sendable {
+    public let recipientEmail: String
+    public let recipientName: String
+    public let amountCents: Int
+    public let message: String?
+
+    public init(
+        recipientEmail: String,
+        recipientName: String,
+        amountCents: Int,
+        message: String? = nil
+    ) {
+        self.recipientEmail = recipientEmail
+        self.recipientName = recipientName
+        self.amountCents = amountCents
+        self.message = message
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case recipientEmail
+        case recipientName
+        case amountCents = "amount"
+        case message
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode("virtual", forKey: .kind)
+        try c.encode(recipientEmail, forKey: .recipientEmail)
+        try c.encode(recipientName, forKey: .recipientName)
+        try c.encode(GiftCard.centsToDollars(amountCents), forKey: .amountCents)
+        if let message, !message.isEmpty {
+            try c.encode(message, forKey: .message)
+        }
+    }
+}
+
+/// Body for `POST /gift-cards/:id/activate` — activates a physical unissued card.
+public struct ActivateGiftCardRequest: Encodable, Sendable {
+    public let amountCents: Int
+    public init(amountCents: Int) { self.amountCents = amountCents }
+    enum CodingKeys: String, CodingKey { case amount }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(GiftCard.centsToDollars(amountCents), forKey: .amount)
+    }
+}
+
+// MARK: - Reload
+
+/// Body for `POST /gift-cards/:id/reload`.
+public struct ReloadGiftCardRequest: Encodable, Sendable {
+    public let amountCents: Int
+    public init(amountCents: Int) { self.amountCents = amountCents }
+    enum CodingKeys: String, CodingKey { case amount }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(GiftCard.centsToDollars(amountCents), forKey: .amount)
+    }
+}
+
+/// Response from `/reload`.
+public struct ReloadGiftCardResponse: Decodable, Sendable, Equatable {
+    public let newBalanceCents: Int
+
+    public init(newBalanceCents: Int) { self.newBalanceCents = newBalanceCents }
+
+    public init(from decoder: Decoder) throws {
+        struct Raw: Decodable {
+            let newBalance: Decimal?
+            enum CodingKeys: String, CodingKey { case newBalance = "new_balance" }
+        }
+        let raw = try Raw(from: decoder)
+        newBalanceCents = GiftCard.dollarsToCents(raw.newBalance ?? 0)
+    }
+}
+
+// MARK: - Transfer
+
+/// Body for `POST /gift-cards/transfer`.
+public struct TransferGiftCardRequest: Encodable, Sendable {
+    public let sourceCardId: Int64
+    public let targetCardId: Int64
+    public let amountCents: Int
+
+    public init(sourceCardId: Int64, targetCardId: Int64, amountCents: Int) {
+        self.sourceCardId = sourceCardId
+        self.targetCardId = targetCardId
+        self.amountCents = amountCents
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sourceCardId
+        case targetCardId
+        case amount
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(sourceCardId, forKey: .sourceCardId)
+        try c.encode(targetCardId, forKey: .targetCardId)
+        try c.encode(GiftCard.centsToDollars(amountCents), forKey: .amount)
+    }
+}
+
+/// Response from `/gift-cards/transfer`.
+public struct TransferGiftCardResponse: Decodable, Sendable, Equatable {
+    public let sourceBalanceCents: Int
+    public let targetBalanceCents: Int
+
+    public init(sourceBalanceCents: Int, targetBalanceCents: Int) {
+        self.sourceBalanceCents = sourceBalanceCents
+        self.targetBalanceCents = targetBalanceCents
+    }
+
+    public init(from decoder: Decoder) throws {
+        struct Raw: Decodable {
+            let sourceBalance: Decimal?
+            let targetBalance: Decimal?
+            enum CodingKeys: String, CodingKey {
+                case sourceBalance = "source_balance"
+                case targetBalance = "target_balance"
+            }
+        }
+        let raw = try Raw(from: decoder)
+        sourceBalanceCents = GiftCard.dollarsToCents(raw.sourceBalance ?? 0)
+        targetBalanceCents = GiftCard.dollarsToCents(raw.targetBalance ?? 0)
+    }
+}
+
+// MARK: - Store credit policy
+
+public struct StoreCreditPolicyRequest: Encodable, Sendable {
+    public enum ExpirationPeriod: String, Encodable, Sendable, CaseIterable {
+        case days90 = "90"
+        case days180 = "180"
+        case days365 = "365"
+        case never = "never"
+
+        public var displayName: String {
+            switch self {
+            case .days90:  return "90 days"
+            case .days180: return "180 days"
+            case .days365: return "1 year"
+            case .never:   return "Never"
+            }
+        }
+    }
+
+    public let expirationPeriod: ExpirationPeriod
+    public init(expirationPeriod: ExpirationPeriod) { self.expirationPeriod = expirationPeriod }
+
+    enum CodingKeys: String, CodingKey { case expirationPeriod = "expiration_period" }
+}
+
+// MARK: - Refund to gift card (extends invoice refund body)
+
+/// Body for `POST /invoices/:id/refund` with gift-card issuance.
+public struct InvoiceRefundRequest: Encodable, Sendable {
+    public let amountCents: Int
+    public let toGiftCard: Bool
+    public let reason: String?
+
+    public init(amountCents: Int, toGiftCard: Bool, reason: String? = nil) {
+        self.amountCents = amountCents
+        self.toGiftCard = toGiftCard
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case amount
+        case toGiftCard
+        case reason
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(GiftCard.centsToDollars(amountCents), forKey: .amount)
+        try c.encode(toGiftCard, forKey: .toGiftCard)
+        if let reason, !reason.isEmpty {
+            try c.encode(reason, forKey: .reason)
+        }
+    }
+}
+
+/// Server response from invoice refund (includes optional new gift card when `toGiftCard: true`).
+public struct InvoiceRefundResponse: Decodable, Sendable {
+    public let refundId: Int64?
+    public let issuedGiftCard: GiftCard?
+
+    public init(refundId: Int64?, issuedGiftCard: GiftCard?) {
+        self.refundId = refundId
+        self.issuedGiftCard = issuedGiftCard
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case refundId = "refund_id"
+        case issuedGiftCard = "issued_gift_card"
+    }
+}
+
 // MARK: - Client
 
 public extension APIClient {
@@ -194,4 +400,70 @@ public extension APIClient {
             as: RedeemGiftCardResponse.self
         )
     }
+
+    // MARK: - Sell
+
+    /// Create a new virtual gift card. Server sends recipient email with
+    /// code + QR. Returns the newly-created card.
+    func createVirtualGiftCard(_ request: CreateVirtualGiftCardRequest) async throws -> GiftCard {
+        return try await post("/api/v1/gift-cards", body: request, as: GiftCard.self)
+    }
+
+    /// Activate a physical unissued card (looked up by barcode scan first).
+    func activateGiftCard(id: Int64, amountCents: Int) async throws -> GiftCard {
+        let body = ActivateGiftCardRequest(amountCents: amountCents)
+        return try await post(
+            "/api/v1/gift-cards/\(id)/activate",
+            body: body,
+            as: GiftCard.self
+        )
+    }
+
+    // MARK: - Reload
+
+    /// Add funds to an existing active gift card.
+    func reloadGiftCard(id: Int64, amountCents: Int) async throws -> ReloadGiftCardResponse {
+        let body = ReloadGiftCardRequest(amountCents: amountCents)
+        return try await post(
+            "/api/v1/gift-cards/\(id)/reload",
+            body: body,
+            as: ReloadGiftCardResponse.self
+        )
+    }
+
+    // MARK: - Transfer
+
+    /// Move balance from one card to another. Server creates an audit entry automatically.
+    func transferGiftCard(_ request: TransferGiftCardRequest) async throws -> TransferGiftCardResponse {
+        return try await post(
+            "/api/v1/gift-cards/transfer",
+            body: request,
+            as: TransferGiftCardResponse.self
+        )
+    }
+
+    // MARK: - Store credit policy
+
+    @discardableResult
+    func updateStoreCreditPolicy(_ request: StoreCreditPolicyRequest) async throws -> EmptyResponse {
+        return try await post("/api/v1/settings/store-credit-policy", body: request, as: EmptyResponse.self)
+    }
+
+    // MARK: - Refund to gift card
+
+    func refundInvoice(id: Int64, request: InvoiceRefundRequest) async throws -> InvoiceRefundResponse {
+        return try await post(
+            "/api/v1/invoices/\(id)/refund",
+            body: request,
+            as: InvoiceRefundResponse.self
+        )
+    }
+}
+
+// MARK: - EmptyResponse helper
+
+/// Placeholder response for endpoints that return an empty 204 body or a simple
+/// `{ success: true }` envelope that carries no payload.
+public struct EmptyResponse: Decodable, Sendable {
+    public init() {}
 }
