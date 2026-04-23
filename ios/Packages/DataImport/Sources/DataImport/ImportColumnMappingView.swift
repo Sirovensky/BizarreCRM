@@ -15,11 +15,22 @@ public struct ImportColumnMappingView: View {
         vm.preview?.columns ?? []
     }
 
-    private var crmOptions: [String] {
-        ["(Skip)"] + CRMField.allCases.map { $0.rawValue }
+    /// CRM fields available for the currently-selected entity type.
+    private var entityFields: [CRMField] {
+        CRMField.fields(for: vm.selectedEntity)
     }
 
     public var body: some View {
+        if Platform.isCompact {
+            compactLayout
+        } else {
+            wideLayout
+        }
+    }
+
+    // MARK: - iPhone layout
+
+    private var compactLayout: some View {
         VStack(spacing: 0) {
             header
 
@@ -30,7 +41,7 @@ public struct ImportColumnMappingView: View {
             }
 
             List {
-                Section("Column Mapping") {
+                Section("Column Mapping — \(vm.selectedEntity.displayName)") {
                     ForEach(sourceColumns, id: \.self) { col in
                         columnRow(for: col)
                     }
@@ -51,12 +62,80 @@ public struct ImportColumnMappingView: View {
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
     }
 
+    // MARK: - iPad layout (wider grid)
+
+    private var wideLayout: some View {
+        VStack(spacing: 0) {
+            header
+
+            if vm.allRequiredMapped {
+                requiredMappedBadge
+            } else {
+                missingFieldsBadge
+            }
+
+            // iPad: show mapping as a Grid for denser visual
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Column header row
+                    Grid(alignment: .leading, horizontalSpacing: DesignTokens.Spacing.lg) {
+                        GridRow {
+                            Text("Source Column")
+                                .font(.brandBodyLarge().bold())
+                                .foregroundStyle(.bizarreOrange)
+                                .accessibilityAddTraits(.isHeader)
+                            Text("Maps To (\(vm.selectedEntity.displayName))")
+                                .font(.brandBodyLarge().bold())
+                                .foregroundStyle(.bizarreOrange)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        Divider()
+                        ForEach(sourceColumns, id: \.self) { col in
+                            GridRow {
+                                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                                    Text(col)
+                                        .font(.brandBodyMedium())
+                                        .foregroundStyle(.bizarreOnSurface)
+                                    if let mapped = vm.columnMapping[col],
+                                       let field = CRMField(rawValue: mapped), field.isRequired {
+                                        Label("Required", systemImage: "star.fill")
+                                            .font(.brandLabelSmall())
+                                            .foregroundStyle(.bizarreOrange)
+                                    }
+                                }
+                                Picker("Map \(col)", selection: bindingForColumn(col)) {
+                                    Text("(Skip)").tag(Optional<String>.none)
+                                    ForEach(entityFields, id: \.rawValue) { field in
+                                        Text(field.displayName).tag(Optional(field.rawValue))
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .accessibilityLabel("Map column \(col)")
+                                .accessibilityIdentifier("import.mapping.\(col)")
+                            }
+                            .padding(.vertical, DesignTokens.Spacing.xs)
+                        }
+                    }
+                    .padding(DesignTokens.Spacing.lg)
+                    .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+                    .padding(.horizontal, DesignTokens.Spacing.lg)
+                }
+            }
+
+            continueButton
+                .padding(.horizontal, DesignTokens.Spacing.lg)
+                .padding(.bottom, DesignTokens.Spacing.lg)
+        }
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
             Text("Map Columns")
                 .font(.brandTitleLarge())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Match your file's columns to CRM fields")
+            Text("Match your file's columns to \(vm.selectedEntity.displayName) fields")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
@@ -103,7 +182,7 @@ public struct ImportColumnMappingView: View {
 
             Picker("Map \(col)", selection: bindingForColumn(col)) {
                 Text("(Skip)").tag(Optional<String>.none)
-                ForEach(CRMField.allCases, id: \.rawValue) { field in
+                ForEach(entityFields, id: \.rawValue) { field in
                     Text(field.displayName).tag(Optional(field.rawValue))
                 }
             }

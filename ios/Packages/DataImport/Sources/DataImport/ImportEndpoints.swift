@@ -21,9 +21,26 @@ extension APIClient {
     }
 
     /// POST /imports — create import job
-    public func createImportJob(source: ImportSource, fileId: String?, mapping: [String: String]?) async throws -> CreateImportJobResponse {
-        let req = CreateImportJobRequest(source: source, fileId: fileId, mapping: mapping)
+    /// - Parameters:
+    ///   - source: Import source system (csv, repairDesk, etc.)
+    ///   - entityType: Target entity (customers, inventory, tickets)
+    ///   - fileId: Server file ID from the upload step
+    ///   - mapping: Column→field mapping dict (optional at create time, required before start)
+    public func createImportJob(
+        source: ImportSource,
+        entityType: ImportEntityType,
+        fileId: String?,
+        mapping: [String: String]?
+    ) async throws -> CreateImportJobResponse {
+        let req = CreateImportJobRequest(source: source, entityType: entityType, fileId: fileId, mapping: mapping)
         return try await post("/imports", body: req, as: CreateImportJobResponse.self)
+    }
+
+    /// POST /imports/:id/rollback — roll back a completed import (within 24 h window).
+    /// Server endpoint: POST /api/v1/import/:id/rollback
+    /// NOTE: This endpoint is not yet present in import.routes.ts — tracked as missing endpoint.
+    public func rollbackImport(id: String) async throws -> RollbackImportResponse {
+        return try await post("/imports/\(id)/rollback", body: RollbackImportRequest(), as: RollbackImportResponse.self)
     }
 
     /// GET /imports/:id — poll status
