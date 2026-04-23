@@ -1,20 +1,17 @@
 import SwiftUI
 import Observation
-import PhotosUI
 import Core
 import DesignSystem
 import Networking
-#if canImport(UIKit)
-import Camera
-import UIKit
-#endif
 
 // MARK: - ViewModel
 
 @MainActor
 @Observable
-public final class ExpenseCreateViewModel {
-    // MARK: Form fields
+public final class ExpenseEditViewModel {
+
+    // MARK: Form state (populated from existing expense on load)
+
     public var category: String = ""
     public var amountText: String = ""
     public var vendor: String = ""
@@ -25,18 +22,31 @@ public final class ExpenseCreateViewModel {
     public var date: Date = Date()
     public var isReimbursable: Bool = false
 
-    // MARK: State
+    // MARK: Load / submit state
+
+    public enum LoadState: Sendable {
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    public private(set) var loadState: LoadState = .loading
     public private(set) var isSubmitting: Bool = false
     public private(set) var errorMessage: String?
-    public private(set) var createdId: Int64?
-    /// `true` while OCR is running.
-    public private(set) var isOCRRunning: Bool = false
-    /// Controls the camera receipt picker sheet.
-    public var showingCameraReceiptPicker: Bool = false
+    public private(set) var didSave: Bool = false
+
+    public var isLoaded: Bool {
+        if case .loaded = loadState { return true }
+        return false
+    }
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private let expenseId: Int64
 
-    public init(api: APIClient) { self.api = api }
+    public init(api: APIClient, expenseId: Int64) {
+        self.api = api
+        self.expenseId = expenseId
+    }
 
     // MARK: - Computed
 
@@ -52,52 +62,56 @@ public final class ExpenseCreateViewModel {
             && (taxAmount == nil || (taxAmount! >= 0 && taxAmount! <= 100_000))
     }
 
-    // MARK: - OCR from camera / photo library
+    // MARK: - Load existing expense
 
-#if canImport(UIKit)
-    @MainActor
-    public func handleCapturedImages(_ images: [UIImage]) async {
-        showingCameraReceiptPicker = false
-        guard let first = images.first else { return }
-        isOCRRunning = true
-        defer { isOCRRunning = false }
-        if let total = await ReceiptEdgeDetector.ocrTotal(first) {
-            let formatted = String(format: "%.2f", total)
-            if amountText.isEmpty || (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) == 0 {
-                amountText = formatted
-            }
+    public func load() async {
+        loadState = .loading
+        do {
+            let expense = try await api.getExpense(id: expenseId)
+            populate(from: expense)
+            loadState = .loaded
+        } catch {
+            AppLog.ui.error("Expense edit load failed: \(error.localizedDescription, privacy: .public)")
+            loadState = .failed(error.localizedDescription)
         }
     }
-#endif
 
-    /// Called after user picks a photo from library (`PhotosPickerItem`).
-    /// OCR runs only on UIKit (iOS); on macOS the data load is a no-op.
-    @MainActor
-    public func handlePhotoLibraryItem(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
-        isOCRRunning = true
-        defer { isOCRRunning = false }
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-        #if canImport(UIKit)
-        guard let img = UIImage(data: data) else { return }
-        if let total = await ReceiptEdgeDetector.ocrTotal(img) {
-            let formatted = String(format: "%.2f", total)
-            if amountText.isEmpty || (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) == 0 {
-                amountText = formatted
-            }
+    private func populate(from expense: Expense) {
+        category = expense.category ?? ""
+        amountText = expense.amount.map { String(format: "%.2f", $0) } ?? ""
+        vendor = expense.vendor ?? ""
+        taxAmountText = expense.taxAmount.map { String(format: "%.2f", $0) } ?? ""
+        paymentMethod = expense.paymentMethod ?? ""
+        descriptionText = expense.description ?? ""
+        notes = expense.notes ?? ""
+        isReimbursable = expense.isReimbursable ?? false
+
+        if let dateStr = expense.date,
+           let parsed = Self.parseISODate(dateStr) {
+            date = parsed
+        } else {
+            date = Date()
         }
-        #endif
     }
 
-    // MARK: - Submit
+    private static func parseISODate(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: s)
+    }
 
-    public func submit() async {
+    // MARK: - Save
+
+    public func save() async {
         guard !isSubmitting else { return }
         errorMessage = nil
         guard isValid, let amount else {
             errorMessage = "Category and a positive amount up to $100,000 are required."
             return
         }
+
         isSubmitting = true
         defer { isSubmitting = false }
 
@@ -114,7 +128,7 @@ public final class ExpenseCreateViewModel {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPayment = paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let req = CreateExpenseRequest(
+        let req = UpdateExpenseRequest(
             category: category.trimmingCharacters(in: .whitespaces),
             amount: amount,
             description: trimmedDesc.isEmpty ? nil : trimmedDesc,
@@ -127,10 +141,10 @@ public final class ExpenseCreateViewModel {
         )
 
         do {
-            let created = try await api.createExpense(req)
-            createdId = created.id
+            _ = try await api.updateExpense(id: expenseId, body: req)
+            didSave = true
         } catch {
-            AppLog.ui.error("Expense create failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.ui.error("Expense update failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -138,38 +152,58 @@ public final class ExpenseCreateViewModel {
 
 // MARK: - View
 
-public struct ExpenseCreateView: View {
+public struct ExpenseEditView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var vm: ExpenseCreateViewModel
-    @State private var photoLibraryItem: PhotosPickerItem?
+    @State private var vm: ExpenseEditViewModel
 
-    public init(api: APIClient) { _vm = State(wrappedValue: ExpenseCreateViewModel(api: api)) }
+    public init(api: APIClient, expenseId: Int64) {
+        _vm = State(wrappedValue: ExpenseEditViewModel(api: api, expenseId: expenseId))
+    }
 
     public var body: some View {
         NavigationStack {
-            formContent
+            body_content
                 .scrollContentBackground(.hidden)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-                .navigationTitle("New Expense")
+                .navigationTitle("Edit Expense")
                 #if canImport(UIKit)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
                 .toolbar { toolbarItems }
-        }
-        #if canImport(UIKit)
-        .sheet(isPresented: $vm.showingCameraReceiptPicker) {
-            PhotoCaptureView { images in
-                Task { await vm.handleCapturedImages(images) }
-            }
-            .presentationDetents([.medium, .large])
-        }
-        #endif
-        .onChange(of: photoLibraryItem) { _, newItem in
-            Task { await vm.handlePhotoLibraryItem(newItem) }
+                .task { await vm.load() }
         }
     }
 
-    // MARK: - Form
+    @ViewBuilder
+    private var body_content: some View {
+        switch vm.loadState {
+        case .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Loading expense")
+        case .failed(let msg):
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.bizarreError)
+                    .accessibilityHidden(true)
+                Text("Couldn't load expense")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text(msg)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                Button("Try Again") { Task { await vm.load() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Retry loading expense")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loaded:
+            formContent
+        }
+    }
 
     private var formContent: some View {
         Form {
@@ -178,7 +212,6 @@ public struct ExpenseCreateView: View {
             vendorPaymentSection
             dateReimbursableSection
             notesSection
-            receiptSection
             if let err = vm.errorMessage {
                 Section {
                     Text(err)
@@ -205,7 +238,7 @@ public struct ExpenseCreateView: View {
                     #if canImport(UIKit)
                     .keyboardType(.decimalPad)
                     #endif
-                    .accessibilityLabel("Tax amount in US dollars")
+                    .accessibilityLabel("Tax amount")
             }
         }
         .listRowBackground(Color.bizarreSurface1)
@@ -276,95 +309,21 @@ public struct ExpenseCreateView: View {
         .listRowBackground(Color.bizarreSurface1)
     }
 
-    @ViewBuilder
-    private var receiptSection: some View {
-        Section("Receipt") {
-            #if canImport(UIKit)
-            Button {
-                vm.showingCameraReceiptPicker = true
-            } label: {
-                receiptButtonLabel(
-                    systemImage: "camera.fill",
-                    title: "Take photo",
-                    subtitle: "Capture receipt now"
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Take photo of receipt with camera")
-            .accessibilityIdentifier("expenses.camera")
-
-            PhotosPicker(
-                selection: $photoLibraryItem,
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                receiptButtonLabel(
-                    systemImage: "photo.on.rectangle",
-                    title: "Photo library",
-                    subtitle: "Pick existing receipt photo"
-                )
-            }
-            .accessibilityLabel("Import receipt from photo library")
-            .accessibilityIdentifier("expenses.photoLibrary")
-
-            if vm.isOCRRunning {
-                HStack(spacing: BrandSpacing.sm) {
-                    ProgressView()
-                        .accessibilityLabel("Reading receipt amount")
-                    Text("Reading receipt…")
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-            }
-            #else
-            Text("Receipt capture not available on this platform.")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-            #endif
-        }
-        .listRowBackground(Color.bizarreSurface1)
-    }
-
-    private func receiptButtonLabel(systemImage: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: systemImage)
-                .foregroundStyle(.bizarreOrange)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.brandBodyLarge())
-                    .foregroundStyle(.bizarreOnSurface)
-                Text(subtitle)
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            Spacer(minLength: BrandSpacing.sm)
-        }
-    }
-
-    // MARK: - Toolbar
-
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
-                .accessibilityIdentifier("expenses.create.cancel")
+                .accessibilityIdentifier("expenses.edit.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-            if vm.isOCRRunning {
-                ProgressView()
-                    .accessibilityLabel("Processing receipt")
-            } else {
-                Button(vm.isSubmitting ? "Saving…" : "Save") {
-                    Task {
-                        await vm.submit()
-                        if vm.createdId != nil { dismiss() }
-                    }
+            Button(vm.isSubmitting ? "Saving…" : "Save") {
+                Task {
+                    await vm.save()
+                    if vm.didSave { dismiss() }
                 }
-                .disabled(!vm.isValid || vm.isSubmitting)
-                .accessibilityIdentifier("expenses.create.save")
             }
+            .disabled(!vm.isValid || vm.isSubmitting || !vm.isLoaded)
+            .accessibilityIdentifier("expenses.edit.save")
         }
     }
 }
