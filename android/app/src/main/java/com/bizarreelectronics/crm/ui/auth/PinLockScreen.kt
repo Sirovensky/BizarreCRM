@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
 /**
  * §2.5 PIN lock — full-screen unlock gate.
@@ -120,6 +122,10 @@ fun PinSetupScreen(
 /**
  * Shared chrome used by both verify + setup screens. Keeps the layout + color
  * treatment identical so the transition feels like one flow.
+ *
+ * On medium/expanded widths (tablet/desktop, ≥600dp) the keypad content is
+ * centred inside an [ElevatedCard] capped at 420dp so it doesn't stretch
+ * full-screen. Phone/compact layout is unchanged.
  */
 @Composable
 private fun PinGateScaffold(
@@ -130,65 +136,134 @@ private fun PinGateScaffold(
     onBackspace: () -> Unit,
     footer: @Composable () -> Unit,
 ) {
+    val isTablet = isMediumOrExpandedWidth()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.widthIn(max = 360.dp),
-                )
-            }
-            PinDots(
-                entered = state.entered.length,
-                length = state.pinLength,
-                shakeTrigger = state.wrongShakes,
-            )
-            if (state.errorMessage != null) {
-                Text(
-                    text = state.errorMessage,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.widthIn(max = 360.dp),
-                )
-            }
-            if (state.isWorking) {
-                CircularProgressIndicator(modifier = Modifier.widthIn(max = 32.dp))
-            } else {
-                Box(
+        // On tablet/desktop: wrap the keypad region in a centred ElevatedCard.
+        // On phone: keep the original full-column layout with no card chrome.
+        if (isTablet) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                ElevatedCard(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 320.dp),
+                        .widthIn(max = 420.dp)
+                        .align(Alignment.CenterHorizontally),
                 ) {
-                    PinKeypad(
-                        enabled = !state.isInLockout && !state.hardLockout,
-                        onDigit = onDigit,
-                        onBackspace = onBackspace,
-                    )
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 32.dp, vertical = 36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.widthIn(max = 360.dp),
+                            )
+                        }
+                        PinDots(
+                            entered = state.entered.length,
+                            length = state.pinLength,
+                            shakeTrigger = state.wrongShakes,
+                        )
+                        if (state.errorMessage != null) {
+                            Text(
+                                text = state.errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.widthIn(max = 360.dp),
+                            )
+                        }
+                        if (state.isWorking) {
+                            CircularProgressIndicator(modifier = Modifier.widthIn(max = 32.dp))
+                        } else {
+                            PinKeypad(
+                                enabled = !state.isInLockout && !state.hardLockout,
+                                onDigit = onDigit,
+                                onBackspace = onBackspace,
+                                modifier = Modifier.widthIn(max = 320.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        footer()
+                    }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            footer()
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.widthIn(max = 360.dp),
+                    )
+                }
+                PinDots(
+                    entered = state.entered.length,
+                    length = state.pinLength,
+                    shakeTrigger = state.wrongShakes,
+                )
+                if (state.errorMessage != null) {
+                    Text(
+                        text = state.errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 360.dp),
+                    )
+                }
+                if (state.isWorking) {
+                    CircularProgressIndicator(modifier = Modifier.widthIn(max = 32.dp))
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 320.dp),
+                    ) {
+                        PinKeypad(
+                            enabled = !state.isInLockout && !state.hardLockout,
+                            onDigit = onDigit,
+                            onBackspace = onBackspace,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                footer()
+            }
         }
     }
 }
