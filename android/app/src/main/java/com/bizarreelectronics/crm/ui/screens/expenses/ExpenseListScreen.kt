@@ -19,6 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -214,9 +221,10 @@ fun ExpenseListScreen(
                 title = "Expenses",
                 actions = {
                     IconButton(onClick = { viewModel.loadExpenses() }) {
+                        // a11y: screen-specific label — mirrors "Refresh tickets" / "Refresh customers" pattern
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = "Refresh expenses",
                         )
                     }
                 },
@@ -227,7 +235,8 @@ fun ExpenseListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create expense")
+                // a11y: §26 spec — "Add expense" (imperative)
+                Icon(Icons.Default.Add, contentDescription = "Add expense")
             }
         },
     ) { padding ->
@@ -245,15 +254,36 @@ fun ExpenseListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
+            // a11y: "Category filter" heading so TalkBack can navigate directly to this section
+            Text(
+                "Category filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
+
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(categories, key = { it }) { category ->
+                    val isSelected = state.selectedCategory == category
                     FilterChip(
-                        selected = state.selectedCategory == category,
+                        selected = isSelected,
                         onClick = { viewModel.onCategoryChanged(category) },
                         label = { Text(category) },
+                        // a11y: Role.Tab + selection state so TalkBack announces
+                        // "<category> filter, selected/not selected"
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$category filter, selected"
+                            } else {
+                                "$category filter, not selected"
+                            }
+                        },
                     )
                 }
             }
@@ -262,10 +292,24 @@ fun ExpenseListScreen(
 
             // Summary card — sanctioned highlight usage of primaryContainer
             if (!state.isLoading) {
+                // a11y: liveRegion=Polite so TalkBack announces the updated totals when the
+                // category filter changes; contentDescription gives a single coherent sentence
+                // rather than reading "Total", the amount, "Count", the number separately.
+                val summaryPeriodLabel = if (state.selectedCategory == "All") {
+                    "All expenses"
+                } else {
+                    "${state.selectedCategory} expenses"
+                }
+                val summaryA11yDesc = "$summaryPeriodLabel: ${state.totalAmount.formatAsMoney()}, " +
+                    "${state.expenses.size} items"
                 BrandCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 16.dp)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = summaryA11yDesc
+                        },
                 ) {
                     Row(
                         modifier = Modifier
@@ -315,11 +359,22 @@ fun ExpenseListScreen(
                 ) {
                     Column {
                         // Header row — tap to toggle
+                        // a11y: Role.Button + contentDescription announce the section name and
+                        // current expanded/collapsed state as a single focus stop. The trailing
+                        // chevron icon's contentDescription is set to null to avoid double-announcement.
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { chartExpanded = !chartExpanded }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = if (chartExpanded) {
+                                        "By category, expanded. Tap to collapse."
+                                    } else {
+                                        "By category, collapsed. Tap to expand."
+                                    }
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -329,17 +384,15 @@ fun ExpenseListScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
+                            // a11y: null contentDescription — the parent Row already announces
+                            // the expanded/collapsed state; chevron is purely decorative here.
                             Icon(
                                 imageVector = if (chartExpanded) {
                                     Icons.Default.KeyboardArrowUp
                                 } else {
                                     Icons.Default.KeyboardArrowDown
                                 },
-                                contentDescription = if (chartExpanded) {
-                                    "Collapse category chart"
-                                } else {
-                                    "Expand category chart"
-                                },
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -368,11 +421,27 @@ fun ExpenseListScreen(
 
             when {
                 state.isLoading -> {
-                    // Skeleton rows while data loads — replaces bare CircularProgressIndicator
-                    BrandSkeleton(rows = 6, modifier = Modifier.fillMaxWidth())
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading expenses" on a single focus stop rather than each shimmer
+                    // box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading expenses"
+                        },
+                    ) {
+                        // Skeleton rows while data loads — replaces bare CircularProgressIndicator
+                        BrandSkeleton(rows = 6, modifier = Modifier.fillMaxWidth())
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
+                    // tells the user about the error rather than leaving them in silence.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Unknown error",
                             onRetry = { viewModel.loadExpenses() },
@@ -380,7 +449,14 @@ fun ExpenseListScreen(
                     }
                 }
                 state.expenses.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the empty state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
                         EmptyState(
                             icon = Icons.Default.AttachMoney,
                             title = "No expenses found",
@@ -426,7 +502,25 @@ fun ExpenseListScreen(
 
 @Composable
 private fun ExpenseCard(expense: ExpenseEntity) {
-    BrandCard(modifier = Modifier.fillMaxWidth()) {
+    // a11y: build the announcement string once. BrandCard is non-clickable (no detail
+    // screen yet), so Role.Button is intentionally omitted — mergeDescendants collapses
+    // category chip + description + date + vendor into one TalkBack focus stop.
+    val vendorOrNote = expense.description?.takeIf { it.isNotBlank() } ?: ""
+    val expenseA11yDesc = buildString {
+        append("Expense ${expense.amount.formatAsMoney()}")
+        append(" for ${expense.category}")
+        append(", on ${expense.date.take(10)}")
+        if (vendorOrNote.isNotBlank()) append(", $vendorOrNote")
+        if (!expense.userName.isNullOrBlank()) append(", ${expense.userName}")
+        append(".")
+    }
+    BrandCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = expenseA11yDesc
+            },
+    ) {
         Row(
             modifier = Modifier
                 .padding(16.dp)
