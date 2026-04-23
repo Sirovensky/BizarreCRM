@@ -18,18 +18,19 @@ PRAGMA foreign_keys = OFF;
 BEGIN TRANSACTION;
 
 -- ===========================================================================
--- SCAN-508: checklist_instances — template_id becomes nullable, ON DELETE SET NULL
--- Original DDL from migration 128.
+-- SCAN-508: ops_checklist_instances — template_id becomes nullable, ON DELETE SET NULL
+-- Original DDL from migration 128 (tables renamed to ops_* to avoid collision
+-- with the per-device `checklist_templates` table created by migration 001).
 -- Existing indices:
---   idx_checklist_instances_owner_started   (completed_by_user_id, started_at)
---   idx_checklist_instances_template_completed (template_id, completed_at)
+--   idx_ops_checklist_instances_owner_started   (completed_by_user_id, started_at)
+--   idx_ops_checklist_instances_template_completed (template_id, completed_at)
 -- ===========================================================================
 
-ALTER TABLE checklist_instances RENAME TO checklist_instances_old;
+ALTER TABLE ops_checklist_instances RENAME TO ops_checklist_instances_old;
 
-CREATE TABLE checklist_instances (
+CREATE TABLE ops_checklist_instances (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id           INTEGER     REFERENCES checklist_templates(id) ON DELETE SET NULL,
+  template_id           INTEGER     REFERENCES ops_checklist_templates(id) ON DELETE SET NULL,
   completed_by_user_id  INTEGER NOT NULL REFERENCES users(id),
   completed_items_json  TEXT    NOT NULL DEFAULT '[]',
   notes                 TEXT,
@@ -39,7 +40,7 @@ CREATE TABLE checklist_instances (
   completed_at          TEXT
 );
 
-INSERT INTO checklist_instances
+INSERT INTO ops_checklist_instances
   SELECT
     id,
     template_id,
@@ -49,15 +50,15 @@ INSERT INTO checklist_instances
     status,
     started_at,
     completed_at
-  FROM checklist_instances_old;
+  FROM ops_checklist_instances_old;
 
-DROP TABLE checklist_instances_old;
+DROP TABLE ops_checklist_instances_old;
 
-CREATE INDEX IF NOT EXISTS idx_checklist_instances_owner_started
-  ON checklist_instances (completed_by_user_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_ops_checklist_instances_owner_started
+  ON ops_checklist_instances (completed_by_user_id, started_at);
 
-CREATE INDEX IF NOT EXISTS idx_checklist_instances_template_completed
-  ON checklist_instances (template_id, completed_at);
+CREATE INDEX IF NOT EXISTS idx_ops_checklist_instances_template_completed
+  ON ops_checklist_instances (template_id, completed_at);
 
 -- ===========================================================================
 -- SCAN-509: tickets.sla_policy_id — trigger-based SET NULL (no table rebuild)

@@ -185,10 +185,10 @@ router.get('/templates', asyncHandler(async (req: Request, res: Response) => {
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const [totalRow, templates] = await Promise.all([
-    adb.get<AnyRow>(`SELECT COUNT(*) AS c FROM checklist_templates ${where}`, ...params),
+    adb.get<AnyRow>(`SELECT COUNT(*) AS c FROM ops_checklist_templates ${where}`, ...params),
     adb.all<AnyRow>(
       `SELECT t.*, u.first_name, u.last_name
-       FROM checklist_templates t
+       FROM ops_checklist_templates t
        LEFT JOIN users u ON u.id = t.created_by_user_id
        ${where}
        ORDER BY t.kind, t.name
@@ -223,7 +223,7 @@ router.post('/templates', asyncHandler(async (req: Request, res: Response) => {
   const itemsJson = validateItemsJson(req.body.items_json ?? []);
 
   const result = await adb.run(
-    `INSERT INTO checklist_templates
+    `INSERT INTO ops_checklist_templates
        (name, kind, items_json, is_active, created_by_user_id, created_at, updated_at)
      VALUES (?, ?, ?, 1, ?, ?, ?)`,
     name, kind, itemsJson, req.user!.id, now(), now(),
@@ -235,7 +235,7 @@ router.post('/templates', asyncHandler(async (req: Request, res: Response) => {
     kind,
   });
 
-  const created = await adb.get<AnyRow>('SELECT * FROM checklist_templates WHERE id = ?', result.lastInsertRowid);
+  const created = await adb.get<AnyRow>('SELECT * FROM ops_checklist_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: created });
 }));
 
@@ -248,7 +248,7 @@ router.patch('/templates/:id', asyncHandler(async (req: Request, res: Response) 
   const db = req.db;
   const id = parseId(req.params.id, 'template ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id, name, kind FROM checklist_templates WHERE id = ?', id);
+  const existing = await adb.get<AnyRow>('SELECT id, name, kind FROM ops_checklist_templates WHERE id = ?', id);
   if (!existing) throw new AppError('Checklist template not found', 404);
 
   const name = req.body.name !== undefined
@@ -274,7 +274,7 @@ router.patch('/templates/:id', asyncHandler(async (req: Request, res: Response) 
   }
 
   await adb.run(
-    `UPDATE checklist_templates
+    `UPDATE ops_checklist_templates
      SET name       = COALESCE(?, name),
          kind       = COALESCE(?, kind),
          items_json = COALESCE(?, items_json),
@@ -289,7 +289,7 @@ router.patch('/templates/:id', asyncHandler(async (req: Request, res: Response) 
     changes: { name, kind, has_items: itemsJson !== null, is_active: isActive },
   });
 
-  const updated = await adb.get<AnyRow>('SELECT * FROM checklist_templates WHERE id = ?', id);
+  const updated = await adb.get<AnyRow>('SELECT * FROM ops_checklist_templates WHERE id = ?', id);
   res.json({ success: true, data: updated });
 }));
 
@@ -301,10 +301,10 @@ router.delete('/templates/:id', asyncHandler(async (req: Request, res: Response)
   const db = req.db;
   const id = parseId(req.params.id, 'template ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id FROM checklist_templates WHERE id = ? AND is_active = 1', id);
+  const existing = await adb.get<AnyRow>('SELECT id FROM ops_checklist_templates WHERE id = ? AND is_active = 1', id);
   if (!existing) throw new AppError('Active checklist template not found', 404);
 
-  await adb.run('UPDATE checklist_templates SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  await adb.run('UPDATE ops_checklist_templates SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
 
   audit(db, 'checklist_template.deleted', req.user!.id, req.ip || 'unknown', { template_id: id });
   res.json({ success: true, data: { id } });
@@ -354,12 +354,12 @@ router.get('/instances', asyncHandler(async (req: Request, res: Response) => {
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const [totalRow, instances] = await Promise.all([
-    adb.get<AnyRow>(`SELECT COUNT(*) AS c FROM checklist_instances i ${where}`, ...params),
+    adb.get<AnyRow>(`SELECT COUNT(*) AS c FROM ops_checklist_instances i ${where}`, ...params),
     adb.all<AnyRow>(
       `SELECT i.*, t.name AS template_name, t.kind AS template_kind,
               u.first_name, u.last_name
-       FROM checklist_instances i
-       JOIN checklist_templates t ON t.id = i.template_id
+       FROM ops_checklist_instances i
+       JOIN ops_checklist_templates t ON t.id = i.template_id
        LEFT JOIN users u ON u.id = i.completed_by_user_id
        ${where}
        ORDER BY i.started_at DESC
@@ -386,14 +386,14 @@ router.post('/instances', asyncHandler(async (req: Request, res: Response) => {
   const templateId = parseId(req.body.template_id, 'template_id');
 
   const template = await adb.get<AnyRow>(
-    'SELECT id FROM checklist_templates WHERE id = ? AND is_active = 1',
+    'SELECT id FROM ops_checklist_templates WHERE id = ? AND is_active = 1',
     templateId,
   );
   if (!template) throw new AppError('Active checklist template not found', 404);
 
   const startedAt = now();
   const result = await adb.run(
-    `INSERT INTO checklist_instances
+    `INSERT INTO ops_checklist_instances
        (template_id, completed_by_user_id, completed_items_json, notes, status, started_at)
      VALUES (?, ?, '[]', NULL, 'in_progress', ?)`,
     templateId, req.user!.id, startedAt,
@@ -401,8 +401,8 @@ router.post('/instances', asyncHandler(async (req: Request, res: Response) => {
 
   const created = await adb.get<AnyRow>(
     `SELECT i.*, t.name AS template_name, t.kind AS template_kind, t.items_json
-     FROM checklist_instances i
-     JOIN checklist_templates t ON t.id = i.template_id
+     FROM ops_checklist_instances i
+     JOIN ops_checklist_templates t ON t.id = i.template_id
      WHERE i.id = ?`,
     result.lastInsertRowid,
   );
@@ -424,7 +424,7 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
   const id = parseId(req.params.id, 'instance ID');
 
   const existing = await adb.get<AnyRow>(
-    'SELECT id, completed_by_user_id, status FROM checklist_instances WHERE id = ?',
+    'SELECT id, completed_by_user_id, status FROM ops_checklist_instances WHERE id = ?',
     id,
   );
   if (!existing) throw new AppError('Checklist instance not found', 404);
@@ -460,7 +460,7 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
   const completedAt = (status === 'completed' || status === 'abandoned') ? now() : null;
 
   await adb.run(
-    `UPDATE checklist_instances
+    `UPDATE ops_checklist_instances
      SET completed_items_json = COALESCE(?, completed_items_json),
          notes                = COALESCE(?, notes),
          status               = COALESCE(?, status),
@@ -472,7 +472,7 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
     completedItemsJson, notes, status, completedAt, completedAt, id,
   );
 
-  const updated = await adb.get<AnyRow>('SELECT * FROM checklist_instances WHERE id = ?', id);
+  const updated = await adb.get<AnyRow>('SELECT * FROM ops_checklist_instances WHERE id = ?', id);
   res.json({ success: true, data: updated });
 }));
 
@@ -484,7 +484,7 @@ router.post('/instances/:id/complete', asyncHandler(async (req: Request, res: Re
   const id = parseId(req.params.id, 'instance ID');
 
   const existing = await adb.get<AnyRow>(
-    'SELECT id, completed_by_user_id, status FROM checklist_instances WHERE id = ?',
+    'SELECT id, completed_by_user_id, status FROM ops_checklist_instances WHERE id = ?',
     id,
   );
   if (!existing) throw new AppError('Checklist instance not found', 404);
@@ -498,7 +498,7 @@ router.post('/instances/:id/complete', asyncHandler(async (req: Request, res: Re
 
   const completedAt = now();
   await adb.run(
-    `UPDATE checklist_instances
+    `UPDATE ops_checklist_instances
      SET status = 'completed', completed_at = ?
      WHERE id = ?`,
     completedAt, id,
@@ -516,7 +516,7 @@ router.post('/instances/:id/abandon', asyncHandler(async (req: Request, res: Res
   const id = parseId(req.params.id, 'instance ID');
 
   const existing = await adb.get<AnyRow>(
-    'SELECT id, completed_by_user_id, status FROM checklist_instances WHERE id = ?',
+    'SELECT id, completed_by_user_id, status FROM ops_checklist_instances WHERE id = ?',
     id,
   );
   if (!existing) throw new AppError('Checklist instance not found', 404);
@@ -530,7 +530,7 @@ router.post('/instances/:id/abandon', asyncHandler(async (req: Request, res: Res
 
   const abandonedAt = now();
   await adb.run(
-    `UPDATE checklist_instances
+    `UPDATE ops_checklist_instances
      SET status = 'abandoned', completed_at = ?
      WHERE id = ?`,
     abandonedAt, id,

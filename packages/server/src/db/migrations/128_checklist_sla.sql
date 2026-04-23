@@ -1,12 +1,22 @@
 -- Migration 128: Daily operational checklist + ticket SLA tracking
 -- SCAN-468: open-shop / daily checklist templates + instances
 -- SCAN-464: SLA policies, ticket SLA columns, breach log
+--
+-- IMPORTANT: the tables here are named `ops_checklist_templates` /
+-- `ops_checklist_instances`. Migration 001 already created a table called
+-- `checklist_templates` for the per-device pre-repair checklist feature
+-- (columns: name, device_type, items). That is a different domain from the
+-- daily operational checklist introduced in this migration (columns: name,
+-- kind, items_json, is_active). Using a different table name prevents
+-- `CREATE TABLE IF NOT EXISTS` from silently no-op'ing onto the old schema
+-- and then having `CREATE INDEX ON ops_checklist_templates (kind, ...)` fail
+-- with "no such column: kind" on any deploy that has run migration 001.
 
 -- ---------------------------------------------------------------------------
--- Table: checklist_templates
--- Manager-authored reusable checklists (open, close, midday, custom).
+-- Table: ops_checklist_templates
+-- Manager-authored reusable operational checklists (open, close, midday, custom).
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS checklist_templates (
+CREATE TABLE IF NOT EXISTS ops_checklist_templates (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   name                TEXT    NOT NULL,
   kind                TEXT    NOT NULL CHECK (kind IN ('open','close','midday','custom')),
@@ -17,16 +27,16 @@ CREATE TABLE IF NOT EXISTS checklist_templates (
   updated_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_checklist_templates_kind_active
-  ON checklist_templates (kind, is_active);
+CREATE INDEX IF NOT EXISTS idx_ops_checklist_templates_kind_active
+  ON ops_checklist_templates (kind, is_active);
 
 -- ---------------------------------------------------------------------------
--- Table: checklist_instances
+-- Table: ops_checklist_instances
 -- One row per employee checklist run (in_progress → completed|abandoned).
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS checklist_instances (
+CREATE TABLE IF NOT EXISTS ops_checklist_instances (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id           INTEGER NOT NULL REFERENCES checklist_templates(id),
+  template_id           INTEGER NOT NULL REFERENCES ops_checklist_templates(id),
   completed_by_user_id  INTEGER NOT NULL REFERENCES users(id),
   completed_items_json  TEXT    NOT NULL DEFAULT '[]',
   notes                 TEXT,
@@ -36,11 +46,11 @@ CREATE TABLE IF NOT EXISTS checklist_instances (
   completed_at          TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_checklist_instances_owner_started
-  ON checklist_instances (completed_by_user_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_ops_checklist_instances_owner_started
+  ON ops_checklist_instances (completed_by_user_id, started_at);
 
-CREATE INDEX IF NOT EXISTS idx_checklist_instances_template_completed
-  ON checklist_instances (template_id, completed_at);
+CREATE INDEX IF NOT EXISTS idx_ops_checklist_instances_template_completed
+  ON ops_checklist_instances (template_id, completed_at);
 
 -- ---------------------------------------------------------------------------
 -- Table: sla_policies
