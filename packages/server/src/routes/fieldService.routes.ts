@@ -160,8 +160,9 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 // validateIntId — integer id guard used on URL params
 // ---------------------------------------------------------------------------
 
-function validateIntId(raw: string | string[], label = 'ID'): number {
-  const n = parseInt(Array.isArray(raw) ? raw[0] : raw, 10);
+function validateIntId(raw: unknown, label = 'ID'): number {
+  const s = Array.isArray(raw) ? String(raw[0] ?? '') : typeof raw === 'string' ? raw : String(raw ?? '');
+  const n = parseInt(s, 10);
   if (!Number.isInteger(n) || n <= 0) throw new AppError(`Invalid ${label}`, 400);
   return n;
 }

@@ -111,7 +111,7 @@ export interface TicketNote {
   ticket_id: number;
   ticket_device_id: number | null;
   user_id: number;
-  type: 'internal' | 'diagnostic' | 'email';
+  type: 'internal' | 'diagnostic' | 'email' | 'customer';
   content: string;
   is_flagged: boolean;
   parent_id: number | null;
