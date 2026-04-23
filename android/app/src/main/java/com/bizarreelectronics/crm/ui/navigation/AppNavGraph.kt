@@ -56,6 +56,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
+import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
@@ -208,6 +209,9 @@ sealed class Screen(val route: String) {
     // §2.1 — Setup-status gate: probes GET /auth/setup-status before showing
     // the login form. Shown when a serverUrl is saved but no session exists.
     data object SetupStatusGate : Screen("auth/setup-gate")
+
+    // §2.9 — Change-password screen (authenticated; reachable from Security sub-screen).
+    data object ChangePassword : Screen("settings/security/change-password")
 
     // §2.8 — Password reset + backup-code recovery screens (pre-auth)
     data object ForgotPassword : Screen("auth/forgot-password")
@@ -1103,15 +1107,21 @@ fun AppNavGraph(
                 )
             }
             // §2.6 — Security sub-screen: biometric unlock toggle + Change PIN
-            // + Change Password (stubbed) + Lock Now.
+            // + Change Password + Lock Now.
             // PinPreferences is injected into SecurityViewModel via Hilt.
             composable(Screen.Security.route) {
                 SecurityScreen(
                     onBack = { navController.popBackStack() },
                     onChangePin = { navController.navigate(Screen.PinSetup.route) },
-                    // Change-password screen not yet implemented — SecurityScreen
-                    // keeps the row disabled with "Coming soon" subtitle.
-                    onChangePassword = { /* TODO: navigate when endpoint exists */ },
+                    // §2.9: Change-password screen wired (ActionPlan L340).
+                    onChangePassword = { navController.navigate(Screen.ChangePassword.route) },
+                )
+            }
+            // §2.9 — Change-password screen (authenticated, under Security).
+            composable(Screen.ChangePassword.route) {
+                ChangePasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onPasswordChanged = { navController.popBackStack() },
                 )
             }
             // AUD-20260414-M5: Sync Issues screen — lists dead-letter

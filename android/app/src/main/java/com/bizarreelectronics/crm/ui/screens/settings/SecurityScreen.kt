@@ -347,8 +347,7 @@ class SecurityViewModel @Inject constructor(
  *      Toggle-ON triggers Keystore key generation + BiometricPrompt confirmation.
  *      Toggle-OFF clears pref + key immediately.
  *   2. "Change PIN" → [onChangePin] (wires to Screen.PinSetup).
- *   3. "Change password" → [onChangePassword] — disabled with "Coming soon" subtitle
- *      until the password-change flow is implemented server-side.
+ *   3. "Change password" → [onChangePassword] (§2.9 — wires to Screen.ChangePassword).
  *   4. "Lock now" → forces PinLockScreen on next resume.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -507,15 +506,12 @@ fun SecurityScreen(
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                     )
 
-                    // Password change is not yet implemented server-side.
-                    // Row is visible but disabled so the user knows it's coming.
-                    // TODO: wire to onChangePassword once the endpoint exists.
+                    // §2.9: Change-password screen implemented (ActionPlan L340).
                     SecurityNavRow(
                         icon = Icons.Default.Key,
                         title = "Change password",
-                        subtitle = "Coming soon",
-                        onClick = {},
-                        enabled = false,
+                        subtitle = "Update your account password",
+                        onClick = onChangePassword,
                     )
                 }
             }
