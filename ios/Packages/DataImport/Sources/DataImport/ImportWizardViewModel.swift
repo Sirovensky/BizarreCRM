@@ -73,7 +73,7 @@ public final class ImportWizardViewModel {
     public var selectedFilename: String? = nil
     public var selectedFileSize: Int64 = 0
     public private(set) var uploadProgress: Double = 0
-    public private(set) var jobId: String? = nil
+    public internal(set) var jobId: String? = nil
 
     // Preview step
     public private(set) var preview: ImportPreview? = nil
@@ -82,9 +82,9 @@ public final class ImportWizardViewModel {
     public var columnMapping: [String: String] = [:] // sourceColumn -> CRMField.rawValue
 
     // Progress step -- job polling + checkpoint
-    public private(set) var job: ImportJob? = nil
+    public internal(set) var job: ImportJob? = nil
     public private(set) var rowErrors: [ImportRowError] = []
-    public private(set) var checkpoint: ImportCheckpoint? = nil
+    public internal(set) var checkpoint: ImportCheckpoint? = nil
 
     // Rollback state
     public private(set) var isRollingBack: Bool = false
