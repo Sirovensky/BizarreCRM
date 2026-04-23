@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +24,7 @@ import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
 import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -70,6 +72,9 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var jankReporter: com.bizarreelectronics.crm.util.JankReporter
+
+    @Inject
+    lateinit var sessionTimeout: SessionTimeout
 
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
@@ -216,6 +221,22 @@ class MainActivity : FragmentActivity() {
         // for the ordering rationale.
         pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
         deepLinkBus.publish(pendingDeepLink)
+    }
+
+    /**
+     * §2.16 activity signal — every touch ACTION_DOWN resets the inactivity
+     * timer via [SessionTimeout.onActivity]. Scroll and text-entry events
+     * surface as a series of touch events through this same path, so no
+     * additional wiring is needed for those signals.
+     *
+     * Background push handlers and sync workers must NOT call
+     * [SessionTimeout.onActivity] — only user-originated events count (line 398).
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) {
+            sessionTimeout.onActivity()
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     /**

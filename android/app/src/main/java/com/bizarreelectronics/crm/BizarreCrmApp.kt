@@ -14,6 +14,7 @@ import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var crashReporter: com.bizarreelectronics.crm.util.CrashReporter
+
+    @Inject
+    lateinit var sessionTimeout: SessionTimeout
 
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
@@ -84,11 +88,15 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                             webSocketService.connect()
                         }
                     }
+                    // §2.16 — resume the session-timeout ticker on foreground.
+                    sessionTimeout.onAppForeground()
                 }
 
                 override fun onStop(owner: LifecycleOwner) {
                     // No-op for now. Future: persist drafts, schedule
                     // delta-sync periodic worker (§1.6 background hooks).
+                    // §2.16 — background time counts toward inactivity window.
+                    sessionTimeout.onAppBackground()
                 }
             },
         )

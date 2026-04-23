@@ -83,13 +83,59 @@ object ClipboardUtil {
      * Returns the clipboard contents if they look like a 6-digit OTP. Used
      * by the 2FA verify screen to offer a one-tap paste when the user has
      * copied the code from their authenticator / SMS app.
+     *
+     * Delegates to [extractOtpDigits] with a 6..6 range, preserving the
+     * original narrow contract of this function.
      */
     fun detectOtp(context: Context): String? {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: return null
-        return if (OTP_REGEX.matches(text)) text else null
+        val raw = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+        return extractOtpDigits(raw, 6..6)
+    }
+
+    /**
+     * §2.4 (L302-L303) — Inspects the primary clipboard item, trims surrounding
+     * whitespace/newlines, then extracts the longest consecutive digit run whose
+     * length falls within [digits] (default 4..8).
+     *
+     * Returns `null` when:
+     * - clipboard is empty or contains no text,
+     * - no digit run within the given range exists in the text.
+     *
+     * When multiple runs exist, the longest qualifying run is returned (first on
+     * ties). Runs longer than the upper bound are excluded — a 10-digit phone
+     * number is not an OTP.
+     *
+     * Security: the extracted value is NEVER logged by this function.
+     */
+    fun detectOtpFromClipboard(context: Context, digits: IntRange = 4..8): String? {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val raw = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+        return extractOtpDigits(raw, digits)
+    }
+
+    /**
+     * Pure helper that extracts the longest qualifying digit run from [text].
+     *
+     * Exposed at object scope so unit tests can drive it directly without
+     * needing a real Android ClipboardManager. The function is a pure string
+     * transformer — no logging, no I/O, no side effects.
+     *
+     * @param text  raw clipboard text, may be null or blank
+     * @param range acceptable digit-run length (inclusive on both ends)
+     * @return the longest qualifying digit run, or null if none found
+     */
+    fun extractOtpDigits(text: String?, range: IntRange = 4..8): String? {
+        if (text.isNullOrEmpty()) return null
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+        return DIGIT_RUN_REGEX
+            .findAll(trimmed)
+            .map { it.value }
+            .filter { it.length in range }
+            .maxByOrNull { it.length }
     }
 
     private const val DEFAULT_SECRET_TTL_MS = 30_000L
-    private val OTP_REGEX = Regex("^\\d{6}$")
+    private val DIGIT_RUN_REGEX = Regex("\\d+")
 }
