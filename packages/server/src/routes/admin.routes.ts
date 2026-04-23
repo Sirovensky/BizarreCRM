@@ -48,6 +48,15 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+// SCAN-575: sweep expired entries every 5 min so the Map doesn't accumulate stale tokens
+// even when traffic is low (cap-overflow eviction alone only fires under sustained load).
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of adminTokens) {
+    if (v.expires < now) adminTokens.delete(k);
+  }
+}, 5 * 60 * 1000).unref();
+
 const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 

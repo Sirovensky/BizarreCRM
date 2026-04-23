@@ -281,14 +281,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = Number(req.params.id);
-    const { pin } = req.body;
+    const { pin, location_id: rawLocationId } = req.body;
 
     // Only allow clocking in yourself unless admin
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
       throw new AppError('Can only clock yourself in', 403);
     }
 
-    const user = await adb.get<any>('SELECT id, pin FROM users WHERE id = ? AND is_active = 1', id);
+    const user = await adb.get<any>('SELECT id, pin, home_location_id FROM users WHERE id = ? AND is_active = 1', id);
     if (!user) throw new AppError('Employee not found', 404);
 
     // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
@@ -343,8 +343,20 @@ router.post(
       throw new AppError('Payroll period is locked', 403);
     }
 
+    // Resolve location_id: validate if provided, else fall back to user's home_location_id, then 1.
+    let resolvedLocationId: number = user.home_location_id ?? 1;
+    if (rawLocationId !== undefined && rawLocationId !== null) {
+      const parsed = Number(rawLocationId);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new AppError('location_id must be a positive integer', 400);
+      }
+      const loc = await adb.get<{ id: number }>('SELECT id FROM locations WHERE id = ? AND is_active = 1', parsed);
+      if (!loc) throw new AppError('Location not found or inactive', 400);
+      resolvedLocationId = parsed;
+    }
+
     const result = await adb.run(
-      'INSERT INTO clock_entries (user_id, clock_in) VALUES (?, ?)', id, now
+      'INSERT INTO clock_entries (user_id, clock_in, location_id) VALUES (?, ?, ?)', id, now, resolvedLocationId
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', result.lastInsertRowid);

@@ -3666,9 +3666,19 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
 router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
-  const { start_time, end_time, note } = req.body;
+  const { start_time, end_time, note, location_id: rawLocationId } = req.body;
 
   if (!start_time) throw new AppError('start_time is required', 400);
+
+  // Validate and resolve location_id; default to 1.
+  let resolvedLocationId = 1;
+  if (rawLocationId !== undefined && rawLocationId !== null) {
+    const parsed = Number(rawLocationId);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    resolvedLocationId = parsed;
+  }
 
   const ticket = await adb.get<AnyRow>('SELECT id, customer_id, order_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
@@ -3676,8 +3686,8 @@ router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(
   const title = `Ticket #${ticket.order_id} appointment`;
 
   const result = await adb.run(`
-    INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes)
-    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
+    INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes, location_id)
+    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)
   `,
     ticketId,
     ticket.customer_id,
@@ -3686,6 +3696,7 @@ router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(
     end_time || null,
     req.user!.id,
     note || null,
+    resolvedLocationId,
   );
 
   const [appointment] = await Promise.all([

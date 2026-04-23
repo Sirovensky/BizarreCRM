@@ -1067,10 +1067,18 @@ function isCorsOriginAllowed(origin: string): boolean {
 // timestamp and emit at most once per 60s per origin — still visible
 // enough that an operator finds it quickly, but not log-flood territory.
 const corsRejectionLog = new Map<string, number>();
+const CORS_REJECTION_WINDOW_MS = 60_000;
+// SCAN-572: evict stale entries every 5 min so subdomain spray doesn't grow the Map forever.
+trackInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of corsRejectionLog) {
+    if (now - t > CORS_REJECTION_WINDOW_MS) corsRejectionLog.delete(k);
+  }
+}, 5 * 60 * 1000);
 function logCorsRejection(origin: string): void {
   const now = Date.now();
   const last = corsRejectionLog.get(origin) ?? 0;
-  if (now - last < 60_000) return;
+  if (now - last < CORS_REJECTION_WINDOW_MS) return;
   corsRejectionLog.set(origin, now);
   log.warn('CORS origin rejected', {
     origin,

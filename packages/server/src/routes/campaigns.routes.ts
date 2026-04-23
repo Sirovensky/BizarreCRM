@@ -15,10 +15,13 @@
  *   POST   /campaigns/churn-warning/dispatch — daily cron helper
  *
  * TCPA compliance:
- *   SMS only to customers with sms_opt_in = 1. Email only to email_opt_in = 1.
- *   This is enforced in `fetchEligibleRecipients()` and cannot be overridden
- *   by a campaign. A separate transactional review-request can use an
- *   opt-in-exempt flag on the campaign row — keep false for now.
+ *   Marketing SMS blasts: customers must have sms_opt_in = 1 AND
+ *     sms_consent_marketing = 1 (migration 063, strict TCPA marketing consent).
+ *   Transactional SMS (review-request trigger): gated on sms_opt_in only;
+ *     sms_consent_marketing exempted under prior-business-relationship rule.
+ *   Email: gated on email_opt_in = 1 (email_consent_marketing not yet added).
+ *   These rules are enforced in `fetchEligibleRecipients()` and in the
+ *   churn-warning dispatch path; they cannot be overridden by a campaign.
  *
  * All send operations call sendSmsTenant() and inspect the response. If the
  * provider returns success=false OR the factory silently fell back to console
@@ -106,6 +109,8 @@ interface RecipientRow {
   mobile: string | null;
   sms_opt_in: number;
   email_opt_in: number;
+  /** TCPA strict marketing consent (migration 063). Required = 1 for bulk marketing sends. */
+  sms_consent_marketing: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -152,16 +157,23 @@ async function fetchEligibleRecipients(
   campaign: CampaignRow,
   limit: number | null = null,
 ): Promise<RecipientRow[]> {
+  // SCAN-570: include sms_consent_marketing (migration 063) so filterByChannel
+  // can enforce strict TCPA marketing consent for bulk SMS blasts.
   const baseSelect = `
     SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
            COALESCE(c.sms_opt_in,0) AS sms_opt_in,
-           COALESCE(c.email_opt_in,0) AS email_opt_in
+           COALESCE(c.email_opt_in,0) AS email_opt_in,
+           COALESCE(c.sms_consent_marketing,0) AS sms_consent_marketing
       FROM customers c`;
+  // SCAN-570: SMS marketing blasts require BOTH sms_opt_in AND sms_consent_marketing.
+  // email_consent_marketing column does not exist (not in any migration); email
+  // continues to gate on email_opt_in only — which is correct per TCPA for email.
   const filterByChannel = (rows: RecipientRow[]): RecipientRow[] => {
     return rows.filter((r) => {
-      if (campaign.channel === 'sms' && !r.sms_opt_in) return false;
+      const smsEligible = r.sms_opt_in === 1 && r.sms_consent_marketing === 1;
+      if (campaign.channel === 'sms' && !smsEligible) return false;
       if (campaign.channel === 'email' && !r.email_opt_in) return false;
-      if (campaign.channel === 'both' && !r.sms_opt_in && !r.email_opt_in) return false;
+      if (campaign.channel === 'both' && !smsEligible && !r.email_opt_in) return false;
       return true;
     });
   };
@@ -591,15 +603,20 @@ router.post(
     // full recipient list when the owner only wants a preview).
     let total = 0;
     if (campaign.segment_id) {
+      // SCAN-570: preview count mirrors fetchEligibleRecipients — SMS requires
+      // sms_opt_in AND sms_consent_marketing (strict TCPA marketing consent).
       const row = await adb.get<{ total: number }>(
         `SELECT COUNT(*) AS total
            FROM customers c
            JOIN customer_segment_members m ON m.customer_id = c.id
           WHERE m.segment_id = ?
             AND (
-              (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1) OR
+              (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1) OR
               (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
-              (? = 'both'  AND (COALESCE(c.sms_opt_in,0) = 1 OR COALESCE(c.email_opt_in,0) = 1))
+              (? = 'both'  AND (
+                (COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1)
+                OR COALESCE(c.email_opt_in,0) = 1
+              ))
             )`,
         campaign.segment_id,
         campaign.channel,
@@ -610,13 +627,17 @@ router.post(
     } else {
       // No segment = all customers; count them directly so the preview shows a
       // real estimate rather than the misleading 0 it returned before this fix.
+      // SCAN-570: same strict-consent condition as the segmented path above.
       const row = await adb.get<{ total: number }>(
         `SELECT COUNT(*) AS total
            FROM customers c
           WHERE (
-            (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1) OR
+            (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1) OR
             (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
-            (? = 'both'  AND (COALESCE(c.sms_opt_in,0) = 1 OR COALESCE(c.email_opt_in,0) = 1))
+            (? = 'both'  AND (
+              (COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1)
+              OR COALESCE(c.email_opt_in,0) = 1
+            ))
           )`,
         campaign.channel,
         campaign.channel,
@@ -734,11 +755,15 @@ router.post(
       return;
     }
 
-    // Fetch the single customer — a transactional send, not a segment.
+    // Fetch the single customer — a transactional send, not a segment blast.
+    // SCAN-570: use COALESCE(...,0) so a missing opt-in defaults to opted-OUT.
+    // Transactional review-request is exempt from strict sms_consent_marketing
+    // (prior-business-relationship exemption), so we only gate on sms_opt_in here.
     const customer = await adb.get<RecipientRow>(
       `SELECT id, first_name, last_name, email, phone, mobile,
-              COALESCE(sms_opt_in,1) AS sms_opt_in,
-              COALESCE(email_opt_in,1) AS email_opt_in
+              COALESCE(sms_opt_in,0) AS sms_opt_in,
+              COALESCE(email_opt_in,0) AS email_opt_in,
+              COALESCE(sms_consent_marketing,0) AS sms_consent_marketing
          FROM customers WHERE id = ?`,
       ticket.customer_id,
     );
@@ -831,10 +856,13 @@ router.post(
     // Find invoices with balance > 0 and older than 14 days, grouped by customer.
     // Uses amount_due (materialised column on invoices) instead of re-computing
     // total - paid on the fly — faster and matches the invoice route logic.
+    // SCAN-570: include sms_consent_marketing so the eligibility filter below
+    // can enforce strict TCPA marketing consent for SMS channel sends.
     const unpaid = await adb.all<RecipientRow>(
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
               COALESCE(c.sms_opt_in,0) AS sms_opt_in,
-              COALESCE(c.email_opt_in,0) AS email_opt_in
+              COALESCE(c.email_opt_in,0) AS email_opt_in,
+              COALESCE(c.sms_consent_marketing,0) AS sms_consent_marketing
          FROM customers c
          JOIN invoices i ON i.customer_id = c.id
         WHERE COALESCE(i.amount_due,0) > 0
@@ -850,7 +878,10 @@ router.post(
       campaign.id,
     );
 
-    const eligible = unpaid.filter((r) => r.sms_opt_in === 1 || r.email_opt_in === 1);
+    // SCAN-570: SMS marketing requires sms_opt_in AND sms_consent_marketing.
+    const eligible = unpaid.filter(
+      (r) => (r.sms_opt_in === 1 && r.sms_consent_marketing === 1) || r.email_opt_in === 1,
+    );
 
     const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, eligible);
 
