@@ -18,6 +18,7 @@ import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
+import { tryAutoRespond } from '../services/smsAutoResponderMatcher.js';
 
 const logger = createLogger('sms.routes');
 
@@ -1046,6 +1047,43 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
           convPhone,
           keyword: bodyTrimmed,
           optedOutCount: allIds.length,
+        });
+      }
+    }
+
+    // Auto-responder: attempt rule match on non-opt-out inbound messages.
+    // Wrapped in try/catch so any matcher failure never breaks the 2xx webhook response.
+    // Skip entirely if the inbound body was an opt-out keyword (STOP/UNSUBSCRIBE/CANCEL)
+    // so we don't auto-reply after the customer has already opted out.
+    if (!OPT_OUT_KEYWORDS.includes(bodyTrimmed)) {
+      try {
+        const match = await tryAutoRespond(adb, {
+          from: convPhone,
+          body: msgBody,
+          tenant_slug: (req as any).tenantSlug ?? undefined,
+        });
+        if (match.matched && match.response) {
+          const { sendSmsTenant } = await import('../services/smsProvider.js');
+          await sendSmsTenant(db, (req as any).tenantSlug ?? null, convPhone, match.response);
+
+          // Record the auto-responder outbound message
+          await adb.run(`
+            INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto-responder', datetime('now'), datetime('now'))
+          `, to || '', convPhone, convPhone, match.response);
+
+          audit(db, 'sms_auto_responder_matched', null, 'webhook', {
+            responder_id: match.responder_id,
+            inbound_from: redactPhone(from),
+          });
+          logger.info('sms auto-responder fired', {
+            responder_id: match.responder_id,
+            fromRedacted: redactPhone(from),
+          });
+        }
+      } catch (autoResponderErr) {
+        logger.error('sms auto-responder block failed', {
+          error: autoResponderErr instanceof Error ? autoResponderErr.message : String(autoResponderErr),
         });
       }
     }

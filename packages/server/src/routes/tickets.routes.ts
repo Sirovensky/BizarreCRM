@@ -25,6 +25,7 @@ import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.
 import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { computeSlaForTicket } from '../services/slaAssignment.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
@@ -1005,6 +1006,24 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   );
 
   const ticketId = Number(ticketResult.lastInsertRowid);
+  const ticketCreatedAt = now();
+
+  // SCAN-464: Assign SLA policy based on priority level.
+  // Fail-open: SLA assignment failure must never abort ticket creation.
+  // TODO: wire priority_level when a priority column lands on the tickets table.
+  //       For now we derive it from body.priority (if present) or default 'normal'.
+  try {
+    await computeSlaForTicket(adb, {
+      ticket_id: ticketId,
+      priority_level: (body.priority as string | undefined) || 'normal',
+      created_at: ticketCreatedAt,
+    });
+  } catch (slaErr) {
+    logger.warn('sla assignment failed on ticket create (non-fatal)', {
+      ticket_id: ticketId,
+      error: slaErr instanceof Error ? slaErr.message : String(slaErr),
+    });
+  }
 
   // F15: Pre-fetch default warranty settings once (used per device if warranty_days not provided)
   const [wVal, wUnit] = await Promise.all([
@@ -1802,6 +1821,25 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
   // Recalculate if discount changed
   if (req.body.discount !== undefined) {
     await recalcTicketTotalsAsync(adb, ticketId);
+  }
+
+  // SCAN-464: Re-assign SLA when priority is being changed.
+  // TODO: wire to priority_level column when it lands on the tickets table.
+  //       req.body.priority is accepted here for forward-compatibility;
+  //       it is not in allowedFields so it does not affect the UPDATE above.
+  if (req.body.priority !== undefined) {
+    try {
+      await computeSlaForTicket(adb, {
+        ticket_id: ticketId,
+        priority_level: (req.body.priority as string) || 'normal',
+        created_at: existing.created_at as string,
+      });
+    } catch (slaErr) {
+      logger.warn('sla assignment failed on ticket update (non-fatal)', {
+        ticket_id: ticketId,
+        error: slaErr instanceof Error ? slaErr.message : String(slaErr),
+      });
+    }
   }
 
   await insertHistoryAsync(adb, ticketId, userId, 'updated', 'Ticket updated');
