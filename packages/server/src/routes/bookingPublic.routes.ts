@@ -41,7 +41,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
 function ipRateLimit(req: any, category: string, max: number): void {
-  const ip = (req.ip ?? req.socket?.remoteAddress ?? 'unknown').slice(0, 64);
+  const ip = (req.socket.remoteAddress || 'unknown').slice(0, 64);
   const result = consumeWindowRate(req.db, category, ip, max, ONE_HOUR_MS);
   if (!result.allowed) {
     throw new AppError(`Rate limit exceeded. Retry in ${result.retryAfterSeconds}s`, 429);
@@ -208,6 +208,9 @@ router.get('/availability', asyncHandler(async (req, res) => {
   }
   const dateStr = rawDate;
 
+  // Set Cache-Control after successful validation but before any DB query that could throw
+  res.set('Cache-Control', 'public, max-age=60');
+
   const adb = req.asyncDb;
 
   // --- Booking enabled check ---
@@ -252,7 +255,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
   if (exception) {
     if (exception.is_closed || !exception.open_time || !exception.close_time) {
       // Day is closed or has no valid special hours
-      res.set('Cache-Control', 'public, max-age=60');
       res.json({ success: true, data: [] });
       return;
     }
@@ -270,7 +272,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
       dow,
     );
     if (!hoursRow || !hoursRow.is_active) {
-      res.set('Cache-Control', 'public, max-age=60');
       res.json({ success: true, data: [] });
       return;
     }
@@ -290,7 +291,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
   const requestedDateEndMs = new Date(dateStr + 'T00:00:00Z').getTime() + 24 * 60 * 60 * 1000;
   if (requestedDateEndMs <= earliestBookableMs) {
     // Entire day is within the no-notice window
-    res.set('Cache-Control', 'public, max-age=60');
     res.json({ success: true, data: [] });
     return;
   }
@@ -303,7 +303,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
   const maxDateMs = nowMs + maxLeadDays * 24 * 60 * 60 * 1000;
   const requestedDateStartMs = new Date(dateStr + 'T00:00:00Z').getTime();
   if (requestedDateStartMs > maxDateMs) {
-    res.set('Cache-Control', 'public, max-age=60');
     res.json({ success: true, data: [] });
     return;
   }
@@ -311,7 +310,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
   // --- Generate candidate slots ---
   const candidates = generate30MinSlots(openMinutes, closeMinutes, service.duration_minutes);
   if (candidates.length === 0) {
-    res.set('Cache-Control', 'public, max-age=60');
     res.json({ success: true, data: [] });
     return;
   }
@@ -369,7 +367,6 @@ router.get('/availability', asyncHandler(async (req, res) => {
     return { ...slot, available: !overlaps };
   });
 
-  res.set('Cache-Control', 'public, max-age=60');
   res.json({ success: true, data: result });
 
   log.info('availability computed', {

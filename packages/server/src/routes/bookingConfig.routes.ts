@@ -442,10 +442,12 @@ router.post('/exceptions', asyncHandler(async (req, res) => {
     }
     validOpen = validateTimeString(open_time, 'open_time');
     validClose = validateTimeString(close_time, 'close_time');
-  } else if (open_time !== undefined) {
-    validOpen = validateTimeString(open_time, 'open_time');
-  } else if (close_time !== undefined) {
-    validClose = validateTimeString(close_time, 'close_time');
+  } else {
+    // Closed day: open_time/close_time must not be provided
+    if (open_time !== undefined || close_time !== undefined) {
+      throw new AppError('open_time/close_time must be omitted when is_closed=true', 400);
+    }
+    // validOpen and validClose remain null — written as NULL to DB
   }
 
   const validReason = reason != null
@@ -513,13 +515,25 @@ router.patch('/exceptions/:id', asyncHandler(async (req, res) => {
     fields.push('date = ?'); params.push(v);
   }
   if (is_closed !== undefined) {
-    fields.push('is_closed = ?'); params.push(is_closed ? 1 : 0);
+    const closedVal = is_closed ? 1 : 0;
+    if (closedVal === 1 && (open_time !== undefined || close_time !== undefined)) {
+      throw new AppError('open_time/close_time must be omitted when is_closed=true', 400);
+    }
+    if (closedVal === 0 && open_time === undefined && close_time === undefined) {
+      throw new AppError('open_time + close_time required when is_closed=false', 400);
+    }
+    fields.push('is_closed = ?'); params.push(closedVal);
+    // When closing the day, clear time columns
+    if (closedVal === 1) {
+      fields.push('open_time = ?'); params.push(null);
+      fields.push('close_time = ?'); params.push(null);
+    }
   }
-  if (open_time !== undefined) {
+  if (open_time !== undefined && !(is_closed)) {
     const v = open_time === null ? null : validateTimeString(open_time, 'open_time');
     fields.push('open_time = ?'); params.push(v);
   }
-  if (close_time !== undefined) {
+  if (close_time !== undefined && !(is_closed)) {
     const v = close_time === null ? null : validateTimeString(close_time, 'close_time');
     fields.push('close_time = ?'); params.push(v);
   }

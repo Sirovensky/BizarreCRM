@@ -140,13 +140,14 @@ function validateVersionJson(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new AppError(`${field} is required`, 400);
   }
-  const trimmed = value.trim();
-  if (Buffer.byteLength(trimmed, 'utf8') > MAX_VERSION_JSON_BYTES) {
+  // Size-check the RAW input before trim to prevent whitespace-padding bypass
+  if (Buffer.byteLength(value, 'utf8') > MAX_VERSION_JSON_BYTES) {
     throw new AppError(
       `${field} must not exceed ${MAX_VERSION_JSON_BYTES / 1024} KB`,
       400,
     );
   }
+  const trimmed = value.trim();
   try {
     JSON.parse(trimmed);
   } catch {

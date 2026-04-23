@@ -401,17 +401,17 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
        notes        = COALESCE(?, notes),
        updated_at   = ?
      WHERE id = ?`,
-    name        ?? null,
+    name         !== undefined ? name         : null,
     address_line !== undefined ? address_line : null,
     city         !== undefined ? city         : null,
     state        !== undefined ? state        : null,
     postcode     !== undefined ? postcode     : null,
-    country     ?? null,
+    country      !== undefined ? country      : null,
     phone        !== undefined ? phone        : null,
     email        !== undefined ? email        : null,
     lat          !== undefined ? lat          : null,
     lng          !== undefined ? lng          : null,
-    timezone    ?? null,
+    timezone     !== undefined ? timezone     : null,
     notes        !== undefined ? notes        : null,
     now(),
     id,
@@ -487,12 +487,12 @@ router.post('/:id/set-default', asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  // Setting is_default=1 fires the trg_locations_single_default_update trigger
-  // which clears all other rows before this row is written.
-  await adb.run(
-    'UPDATE locations SET is_default = 1, updated_at = ? WHERE id = ?',
-    now(), id,
-  );
+  // Wrap both statements in a transaction so the clear-others + set-new are
+  // atomic even under concurrent requests (trigger alone is not sufficient).
+  await adb.transaction([
+    { sql: 'UPDATE locations SET is_default = 0 WHERE id != ?', params: [id] },
+    { sql: 'UPDATE locations SET is_default = 1, updated_at = ? WHERE id = ?', params: [now(), id] },
+  ]);
 
   const updated = await adb.get<LocationRow>('SELECT * FROM locations WHERE id = ?', id);
 

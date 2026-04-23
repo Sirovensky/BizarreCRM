@@ -27,6 +27,7 @@ import { isCommissionLocked } from './_team.payroll.js';
 import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const logger = createLogger('pos');
 
@@ -2291,7 +2292,7 @@ router.put('/workstations/:id', async (req, res) => {
   res.json({ success: true, data: row });
 });
 
-router.post('/workstations/:id/set-default', async (req, res) => {
+router.post('/workstations/:id/set-default', asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb: AsyncDb = req.asyncDb;
   const id = Number(req.params.id);
@@ -2306,6 +2307,6 @@ router.post('/workstations/:id/set-default', async (req, res) => {
 
   audit(req.db, 'workstation_set_default', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: { id, is_default: true } });
-});
+}));
 
 export default router;

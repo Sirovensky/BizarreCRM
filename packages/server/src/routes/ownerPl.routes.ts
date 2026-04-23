@@ -96,15 +96,15 @@ interface PlSummary {
 // Key format: `${tenantSlug}|${from}|${to}|${rollup}`
 const plCache = new LRUCache<{ success: true; data: PlSummary }>(64, 60_000);
 
-function cacheKey(tenantSlug: string, from: string, to: string, rollup: Rollup): string {
-  return `${tenantSlug}|${from}|${to}|${rollup}`;
+function cacheKey(tenantId: number | string, from: string, to: string, rollup: Rollup): string {
+  return `${tenantId}|${from}|${to}|${rollup}`;
 }
 
 /** Invalidate all cache entries whose key starts with a given tenant+period prefix. */
-function invalidateTenantPeriod(tenantSlug: string, from: string, to: string): void {
+function invalidateTenantPeriod(tenantId: number | string, from: string, to: string): void {
   // Iterate over all rollup variants and delete.
   for (const r of ['day', 'week', 'month'] as Rollup[]) {
-    plCache.delete(cacheKey(tenantSlug, from, to, r));
+    plCache.delete(cacheKey(tenantId, from, to, r));
   }
 }
 
@@ -541,8 +541,8 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
   validateDates(from, to);
   const rollup = validateRollup(req.query.rollup ?? 'day');
 
-  const tenantSlug = (req as Request & { tenantSlug?: string }).tenantSlug ?? 'default';
-  const key = cacheKey(tenantSlug, from, to, rollup);
+  const tenantId = (req as Request & { tenantId?: number }).tenantId ?? 0;
+  const key = cacheKey(tenantId, from, to, rollup);
 
   const cached = plCache.get(key);
   if (cached !== undefined) {
@@ -604,8 +604,8 @@ router.post('/snapshot', asyncHandler(async (req: Request, res: Response) => {
   const snapshotId = Number(result.lastInsertRowid);
 
   // Invalidate cache for this period so the next /summary is fresh
-  const tenantSlug = (req as Request & { tenantSlug?: string }).tenantSlug ?? 'default';
-  invalidateTenantPeriod(tenantSlug, from, to);
+  const tenantId = (req as Request & { tenantId?: number }).tenantId ?? 0;
+  invalidateTenantPeriod(tenantId, from, to);
 
   audit(req.db, 'owner_pl.snapshot.create', req.user?.id ?? null, req.ip ?? '', {
     snapshot_id: snapshotId,

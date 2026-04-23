@@ -87,19 +87,18 @@ function validateLatLng(lat: unknown, lng: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// validateOptionalLatLng — same check but only when values are provided
+// validateOptionalLatLng — validates a single lat or lng field.
+// Returns null when the value is absent (undefined/null/empty string).
+// Returns the parsed finite number when present, or throws AppError.
 // ---------------------------------------------------------------------------
 
-function validateOptionalLatLng(lat: unknown, lng: unknown): void {
-  const latProvided = lat !== undefined && lat !== null && lat !== '';
-  const lngProvided = lng !== undefined && lng !== null && lng !== '';
-  if (latProvided || lngProvided) {
-    // If one is present the other must be too
-    if (!latProvided || !lngProvided) {
-      throw new AppError('lat and lng must both be provided together', 400);
-    }
-    validateLatLng(lat, lng);
-  }
+function validateOptionalLatLng(raw: unknown, field: 'lat' | 'lng'): number | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) throw new AppError(`${field} must be a finite number`, 400);
+  if (field === 'lat' && (n < -90 || n > 90)) throw new AppError('lat out of range (-90 to 90)', 400);
+  if (field === 'lng' && (n < -180 || n > 180)) throw new AppError('lng out of range (-180 to 180)', 400);
+  return n;
 }
 
 // ---------------------------------------------------------------------------
@@ -394,9 +393,11 @@ router.patch('/jobs/:id', asyncHandler(async (req: Request, res: Response) => {
     ? validateOptionalString(address_line, 'address_line', MAX_ADDRESS_LEN)
     : undefined;
 
-  // Validate optional geo
-  if (lat !== undefined || lng !== undefined) {
-    validateOptionalLatLng(lat, lng);
+  // Validate optional geo — returns null (skip) or finite number
+  const latVal = validateOptionalLatLng(lat, 'lat');
+  const lngVal = validateOptionalLatLng(lng, 'lng');
+  if ((latVal === null) !== (lngVal === null)) {
+    throw new AppError('lat and lng must both be provided together', 400);
   }
 
   if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
@@ -436,8 +437,8 @@ router.patch('/jobs/:id', asyncHandler(async (req: Request, res: Response) => {
     cityVal ?? null,
     stateVal ?? null,
     postcodeVal ?? null,
-    lat !== undefined ? Number(lat) : null,
-    lng !== undefined ? Number(lng) : null,
+    latVal,
+    lngVal,
     scheduled_window_start ?? null,
     scheduled_window_end ?? null,
     priority ?? null,
@@ -603,8 +604,12 @@ router.post('/jobs/:id/status', asyncHandler(async (req: Request, res: Response)
 
   validateJobStatusTransition(job.status as string, newStatus);
 
-  // Validate optional location
-  validateOptionalLatLng(location_lat, location_lng);
+  // Validate optional location — returns null (skip) or finite number
+  const locLatVal = validateOptionalLatLng(location_lat, 'lat');
+  const locLngVal = validateOptionalLatLng(location_lng, 'lng');
+  if ((locLatVal === null) !== (locLngVal === null)) {
+    throw new AppError('location_lat and location_lng must both be provided together', 400);
+  }
 
   const notesVal = validateOptionalString(notes, 'notes', MAX_NOTES_LEN);
   const ts = now();
@@ -620,8 +625,7 @@ router.post('/jobs/:id/status', asyncHandler(async (req: Request, res: Response)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
     id, newStatus, req.user!.id,
-    location_lat != null ? Number(location_lat) : null,
-    location_lng != null ? Number(location_lng) : null,
+    locLatVal, locLngVal,
     notesVal, ts,
   );
 
