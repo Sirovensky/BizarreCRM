@@ -1356,3 +1356,36 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-519. **dataExportGenerator uses `.all()` not `.iterate()` — full table materialized despite claimed streaming** — `packages/server/src/services/dataExportGenerator.ts:204`. Fix: `db.prepare(...).iterate()` row-by-row.
 - [ ] SCAN-520. **syncConflicts GET / list returns `sc.*` including 32KB+ `client_version_json` + `server_version_json` per row — bloated list responses** — `packages/server/src/routes/syncConflicts.routes.ts:307`. Fix: omit version blobs from list; return only in detail endpoint.
 - [ ] SCAN-521. **[STALE-DEP add-required] `tesseract.js` not in packages/server/package.json — receipt OCR cron always fails with "OCR processor not installed; configure tesseract.js in package.json"** — `packages/server/package.json`. Real OCR processing blocked until dep added. Fix (needs user approval per no-dep-bump policy): `npm install --workspace=@bizarre-crm/server tesseract.js@^5`. After install, `services/receiptOcr.ts` lazy-imports it; no code change needed.
+
+### Wave-7 scan-loop + helpers audit findings (2026-04-23)
+- [x] SCAN-522. **[SEC-CRITICAL FIXED commit pending] activity_events table NEVER populated — zero INSERT sites anywhere except `logActivity` helper which was never called** — `packages/server/src/utils/activityLog.ts` + `packages/server/src/routes/activity.routes.ts`. Fix: logActivity now wired at 6 sites (ticket created/status-changed, invoice created, payment received, customer created, inventory stock-adjusted).
+- [x] SCAN-523. ~~customerHealthScore 4 orphan exports~~ FIXED — removed export keyword on internal helpers.
+- [x] SCAN-524. ~~recordCustomerInteraction orphan~~ FIXED — wired into invoices.routes.ts payment handler as fire-and-forget.
+- [x] SCAN-525. ~~sweepClosedTicketPhotos orphan export~~ FIXED — removed export.
+- [x] SCAN-526. ~~[SEC-P0] tickets GET /export authz gap~~ FIXED — allViewCfg visibility guard mirrored from list handler.
+- [x] SCAN-527. ~~[SEC-P0 PII] tickets feedback SMS console.log phone~~ FIXED — logger + redactPhone.
+- [x] SCAN-528. ~~[SEC-P0 PII] OTP SMS console.error phone~~ FIXED — logger + redactPhone.
+- [x] SCAN-529. ~~tickets clone-warranty INSERT missing location_id~~ FIXED — inherits source.location_id ?? 1.
+- [x] SCAN-530. ~~[SEC-P0 TCPA] sms auto-responder doesn't check sms_opt_in~~ FIXED — lookup added before tryAutoRespond block.
+- [x] SCAN-531. ~~[SEC-P0 TCPA] sms business-hours auto-reply missing opt-in~~ FIXED — sms_opt_in guard on isOutsideHours branch.
+- [x] SCAN-532. ~~[SEC] sms templates write endpoints no authz~~ FIXED — requireManagerOrAdmin on POST/PUT/DELETE /templates.
+- [x] SCAN-533. ~~invoices credit-note location_id missing~~ FIXED — inherits original.location_id ?? 1.
+- [x] SCAN-534. ~~invoices console.warn/error bypassing structured logger~~ FIXED — logger.warn/error at 3 sites.
+- [x] SCAN-535. ~~sms preview-template tenant scope~~ CONFIRMED not an issue — per-tenant DB-file model isolates; comment added.
+- [x] SCAN-536. ~~[SEC] invoices GET /stats no authz~~ FIXED — requirePermission('invoices.view').
+
+### Wave-8 scan-loop findings (2026-04-23)
+- [ ] SCAN-537. **[SEC] reports GET /dashboard no role gate — cashier/tech reads revenue totals + staff leaderboard** — `packages/server/src/routes/reports.routes.ts:51`. Fix: `requireAdminOrManager(req)` (pattern matches /dashboard-kpis:288).
+- [ ] SCAN-538. **[SEC] reports GET /insights no role gate — 12-mo revenue-by-model + popular-services** — `packages/server/src/routes/reports.routes.ts:545`. Fix: role gate.
+- [ ] SCAN-539. **[SEC] reports GET /employees no role gate — commission totals + hours + revenue per staff leak to cashier/tech** — `packages/server/src/routes/reports.routes.ts:779`. Fix: role gate.
+- [ ] SCAN-540. **[SEC] reports GET /inventory no role gate — cost_price × in_stock value + top-moving parts w/ cost** — `packages/server/src/routes/reports.routes.ts:834`. Fix: role gate.
+- [ ] SCAN-541. **[SEC] reports GET /tech-workload no role gate — per-tech open-tickets + revenue-this-month + avg repair hours (salary-correlated)** — `packages/server/src/routes/reports.routes.ts:933`. Fix: role gate.
+- [ ] SCAN-542. **[SEC] reports GET /needs-attention no role gate — overdue invoices + customer PII + low-stock SKUs** — `packages/server/src/routes/reports.routes.ts:1092`. Fix: role gate.
+- [ ] SCAN-543. **[SEC] reports GET /device-models no role gate — aggregated repair counts + avg ticket totals per model (competitive intel)** — `packages/server/src/routes/reports.routes.ts:1191`. Fix: role gate.
+- [ ] SCAN-544. **[SEC] reports GET /parts-usage no role gate — supplier names + cost totals per part** — `packages/server/src/routes/reports.routes.ts:1224`. Fix: role gate.
+- [ ] SCAN-545. **[SEC] reports GET /stalled-tickets no role gate — tech names grouped with per-tech stall counts (staff-performance PII)** — `packages/server/src/routes/reports.routes.ts:1312`. Fix: role gate.
+- [ ] SCAN-546. **portal-enrich /ticket/:id/queue-position missing `guardPortalRate` — rate-limiter applied on other reads but skipped here; unbounded COUNT(*)+EXISTS scans possible** — `packages/server/src/routes/portal-enrich.routes.ts:296`. Fix: add `guardPortalRate(req, PORTAL_READ_CATEGORY, portalIdentityKey(req), PORTAL_READ_MAX, PORTAL_READ_WINDOW_MS)`.
+- [ ] SCAN-547. **[SEC-P0] portal getTicketDetail returns full `imei` + `serial` per device — ticket-scoped portal session (last-4-phone auth) leaks hardware IDs enabling SIM-swap / insurance fraud** — `packages/server/src/routes/portal.routes.ts:244,374-375`. Fix: omit imei+serial from portal device map OR gate behind portalScope==='full'.
+- [ ] SCAN-548. **portal getTicketDetail uses `SELECT * FROM invoices` — any new column added to invoices table auto-leaks via portal** — `packages/server/src/routes/portal.routes.ts:328`. Fix: explicit column allowlist.
+- [ ] SCAN-549. **[SEC] fileUploadValidator adjustFileCounter TOCTOU race — concurrent uploads both read current=99, both write 100 — quota erodes silently** — `packages/server/src/middleware/fileUploadValidator.ts:157-178`. Fix: OS-level O_EXCL lock or move counter to SQLite with atomic UPDATE SET counter=counter+?.
+- [ ] SCAN-550. **[SEC-TCPA] campaigns fetchEligibleRecipients `COALESCE(c.sms_opt_in, 1)` defaults opted-in on NULL — violates affirmative-consent, new customers get bulk SMS without consent** — `packages/server/src/routes/campaigns.routes.ts:157`. Fix: `COALESCE(..., 0)` for both sms_opt_in and email_opt_in; update count queries at lines 600-621 consistently.
