@@ -12,6 +12,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +44,13 @@ data class LeadListUiState(
     val searchQuery: String = "",
     val selectedStatus: String = "All",
 )
+
+/**
+ * View mode toggle for the Leads screen (ActionPlan §9).
+ *
+ * [LIST] renders the existing flat list; [KANBAN] renders the pipeline board.
+ */
+enum class ViewMode { LIST, KANBAN }
 
 /**
  * Status label lookup. Keys match the server's lowercase status strings.
@@ -152,6 +161,15 @@ fun LeadListScreen(
     )
     val listState = rememberLazyListState()
 
+    // §9: view-mode toggle — List (default) or Kanban pipeline board.
+    var viewMode by remember { mutableStateOf(ViewMode.LIST) }
+
+    // Derived grouping for Kanban — computed only when leads change and the
+    // kanban view is active. Immutable: groupBy returns a new map each time.
+    val leadsByStage by remember(state.leads) {
+        derivedStateOf { state.leads.groupBy { it.status ?: "new" } }
+    }
+
     Scaffold(
         topBar = {
             // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
@@ -163,6 +181,37 @@ fun LeadListScreen(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
                     actions = {
+                        // §9: List / Kanban toggle pair.
+                        IconButton(
+                            onClick = { viewMode = ViewMode.LIST },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Switch to list view"
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.ViewList,
+                                contentDescription = null,
+                                tint = if (viewMode == ViewMode.LIST)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewMode = ViewMode.KANBAN },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Switch to kanban view"
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.ViewKanban,
+                                contentDescription = null,
+                                tint = if (viewMode == ViewMode.KANBAN)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(onClick = { viewModel.loadLeads() }) {
                             Icon(
                                 Icons.Default.Refresh,
@@ -242,6 +291,18 @@ fun LeadListScreen(
                         icon = Icons.Default.PersonSearch,
                         title = "No leads found",
                         subtitle = "Add a lead with the + button below",
+                    )
+                }
+                viewMode == ViewMode.KANBAN -> {
+                    // §9: Kanban pipeline board — horizontally scrollable columns
+                    // grouped by status. Stage-change callback is a no-op here;
+                    // wiring a dropdown/dialog is deferred (drag-drop wave).
+                    LeadKanbanBoard(
+                        leadsByStage = leadsByStage,
+                        stageOrder = DEFAULT_STAGE_ORDER,
+                        onLeadClick = onLeadClick,
+                        onStageChangeRequest = { _, _ -> /* deferred */ },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
                 else -> {
