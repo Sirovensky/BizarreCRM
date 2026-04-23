@@ -809,7 +809,7 @@ router.post(
     // Carry estimate notes over as the first ticket note so they aren't lost.
     if (estimate.notes) {
       await adb.run(
-        `INSERT INTO ticket_notes (ticket_id, user_id, note, created_at, updated_at)
+        `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
          VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
         ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
       );
@@ -922,9 +922,10 @@ router.post(
     if (method === 'sms' && phone) {
       smsAttempted = true;
       try {
-        const { sendSms } = await import('../providers/sms/index.js');
+        const { sendSmsTenant } = await import('../services/smsProvider.js');
+        const tenantSlug = (req as any).tenantSlug ?? null;
         const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
-        await sendSms(phone, msg);
+        await sendSmsTenant(req.db, tenantSlug, phone, msg);
         smsSent = true;
       } catch (err: unknown) {
         smsError = err instanceof Error ? err.message : String(err);

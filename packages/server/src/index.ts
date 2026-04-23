@@ -57,6 +57,7 @@ import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResilie
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
+import { redactPhone } from './utils/phone.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -2708,7 +2709,8 @@ server.listen(config.port, config.host, async () => {
         try {
           const upcoming = tenantDb.prepare(`
             SELECT a.id, a.title, a.start_time, a.customer_id,
-              c.first_name, c.mobile, c.phone
+              c.first_name, c.mobile, c.phone,
+              c.sms_opt_in, c.sms_consent_transactional
             FROM appointments a
             LEFT JOIN customers c ON c.id = a.customer_id
             WHERE a.reminder_sent = 0
@@ -2730,11 +2732,15 @@ server.listen(config.port, config.host, async () => {
           for (const appt of upcoming) {
             const phone = appt.mobile || appt.phone;
             if (!phone) continue;
+
+            // TCPA: Skip customers who have not opted in or lack transactional consent
+            if (appt.sms_opt_in === 0 || appt.sms_consent_transactional === 0) continue;
+
             const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
             try {
               await sendSmsTenant(tenantDb, slug, phone, body);
               tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
-              console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
+              log.info('Appointment reminder: SMS sent', { tenantSlug: slug, appointmentId: appt.id, toRedacted: redactPhone(phone) });
             } catch (err) {
               // SEC-T13: surfaced instead of silently swallowed.
               // NOTE: a single SMS failure does NOT count as a per-tenant
@@ -3004,7 +3010,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, ticket.id);
             // Mark as sent so we don't send again
             tenantDb.prepare('UPDATE tickets SET stall_followup_sent = 1 WHERE id = ?').run(ticket.id);
-            console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Sent follow-up to ${phone} for ticket ${ticket.order_id}`);
+            log.info('StaleTicket: SMS sent', { tenantSlug: slug, ticketOrderId: ticket.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('StaleTicket: SMS send failed', {
               tenantSlug: slug,
@@ -3091,7 +3097,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, inv.id);
             // Update reminder timestamp
             tenantDb.prepare("UPDATE invoices SET reminder_sent_at = datetime('now') WHERE id = ?").run(inv.id);
-            console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Sent to ${phone} for invoice ${inv.order_id}`);
+            log.info('InvoiceReminder: SMS sent', { tenantSlug: slug, invoiceOrderId: inv.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('InvoiceReminder: SMS send failed', {
               tenantSlug: slug,
@@ -3162,7 +3168,7 @@ server.listen(config.port, config.host, async () => {
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto', 'estimate', ?, datetime('now'), datetime('now'))
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, est.id);
             tenantDb.prepare("UPDATE estimates SET followup_sent_at = datetime('now') WHERE id = ?").run(est.id);
-            console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Sent to ${phone} for estimate ${est.order_id}`);
+            log.info('EstimateFollowup: SMS sent', { tenantSlug: slug, estimateOrderId: est.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('EstimateFollowup: SMS send failed', {
               tenantSlug: slug,
@@ -3212,13 +3218,23 @@ server.listen(config.port, config.host, async () => {
 
           try {
             if (item.type === 'sms') {
+              // TCPA: Verify recipient has opted in before dispatching
+              const consent = tenantDb.prepare(
+                'SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE phone = ? OR mobile = ? LIMIT 1'
+              ).get(item.recipient, item.recipient) as { sms_opt_in: number; sms_consent_transactional: number } | undefined;
+              if (!consent || consent.sms_opt_in === 0 || consent.sms_consent_transactional === 0) {
+                tenantDb.prepare(
+                  "UPDATE notification_queue SET status = 'skipped', error = 'opt_out' WHERE id = ?"
+                ).run(item.id);
+                continue;
+              }
               const { sendSmsTenant } = await import('./services/smsProvider.js');
               const result = await sendSmsTenant(tenantDb, slug, item.recipient, item.body);
               if (result.success) {
                 tenantDb.prepare(
                   "UPDATE notification_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
                 ).run(item.id);
-                console.log(`[JobQueue${label}] SMS sent to ${item.recipient}`);
+                log.info('JobQueue: SMS sent', { tenantSlug: slug, itemId: item.id, toRedacted: redactPhone(item.recipient) });
               } else {
                 throw new Error(result.error || 'SMS send failed');
               }

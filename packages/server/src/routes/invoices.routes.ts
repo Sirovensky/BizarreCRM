@@ -107,7 +107,7 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
 }
 
 // GET /invoices
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
   const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
@@ -934,14 +934,101 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
             errors.push({ invoice_id: id, error: 'Invalid invoice balance — cannot mark paid' });
             continue;
           }
-          await adb.run(`
+          const bulkPayResult = await adb.run(`
             INSERT INTO payments (invoice_id, amount, method, notes, user_id)
             VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
           `, id, remaining, req.user!.id);
+          const bulkPaymentId = bulkPayResult.lastInsertRowid as number;
 
           await adb.run(`
             UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
           `, id);
+
+          // SCAN-623: replicate loyalty accrual from single-payment path (best-effort)
+          try {
+            await accruePaymentPoints({
+              adb,
+              customerId: invoice.customer_id,
+              invoiceId: Number(id),
+              paymentAmount: Number(remaining),
+            });
+          } catch (loyaltyErr: unknown) {
+            logger.warn(`[invoices] bulk mark_paid: loyalty accrual failed for invoice ${id}`, { err: loyaltyErr });
+          }
+
+          // SCAN-623: replicate commission writing from single-payment path (best-effort)
+          if (invoice.created_by) {
+            try {
+              const bulkCreatedByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
+                'SELECT commission_type, commission_rate FROM users WHERE id = ?',
+                invoice.created_by,
+              );
+              const bulkCType = bulkCreatedByRow?.commission_type ?? null;
+              const bulkCRate = Number(bulkCreatedByRow?.commission_rate ?? 0);
+              if (bulkCType && bulkCType !== 'none' && bulkCRate > 0) {
+                const bulkInvTotal = Number(invoice.total ?? 0);
+                const bulkInvTax = Number(invoice.total_tax ?? 0);
+                const bulkInvPreTax = roundCents(Math.max(0, bulkInvTotal - bulkInvTax));
+                let bulkShouldWrite = false;
+                let bulkPaymentPreTaxBaseCents = 0;
+                if (bulkCType === 'percent_ticket' || bulkCType === 'percent_service') {
+                  if (bulkInvTotal > 0 && bulkInvPreTax > 0) {
+                    const bulkPaymentFraction = Math.min(1, Number(remaining) / bulkInvTotal);
+                    const bulkPaymentPreTax = roundCents(bulkInvPreTax * bulkPaymentFraction);
+                    if (bulkPaymentPreTax > 0) {
+                      bulkShouldWrite = true;
+                      bulkPaymentPreTaxBaseCents = toCents(bulkPaymentPreTax);
+                    }
+                  }
+                } else if (bulkCType === 'flat_per_ticket') {
+                  // mark_paid always results in 'paid' status — check idempotency
+                  const bulkExisting = await adb.get<{ id: number }>(
+                    `SELECT id FROM commissions
+                       WHERE invoice_id = ?
+                         AND COALESCE(type, '') != 'reversal'
+                       LIMIT 1`,
+                    id,
+                  );
+                  if (!bulkExisting) {
+                    bulkShouldWrite = true;
+                    bulkPaymentPreTaxBaseCents = 1;
+                  }
+                }
+                if (bulkShouldWrite) {
+                  await writeCommission(adb, {
+                    userId: invoice.created_by,
+                    source: 'invoice_payment',
+                    invoiceId: Number(id),
+                    ticketId: invoice.ticket_id ?? null,
+                    commissionableAmountCents: bulkPaymentPreTaxBaseCents,
+                  });
+                }
+              }
+            } catch (commErr: unknown) {
+              if (commErr instanceof AppError) throw commErr;
+              const commCode = (commErr as NodeJS.ErrnoException & { code?: string }).code;
+              if (commCode !== 'SQLITE_CONSTRAINT_UNIQUE' && commCode !== 'SQLITE_CONSTRAINT') {
+                logger.warn(`[invoices] bulk mark_paid: commission write failed for invoice ${id}`, { err: commErr });
+              }
+            }
+          }
+
+          // SCAN-627: replicate logActivity from single-payment path (fire-and-forget)
+          logActivity(adb, {
+            actor_user_id: req.user!.id,
+            entity_kind: 'payment',
+            entity_id: bulkPaymentId,
+            action: 'received',
+            metadata: { amount_cents: toCents(Number(remaining)), method: 'cash' },
+          }).catch(() => {});
+
+          // SCAN-627: replicate fireWebhook from single-payment path
+          fireWebhook(db, 'payment_received', {
+            invoice_id: Number(id),
+            amount: Number(remaining),
+            method: 'cash',
+          });
+
           successCount++;
           break;
         }
