@@ -227,7 +227,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
 - [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
 - [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
-- [~] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee — `ErrorRecovery.recover()` util + `Action` enum ready; per-feature composable wiring pending)
+- [x] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee + d90f652 — `ErrorRecovery.recover()` util + `Action` enum + `ui/components/ErrorSurface.kt` composable with compact/full layouts, icon mapping, destructive styling; feature modules call `ErrorSurface(error, onAction)` and wire actions)
 - [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
 - [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
 - [~] Undo trigger: Snackbar action button; Ctrl+Z on hardware keyboard (tablet/ChromeOS); `TYPE_CONTEXT_CLICK` long-press on phone; shake gesture optional. (commit 2e53665 — util ready; Snackbar+chord wiring pending)
@@ -307,7 +307,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in EncryptedSharedPreferences. (Settings → Set up PIN routes to `PinSetupScreen` via `Screen.PinSetup`. Local hash mirror not stored — server is source of truth.)
 - [x] **Verify PIN** — `POST /auth/verify-pin` with `{ pin }` → `{ verified }`.
 - [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (Settings row label flips to "Change PIN" when `pinPreferences.isPinSet`; routes to same `PinSetupScreen`.)
-- [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in top bar.
+- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in top bar. (commit 69e3c1b — `ui/screens/settings/SwitchUserScreen.kt` reuses PinKeypad; Settings row + AppNavGraph route; long-press avatar path deferred)
 - [~] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (Cold-start + timeout grace via `PinPreferences.shouldLock`; Settings slider + "Lock now" action pending.)
 - [x] **Keypad UX** — custom numeric keypad Composable; `HapticFeedbackConstants.VIRTUAL_KEY` per tap, `HapticFeedbackConstants.REJECT` on wrong PIN, lockout after 5 wrong tries → full re-auth.
 - [x] **Forgot PIN** → "Sign out and re-login" destructive action.
@@ -353,10 +353,10 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.12 Error / empty states
 - [x] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
 - [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address.
-- [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
-- [ ] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`).
-- [ ] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only).
-- [ ] TLS pin failure → red error dialog "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
+- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (commit 049b35e — LoginScreen catch UnknownHostException/ConnectException)
+- [x] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`). (commit 049b35e — 429 banner with 1s ticker + disabled Sign In button)
+- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (commit 049b35e — NetworkMonitor.isOnline observed; offline banner + disabled Sign In button)
+- [x] TLS pin failure → red error dialog "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (commit 7eb8c90 — `ui/components/TlsPinFailureDialog.kt` non-dismissable AlertDialog + "Copy details" + "Sign out"; caller wires show/hide from CertificatePinner exception)
 
 ### 2.13 Security polish
 - [x] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
