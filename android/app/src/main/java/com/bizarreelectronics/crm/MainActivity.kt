@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -29,6 +30,7 @@ import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
+import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -105,6 +107,28 @@ class MainActivity : FragmentActivity() {
 
     /** True until biometric unlock has either succeeded or been skipped. */
     private var isLocked: Boolean = false
+
+    /**
+     * §27 — pre-Android-13 locale persistence.
+     *
+     * On API 33+ [android.app.LocaleManager] keeps the locale durable across
+     * cold starts and the system-provided context already carries the right
+     * configuration; [LanguageManager.wrapContext] is a no-op in that case.
+     *
+     * On API 26-32 the OS has no knowledge of the per-app preference, so we
+     * must wrap the base context with a [android.content.res.Configuration]
+     * that sets the user-selected locale before any view inflation occurs.
+     * This override fires early enough in the lifecycle that even the first
+     * call to [resources.getString] during [onCreate] picks up the override.
+     *
+     * The read is performed without Hilt injection because this hook fires
+     * before the activity Hilt component is created. [LanguageManager.wrapContext]
+     * reads the shared preferences file directly and falls back to the
+     * unmodified context if the file or key is absent.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LanguageManager.wrapContext(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

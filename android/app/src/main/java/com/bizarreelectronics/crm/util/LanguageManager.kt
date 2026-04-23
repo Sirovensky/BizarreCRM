@@ -111,14 +111,40 @@ class LanguageManager @Inject constructor(
      * before Hilt components are created for the activity).
      */
     companion object {
+        /**
+         * Two-arg form: apply a known [tag] to [context]. Used internally and
+         * by tests that supply the tag directly.
+         */
         fun wrapContext(context: Context, tag: String): Context {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return context
-            if (tag == "system") return context
+            if (tag == "system" || tag.isBlank()) return context
 
             val locale = java.util.Locale.forLanguageTag(tag)
             val config = android.content.res.Configuration(context.resources.configuration)
             config.setLocale(locale)
             return context.createConfigurationContext(config)
+        }
+
+        /**
+         * Single-arg form for use in [MainActivity.attachBaseContext], which
+         * fires before the Hilt component graph is ready so constructor
+         * injection is unavailable. Reads the persisted language tag directly
+         * from the plain [android.content.SharedPreferences] file that
+         * [AppPreferences] writes to ("app_prefs" / "language_tag").
+         *
+         * Fails safe: if the preferences file is absent, the key is missing,
+         * or any other error occurs, the original [base] context is returned
+         * unchanged so the activity continues with the system locale.
+         */
+        fun wrapContext(base: Context): Context {
+            return try {
+                val tag = base
+                    .getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                    .getString("language_tag", "system") ?: "system"
+                wrapContext(base, tag)
+            } catch (_: Exception) {
+                base
+            }
         }
     }
 }
