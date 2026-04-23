@@ -85,3 +85,19 @@ data class BackupCodeRecoveryRequest(
 data class MessageResponse(
     val message: String?,
 )
+
+/**
+ * §2.1 — Response from GET /auth/setup-status.
+ *
+ * Server returns exactly two fields:
+ *   - needsSetup:    true when no active users exist (first-run wizard required)
+ *   - isMultiTenant: true when the server is running in SaaS/multi-tenant mode
+ *
+ * Verified against packages/server/src/routes/auth.routes.ts line 435-445.
+ */
+data class SetupStatusResponse(
+    @SerializedName("needsSetup")
+    val needsSetup: Boolean,
+    @SerializedName("isMultiTenant")
+    val isMultiTenant: Boolean? = null,
+)

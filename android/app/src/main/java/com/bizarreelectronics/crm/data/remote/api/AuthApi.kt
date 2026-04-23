@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.dto.MessageResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
 import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
+import com.bizarreelectronics.crm.data.remote.dto.SetupStatusResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
@@ -64,4 +65,10 @@ interface AuthApi {
 
     @POST("auth/recover-with-backup-code")
     suspend fun recoverWithBackupCode(@Body request: BackupCodeRecoveryRequest): ApiResponse<MessageResponse>
+
+    // §2.1 — setup-status probe. Unauthenticated. Called once on first transition
+    // to the credentials step to determine whether the server needs first-run setup
+    // or multi-tenant tenant selection before showing the login form.
+    @GET("auth/setup-status")
+    suspend fun getSetupStatus(): ApiResponse<SetupStatusResponse>
 }

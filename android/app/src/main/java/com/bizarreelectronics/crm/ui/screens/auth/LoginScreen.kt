@@ -87,6 +87,14 @@ data class LoginUiState(
     val error: String? = null,
     val serverConnected: Boolean = false,
     val showBackupCodes: List<String>? = null,
+    // §2.1 — setup-status probe result. Null = not yet probed or probe skipped.
+    // true = server needs first-run setup; false = server is ready for login.
+    // Probe failure is non-blocking: login form still renders if null.
+    val setupNeeded: Boolean? = null,
+    // §2.1 — probe is in flight (transparent overlay)
+    val isProbing: Boolean = false,
+    // §2.1 — probe error message (inline retry on credentials step)
+    val probeError: String? = null,
     // Registration fields
     val registerShopName: String = "",
     val registerEmail: String = "",
@@ -388,6 +396,63 @@ class LoginViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = e.message ?: "Registration failed",
+                )
+            }
+        }
+    }
+
+    /**
+     * §2.1 — Setup-status probe.
+     *
+     * Called once when the CREDENTIALS step is first shown (after server connection
+     * is established). Fires the GET /auth/setup-status endpoint and updates state:
+     *
+     *   - needsSetup=true  → sets setupNeeded=true so the UI shows a "server needs
+     *                         setup" banner with a "Contact admin" message. The login
+     *                         form is NOT blocked — user can still attempt a login if
+     *                         they dismiss the banner.
+     *   - needsSetup=false → sets setupNeeded=false (normal flow, banner hidden).
+     *   - Network/parse failure → clears isProbing, sets probeError with inline retry
+     *                             copy. Login form is NOT blocked.
+     *
+     * isMultiTenant=true is noted in probeError as a TODO since the tenant-picker
+     * screen does not exist yet.
+     *
+     * SAFETY: probe failure is deliberately non-blocking. The user can always try
+     * to sign in regardless of probe result (they may be on a degraded network).
+     */
+    fun probeSetupStatus(forceRetry: Boolean = false) {
+        val s = _state.value
+        // Skip if already probed this session (unless explicitly retrying after error)
+        // or if no server URL yet.
+        if ((!forceRetry && s.setupNeeded != null) || s.serverUrl.isBlank()) return
+        // Reset prior result/error before starting a new probe so UI shows spinner.
+        _state.value = s.copy(isProbing = true, probeError = null, setupNeeded = null)
+        viewModelScope.launch {
+            try {
+                val response = authApi.getSetupStatus()
+                val data = response.data
+                if (data == null) {
+                    // Unexpected null body — treat as non-blocking probe failure
+                    _state.value = _state.value.copy(
+                        isProbing = false,
+                        probeError = null,
+                        setupNeeded = false,
+                    )
+                    return@launch
+                }
+                // TODO(§2.10): when data.isMultiTenant == true and no tenant is chosen,
+                // push the tenant-picker screen. Tenant picker doesn't exist yet.
+                _state.value = _state.value.copy(
+                    isProbing = false,
+                    setupNeeded = data.needsSetup,
+                    probeError = null,
+                )
+            } catch (e: Exception) {
+                // Non-blocking: let user proceed to login form even on probe failure.
+                _state.value = _state.value.copy(
+                    isProbing = false,
+                    probeError = "Could not reach server. Check your connection.",
                 )
             }
         }
@@ -988,6 +1053,88 @@ private fun CredentialsStep(
 ) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
+
+    // §2.1 — fire the setup-status probe once on first render of this step.
+    // Non-blocking: login form renders immediately; probe result overlays or
+    // adds an informational banner when it completes.
+    LaunchedEffect(Unit) { viewModel.probeSetupStatus() }
+
+    // §2.1 — transparent probe overlay: ≤400ms loading indicator per spec.
+    // Shown while the probe is in flight. Does NOT block the form fields.
+    if (state.isProbing) {
+        Box(
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    "Connecting to your server\u2026",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    // §2.1 — needs-setup banner: server has no users yet.
+    if (state.setupNeeded == true) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        ) {
+            Row(
+                modifier = androidx.compose.ui.Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = androidx.compose.ui.Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    "This server needs first-time setup. Contact your administrator.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = androidx.compose.ui.Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    // §2.1 — probe error: inline retry, non-blocking (login form still available).
+    if (state.probeError != null) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+            shape = MaterialTheme.shapes.small,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = androidx.compose.ui.Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    state.probeError,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = androidx.compose.ui.Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { viewModel.probeSetupStatus(forceRetry = true) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
+                ) {
+                    Text("Retry", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {

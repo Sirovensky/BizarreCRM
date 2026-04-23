@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.screens.auth.BackupCodeRecoveryScreen
 import com.bizarreelectronics.crm.ui.screens.auth.ForgotPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.auth.LoginScreen
+import com.bizarreelectronics.crm.ui.screens.auth.SetupStatusGateScreen
 import com.bizarreelectronics.crm.ui.screens.auth.ResetPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.dashboard.DashboardScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketListScreen
@@ -203,6 +204,10 @@ sealed class Screen(val route: String) {
 
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
+
+    // §2.1 — Setup-status gate: probes GET /auth/setup-status before showing
+    // the login form. Shown when a serverUrl is saved but no session exists.
+    data object SetupStatusGate : Screen("auth/setup-gate")
 
     // §2.8 — Password reset + backup-code recovery screens (pre-auth)
     data object ForgotPassword : Screen("auth/forgot-password")
@@ -381,7 +386,9 @@ fun AppNavGraph(
             // §2.8 — pre-auth password-reset screens hide the bottom bar
             currentRoute != Screen.ForgotPassword.route &&
             !currentRoute.startsWith("auth/reset-password/") &&
-            currentRoute != Screen.BackupCodeRecovery.route
+            currentRoute != Screen.BackupCodeRecovery.route &&
+            // §2.1 — setup-status gate is a pre-auth transient screen
+            currentRoute != Screen.SetupStatusGate.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -559,10 +566,19 @@ fun AppNavGraph(
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                     )
                 }
+            // §2.1 — start-destination logic:
+            //   isLoggedIn + serverUrl   → Dashboard (already authenticated)
+            //   !isLoggedIn + serverUrl  → SetupStatusGate (probe then login)
+            //   no serverUrl             → Login (user enters server URL first)
+            val hasServerUrl = !authPreferences?.serverUrl.isNullOrBlank()
+            val startDest = when {
+                authPreferences?.isLoggedIn == true && hasServerUrl -> Screen.Dashboard.route
+                hasServerUrl && authPreferences?.isLoggedIn != true -> Screen.SetupStatusGate.route
+                else -> Screen.Login.route
+            }
             NavHost(
                 navController = navController,
-                startDestination = if (authPreferences?.isLoggedIn == true && !authPreferences.serverUrl.isNullOrBlank())
-                    Screen.Dashboard.route else Screen.Login.route,
+                startDestination = startDest,
                 modifier = Modifier.weight(1f),
                 enterTransition = { fadeIn(animationSpec = tween(200)) },
                 exitTransition = { fadeOut(animationSpec = tween(200)) },
@@ -588,6 +604,37 @@ fun AppNavGraph(
                     // §2.8 — show on credentials step; routes to forgot-password flow
                     onForgotPassword = {
                         navController.navigate(Screen.ForgotPassword.route)
+                    },
+                )
+            }
+            // §2.1 — Setup-status gate: probes the server before rendering login.
+            // Routing decisions:
+            //   needsSetup=true    → Login (shows "contact admin" banner; §2.10 flow TBD)
+            //   isMultiTenant=true → Login (tenant picker TBD in §2.10)
+            //   normal             → Login (credentials step)
+            // The gate always resolves to the Login screen in this release since the
+            // InitialSetupFlow (§2.10) and TenantPicker don't exist yet.  The login
+            // screen's own probe (CredentialsStep LaunchedEffect) then re-shows the
+            // needs-setup banner if appropriate.
+            composable(Screen.SetupStatusGate.route) {
+                SetupStatusGateScreen(
+                    onNeedsSetup = {
+                        // §2.10 not yet implemented — fall through to login which
+                        // will display the "contact admin" banner via its own probe.
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                    onMultiTenant = {
+                        // TODO(§2.10): tenant picker doesn't exist yet — go to login.
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                    onLogin = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
                     },
                 )
             }
