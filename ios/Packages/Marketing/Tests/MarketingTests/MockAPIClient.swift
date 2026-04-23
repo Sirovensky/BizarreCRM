@@ -5,15 +5,52 @@ import Networking
 // Top-level types for mock use (Swift 6: no nested types in generic functions)
 private struct MockApproveResponse: Decodable, Sendable { let approved: Bool? }
 
+// MARK: - Shared fixture builders
+
+func makeCampaignServerRow(
+    id: Int = 1, name: String = "Test", status: String = "draft",
+    type: String = "custom", channel: String = "sms",
+    sentCount: Int = 0, repliedCount: Int = 0, convertedCount: Int = 0
+) -> CampaignServerRow {
+    CampaignServerRow(
+        id: id, name: name, type: type, segmentId: nil,
+        channel: channel, templateSubject: nil, templateBody: "Hello",
+        triggerRuleJson: nil, status: status,
+        sentCount: sentCount, repliedCount: repliedCount, convertedCount: convertedCount,
+        createdAt: "2024-01-01T00:00:00Z", lastRunAt: nil
+    )
+}
+
 /// Minimal mock APIClient for unit tests. Sendable-safe via actors.
 actor MockAPIClient: APIClient {
-    // MARK: - Campaign stubs
+    // MARK: - Campaign stubs (legacy list/create/send path)
     var campaignListResult: Result<CampaignListResponse, Error> = .success(CampaignListResponse(campaigns: [], nextCursor: nil))
     var campaignCreateResult: Result<Campaign, Error> = .success(Campaign(id: "1", name: "Test", status: .draft, template: "Hello", createdAt: Date()))
     var campaignGetResult: Result<Campaign, Error> = .success(Campaign(id: "1", name: "Test", status: .draft, template: "Hello", createdAt: Date()))
     var campaignSendResult: Result<Campaign, Error> = .success(Campaign(id: "1", name: "Test", status: .sending, template: "Hello", createdAt: Date()))
     var campaignReportResult: Result<CampaignReport, Error> = .success(CampaignReport(delivered: 10, failed: 1, optedOut: 0, replies: 2))
     var approveSendResult: Result<Void, Error> = .success(())
+
+    // MARK: - Server row campaign stubs
+    var campaignServerListResult: Result<[CampaignServerRow], Error> = .success([])
+    var campaignServerGetResult: Result<CampaignServerRow, Error> = .success(makeCampaignServerRow())
+    var campaignServerCreateResult: Result<CampaignServerRow, Error> = .success(makeCampaignServerRow())
+    var campaignServerPatchResult: Result<CampaignServerRow, Error> = .success(makeCampaignServerRow())
+    var campaignAudiencePreviewResult: Result<CampaignAudiencePreview, Error> = .success(
+        CampaignAudiencePreview(campaignId: 1, totalRecipients: 42, preview: [])
+    )
+    var campaignStatsResult: Result<CampaignStats, Error> = .success(
+        CampaignStats(
+            campaign: makeCampaignServerRow(sentCount: 10, repliedCount: 2, convertedCount: 1),
+            counts: CampaignStatCounts(sent: 10, failed: 0, replied: 2, converted: 1)
+        )
+    )
+    var campaignRunNowResult: Result<CampaignRunNowResult, Error> = .success(
+        CampaignRunNowResult(attempted: 5, sent: 5, failed: 0, skipped: 0)
+    )
+    var smsGroupsResult: Result<[SmsGroup], Error> = .success([])
+
+    // MARK: - Segment stubs
     var segmentListResult: Result<SegmentListResponse, Error> = .success(SegmentListResponse(segments: []))
     var segmentCreateResult: Result<Segment, Error> = .success(Segment(id: "s1", name: "Test", rule: SegmentRuleGroup(), cachedCount: 0))
     var segmentCountResult: Result<SegmentCountResponse, Error> = .success(SegmentCountResponse(count: 42))
@@ -39,6 +76,11 @@ actor MockAPIClient: APIClient {
     var createSegmentCalled = 0
     var previewCountCalled = 0
     var approveSendCalled = 0
+    var campaignServerCreateCalled = 0
+    var campaignServerPatchCalled = 0
+    var campaignServerDeleteCalled = 0
+    var runNowCalled = 0
+    var audiencePreviewCalled = 0
     var lastGetPath: String = ""
     var lastPostPath: String = ""
     var reviewRequestCalled = 0
@@ -67,11 +109,44 @@ actor MockAPIClient: APIClient {
         npsSubmitResult = result
     }
 
+    func setCampaignServerListResult(_ result: Result<[CampaignServerRow], Error>) {
+        campaignServerListResult = result
+    }
+
+    func setCampaignStatsResult(_ result: Result<CampaignStats, Error>) {
+        campaignStatsResult = result
+    }
+
+    func setAudiencePreviewResult(_ result: Result<CampaignAudiencePreview, Error>) {
+        campaignAudiencePreviewResult = result
+    }
+
+    func setSmsGroupsResult(_ result: Result<[SmsGroup], Error>) {
+        smsGroupsResult = result
+    }
+
     // MARK: - APIClient conformance
 
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         lastGetPath = path
 
+        // Server row list
+        if T.self == [CampaignServerRow].self, path.contains("campaigns") && !path.contains("/") {
+            return try campaignServerListResult.get() as! T
+        }
+        // Server row detail
+        if T.self == CampaignServerRow.self {
+            return try campaignServerGetResult.get() as! T
+        }
+        // Stats
+        if T.self == CampaignStats.self {
+            return try campaignStatsResult.get() as! T
+        }
+        // SMS Groups
+        if T.self == [SmsGroup].self {
+            return try smsGroupsResult.get() as! T
+        }
+        // Legacy
         if T.self == CampaignListResponse.self {
             return try campaignListResult.get() as! T
         }
@@ -107,6 +182,21 @@ actor MockAPIClient: APIClient {
             if case .failure(let e) = approveSendResult { throw e }
             let json = #"{"approved":true}"#
             return try JSONDecoder().decode(T.self, from: Data(json.utf8))
+        }
+        // Audience preview
+        if T.self == CampaignAudiencePreview.self {
+            audiencePreviewCalled += 1
+            return try campaignAudiencePreviewResult.get() as! T
+        }
+        // Run now
+        if T.self == CampaignRunNowResult.self {
+            runNowCalled += 1
+            return try campaignRunNowResult.get() as! T
+        }
+        // Server row create
+        if T.self == CampaignServerRow.self {
+            campaignServerCreateCalled += 1
+            return try campaignServerCreateResult.get() as! T
         }
         if T.self == Campaign.self {
             if path.contains("/send") {
@@ -148,10 +238,16 @@ actor MockAPIClient: APIClient {
     }
 
     func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        campaignServerPatchCalled += 1
+        if T.self == CampaignServerRow.self {
+            return try campaignServerPatchResult.get() as! T
+        }
         throw URLError(.unsupportedURL)
     }
 
-    func delete(_ path: String) async throws {}
+    func delete(_ path: String) async throws {
+        if path.contains("campaigns") { campaignServerDeleteCalled += 1 }
+    }
 
     func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
         throw URLError(.unsupportedURL)
@@ -166,7 +262,7 @@ actor MockAPIClient: APIClient {
 // MARK: - Helpers for existing tests
 
 extension MockAPIClient {
-    func setCampaignCreateFail() {
+    func setCampaignCreateFail() async {
         campaignCreateResult = .failure(URLError(.badServerResponse))
     }
 }
