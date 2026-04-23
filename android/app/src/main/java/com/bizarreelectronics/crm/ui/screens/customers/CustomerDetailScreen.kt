@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -42,6 +44,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
@@ -650,6 +653,7 @@ private fun CustomerEditContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CustomerDetailContent(
     customer: CustomerEntity,
@@ -941,22 +945,38 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Tags — BrandCard
-        if (!customer.tags.isNullOrBlank()) {
-            item {
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+        // Tags — chip row (CROSS9d: replaces raw comma-separated Text).
+        // Always render the card so the empty-state ("No tags") is visible.
+        // tagLabels is recomputed only when customer.tags changes (immutable memo).
+        item {
+            val tagLabels = remember(customer.tags) {
+                customer.tags.orEmpty()
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Tags",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (tagLabels.isEmpty()) {
                         Text(
-                            "Tags",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            customer.tags,
+                            "No tags",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            tagLabels.forEach { tag -> TagChip(label = tag) }
+                        }
                     }
                 }
             }
