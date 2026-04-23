@@ -86,6 +86,20 @@ data class MessageResponse(
     val message: String?,
 )
 
+// §2.5 — Switch user (shared device) DTOs.
+// Endpoint: POST /auth/switch-user
+// Request body: { pin }  — SECURITY: pin is NEVER logged.
+// Response data: { accessToken, user }
+
+data class SwitchUserRequest(
+    @SerializedName("pin") val pin: String,
+)
+
+data class SwitchUserResponse(
+    @SerializedName("accessToken") val accessToken: String,
+    @SerializedName("user") val user: UserDto,
+)
+
 /**
  * §2.1 — Response from GET /auth/setup-status.
  *

@@ -10,6 +10,8 @@ import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
 import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetupStatusResponse
+import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
+import com.bizarreelectronics.crm.data.remote.dto.SwitchUserResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
@@ -71,4 +73,13 @@ interface AuthApi {
     // or multi-tenant tenant selection before showing the login form.
     @GET("auth/setup-status")
     suspend fun getSetupStatus(): ApiResponse<SetupStatusResponse>
+
+    // §2.5 — switch user on a shared device. Authenticated (requires existing
+    // session). Server validates pin against all active users' bcrypt hashes,
+    // issues a new 1h accessToken + 8h refreshToken for the matched user.
+    // Rate-limited by IP (429 with Retry-After if exceeded).
+    // Body: { pin }. Response: { accessToken, user }.
+    // SECURITY: pin value is NEVER logged.
+    @POST("auth/switch-user")
+    suspend fun switchUser(@Body body: SwitchUserRequest): ApiResponse<SwitchUserResponse>
 }

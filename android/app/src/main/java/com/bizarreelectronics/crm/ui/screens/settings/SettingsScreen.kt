@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -232,6 +233,9 @@ fun SettingsScreen(
     onCrashReports: (() -> Unit)? = null,
     // §28 — opens About + diagnostics screen (copy-bundle for support).
     onAbout: (() -> Unit)? = null,
+    // §2.5 — opens the Switch User PIN screen (shared device flow).
+    // Nullable so previews and any callers that don't need the row can omit it.
+    onSwitchUser: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -264,6 +268,21 @@ fun SettingsScreen(
                     icon = Icons.Default.Person,
                     title = "Edit Profile",
                     onClick = onEditProfile,
+                )
+            }
+
+            // §2.5 — Switch user: shared-device flow. Placed immediately after
+            // Edit Profile so identity-related actions are grouped together.
+            // Subtitle shows the currently signed-in username so the operator
+            // can confirm who is active before switching. Hidden when no
+            // callback is provided (e.g. previews).
+            if (onSwitchUser != null) {
+                val currentUsername = viewModel.authPreferences.username ?: "Unknown"
+                SettingsRowWithSubtitle(
+                    icon = Icons.Outlined.GroupAdd,
+                    title = "Switch user",
+                    subtitle = "Signed in as $currentUsername",
+                    onClick = onSwitchUser,
                 )
             }
 
@@ -655,6 +674,55 @@ private fun SyncIssuesTileRow(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
+        }
+    }
+}
+
+/**
+ * §2.5 — Variant of [SettingsRow] that includes a one-line subtitle below the
+ * main label. Used for "Switch user" where the subtitle shows the currently
+ * active username so the operator can confirm identity before switching.
+ */
+@Composable
+private fun SettingsRowWithSubtitle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

@@ -62,6 +62,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
+import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
@@ -212,6 +213,10 @@ sealed class Screen(val route: String) {
 
     // §2.9 — Change-password screen (authenticated; reachable from Security sub-screen).
     data object ChangePassword : Screen("settings/security/change-password")
+
+    // §2.5 — Switch User (shared device): PIN entry to switch active identity.
+    // Entry point: Settings > "Switch user" row (and TODO: long-press avatar in top bar).
+    data object SwitchUser : Screen("settings/switch-user")
 
     // §2.8 — Password reset + backup-code recovery screens (pre-auth)
     data object ForgotPassword : Screen("auth/forgot-password")
@@ -1078,6 +1083,8 @@ fun AppNavGraph(
                     onPinSetup = { navController.navigate(Screen.PinSetup.route) },
                     onCrashReports = { navController.navigate(Screen.CrashReports.route) },
                     onAbout = { navController.navigate(Screen.About.route) },
+                    // §2.5 — Switch user (shared device): navigate to PIN entry.
+                    onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
                 )
             }
             composable(Screen.CrashReports.route) {
@@ -1122,6 +1129,20 @@ fun AppNavGraph(
                 ChangePasswordScreen(
                     onBack = { navController.popBackStack() },
                     onPasswordChanged = { navController.popBackStack() },
+                )
+            }
+            // §2.5 — Switch User (shared device): PIN entry, reachable from
+            // Settings > "Switch user" row. On success the new identity is
+            // persisted and the user is sent to Dashboard with the back-stack
+            // cleared to Dashboard (no stale Settings entry for old identity).
+            composable(Screen.SwitchUser.route) {
+                SwitchUserScreen(
+                    onBack = { navController.popBackStack() },
+                    onSwitched = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Dashboard.route) { inclusive = true }
+                        }
+                    },
                 )
             }
             // AUD-20260414-M5: Sync Issues screen — lists dead-letter
