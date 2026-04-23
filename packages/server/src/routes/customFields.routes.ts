@@ -129,6 +129,17 @@ router.get('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   res.json({ success: true, data: values });
 }));
 
+// Allowlist mapping entityType -> table name.
+// Table names come from this trusted constant, NOT from user input,
+// so interpolation in the SELECT below is safe.
+// Keys must match every entry in VALID_ENTITY_TYPES above.
+const ENTITY_TABLES: Record<string, string> = {
+  ticket: 'tickets',
+  customer: 'customers',
+  inventory: 'inventory_items',
+  invoice: 'invoices',
+};
+
 // PUT /values/:entityType/:entityId — Set custom field values (upsert)
 router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   const db = req.db;
@@ -145,6 +156,18 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   if (fields.length > 200) throw new AppError('Too many fields (max 200)', 400);
 
   const adb = req.asyncDb;
+
+  // SCAN-597: verify the referenced entity actually exists before upserting.
+  // The table name is sourced from the trusted ENTITY_TABLES allowlist above,
+  // never from user input, so the interpolation is safe.
+  const entityTable = ENTITY_TABLES[entityType];
+  if (entityTable) {
+    const entityRow = await adb.get(
+      `SELECT id FROM ${entityTable} WHERE id = ?`,
+      req.params.entityId,
+    );
+    if (!entityRow) throw new AppError(`${entityType} not found`, 404);
+  }
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   for (const f of fields) {
     if (!f.definition_id) continue;

@@ -49,6 +49,7 @@ function validateReportDateRange(req: any, from: string, to: string): void {
 // ─── Dashboard KPIs ───────────────────────────────────────────────────────────
 
 router.get('/dashboard', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   // Cache key includes tenant slug (if multi-tenant) to avoid cross-tenant leaks
   // SEC-L21: also include req.user.role so a cashier request doesn't read a
   // cached response that was computed for an admin (whose view may include
@@ -543,6 +544,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
 // ─── Insights (Charts) ──────────────────────────────────────────────────────
 
 router.get('/insights', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   // RPT4: Default to the same ~12-month window as the dashboard top-services
   // card so the drill-in detail view matches the summary on first load.
@@ -777,6 +779,7 @@ router.get('/tickets', asyncHandler(async (req, res) => {
 // ─── Employee Report ──────────────────────────────────────────────────────────
 
 router.get('/employees', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -832,6 +835,7 @@ router.get('/employees', asyncHandler(async (req, res) => {
 // ─── Inventory Report ─────────────────────────────────────────────────────────
 
 router.get('/inventory', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
 
   const [lowStock, valueSummary, outOfStockRow, topMoving] = await Promise.all([
@@ -931,6 +935,7 @@ router.get('/tax', asyncHandler(async (req, res) => {
 // ─── Tech Workload ───────────────────────────────────────────────────────────
 
 router.get('/tech-workload', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const db = req.db; // needed for sync calculateAvgActiveRepairTime
   const monthStart = new Date();
@@ -1090,6 +1095,7 @@ router.get('/tips', asyncHandler(async (req, res) => {
 // ─── Needs Attention ──────────────────────────────────────────────────────────
 
 router.get('/needs-attention', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -1189,6 +1195,7 @@ router.get('/warranty-claims', asyncHandler(async (req, res) => {
 // ─── ENR-R2: Device Model Report ────────────────────────────────────────────
 
 router.get('/device-models', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -1222,6 +1229,7 @@ router.get('/device-models', asyncHandler(async (req, res) => {
 // ─── ENR-R3: Parts Usage Report ─────────────────────────────────────────────
 
 router.get('/parts-usage', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -1310,6 +1318,7 @@ router.get('/technician-hours', asyncHandler(async (req, res) => {
 // ─── ENR-R5: Stalled Ticket Report ──────────────────────────────────────────
 
 router.get('/stalled-tickets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -1846,11 +1855,6 @@ router.get('/cash-flow-forecast', requireFeature('advancedReports'), asyncHandle
 // ═══════════════════════════════════════════════════════════════════════════
 // BUSINESS INTELLIGENCE LAYER (audit 47) — additive, does not touch existing
 // ═══════════════════════════════════════════════════════════════════════════
-//
-// TODO(MEDIUM, §26): wire report emailer cron — import { startReportEmailer } from
-// '../services/reportEmailer.js' in packages/server/src/index.ts and call
-// startReportEmailer(() => Promise.resolve([{ db, adb, recipients: [ownerEmail] }]))
-// once after the HTTP server is listening. The emailer is idempotent.
 //
 //
 // Every endpoint in this block is new. None of the queries above have been

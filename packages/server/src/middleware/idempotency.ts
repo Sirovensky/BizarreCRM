@@ -85,6 +85,14 @@ interface IdempotencyRow {
  * by earlier middleware (tenantResolver + authMiddleware).
  */
 export function idempotent(req: Request, res: Response, next: NextFunction): void {
+  // SCAN-591: Idempotency-Key only applies to POST writes per RFC 9562.
+  // GET/PATCH (and other non-POST methods) must pass through without touching
+  // the idempotency_keys table — otherwise the header creates phantom rows.
+  if (req.method !== 'POST') {
+    next();
+    return;
+  }
+
   const key = req.headers['x-idempotency-key'] as string | undefined;
   if (!key) {
     next();
@@ -120,16 +128,20 @@ export function idempotent(req: Request, res: Response, next: NextFunction): voi
   } catch (err: unknown) {
     const sqliteErr = err as { code?: string };
     if (sqliteErr.code !== 'SQLITE_CONSTRAINT_UNIQUE') {
-      // Unexpected DB error — fail open so the route still executes, but log it.
-      // We deliberately do NOT short-circuit here because silently swallowing a
-      // DB error and blocking the request would be worse than a potential retry.
+      // SCAN-604: Unexpected DB error — fail closed (503) so the caller knows
+      // the idempotency guarantee cannot be honoured right now.  Retry-After: 1
+      // signals that retrying after one second is appropriate.
       logger.error('idempotency: unexpected DB error on INSERT', {
         code: sqliteErr.code,
         error: err instanceof Error ? err.message : String(err),
         userId,
         path: req.originalUrl,
       });
-      next();
+      res.set('Retry-After', '1');
+      res.status(503).json({
+        success: false,
+        message: 'Idempotency service temporarily unavailable; please retry',
+      });
       return;
     }
 

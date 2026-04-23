@@ -102,6 +102,10 @@ public struct DataImportView: View {
             ImportSourcePickerView(selectedSource: $vm.selectedSource) {
                 vm.confirmSource()
             }
+        case .chooseEntity:
+            ImportEntityPickerView(selectedEntity: $vm.selectedEntity) {
+                vm.confirmEntity()
+            }
         case .upload:
             ImportUploadView(vm: vm)
         case .preview:
@@ -178,32 +182,70 @@ public struct DataImportView: View {
     private var doneView: some View {
         VStack(spacing: DesignTokens.Spacing.xxl) {
             Spacer()
-            Image(systemName: "checkmark.seal.fill")
+
+            // Status icon
+            Image(systemName: vm.job?.status == .rolledBack ? "arrow.uturn.backward.circle.fill" : "checkmark.seal.fill")
                 .font(.system(size: 72))
-                .foregroundStyle(.bizarreSuccess)
+                .foregroundStyle(vm.job?.status == .rolledBack ? .bizarreWarning : .bizarreSuccess)
                 .accessibilityHidden(true)
-            Text("Import Complete")
+
+            Text(vm.job?.status == .rolledBack ? "Import Rolled Back" : "Import Complete")
                 .font(.brandTitleLarge())
                 .foregroundStyle(.bizarreOnSurface)
-            if let j = vm.job {
-                Text("\(j.processedRows) customers imported · \(j.errorCount) errors")
+
+            if let j = vm.job, j.status != .rolledBack {
+                Text("\(j.processedRows) \(j.entityType.displayName.lowercased()) imported · \(j.errorCount) errors")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityLabel("\(j.processedRows) customers imported with \(j.errorCount) errors")
+                    .accessibilityLabel("\(j.processedRows) \(j.entityType.displayName.lowercased()) imported with \(j.errorCount) errors")
             }
-            if let j = vm.job, j.errorCount > 0 {
-                Button("Review Errors") { Task { await vm.viewErrors() } }
+
+            if let msg = vm.rollbackMessage {
+                Label(msg, systemImage: "arrow.uturn.backward.circle")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .padding(.horizontal, DesignTokens.Spacing.lg)
+                    .multilineTextAlignment(.center)
+                    .accessibilityLabel(msg)
+            }
+
+            VStack(spacing: DesignTokens.Spacing.md) {
+                if let j = vm.job, j.errorCount > 0, j.status != .rolledBack {
+                    Button("Review Errors") { Task { await vm.viewErrors() } }
+                        .buttonStyle(.brandGlass)
+                        .accessibilityIdentifier("import.done.reviewErrors")
+                }
+
+                // Rollback button — shown for 24 h after completion
+                if vm.job?.canRollback == true, vm.job?.status != .rolledBack {
+                    Button {
+                        Task { await vm.rollback() }
+                    } label: {
+                        if vm.isRollingBack {
+                            HStack(spacing: DesignTokens.Spacing.sm) {
+                                ProgressView().tint(.white)
+                                Text("Rolling Back…")
+                            }
+                        } else {
+                            Label("Undo Import", systemImage: "arrow.uturn.backward.circle")
+                        }
+                    }
                     .buttonStyle(.brandGlass)
-                    .accessibilityIdentifier("import.done.reviewErrors")
+                    .disabled(vm.isRollingBack)
+                    .accessibilityIdentifier("import.done.rollback")
+                    .accessibilityLabel("Undo this import — available within 24 hours")
+                }
+
+                Button("Done") {
+                    vm.reset()
+                    onDismiss()
+                }
+                .buttonStyle(.brandGlassProminent)
+                .tint(.bizarreOrange)
+                .padding(.horizontal, DesignTokens.Spacing.lg)
+                .accessibilityIdentifier("import.done.close")
             }
-            Button("Done") {
-                vm.reset()
-                onDismiss()
-            }
-            .buttonStyle(.brandGlassProminent)
-            .tint(.bizarreOrange)
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .accessibilityIdentifier("import.done.close")
+
             Spacer()
         }
         .frame(maxWidth: .infinity)

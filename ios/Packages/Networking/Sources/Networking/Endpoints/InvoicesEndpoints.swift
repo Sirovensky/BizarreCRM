@@ -115,3 +115,113 @@ public extension APIClient {
         return try await get("/api/v1/invoices", query: items, as: InvoicesListResponse.self)
     }
 }
+
+// MARK: - Payment recording
+// Server: POST /api/v1/invoices/:id/payments
+// Requires: Idempotency-Key header (injected by APIClient middleware)
+
+public struct RecordInvoicePaymentRequest: Encodable, Sendable {
+    public let amount: Double
+    public let method: String
+    public let methodDetail: String?
+    public let transactionId: String?
+    public let notes: String?
+    public let paymentType: String
+
+    public init(
+        amount: Double,
+        method: String,
+        methodDetail: String? = nil,
+        transactionId: String? = nil,
+        notes: String? = nil,
+        paymentType: String = "payment"
+    ) {
+        self.amount = amount
+        self.method = method
+        self.methodDetail = methodDetail
+        self.transactionId = transactionId
+        self.notes = notes
+        self.paymentType = paymentType
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case amount, method, notes
+        case methodDetail   = "method_detail"
+        case transactionId  = "transaction_id"
+        case paymentType    = "payment_type"
+    }
+}
+
+/// Envelope around the full updated invoice returned by POST /invoices/:id/payments.
+/// Server wraps the full invoice detail (same shape as GET /invoices/:id) in success.data.
+public struct RecordPaymentResponse: Decodable, Sendable {
+    public let id: Int64
+    public let status: String?
+    public let amountPaid: Double?
+    public let amountDue: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case amountPaid = "amount_paid"
+        case amountDue  = "amount_due"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/invoices/:id/payments`
+    /// Returns the updated invoice detail. Idempotency-Key must be set per request.
+    func recordPayment(invoiceId: Int64, body: RecordInvoicePaymentRequest) async throws -> RecordPaymentResponse {
+        try await post("/api/v1/invoices/\(invoiceId)/payments", body: body, as: RecordPaymentResponse.self)
+    }
+}
+
+// MARK: - Refund creation
+// Server: POST /api/v1/refunds
+// Role required: admin or manager (refunds.create permission)
+
+public struct CreateRefundRequest: Encodable, Sendable {
+    public let invoiceId: Int64?
+    public let customerId: Int64
+    public let amount: Double
+    public let type: String
+    public let reason: String?
+    public let method: String?
+
+    public init(
+        invoiceId: Int64?,
+        customerId: Int64,
+        amount: Double,
+        type: String = "refund",
+        reason: String? = nil,
+        method: String? = nil
+    ) {
+        self.invoiceId = invoiceId
+        self.customerId = customerId
+        self.amount = amount
+        self.type = type
+        self.reason = reason
+        self.method = method
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case amount, type, reason, method
+        case invoiceId  = "invoice_id"
+        case customerId = "customer_id"
+    }
+}
+
+public struct CreateRefundResponse: Decodable, Sendable {
+    public let id: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case id
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/refunds`
+    /// Creates a pending refund. Separate approval step required: PATCH /api/v1/refunds/:id/approve
+    func createRefund(body: CreateRefundRequest) async throws -> CreateRefundResponse {
+        try await post("/api/v1/refunds", body: body, as: CreateRefundResponse.self)
+    }
+}

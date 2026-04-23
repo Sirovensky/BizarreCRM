@@ -41,6 +41,8 @@ import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { repairTenant } from '../services/tenant-repair.js';
 import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
+import { createAsyncDb } from '../db/async-db.js';
+import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
@@ -50,6 +52,7 @@ import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -140,7 +143,7 @@ function auditLog(action: string, adminId: number | null, ip: string, details?: 
     masterDb.prepare(
       'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)'
     ).run(adminId, action, details ? JSON.stringify(details) : null, ip);
-  } catch (err) { console.error('[SuperAdmin Audit]', err); }
+  } catch (err) { logger.error('super_admin_audit_write_failed', { error: err instanceof Error ? err.message : String(err) }); }
 }
 
 // ─── Challenge Tokens (in-memory, short-lived) ──────────────────────
@@ -152,15 +155,27 @@ interface Challenge {
 }
 
 const challenges = new Map<string, Challenge>();
+const CHALLENGES_CAP = 1000;
 
-setInterval(() => {
+// SCAN-564: evict oldest entry (insertion-order) when the Map would exceed cap,
+// preventing unbounded heap growth under sustained unauthenticated challenge creation.
+function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
+  if (map.size >= cap && !map.has(key)) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey);
+  }
+  map.delete(key); // re-insert to bump to most-recent
+  map.set(key, value);
+}
+
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
 
 function createChallenge(adminId: number, pendingTotpSecret?: string): string {
   const token = crypto.randomBytes(32).toString('hex');
-  challenges.set(token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret });
+  addWithCap(challenges, token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret }, CHALLENGES_CAP);
   return token;
 }
 
@@ -292,6 +307,17 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: !!lockUntil });
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+  }
+
+  // SCAN-564: per-IP cap on challenge creation (10/15min) to limit how fast an
+  // attacker with a valid password can flood the challenges Map via this
+  // unauthenticated endpoint (adminId 0 is never a real record, so auth state
+  // of the caller is irrelevant — the cap must be IP-based).
+  const CHALLENGE_CREATE_MAX = 10;
+  const CHALLENGE_CREATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  if (!checkWindowRate(masterDb, 'super_admin_challenge', ip, CHALLENGE_CREATE_MAX, CHALLENGE_CREATE_WINDOW_MS)) {
+    auditLog('super_admin_challenge_rate_limited', admin.id, ip);
+    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
   }
 
   // Password OK — check if password setup needed
@@ -2071,7 +2097,15 @@ router.post(
 //  - TTL is 15min, non-renewable (no refresh token issued).
 //  - Full audit row in master_audit_log.
 
-router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
+// IMPERSONATION_TTL_MS: duration for the ephemeral tenant sessions row.
+// The JWT itself carries a 15-min expiresIn so the two are aligned.
+// NOTE: If the super-admin calls the /end endpoint the session row is deleted
+// immediately, which causes authMiddleware to reject the JWT even though the
+// JWT's own expiry hasn't passed yet (JWT TTL = 15 min, session TTL = 15 min).
+// This is intentional: the session row is the revocation mechanism.
+const IMPERSONATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, message: 'invalid tenant slug' });
@@ -2108,44 +2142,172 @@ router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
   const superAdminId = req.superAdmin!.superAdminId;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
 
+  // Stable, derivable session id — ties the JWT's jti back to the sessions row
+  // so the /end endpoint can look it up without a secondary lookup table.
+  const jti = crypto.randomUUID();
+  const sessionId = `impersonate-${jti}`;
+  const expiresAt = new Date(Date.now() + IMPERSONATION_TTL_MS).toISOString();
+
+  // Write an ephemeral session row to the tenant DB so authMiddleware's
+  // session-exists check can revoke the token immediately on /end (SCAN-571 fix 1).
+  // device_info carries super-admin attribution for tenant-side audit trails.
+  const tenantDbPath = path.join(config.tenantDataDir, `${slug}.db`);
+  const tenantAsyncDb = createAsyncDb(tenantDbPath);
+  try {
+    await tenantAsyncDb.run(
+      "INSERT INTO sessions (id, user_id, device_info, expires_at, created_at, last_active) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
+      sessionId,
+      targetUser.id,
+      JSON.stringify({ super_admin_id: superAdminId, impersonated_by: 'super_admin' }),
+      expiresAt,
+    );
+  } catch (err) {
+    logger.error('impersonate: failed to write tenant session row', { slug, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not create impersonation session' });
+  }
+
   // Issue a short-lived access token in the same shape as regular tenant tokens.
   // No refresh token — session expires in 15 min and must be re-impersonated.
+  // SEC (SCAN-613): Explicit type:'access' so the authMiddleware strict check accepts it.
   const token = jwt.sign(
     {
       userId: targetUser.id,
-      sessionId: `impersonate-${crypto.randomBytes(8).toString('hex')}`,
+      sessionId,
       role: targetUser.role,
       tenantSlug: slug,
+      type: 'access',
       impersonated: true,
       superAdminId,
-      jti: crypto.randomUUID(),
+      jti,
     },
     config.accessJwtSecret,
     { ...TENANT_JWT_SIGN_OPTIONS, expiresIn: '15m' },
   );
 
+  // SCAN-571 fix 2: master-level audit (existing) + tenant-level audit (new).
   auditLog('super_admin.impersonate_started', superAdminId, ip, {
     tenant_slug: slug,
     super_admin_user_id: superAdminId,
     target_user_id: targetUser.id,
     target_username: targetUser.username,
+    session_id: sessionId,
+  });
+
+  // Tenant-side audit: write to the tenant's own audit_logs so the tenant can
+  // see super-admin access in their own audit history (SCAN-571 fix 2).
+  const tdb = getTenantDb(slug);
+  audit(tdb, 'super_admin.impersonate_started', targetUser.id, ip, {
+    super_admin_id: superAdminId,
+    session_id: sessionId,
   });
 
   logger.info('super-admin impersonation token issued', {
     superAdminId,
     slug,
     targetUserId: targetUser.id,
+    sessionId,
   });
 
   res.json({
     success: true,
     data: {
       token,
+      jti,
       tenant_slug: slug,
       expires_in_seconds: 15 * 60,
       target_user: { id: targetUser.id, username: targetUser.username, role: targetUser.role },
     },
   });
+});
+
+// ─── POST /tenants/:slug/impersonate/:jti/end ────────────────────────────────
+// Revoke a live impersonation session by deleting the tenant sessions row.
+// Once deleted, authMiddleware's session-exists check will return 401 on the
+// next request that uses the impersonation JWT — even if the JWT's own expiry
+// (15 min) hasn't passed yet.  This is the only revocation path short of
+// rotating the tenant's JWT secret (SCAN-571).
+//
+// Security constraints:
+//  - Requires super-admin session (superAdminAuth, applied above).
+//  - jti validated as UUID to prevent injection via path parameter.
+//  - Deletes only the row whose id = `impersonate-<jti>`, so a super-admin
+//    cannot accidentally revoke a real user's session.
+//  - Full audit in both master_audit_log and tenant audit_logs.
+router.post('/tenants/:slug/impersonate/:jti/end', async (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  const jti = String(req.params.jti);
+
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+  // Validate UUID format to prevent any injection via the path parameter.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(jti)) {
+    return res.status(400).json({ success: false, message: 'invalid jti format' });
+  }
+
+  const masterDb = getMasterDb()!;
+  const tenant = masterDb
+    .prepare("SELECT id, slug FROM tenants WHERE slug = ?")
+    .get(slug) as { id: number; slug: string } | undefined;
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+  }
+
+  const superAdminId = req.superAdmin!.superAdminId;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sessionId = `impersonate-${jti}`;
+
+  // Look up and delete the session row on the tenant DB.
+  const tenantDbPath = path.join(config.tenantDataDir, `${slug}.db`);
+  const tenantAsyncDb = createAsyncDb(tenantDbPath);
+
+  let sessionExists: { id: string; user_id: number } | undefined;
+  try {
+    sessionExists = await tenantAsyncDb.get<{ id: string; user_id: number }>(
+      'SELECT id, user_id FROM sessions WHERE id = ?',
+      sessionId,
+    );
+  } catch (err) {
+    logger.error('impersonate/end: failed to query tenant session', { slug, sessionId, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not access tenant database' });
+  }
+
+  if (!sessionExists) {
+    // Already expired or never existed — treat as idempotent success.
+    return res.json({ success: true, data: { revoked: false, reason: 'session_not_found' } });
+  }
+
+  try {
+    await tenantAsyncDb.run('DELETE FROM sessions WHERE id = ?', sessionId);
+  } catch (err) {
+    logger.error('impersonate/end: failed to delete tenant session', { slug, sessionId, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not revoke impersonation session' });
+  }
+
+  // Master-level audit.
+  auditLog('super_admin.impersonate_ended', superAdminId, ip, {
+    tenant_slug: slug,
+    super_admin_user_id: superAdminId,
+    target_user_id: sessionExists.user_id,
+    session_id: sessionId,
+  });
+
+  // Tenant-level audit.
+  const tdb = getTenantDb(slug);
+  audit(tdb, 'super_admin.impersonate_ended', sessionExists.user_id, ip, {
+    super_admin_id: superAdminId,
+    session_id: sessionId,
+  });
+
+  logger.info('super-admin impersonation session ended', {
+    superAdminId,
+    slug,
+    sessionId,
+    targetUserId: sessionExists.user_id,
+  });
+
+  res.json({ success: true, data: { revoked: true, session_id: sessionId } });
 });
 
 export default router;

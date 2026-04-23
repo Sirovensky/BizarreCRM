@@ -78,23 +78,23 @@ struct CampaignCreateViewModelTests {
         #expect(vm.templateSegments == 2)
     }
 
-    @Test("save calls API and sets successCampaign on success")
+    @Test("save calls server create API and sets successCampaign on success")
     func saveSuccess() async {
         let mock = MockAPIClient()
         let vm = CampaignCreateViewModel(api: mock)
         vm.name = "Test Campaign"
-        vm.template = "Hello {first_name}"
+        vm.template = "Hello {{first_name}}"
         await vm.save()
         #expect(vm.successCampaign != nil)
         #expect(vm.errorMessage == nil)
-        let callCount = await mock.createCampaignCalled
+        let callCount = await mock.campaignServerCreateCalled
         #expect(callCount == 1)
     }
 
-    @Test("save sets errorMessage on API failure")
+    @Test("save sets errorMessage on server create API failure")
     func saveFailure() async {
         let mock = MockAPIClient()
-        await mock.setCampaignCreateFail()
+        mock.campaignServerCreateResult = .failure(URLError(.badServerResponse))
         let vm = CampaignCreateViewModel(api: mock)
         vm.name = "Test"
         vm.template = "Hello"
@@ -111,7 +111,7 @@ struct CampaignCreateViewModelTests {
         vm.template = "Hello"
         await vm.save()
         #expect(vm.errorMessage != nil)
-        let callCount = await mock.createCampaignCalled
+        let callCount = await mock.campaignServerCreateCalled
         #expect(callCount == 0)
     }
 
@@ -137,11 +137,58 @@ struct CampaignCreateViewModelTests {
             Issue.record("Expected .scheduled")
         }
     }
-}
 
-// Helper extension to set failures on the mock from test context
-extension MockAPIClient {
-    func setCampaignCreateFail() async {
-        campaignCreateResult = .failure(URLError(.badServerResponse))
+    @Test("channel defaults to .sms")
+    func defaultChannel() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        #expect(vm.channel == .sms)
+    }
+
+    @Test("needsSubject true for email and both channels")
+    func needsSubjectFlag() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        vm.channel = .sms
+        #expect(vm.needsSubject == false)
+        vm.channel = .email
+        #expect(vm.needsSubject == true)
+        vm.channel = .both
+        #expect(vm.needsSubject == true)
+    }
+
+    @Test("selectSmsGroup populates audience as smsGroup")
+    func selectSmsGroup() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        vm.selectSmsGroup(id: 7, name: "Newsletter", count: 120)
+        if case .smsGroup(let id, let name, let count) = vm.audience {
+            #expect(id == 7)
+            #expect(name == "Newsletter")
+            #expect(count == 120)
+        } else {
+            Issue.record("Expected .smsGroup audience")
+        }
+        #expect(vm.recipientsEstimate == 120)
+    }
+
+    @Test("clearAudience resets to .all")
+    func clearAudience() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        vm.selectSegment(id: "s1", name: "VIPs", count: 50)
+        vm.clearAudience()
+        #expect(vm.audience == .all)
+        #expect(vm.recipientsEstimate == 0)
+    }
+
+    @Test("campaignType defaults to .custom")
+    func defaultType() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        #expect(vm.campaignType == .custom)
+    }
+
+    @Test("insertDynamicVar uses double-brace syntax")
+    func insertDynamicVarBraces() {
+        let vm = CampaignCreateViewModel(api: MockAPIClient())
+        vm.template = "Hello "
+        vm.insertDynamicVar("first_name")
+        #expect(vm.template == "Hello {{first_name}}")
     }
 }

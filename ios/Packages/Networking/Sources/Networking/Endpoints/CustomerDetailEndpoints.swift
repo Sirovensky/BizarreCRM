@@ -219,42 +219,40 @@ public struct CustomerDevice: Codable, Sendable, Identifiable, Hashable {
 }
 
 // MARK: - Customer merge models (§5.5)
+//
+// Server contract (customers.routes.ts POST /merge):
+//   Body: { keep_id: number, merge_id: number }
+//   keep_id  — the surviving customer record (primary)
+//   merge_id — the record that gets soft-deleted; all its tickets/invoices/SMS/contacts
+//              are reassigned to keep_id by the server.
+//
+// Field preferences (name/phone/email/address/notes winner) are handled
+// locally: the UI lets staff pick which values they want, then if they prefer
+// the secondary's value they must update the customer record via PUT /customers/:id
+// BEFORE or AFTER the merge. The merge endpoint itself always preserves keep_id's
+// field values and only migrates relational data.
 
 public struct CustomerMergeRequest: Codable, Sendable {
-    public let primaryId: Int64
-    public let secondaryId: Int64
-    public let fieldPreferences: CustomerMergeFieldPreferences
+    /// The customer whose record survives (keep).  Maps to `keep_id` in the server body.
+    public let keepId: Int64
+    /// The customer whose record is soft-deleted.  Maps to `merge_id` in the server body.
+    public let mergeId: Int64
 
-    public init(primaryId: Int64, secondaryId: Int64, fieldPreferences: CustomerMergeFieldPreferences) {
-        self.primaryId = primaryId
-        self.secondaryId = secondaryId
-        self.fieldPreferences = fieldPreferences
+    public init(keepId: Int64, mergeId: Int64) {
+        self.keepId = keepId
+        self.mergeId = mergeId
     }
 
     enum CodingKeys: String, CodingKey {
-        case fieldPreferences = "field_preferences"
-        case primaryId = "primary_id"
-        case secondaryId = "secondary_id"
+        case keepId = "keep_id"
+        case mergeId = "merge_id"
     }
 }
 
-/// Per-field preference: `"primary"` or `"secondary"`.
-public struct CustomerMergeFieldPreferences: Codable, Sendable {
-    public var name: String
-    public var phone: String
-    public var email: String
-    public var address: String
-    public var notes: String
-
-    public init(name: String = "primary", phone: String = "primary",
-                email: String = "primary", address: String = "primary", notes: String = "primary") {
-        self.name = name
-        self.phone = phone
-        self.email = email
-        self.address = address
-        self.notes = notes
-    }
-}
+// NOTE: CustomerMergeFieldPreferences (local-only, UI layer) lives in the
+// Customers package (Merge/CustomerMergeViewModel.swift) as MergeFieldWinner
+// so it does not create a Networking→Customers dependency cycle.
+// The server merge endpoint does not accept per-field preferences.
 
 // MARK: - Tag autosuggest (§5.9)
 
@@ -288,6 +286,9 @@ public extension APIClient {
 
     // MARK: — Merge (§5.5)
 
+    /// `POST /api/v1/customers/merge` — body `{ keep_id, merge_id }`.
+    /// Server moves all tickets, invoices, SMS, contacts from merge_id → keep_id,
+    /// then soft-deletes merge_id.  Returns the updated keep customer.
     func mergeCustomers(_ req: CustomerMergeRequest) async throws -> CustomerDetail {
         try await post("/api/v1/customers/merge", body: req, as: CustomerDetail.self)
     }

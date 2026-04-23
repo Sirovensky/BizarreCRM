@@ -373,11 +373,15 @@ const BULK_SEGMENTS: readonly BulkSegment[] = [
  * confirmation token the caller must submit with the actual send request
  * — double-submit protection prevents a single compromised click from
  * dispatching a bulk send.
+ *
+ * SCAN-594: all 3 segment queries filter to marketing-consented numbers only
+ * (`sms_opt_in = 1 AND sms_consent_marketing = 1`). Bulk sends are marketing
+ * blasts; transactional consent is insufficient.
  */
 async function previewBulkSegment(
   adb: AsyncDb,
   segment: BulkSegment,
-): Promise<{ count: number; phones: string[] }> {
+): Promise<{ count: number; phones: string[]; phonesHash: string }> {
   let rows: { phone: string }[] = [];
   switch (segment) {
     case 'open_tickets':
@@ -388,13 +392,17 @@ async function previewBulkSegment(
            JOIN ticket_statuses s ON s.id = t.status_id
           WHERE s.is_closed = 0 AND s.is_cancelled = 0
             AND t.is_deleted = 0
-            AND c.mobile IS NOT NULL AND c.mobile <> ''`,
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
       );
       break;
     case 'all_customers':
       rows = await adb.all<{ phone: string }>(
         `SELECT DISTINCT mobile AS phone FROM customers
-          WHERE mobile IS NOT NULL AND mobile <> ''`,
+          WHERE mobile IS NOT NULL AND mobile <> ''
+            AND COALESCE(sms_opt_in, 0) = 1
+            AND COALESCE(sms_consent_marketing, 0) = 1`,
       );
       break;
     case 'recent_purchases':
@@ -403,50 +411,125 @@ async function previewBulkSegment(
            FROM customers c
            JOIN invoices i ON i.customer_id = c.id
           WHERE i.created_at >= datetime('now','-30 days')
-            AND c.mobile IS NOT NULL AND c.mobile <> ''`,
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
       );
       break;
   }
-  const phones = rows.map((r) => normalizePhone(r.phone)).filter(Boolean);
-  return { count: phones.length, phones };
+  const phones = rows.map((r) => normalizePhone(r.phone)).filter(Boolean) as string[];
+  // SCAN-602: compute a stable hash of the consented phone list so step-2 can
+  // detect segment drift between preview and send.
+  const phonesHash = crypto
+    .createHash('sha256')
+    .update([...phones].sort().join('|'))
+    .digest('hex')
+    .slice(0, 32);
+  return { count: phones.length, phones, phonesHash };
 }
 
 /**
  * Confirmation tokens are derived so the server doesn't have to store them.
- * Payload = segment|template_id|user_id|bucket (5-min granularity). A caller
- * must GET preview first (same bucket), then POST with the returned token.
+ * SCAN-602: the token now embeds a SHA-256 hash of the consented phone list so
+ * step 2 can detect segment drift (new customers opting in, old ones opting
+ * out, or ticket statuses changing between preview and confirm).
+ *
+ * Token format (URL-safe base64):
+ *   <base64(JSON payload)>.<HMAC-SHA256 hex[0:32]>
+ *
+ * JSON payload: { segment, template_id, user_id, bucket, phones_hash, count }
+ *
+ * SEC-H104: uses config.jwtSecret (production-fatal on missing/short secret).
  */
-// SEC-H104: use the central config.jwtSecret (production-fatal on missing or
-// short secret). Prior code fell back to the literal string 'bizarre-inbox-bulk'
-// when JWT_SECRET was unset — a well-known constant that let any caller mint a
-// valid bulk-send confirmation token.
-function makeBulkToken(segment: string, templateId: number, userId: number): string {
-  const bucket = Math.floor(Date.now() / (5 * 60_000));
-  const payload = `${segment}|${templateId}|${userId}|${bucket}`;
-  return crypto.createHmac('sha256', config.jwtSecret).update(payload).digest('hex').slice(0, 32);
+interface BulkTokenPayload {
+  segment: string;
+  template_id: number;
+  user_id: number;
+  bucket: number;
+  phones_hash: string;
+  count: number;
 }
-function verifyBulkToken(
-  token: string,
+
+function makeBulkToken(
   segment: string,
   templateId: number,
   userId: number,
-): boolean {
-  if (typeof token !== 'string' || token.length !== 32) return false;
-  const tokenBuf = Buffer.from(token);
-  // Accept current bucket OR previous bucket (5-min grace for slow humans).
-  for (const delta of [0, -1]) {
-    const bucket = Math.floor(Date.now() / (5 * 60_000)) + delta;
-    const payload = `${segment}|${templateId}|${userId}|${bucket}`;
-    const expected = crypto
-      .createHmac('sha256', config.jwtSecret)
-      .update(payload)
-      .digest('hex')
-      .slice(0, 32);
-    const expectedBuf = Buffer.from(expected);
-    if (expectedBuf.length === tokenBuf.length &&
-        crypto.timingSafeEqual(expectedBuf, tokenBuf)) return true;
+  phonesHash: string,
+  count: number,
+): string {
+  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  const payload: BulkTokenPayload = {
+    segment,
+    template_id: templateId,
+    user_id: userId,
+    bucket,
+    phones_hash: phonesHash,
+    count,
+  };
+  const payloadJson = JSON.stringify(payload);
+  const payloadB64 = Buffer.from(payloadJson).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', config.jwtSecret)
+    .update(payloadB64)
+    .digest('hex')
+    .slice(0, 32);
+  return `${payloadB64}.${sig}`;
+}
+
+/**
+ * Verifies token signature and temporal validity (current or previous 5-min
+ * bucket). Returns the decoded payload on success, null on failure.
+ */
+function verifyBulkToken(
+  token: unknown,
+  segment: string,
+  templateId: number,
+  userId: number,
+): BulkTokenPayload | null {
+  if (typeof token !== 'string') return null;
+  const dotIdx = token.lastIndexOf('.');
+  if (dotIdx === -1) return null;
+  const payloadB64 = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+  if (sig.length !== 32) return null;
+
+  // Constant-time signature check (current and previous bucket both valid).
+  let payloadObj: BulkTokenPayload;
+  try {
+    payloadObj = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as BulkTokenPayload;
+  } catch {
+    return null;
   }
-  return false;
+
+  // Validate that the embedded bucket is still within the grace window.
+  const currentBucket = Math.floor(Date.now() / (5 * 60_000));
+  if (payloadObj.bucket !== currentBucket && payloadObj.bucket !== currentBucket - 1) {
+    return null;
+  }
+
+  // Verify HMAC over the base64 payload to prevent tampering.
+  const expectedSig = crypto
+    .createHmac('sha256', config.jwtSecret)
+    .update(payloadB64)
+    .digest('hex')
+    .slice(0, 32);
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
+
+  // Sanity-check embedded fields match the request to prevent token reuse
+  // across different segments or users.
+  if (
+    payloadObj.segment !== segment ||
+    payloadObj.template_id !== templateId ||
+    payloadObj.user_id !== userId
+  ) {
+    return null;
+  }
+
+  return payloadObj;
 }
 
 router.post(
@@ -468,7 +551,15 @@ router.post(
     // re-posts.
     if (!token) {
       const preview = await previewBulkSegment(adb, segment);
-      const freshToken = makeBulkToken(segment, templateId, req.user!.id);
+      // SCAN-602: embed phones_hash + count into the token so step 2 can
+      // detect segment drift without storing server-side state.
+      const freshToken = makeBulkToken(
+        segment,
+        templateId,
+        req.user!.id,
+        preview.phonesHash,
+        preview.count,
+      );
       res.json({
         success: true,
         data: {
@@ -480,8 +571,9 @@ router.post(
       return;
     }
 
-    // Step 2: token present → must match + user must still be admin.
-    if (!verifyBulkToken(token, segment, templateId, req.user!.id)) {
+    // Step 2: token present → verify HMAC + check for segment drift.
+    const verifiedPayload = verifyBulkToken(token, segment, templateId, req.user!.id);
+    if (!verifiedPayload) {
       throw new AppError('Invalid or expired confirmation token', 400);
     }
 
@@ -503,6 +595,20 @@ router.post(
     if (!tpl) throw new AppError('Template not found', 404);
 
     const preview = await previewBulkSegment(adb, segment);
+
+    // SCAN-602: reject if the consented phone list has changed since preview.
+    // Segment can grow (new opt-ins, newly-opened tickets) or shrink
+    // (opt-outs, tickets closed) between step 1 and step 2.
+    if (
+      preview.phonesHash !== verifiedPayload.phones_hash ||
+      preview.count !== verifiedPayload.count
+    ) {
+      throw new AppError(
+        'Segment changed since preview — re-preview to continue',
+        409,
+      );
+    }
+
     if (preview.count === 0) {
       res.json({
         success: true,

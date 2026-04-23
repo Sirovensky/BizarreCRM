@@ -4,7 +4,7 @@
  * Only runs if SMTP is configured and scheduled_report_email setting is set.
  */
 
-import { sendEmail } from './email.js';
+import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('scheduled-reports');
@@ -243,11 +243,9 @@ export async function sendDailyReport(db: any): Promise<void> {
     return;
   }
 
-  const smtpHost = (db.prepare(
-    "SELECT value FROM store_config WHERE key = 'smtp_host'"
-  ).get() as any)?.value;
-
-  if (!smtpHost) {
+  // SCAN-625: use shared isEmailConfigured() instead of an inline smtp_host
+  // lookup so this early-return stays in sync with all other email-send paths.
+  if (!isEmailConfigured(db)) {
     log.debug('SMTP not configured, skipping scheduled report');
     return;
   }

@@ -16,6 +16,9 @@ public final class ExpenseDetailViewModel {
     }
 
     public var state: State = .loading
+    public private(set) var isDeleting: Bool = false
+    public private(set) var deleteError: String?
+    public private(set) var didDelete: Bool = false
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let id: Int64
@@ -37,12 +40,35 @@ public final class ExpenseDetailViewModel {
             state = .failed(error.localizedDescription)
         }
     }
+
+    public func delete() async {
+        guard !isDeleting else { return }
+        deleteError = nil
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            try await api.deleteExpense(id: id)
+            didDelete = true
+        } catch {
+            AppLog.ui.error("Expense delete failed: \(error.localizedDescription, privacy: .public)")
+            deleteError = error.localizedDescription
+        }
+    }
+
+    /// Called after receipt is successfully attached — soft-reload to pick up new path.
+    public func refreshAfterReceiptAttach() async {
+        await load()
+    }
 }
 
 // MARK: - View
 
 public struct ExpenseDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var vm: ExpenseDetailViewModel
+    @State private var showEdit: Bool = false
+    @State private var showReceiptAttach: Bool = false
+    @State private var showDeleteConfirm: Bool = false
     private let api: APIClient
 
     public init(api: APIClient, id: Int64) {
@@ -61,6 +87,43 @@ public struct ExpenseDetailView: View {
         #endif
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar { detailToolbar }
+        .sheet(isPresented: $showEdit, onDismiss: { Task { await vm.load() } }) {
+            if case .loaded(let exp) = vm.state {
+                ExpenseEditView(api: api, expenseId: exp.id)
+            }
+        }
+        .sheet(isPresented: $showReceiptAttach) {
+            if case .loaded(let exp) = vm.state {
+                ReceiptAttachView(api: api, expenseId: exp.id, authToken: nil) { _ in
+                    Task { await vm.refreshAfterReceiptAttach() }
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .confirmationDialog(
+            "Delete this expense?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    await vm.delete()
+                    if vm.didDelete { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone.")
+        }
+        .alert("Delete failed", isPresented: Binding(
+            get: { vm.deleteError != nil },
+            set: { _ in }
+        )) {
+            Button("OK") { }
+        } message: {
+            Text(vm.deleteError ?? "")
+        }
     }
 
     private var navigationTitle: String {
@@ -69,6 +132,34 @@ public struct ExpenseDetailView: View {
         }
         return "Expense"
     }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if case .loaded = vm.state {
+                Button {
+                    showEdit = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .accessibilityLabel("Edit expense")
+                .accessibilityIdentifier("expenses.detail.edit")
+
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Image(systemName: vm.isDeleting ? "clock" : "trash")
+                }
+                .disabled(vm.isDeleting)
+                .accessibilityLabel("Delete expense")
+                .accessibilityIdentifier("expenses.detail.delete")
+            }
+        }
+    }
+
+    // MARK: - Content states
 
     @ViewBuilder
     private var content: some View {
@@ -106,24 +197,61 @@ public struct ExpenseDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: - Loaded body
+
     @ViewBuilder
     private func loadedBody(_ expense: Expense) -> some View {
+        if Platform.isCompact {
+            compactBody(expense)
+        } else {
+            regularBody(expense)
+        }
+    }
+
+    private func compactBody(_ expense: Expense) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 headerCard(expense)
                 if let desc = expense.description, !desc.isEmpty {
                     descriptionCard(desc)
                 }
+                if hasVendorPayment(expense) {
+                    vendorPaymentCard(expense)
+                }
                 metaCard(expense)
                 receiptCard(expense)
             }
             .padding(BrandSpacing.base)
-            .frame(maxWidth: 900, alignment: .leading)
+        }
+    }
+
+    private func regularBody(_ expense: Expense) -> some View {
+        ScrollView {
+            // Two-column grid on iPad
+            Grid(alignment: .topLeading, horizontalSpacing: BrandSpacing.lg, verticalSpacing: BrandSpacing.lg) {
+                GridRow {
+                    VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                        headerCard(expense)
+                        if let desc = expense.description, !desc.isEmpty {
+                            descriptionCard(desc)
+                        }
+                        if hasVendorPayment(expense) {
+                            vendorPaymentCard(expense)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                        metaCard(expense)
+                        receiptCard(expense)
+                    }
+                }
+            }
+            .padding(BrandSpacing.lg)
+            .frame(maxWidth: 1100, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header card
 
     private func headerCard(_ expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -144,6 +272,15 @@ public struct ExpenseDetailView: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityLabel("Date \(date)")
             }
+            if let status = expense.status, !status.isEmpty {
+                statusBadge(status)
+            }
+            if expense.isReimbursable == true {
+                Label("Reimbursable", systemImage: "arrow.uturn.left.circle")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityLabel("Marked reimbursable")
+            }
         }
         .padding(BrandSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,14 +300,32 @@ public struct ExpenseDetailView: View {
             .accessibilityLabel("Category \(category?.capitalized ?? "Uncategorized")")
     }
 
+    private func statusBadge(_ status: String) -> some View {
+        let color: Color = {
+            switch ExpenseStatus(rawValue: status) {
+            case .approved: return Color.bizarreSuccess
+            case .denied: return Color.bizarreError
+            default: return Color.bizarreOnSurfaceMuted
+            }
+        }()
+        return Text(status.capitalized)
+            .font(.brandLabelLarge())
+            .foregroundStyle(color)
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(color.opacity(0.12), in: Capsule())
+            .accessibilityLabel("Approval status: \(status)")
+    }
+
     private func headerA11y(_ expense: Expense) -> String {
         var parts: [String] = [expense.category?.capitalized ?? "Uncategorized"]
         parts.append(formatMoney(expense.amount ?? 0))
         if let date = expense.date, !date.isEmpty { parts.append(date) }
+        if let status = expense.status, !status.isEmpty { parts.append(status) }
         return parts.joined(separator: ", ")
     }
 
-    // MARK: - Description
+    // MARK: - Description card
 
     private func descriptionCard(_ desc: String) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -188,7 +343,49 @@ public struct ExpenseDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
-    // MARK: - Meta
+    // MARK: - Vendor / payment card
+
+    private func hasVendorPayment(_ expense: Expense) -> Bool {
+        let hasVendor = !(expense.vendor?.isEmpty ?? true)
+        let hasPayment = !(expense.paymentMethod?.isEmpty ?? true)
+        let hasTax = expense.taxAmount != nil
+        let hasNotes = !(expense.notes?.isEmpty ?? true)
+        return hasVendor || hasPayment || hasTax || hasNotes
+    }
+
+    private func vendorPaymentCard(_ expense: Expense) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            sectionHeader("Vendor & Payment")
+            if let vendor = expense.vendor, !vendor.isEmpty {
+                metaRow(label: "Vendor", value: vendor)
+            }
+            if let method = expense.paymentMethod, !method.isEmpty {
+                metaRow(label: "Payment", value: method)
+            }
+            if let tax = expense.taxAmount {
+                metaRow(label: "Tax", value: formatMoney(tax))
+            }
+            if let notes = expense.notes, !notes.isEmpty {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text("Notes")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text(notes)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, BrandSpacing.xs)
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+    }
+
+    // MARK: - Meta card
 
     private func metaCard(_ expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -203,6 +400,9 @@ public struct ExpenseDetailView: View {
                 metaRow(label: "Updated", value: updated)
             }
             metaRow(label: "Expense ID", value: "#\(expense.id)")
+            if let subtype = expense.expenseSubtype, !subtype.isEmpty, subtype != "general" {
+                metaRow(label: "Type", value: subtype.capitalized)
+            }
         }
         .padding(BrandSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,14 +427,32 @@ public struct ExpenseDetailView: View {
         .accessibilityLabel("\(label): \(value)")
     }
 
-    // MARK: - Receipt
+    // MARK: - Receipt card
 
     @ViewBuilder
     private func receiptCard(_ expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            sectionHeader("Receipt")
-            if let path = expense.receiptPath, !path.isEmpty {
+            HStack {
+                sectionHeader("Receipt")
+                Spacer()
+                Button {
+                    showReceiptAttach = true
+                } label: {
+                    Label(expense.resolvedReceiptPath != nil ? "Replace" : "Attach", systemImage: "plus.circle")
+                        .font(.brandLabelLarge())
+                }
+                .buttonStyle(.borderless)
+                .tint(.bizarreOrange)
+                .accessibilityLabel(expense.resolvedReceiptPath != nil ? "Replace receipt photo" : "Attach receipt photo")
+                .accessibilityIdentifier("expenses.detail.attachReceipt")
+            }
+            if let path = expense.resolvedReceiptPath, !path.isEmpty {
                 receiptImageView(path: path)
+                if let uploadedAt = expense.receiptUploadedAt, !uploadedAt.isEmpty {
+                    Text("Uploaded \(uploadedAt)")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
             } else {
                 emptyReceiptView
             }
@@ -333,7 +551,6 @@ private struct ReceiptImageView: View {
 
     private func resolve() async {
         guard let base = await api.currentBaseURL() else { return }
-        // If path is already absolute, use it directly; otherwise append to base.
         if path.hasPrefix("http") {
             resolvedURL = URL(string: path)
         } else {

@@ -33,10 +33,16 @@ public final class StocktakeStartViewModel {
         errorMessage = nil
         defer { isStarting = false }
 
+        // Server requires `name` to be non-empty.
+        let name = sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = name.isEmpty
+            ? "Stocktake \(Self.dateStamp())"
+            : name
+
         let req = StartStocktakeRequest(
-            category: selectedCategory.isEmpty ? nil : selectedCategory,
+            name: resolvedName,
             location: selectedLocation.isEmpty ? nil : selectedLocation,
-            name: sessionName.isEmpty ? nil : sessionName
+            notes: nil
         )
 
         do {
@@ -49,6 +55,12 @@ public final class StocktakeStartViewModel {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private static func dateStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        return f.string(from: Date())
     }
 }
 
@@ -69,7 +81,7 @@ public final class StocktakeScanViewModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let sessionId: Int64
-    /// Pending finalize request queued for offline drain.
+    /// Pending commit queued for offline drain.
     @ObservationIgnored private var pendingOfflineSync: Bool = false
 
     public init(api: APIClient, sessionId: Int64) {
@@ -125,28 +137,42 @@ public final class StocktakeScanViewModel {
         return true
     }
 
-    public func finalize() async {
+    /// Submit a single-item count to the server via UPSERT.
+    /// Called automatically on every qty change in the scan view.
+    public func submitCount(row: StocktakeRow, countedQty: Int) async {
+        guard !isOffline else { return }
+        let req = UpsertStocktakeCountRequest(
+            inventoryItemId: row.inventoryItemId,
+            countedQty: countedQty
+        )
+        do {
+            _ = try await api.upsertStocktakeCount(sessionId: sessionId, request: req)
+        } catch {
+            if InventoryOfflineQueue.isNetworkError(error) {
+                isOffline = true
+            } else {
+                AppLog.ui.error("Stocktake count upsert: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Commit the session — apply all variance to inventory, close session.
+    public func commit() async {
         guard !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
 
-        let lines: [FinalizeStocktakeLine] = rows.compactMap { row in
-            guard let qty = Int(actualCounts[row.sku] ?? "") else { return nil }
-            return FinalizeStocktakeLine(sku: row.sku, actualQty: qty)
-        }
-
-        let req = FinalizeStocktakeRequest(lines: lines)
-
         do {
-            _ = try await api.finalizeStocktake(id: sessionId, request: req)
+            _ = try await api.commitStocktake(id: sessionId)
             showReview = true
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
-                // Enqueue for offline drain
+                // Enqueue commit for offline drain
+                let req = FinalizeStocktakeRequest(lines: [])
                 if let payload = try? InventoryOfflineQueue.encode(req) {
                     await InventoryOfflineQueue.enqueue(
-                        op: "stocktake.finalize",
+                        op: "stocktake.commit",
                         entityServerId: sessionId,
                         payload: payload
                     )
@@ -155,10 +181,16 @@ public final class StocktakeScanViewModel {
                 isOffline = true
                 showReview = true
             } else {
-                AppLog.ui.error("Stocktake finalize: \(error.localizedDescription, privacy: .public)")
+                AppLog.ui.error("Stocktake commit: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    // MARK: - Legacy finalize (kept for offline-queue compatibility)
+
+    public func finalize() async {
+        await commit()
     }
 
     // MARK: Testing support
@@ -181,5 +213,33 @@ public final class StocktakeScanViewModel {
             return r
         }
         return StocktakeDiscrepancyCalculator.discrepancies(from: liveRows)
+    }
+}
+
+// MARK: - List VM
+
+@MainActor
+@Observable
+public final class StocktakeListViewModel {
+    public private(set) var sessions: [StocktakeSession] = []
+    public private(set) var isLoading: Bool = false
+    public private(set) var errorMessage: String?
+    public var statusFilter: String? = nil   // nil = all
+
+    @ObservationIgnored private let api: APIClient
+
+    public init(api: APIClient) { self.api = api }
+
+    public func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            sessions = try await api.listStocktakes(status: statusFilter)
+        } catch {
+            AppLog.ui.error("StocktakeList load: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
     }
 }

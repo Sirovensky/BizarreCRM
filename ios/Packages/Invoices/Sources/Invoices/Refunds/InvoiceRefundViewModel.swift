@@ -3,7 +3,11 @@ import Observation
 import Core
 import Networking
 
-// §7.4 Invoice Refund ViewModel — POST /api/v1/invoices/:id/refund
+// §7.4 Invoice Refund ViewModel
+// Endpoint: POST /api/v1/refunds (not /invoices/:id/refund — verified against refunds.routes.ts)
+// Server body: { invoice_id, customer_id, amount (dollars), type, reason, method }
+// Server response: { success: true, data: { id } }
+// Two-step: create (pending) → approve (admin PATCH /refunds/:id/approve)
 
 public enum RefundReason: String, CaseIterable, Sendable, Identifiable {
     case returnItem    = "return"
@@ -19,6 +23,22 @@ public enum RefundReason: String, CaseIterable, Sendable, Identifiable {
         case .priceDispute: return "Price Dispute"
         case .goodwill:     return "Goodwill"
         case .other:        return "Other"
+        }
+    }
+}
+
+public enum RefundType: String, CaseIterable, Sendable, Identifiable {
+    case refund      = "refund"
+    case storeCredit = "store_credit"
+    case creditNote  = "credit_note"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .refund:      return "Refund"
+        case .storeCredit: return "Store Credit"
+        case .creditNote:  return "Credit Note"
         }
     }
 }
@@ -39,36 +59,11 @@ public struct RefundLineItem: Sendable, Identifiable, Hashable {
     }
 }
 
-public struct RefundRequest: Encodable, Sendable {
-    public let amountCents: Int
-    public let reason: String
-    public let lineItems: [RefundLineItemRequest]?
-    public let managerPin: String?
-
-    enum CodingKeys: String, CodingKey {
-        case amountCents  = "amount_cents"
-        case reason
-        case lineItems    = "line_items"
-        case managerPin   = "manager_pin"
-    }
-}
-
-public struct RefundLineItemRequest: Encodable, Sendable {
+public struct RefundResult: Decodable, Sendable, Equatable {
     public let id: Int64
-    public let amountCents: Int
 
     enum CodingKeys: String, CodingKey {
         case id
-        case amountCents = "amount_cents"
-    }
-}
-
-public struct RefundResult: Decodable, Sendable, Equatable {
-    public let id: Int64
-    public let status: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, status
     }
 }
 
@@ -82,6 +77,8 @@ public final class InvoiceRefundViewModel {
     // MARK: - Form fields
 
     public var reason: RefundReason = .returnItem
+    public var refundType: RefundType = .refund
+    public var refundMethod: InvoiceTender = .card
     public var lineItems: [RefundLineItem]
     public var useLineItems: Bool = false
     public var manualAmountCents: Int
@@ -109,11 +106,19 @@ public final class InvoiceRefundViewModel {
 
     @ObservationIgnored private let api: APIClient
     public let invoiceId: Int64
+    public let customerId: Int64
     public let totalPaidCents: Int
 
-    public init(api: APIClient, invoiceId: Int64, totalPaidCents: Int, lineItems: [RefundLineItem] = []) {
+    public init(
+        api: APIClient,
+        invoiceId: Int64,
+        customerId: Int64,
+        totalPaidCents: Int,
+        lineItems: [RefundLineItem] = []
+    ) {
         self.api = api
         self.invoiceId = invoiceId
+        self.customerId = customerId
         self.totalPaidCents = totalPaidCents
         self.lineItems = lineItems
         self.manualAmountCents = totalPaidCents
@@ -152,24 +157,19 @@ public final class InvoiceRefundViewModel {
         state = .submitting
         fieldErrors = [:]
 
-        let selectedLines: [RefundLineItemRequest]? = useLineItems
-            ? lineItems.filter(\.isSelected).map { RefundLineItemRequest(id: $0.id, amountCents: $0.refundCents) }
-            : nil
-
-        let body = RefundRequest(
-            amountCents: effectiveAmountCents,
+        let dollars = Double(effectiveAmountCents) / 100.0
+        let body = CreateRefundRequest(
+            invoiceId: invoiceId,
+            customerId: customerId,
+            amount: dollars,
+            type: refundType.rawValue,
             reason: reason.rawValue,
-            lineItems: selectedLines,
-            managerPin: managerPin.isEmpty ? nil : managerPin
+            method: refundMethod.rawValue
         )
 
         do {
-            let result = try await api.post(
-                "/api/v1/invoices/\(invoiceId)/refund",
-                body: body,
-                as: RefundResult.self
-            )
-            state = .success(result)
+            let result = try await api.createRefund(body: body)
+            state = .success(RefundResult(id: result.id))
         } catch {
             AppLog.ui.error("Refund failed: \(error.localizedDescription, privacy: .public)")
             handleError(AppError.from(error))
@@ -197,7 +197,7 @@ public final class InvoiceRefundViewModel {
         case .forbidden:
             state = .failed("You don't have permission to issue refunds.")
         case .conflict:
-            state = .failed("Refund amount exceeds amount paid.")
+            state = .failed("Refund amount exceeds amount paid or available balance.")
         case .rateLimited(let seconds):
             if let s = seconds {
                 state = .failed("Too many attempts, wait \(s) second\(s == 1 ? "" : "s").")

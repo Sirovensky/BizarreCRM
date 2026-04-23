@@ -7,6 +7,14 @@ import Networking
 
 /// Sheet presenting estimate summary + "Create Ticket" action.
 /// Presented from `EstimateDetailView` toolbar "Convert to Ticket".
+///
+/// Approve/reject gating:
+/// - If status is "rejected" or "expired", the convert button is disabled
+///   and a warning is shown.
+/// - If status is "draft" or "sent" (not yet approved), a non-blocking warning
+///   is shown — staff can still convert (server enforces no hard approval gate
+///   on the /convert endpoint).
+/// - If status is "converted", the sheet should never appear (guarded in caller).
 public struct EstimateConvertSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: EstimateConvertViewModel
@@ -30,6 +38,7 @@ public struct EstimateConvertSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                         summaryCard
+                        approvalGateWarning
                         if let err = vm.errorMessage {
                             errorBanner(err)
                         }
@@ -81,19 +90,53 @@ public struct EstimateConvertSheet: View {
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
     }
 
-    private func summaryRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-            Spacer()
-            Text(value)
+    // MARK: - Approval gate warning
+
+    @ViewBuilder
+    private var approvalGateWarning: some View {
+        let status = vm.estimate.status ?? ""
+        if status == "rejected" {
+            gateBanner(
+                icon: "xmark.circle.fill",
+                color: .bizarreError,
+                message: "This estimate was rejected. Create a new estimate or reopen it before converting."
+            )
+        } else if status == "expired" {
+            gateBanner(
+                icon: "clock.badge.exclamationmark.fill",
+                color: .bizarreWarning,
+                message: "This estimate has expired. Update the validity date before converting."
+            )
+        } else if status == "draft" {
+            gateBanner(
+                icon: "info.circle.fill",
+                color: .bizarreOnSurfaceMuted,
+                message: "Estimate is still a draft and hasn't been sent or approved. Converting is allowed but you may want to get customer sign-off first."
+            )
+        } else if status == "sent" {
+            gateBanner(
+                icon: "paperplane.fill",
+                color: .bizarreOnSurfaceMuted,
+                message: "Estimate sent but not yet approved. You can convert now or wait for customer approval."
+            )
+        }
+        // "approved" and "converting" statuses show no warning — happy path.
+    }
+
+    private func gateBanner(icon: String, color: Color, message: String) -> some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .accessibilityHidden(true)
+            Text(message)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
-                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+        .accessibilityLabel(message)
     }
 
     // MARK: - Error banner
@@ -117,7 +160,10 @@ public struct EstimateConvertSheet: View {
     // MARK: - Convert button
 
     private var convertButton: some View {
-        Button {
+        let status = vm.estimate.status ?? ""
+        let isBlocked = (status == "rejected" || status == "expired" || status == "converted")
+
+        return Button {
             Task { await vm.convert() }
         } label: {
             HStack(spacing: BrandSpacing.sm) {
@@ -135,8 +181,25 @@ public struct EstimateConvertSheet: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(.bizarreOrange)
-        .disabled(vm.isConverting)
+        .disabled(vm.isConverting || isBlocked)
         .accessibilityLabel(vm.isConverting ? "Creating ticket, please wait" : "Create Ticket from estimate")
-        .accessibilityHint("Converts this estimate into a new service ticket")
+        .accessibilityHint(isBlocked ? "Not available: estimate is \(status)" : "Converts this estimate into a new service ticket")
+    }
+
+    // MARK: - Summary row helper
+
+    private func summaryRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Spacer()
+            Text(value)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .multilineTextAlignment(.trailing)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }

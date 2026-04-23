@@ -92,8 +92,9 @@ authedRouter.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: rows });
 }));
 
-/** GET /:id — one link with full details. */
+/** GET /:id — one link with full details (admin/manager only). */
 authedRouter.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
   const row = await req.asyncDb.get<Row>('SELECT * FROM payment_links WHERE id = ?', id);

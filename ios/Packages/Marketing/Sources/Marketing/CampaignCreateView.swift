@@ -5,9 +5,7 @@ import Networking
 
 public struct CampaignCreateView: View {
     @State private var vm: CampaignCreateViewModel
-    @State private var showSegmentPicker = false
-    @State private var showSchedulePicker = false
-    @State private var pickDate = Date().addingTimeInterval(3600)
+    @State private var showAudiencePicker = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -18,7 +16,8 @@ public struct CampaignCreateView: View {
         _vm = State(wrappedValue: CampaignCreateViewModel(api: api))
     }
 
-    private let dynamicVars = ["first_name", "ticket_no", "shop_name"]
+    /// Dynamic variables for template insertion (SMS body).
+    private let dynamicVars = ["first_name", "last_name", "shop_name", "ticket_no"]
 
     public var body: some View {
         NavigationStack {
@@ -49,13 +48,16 @@ public struct CampaignCreateView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showSegmentPicker) {
-                SegmentPickerSheet(api: api) { segment in
-                    vm.selectSegment(
-                        id: segment.id,
-                        name: segment.name,
-                        count: segment.cachedCount ?? 0
-                    )
+            .sheet(isPresented: $showAudiencePicker) {
+                AudiencePickerSheet(api: api) { selection in
+                    switch selection {
+                    case .segment(let id, let name, let count):
+                        vm.selectSegment(id: id, name: name, count: count)
+                    case .smsGroup(let id, let name, let count):
+                        vm.selectSmsGroup(id: id, name: name, count: count)
+                    case .all:
+                        vm.clearAudience()
+                    }
                 }
             }
         }
@@ -69,8 +71,11 @@ public struct CampaignCreateView: View {
     private var formContent: some View {
         Form {
             nameSection
+            typeSection
+            channelSection
             audienceSection
-            templateSection
+            messageSection
+            if vm.needsSubject { subjectSection }
             scheduleSection
             abSection
             if vm.recipientsEstimate > 0 { costSection }
@@ -87,7 +92,7 @@ public struct CampaignCreateView: View {
         #endif
     }
 
-    // MARK: Sections
+    // MARK: - Sections
 
     private var nameSection: some View {
         Section("Campaign name") {
@@ -99,35 +104,65 @@ public struct CampaignCreateView: View {
         .listRowBackground(Color.bizarreSurface1)
     }
 
+    private var typeSection: some View {
+        Section("Type") {
+            Picker("Campaign type", selection: $vm.campaignType) {
+                ForEach(CampaignType.allCases, id: \.self) { t in
+                    Label(t.displayName, systemImage: t.systemImage).tag(t)
+                }
+            }
+            .accessibilityLabel("Campaign type")
+            .accessibilityIdentifier("marketing.campaign.type")
+        }
+        .listRowBackground(Color.bizarreSurface1)
+    }
+
+    private var channelSection: some View {
+        Section("Channel") {
+            Picker("Channel", selection: $vm.channel) {
+                ForEach(CampaignChannel.allCases, id: \.self) { c in
+                    Label(c.displayName, systemImage: c.systemImage).tag(c)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Campaign channel")
+            .accessibilityIdentifier("marketing.campaign.channel")
+        }
+        .listRowBackground(Color.bizarreSurface1)
+    }
+
     private var audienceSection: some View {
         Section("Audience") {
             Button {
-                showSegmentPicker = true
+                showAudiencePicker = true
             } label: {
                 HStack {
                     Label(
-                        vm.audienceSegmentName ?? "Pick a segment…",
+                        vm.audience.displayName,
                         systemImage: "person.3"
                     )
-                    .foregroundStyle(vm.audienceSegmentName == nil ? .bizarreOnSurfaceMuted : .bizarreOnSurface)
+                    .foregroundStyle(
+                        (vm.audience == .all) ? .bizarreOnSurfaceMuted : .bizarreOnSurface
+                    )
                     Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(.bizarreOnSurfaceMuted).accessibilityHidden(true)
+                    Image(systemName: "chevron.right").foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
                 }
             }
-            .accessibilityLabel(vm.audienceSegmentName.map { "Audience: \($0)" } ?? "Pick a segment")
+            .accessibilityLabel("Audience: \(vm.audience.displayName)")
             .accessibilityIdentifier("marketing.campaign.audiencePicker")
 
             if vm.recipientsEstimate > 0 {
                 HStack {
                     Text("Recipients").foregroundStyle(.bizarreOnSurfaceMuted)
                     Spacer()
-                    Text("\(vm.recipientsEstimate)").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
+                    Text("\(vm.recipientsEstimate)")
+                        .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
                 }
                 .font(.brandBodyMedium())
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Recipients: \(vm.recipientsEstimate)")
 
-                // Approval warning inline
                 if vm.requiresApproval {
                     HStack(spacing: BrandSpacing.xs) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -141,31 +176,33 @@ public struct CampaignCreateView: View {
         .listRowBackground(Color.bizarreSurface1)
     }
 
-    private var templateSection: some View {
+    private var messageSection: some View {
         Section {
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                 TextEditor(text: $vm.template)
                     .font(.brandBodyMedium())
                     .frame(minHeight: 100)
-                    .accessibilityLabel("Message template")
+                    .accessibilityLabel("Message body")
                     .accessibilityIdentifier("marketing.campaign.template")
 
-                // Char counter
-                HStack {
-                    Text("\(vm.templateCharCount) chars • \(vm.templateSegments) segment(s)")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Spacer()
+                // Char counter (SMS only)
+                if vm.channel != .email {
+                    HStack {
+                        Text("\(vm.templateCharCount) chars · \(vm.templateSegments) SMS segment(s)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        Spacer()
+                    }
                 }
 
-                // Dynamic var chips
+                // Dynamic variable chips
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: BrandSpacing.sm) {
                         ForEach(dynamicVars, id: \.self) { v in
                             Button {
                                 vm.insertDynamicVar(v)
                             } label: {
-                                Text("{\(v)}")
+                                Text("{{\(v)}}")
                                     .font(.brandMono(size: 12))
                                     .padding(.horizontal, BrandSpacing.md)
                                     .padding(.vertical, BrandSpacing.xs)
@@ -178,7 +215,17 @@ public struct CampaignCreateView: View {
                 }
             }
         } header: {
-            Text("Message")
+            Text("Message Body")
+        }
+        .listRowBackground(Color.bizarreSurface1)
+    }
+
+    private var subjectSection: some View {
+        Section("Email Subject") {
+            TextField("e.g. We miss you!", text: $vm.templateSubject)
+                .font(.brandBodyMedium())
+                .accessibilityLabel("Email subject")
+                .accessibilityIdentifier("marketing.campaign.subject")
         }
         .listRowBackground(Color.bizarreSurface1)
     }
@@ -192,14 +239,16 @@ public struct CampaignCreateView: View {
             .pickerStyle(.segmented)
             .accessibilityLabel("Schedule option")
 
-            if case .scheduled = vm.schedule {
+            if case .scheduled(let currentDate) = vm.schedule {
                 DatePicker(
                     "Send at",
-                    selection: $pickDate,
+                    selection: Binding(
+                        get: { currentDate },
+                        set: { vm.schedule = .scheduled($0) }
+                    ),
                     in: Date()...,
                     displayedComponents: [.date, .hourAndMinute]
                 )
-                .onChange(of: pickDate) { _, d in vm.schedule = .scheduled(d) }
                 .accessibilityLabel("Send date and time")
             }
         }
@@ -210,7 +259,7 @@ public struct CampaignCreateView: View {
         Binding {
             if case .now = vm.schedule { return 0 } else { return 1 }
         } set: { v in
-            vm.schedule = v == 0 ? .now : .scheduled(pickDate)
+            vm.schedule = v == 0 ? .now : .scheduled(Date().addingTimeInterval(3600))
         }
     }
 

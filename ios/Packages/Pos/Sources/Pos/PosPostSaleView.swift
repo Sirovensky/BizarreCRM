@@ -20,6 +20,7 @@ import Networking
 struct PosPostSaleView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var vm: PosPostSaleViewModel
+    @State private var showingReceiptSummary = false
 
     var body: some View {
         ZStack {
@@ -41,6 +42,11 @@ struct PosPostSaleView: View {
                 PosReceiptEmailSheet(vm: vm)
             case .sms:
                 PosReceiptTextSheet(vm: vm)
+            }
+        }
+        .sheet(isPresented: $showingReceiptSummary) {
+            if let payload = vm.receiptPayload {
+                PosReceiptSummaryView(payload: payload)
             }
         }
     }
@@ -138,6 +144,23 @@ struct PosPostSaleView: View {
                     disabled: true,
                     tooltip: "Printing lands in §17.4"
                 ) { }
+            }
+
+            if vm.receiptPayload != nil {
+                Button {
+                    showingReceiptSummary = true
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Image(systemName: "doc.text")
+                        Text("View receipt")
+                            .font(.brandBodyMedium())
+                    }
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("pos.postSale.viewReceipt")
             }
 
             Button {

@@ -382,6 +382,9 @@ router.delete(
 router.post(
   '/:id/apply-to-ticket/:ticketId',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+      throw new AppError('Manager or admin required', 403);
+    }
     const adb = req.asyncDb;
     const templateId = Number(req.params.id);
     const ticketId = Number(req.params.ticketId);

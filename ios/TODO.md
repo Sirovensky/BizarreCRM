@@ -42,7 +42,7 @@ Platform:
 - [ ] **Ticket edit** — status change, notes add, assignee change. All PATCH /tickets/:id or nested routes.
 - [ ] **Invoice payment** — `POST /invoices/:id/payments` to record a payment.
 - [ ] **Inventory create** — `POST /inventory` form.
-- [ ] **Estimate create** + **convert-to-ticket** — `POST /estimates/:id/convert`.
+- [x] **Estimate create** + **convert-to-ticket** — `POST /estimates/:id/convert`. (feat(§8): dcc7e2a)
 - [ ] **Customer edit** — `PUT /customers/:id`.
 - [ ] **Lead edit / convert-to-customer**.
 - [ ] **Employee clock in/out**.

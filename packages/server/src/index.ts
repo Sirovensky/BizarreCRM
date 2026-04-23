@@ -53,10 +53,12 @@ import { backfillEstimateApprovalTokenHashes } from './services/estimateApproval
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
-import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
+import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
+import { redactPhone } from './utils/phone.js';
+import { trackInterval, backgroundIntervals } from './utils/trackInterval.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -124,6 +126,40 @@ import inboxRoutes from './routes/inbox.routes.js';
 // Inventory (48) via device_model_templates.
 import deviceTemplateRoutes from './routes/deviceTemplates.routes.js';
 import benchRoutes from './routes/bench.routes.js';
+// Web-parity backend (2026-04-23) — mobile apps already consume these or will.
+// Each route file handles its own role/permission gates + rate limits internally.
+import shiftsScheduleRoutes from './routes/shiftsSchedule.routes.js';
+import timeOffRoutes from './routes/timeOff.routes.js';
+import timesheetRoutes from './routes/timesheet.routes.js';
+import { variantsRouter as inventoryVariantsRoutes, bundlesRouter as inventoryBundlesRoutes } from './routes/inventoryVariants.routes.js';
+import recurringInvoicesRoutes from './routes/recurringInvoices.routes.js';
+import creditNotesRoutes from './routes/creditNotes.routes.js';
+import activityRoutes from './routes/activity.routes.js';
+import notificationPrefsRoutes from './routes/notificationPrefs.routes.js';
+import heldCartsRoutes from './routes/heldCarts.routes.js';
+import { startRecurringInvoicesCron } from './services/recurringInvoicesCron.js';
+// Web-parity backend wave 2 (2026-04-23) — labels, shared-device, estimate e-sign,
+// data-export schedules, SMS auto-responders + groups, daily checklist, SLA tracking,
+// ticket signatures, expense receipt OCR.
+import ticketLabelsRoutes from './routes/ticketLabels.routes.js';
+import { authedRouter as estimateSignAuthedRouter, publicRouter as estimateSignPublicRouter } from './routes/estimateSign.routes.js';
+import dataExportSchedulesRoutes from './routes/dataExportSchedules.routes.js';
+import { startDataExportScheduleCron } from './services/dataExportScheduleCron.js';
+import smsAutoRespondersRoutes from './routes/smsAutoResponders.routes.js';
+import smsGroupsRoutes from './routes/smsGroups.routes.js';
+import checklistRoutes from './routes/checklist.routes.js';
+import slaRoutes from './routes/sla.routes.js';
+import { startSlaBreachCron } from './services/slaBreachCron.js';
+import ticketSignaturesRoutes from './routes/ticketSignatures.routes.js';
+import expenseReceiptsRoutes from './routes/expenseReceipts.routes.js';
+// Web-parity backend wave 3 (2026-04-23).
+import fieldServiceRoutes from './routes/fieldService.routes.js';
+import ownerPlRoutes from './routes/ownerPl.routes.js';
+import locationRoutes from './routes/locations.routes.js';
+import bookingConfigRoutes from './routes/bookingConfig.routes.js';
+import bookingPublicRoutes from './routes/bookingPublic.routes.js';
+import syncConflictsRoutes from './routes/syncConflicts.routes.js';
+import { startReceiptOcrCron } from './services/receiptOcrCron.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
@@ -643,42 +679,9 @@ const httpRedirectServer = createServer((req, res) => {
   res.end();
 });
 
-// SEC-BG7: Track every setInterval handle so shutdown() can cancel them explicitly.
-// Background timers were previously .unref()'d, which lets the process exit when nothing
-// else holds it — but does NOT cancel in-flight ticks. During a graceful shutdown a tick
-// could still fire AFTER we start closing DB handles, causing "DB is closed" crashes in
-// logs. trackInterval() is a drop-in wrapper: call it INSTEAD of setInterval().
-//
-// Accepts either a sync void callback or an async callback — the return value is
-// deliberately discarded, matching setInterval's behavior.
-const backgroundIntervals: NodeJS.Timeout[] = [];
-function trackInterval(
-  fn: () => void | Promise<void>,
-  ms: number,
-  options: { unref?: boolean } = {}
-): NodeJS.Timeout {
-  const handle = setInterval(() => {
-    try {
-      const result = fn();
-      // If the callback returns a promise, catch any rejection so the timer never
-      // triggers an unhandledRejection.
-      if (result && typeof (result as Promise<void>).catch === 'function') {
-        (result as Promise<void>).catch((err) => {
-          log.error('trackInterval: async callback rejected', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
-    } catch (err) {
-      log.error('trackInterval: sync callback threw', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, ms);
-  if (options.unref !== false) handle.unref();
-  backgroundIntervals.push(handle);
-  return handle;
-}
+// SEC-BG7: trackInterval + backgroundIntervals are imported from
+// utils/trackInterval.ts (see import above). The comment is preserved
+// here as a cross-reference for future readers tracing the shutdown path.
 
 // SEC-AL5: Audit log retention policy — default 730 days (2 years) for compliance.
 // Override via env var AUDIT_LOG_RETENTION_DAYS. Values < 1 fall back to 730.
@@ -1033,10 +1036,18 @@ function isCorsOriginAllowed(origin: string): boolean {
 // timestamp and emit at most once per 60s per origin — still visible
 // enough that an operator finds it quickly, but not log-flood territory.
 const corsRejectionLog = new Map<string, number>();
+const CORS_REJECTION_WINDOW_MS = 60_000;
+// SCAN-572: evict stale entries every 5 min so subdomain spray doesn't grow the Map forever.
+trackInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of corsRejectionLog) {
+    if (now - t > CORS_REJECTION_WINDOW_MS) corsRejectionLog.delete(k);
+  }
+}, 5 * 60 * 1000);
 function logCorsRejection(origin: string): void {
   const now = Date.now();
   const last = corsRejectionLog.get(origin) ?? 0;
-  if (now - last < 60_000) return;
+  if (now - last < CORS_REJECTION_WINDOW_MS) return;
   corsRejectionLog.set(origin, now);
   log.warn('CORS origin rejected', {
     origin,
@@ -1567,6 +1578,40 @@ app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)
 app.use('/api/v1/device-templates', authMiddleware, deviceTemplateRoutes);
 app.use('/api/v1/bench', authMiddleware, benchRoutes);
+// Web-parity backend (2026-04-23) — mobile apps (android + iOS) already plan/consume these.
+// See android/ActionPlan.md + ios/ActionPlan.md for request/response contracts.
+// Role/permission gates + rate limits are applied inside each router file.
+app.use('/api/v1/schedule', authMiddleware, shiftsScheduleRoutes);
+app.use('/api/v1/time-off', authMiddleware, timeOffRoutes);
+app.use('/api/v1/timesheet', authMiddleware, timesheetRoutes);
+app.use('/api/v1/inventory-variants', authMiddleware, inventoryVariantsRoutes);
+app.use('/api/v1/inventory-bundles', authMiddleware, inventoryBundlesRoutes);
+app.use('/api/v1/recurring-invoices', authMiddleware, recurringInvoicesRoutes);
+app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
+app.use('/api/v1/activity', authMiddleware, activityRoutes);
+app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
+app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
+// Web-parity backend wave 2 (2026-04-23).
+// Public estimate-sign endpoints sit OUTSIDE authMiddleware — token IS the credential
+// (HMAC-signed, single-use, TTL bounded). All other wave-2 routes are JWT-gated.
+app.use('/api/v1/ticket-labels', authMiddleware, ticketLabelsRoutes);
+app.use('/public/api/v1/estimate-sign', estimateSignPublicRouter);
+app.use('/api/v1/estimates/:id', authMiddleware, estimateSignAuthedRouter);
+app.use('/api/v1/data-export/schedules', authMiddleware, dataExportSchedulesRoutes);
+app.use('/api/v1/sms/auto-responders', authMiddleware, smsAutoRespondersRoutes);
+app.use('/api/v1/sms/groups', authMiddleware, smsGroupsRoutes);
+app.use('/api/v1/checklists', authMiddleware, checklistRoutes);
+app.use('/api/v1/sla', authMiddleware, slaRoutes);
+app.use('/api/v1/tickets/:ticketId/signatures', authMiddleware, ticketSignaturesRoutes);
+app.use('/api/v1/expenses/:expenseId/receipt', authMiddleware, expenseReceiptsRoutes);
+// Web-parity backend wave 3 (2026-04-23) — field service, owner P&L, locations,
+// booking config (admin + public), sync conflicts. Public booking uses IP rate-limit.
+app.use('/api/v1/field-service', authMiddleware, fieldServiceRoutes);
+app.use('/api/v1/owner-pl', authMiddleware, ownerPlRoutes);
+app.use('/api/v1/locations', authMiddleware, locationRoutes);
+app.use('/api/v1/booking-config', authMiddleware, bookingConfigRoutes);
+app.use('/public/api/v1/booking', bookingPublicRoutes);
+app.use('/api/v1/sync/conflicts', authMiddleware, syncConflictsRoutes);
 // Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
 // TODO(MEDIUM, §26): wire a daily cron that runs recalculateAllCustomerHealth()
 // + the birthday/churn dispatch helpers. For now these endpoints are invoked
@@ -1943,6 +1988,75 @@ server.listen(config.port, config.host, async () => {
   // BlockChyp SDK yet, but the timeout at least lets the cron progress to
   // the next tenant; any orphaned in-flight charges continue in the
   // background and log-record themselves the same as any other async call.
+  // Recurring invoices cron (SCAN-478 / web-parity 2026-04-23).
+  // Runs every 15 min; creates invoices from active `invoice_templates` whose
+  // next_run_at <= now(). startRecurringInvoicesCron owns its internal setInterval
+  // and returns the handle, so push directly into backgroundIntervals for graceful
+  // shutdown (same contract as trackInterval's tracked handles).
+  try {
+    const recurringInvoicesTimer = startRecurringInvoicesCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<import('./services/recurringInvoicesCron.js').TenantDbEntry>;
+    });
+    backgroundIntervals.push(recurringInvoicesTimer);
+  } catch (err) {
+    log.error('Failed to start recurring invoices cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // Data-export schedules cron (SCAN-498 / web-parity wave 2 2026-04-23).
+  // Runs hourly; advances due schedules atomically. Same push-handle pattern as above.
+  try {
+    const dataExportScheduleTimer = startDataExportScheduleCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    });
+    backgroundIntervals.push(dataExportScheduleTimer);
+  } catch (err) {
+    log.error('Failed to start data-export schedule cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // SLA breach cron (SCAN-464 / web-parity wave 2 2026-04-23).
+  // Runs every 5 min; flags tickets whose SLA due-at has passed.
+  try {
+    const slaBreachTimer = startSlaBreachCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    });
+    backgroundIntervals.push(slaBreachTimer);
+  } catch (err) {
+    log.error('Failed to start SLA breach cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // Receipt OCR cron (SCAN-490 / web-parity wave 4 2026-04-23).
+  // Runs every 2 min; batches up to 10 pending uploads per tenant.
+  // Stale-cleanup: pending > 24h → failed (prevents infinite pending).
+  // Graceful when tesseract.js is not installed — sets status=failed + error_message.
+  try {
+    const receiptOcrTimer = startReceiptOcrCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    }, config.uploadsPath);
+    backgroundIntervals.push(receiptOcrTimer);
+  } catch (err) {
+    log.error('Failed to start receipt OCR cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   const MEMBERSHIP_MAX_PER_RUN = 100;
   const MEMBERSHIP_PER_TENANT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
   trackInterval(async () => {
@@ -2342,7 +2456,10 @@ server.listen(config.port, config.host, async () => {
   // mtime-based, not cron-tick-based.
   if (config.multiTenant) {
     import('./services/tenantTermination.js')
-      .then(({ purgeExpiredDeletions }) => {
+      .then(({ purgeExpiredDeletions, startTenantTerminationSweeper }) => {
+        // SCAN-652: start the token-reaper cron so it is tracked by
+        // backgroundIntervals and cancelled on graceful shutdown.
+        startTenantTerminationSweeper();
         try {
           purgeExpiredDeletions();
         } catch (err) {
@@ -2563,7 +2680,8 @@ server.listen(config.port, config.host, async () => {
         try {
           const upcoming = tenantDb.prepare(`
             SELECT a.id, a.title, a.start_time, a.customer_id,
-              c.first_name, c.mobile, c.phone
+              c.first_name, c.mobile, c.phone,
+              c.sms_opt_in, c.sms_consent_transactional
             FROM appointments a
             LEFT JOIN customers c ON c.id = a.customer_id
             WHERE a.reminder_sent = 0
@@ -2585,11 +2703,15 @@ server.listen(config.port, config.host, async () => {
           for (const appt of upcoming) {
             const phone = appt.mobile || appt.phone;
             if (!phone) continue;
+
+            // TCPA: Skip customers who have not opted in or lack transactional consent
+            if (appt.sms_opt_in === 0 || appt.sms_consent_transactional === 0) continue;
+
             const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
             try {
               await sendSmsTenant(tenantDb, slug, phone, body);
               tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
-              console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
+              log.info('Appointment reminder: SMS sent', { tenantSlug: slug, appointmentId: appt.id, toRedacted: redactPhone(phone) });
             } catch (err) {
               // SEC-T13: surfaced instead of silently swallowed.
               // NOTE: a single SMS failure does NOT count as a per-tenant
@@ -2808,7 +2930,8 @@ server.listen(config.port, config.host, async () => {
         // - stall_followup_sent = 0 (not already sent)
         const staleTickets = tenantDb.prepare(`
           SELECT t.id, t.order_id, t.customer_id,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM tickets t
           LEFT JOIN customers c ON c.id = t.customer_id
           LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
@@ -2839,6 +2962,9 @@ server.listen(config.port, config.host, async () => {
           const phone = ticket.customer_phone || ticket.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (ticket.sms_opt_in === 0 || ticket.sms_consent_transactional === 0) continue;
+
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for ticket ${ticket.order_id}`);
@@ -2855,7 +2981,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, ticket.id);
             // Mark as sent so we don't send again
             tenantDb.prepare('UPDATE tickets SET stall_followup_sent = 1 WHERE id = ?').run(ticket.id);
-            console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Sent follow-up to ${phone} for ticket ${ticket.order_id}`);
+            log.info('StaleTicket: SMS sent', { tenantSlug: slug, ticketOrderId: ticket.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('StaleTicket: SMS send failed', {
               tenantSlug: slug,
@@ -2892,7 +3018,8 @@ server.listen(config.port, config.host, async () => {
         // Find unpaid invoices older than N days that haven't had a recent reminder
         const overdueInvoices = tenantDb.prepare(`
           SELECT i.id, i.order_id, i.amount_due, i.customer_id, i.created_at,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM invoices i
           LEFT JOIN customers c ON c.id = i.customer_id
           WHERE i.status IN ('sent', 'partial', 'overdue')
@@ -2916,6 +3043,9 @@ server.listen(config.port, config.host, async () => {
           const phone = inv.customer_phone || inv.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (inv.sms_opt_in === 0 || inv.sms_consent_transactional === 0) continue;
+
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for invoice ${inv.order_id}`);
@@ -2938,7 +3068,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, inv.id);
             // Update reminder timestamp
             tenantDb.prepare("UPDATE invoices SET reminder_sent_at = datetime('now') WHERE id = ?").run(inv.id);
-            console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Sent to ${phone} for invoice ${inv.order_id}`);
+            log.info('InvoiceReminder: SMS sent', { tenantSlug: slug, invoiceOrderId: inv.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('InvoiceReminder: SMS send failed', {
               tenantSlug: slug,
@@ -2969,7 +3099,8 @@ server.listen(config.port, config.host, async () => {
         // Find estimates with status='sent' and sent_at older than N days, not yet followed up
         const estimates = tenantDb.prepare(`
           SELECT e.id, e.order_id, e.customer_id, e.sent_at, e.total,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM estimates e
           LEFT JOIN customers c ON c.id = e.customer_id
           WHERE e.status = 'sent'
@@ -2992,6 +3123,9 @@ server.listen(config.port, config.host, async () => {
           const phone = est.customer_phone || est.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (est.sms_opt_in === 0 || est.sms_consent_transactional === 0) continue;
+
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for estimate ${est.order_id}`);
             continue;
@@ -3005,7 +3139,7 @@ server.listen(config.port, config.host, async () => {
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto', 'estimate', ?, datetime('now'), datetime('now'))
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, est.id);
             tenantDb.prepare("UPDATE estimates SET followup_sent_at = datetime('now') WHERE id = ?").run(est.id);
-            console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Sent to ${phone} for estimate ${est.order_id}`);
+            log.info('EstimateFollowup: SMS sent', { tenantSlug: slug, estimateOrderId: est.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('EstimateFollowup: SMS send failed', {
               tenantSlug: slug,
@@ -3055,13 +3189,23 @@ server.listen(config.port, config.host, async () => {
 
           try {
             if (item.type === 'sms') {
+              // TCPA: Verify recipient has opted in before dispatching
+              const consent = tenantDb.prepare(
+                'SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE phone = ? OR mobile = ? LIMIT 1'
+              ).get(item.recipient, item.recipient) as { sms_opt_in: number; sms_consent_transactional: number } | undefined;
+              if (!consent || consent.sms_opt_in === 0 || consent.sms_consent_transactional === 0) {
+                tenantDb.prepare(
+                  "UPDATE notification_queue SET status = 'skipped', error = 'opt_out' WHERE id = ?"
+                ).run(item.id);
+                continue;
+              }
               const { sendSmsTenant } = await import('./services/smsProvider.js');
               const result = await sendSmsTenant(tenantDb, slug, item.recipient, item.body);
               if (result.success) {
                 tenantDb.prepare(
                   "UPDATE notification_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
                 ).run(item.id);
-                console.log(`[JobQueue${label}] SMS sent to ${item.recipient}`);
+                log.info('JobQueue: SMS sent', { tenantSlug: slug, itemId: item.id, toRedacted: redactPhone(item.recipient) });
               } else {
                 throw new Error(result.error || 'SMS send failed');
               }
@@ -3516,7 +3660,7 @@ function handleFatal(type: 'uncaughtException' | 'unhandledRejection', error: Er
   }
   fatalShuttingDown = true;
 
-  const route = currentRequestRoute || 'unknown';
+  const route = getCurrentRoute() || 'unknown';
   log.error('FATAL: unrecoverable process error — initiating shutdown', {
     type,
     route,

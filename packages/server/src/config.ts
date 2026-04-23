@@ -260,6 +260,8 @@ export const config = {
   })(),
   dbPath: path.resolve(__dirname, '../data/bizarre-crm.db'),
   uploadsPath: path.resolve(__dirname, '../uploads'),
+  /** Dedicated directory for cron-generated data-export JSON files. */
+  exportsPath: path.resolve(__dirname, '../data/exports'),
   // SEC-H54: separate directory for sensitive super-admin artefacts (tenant
   // license docs, signed agreements, KYC attachments). Served under
   // /admin-uploads/* behind localhostOnly + superAdminAuth — distinct

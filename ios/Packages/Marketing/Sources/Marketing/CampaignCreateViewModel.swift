@@ -12,13 +12,22 @@ public enum ScheduleChoice: Equatable, Sendable {
 @Observable
 public final class CampaignCreateViewModel {
     public var name: String = ""
-    public var audienceSegmentId: String? = nil
-    public var audienceSegmentName: String? = nil
+    public var campaignType: CampaignType = .custom
+    public var channel: CampaignChannel = .sms
+    public var audience: AudienceSelection = .all
     public var template: String = ""
+    public var templateSubject: String = ""  // email subject
     public var schedule: ScheduleChoice = .now
     public var abEnabled: Bool = false
     public var variantB: String = ""
-    public var recipientsEstimate: Int = 0
+
+    // Legacy compat accessors
+    public var audienceSegmentId: String? { audience.segmentIdString }
+    public var audienceSegmentName: String? {
+        if case .all = audience { return nil }
+        return audience.displayName
+    }
+    public var recipientsEstimate: Int { audience.recipientCount }
 
     public private(set) var isSaving = false
     public private(set) var errorMessage: String?
@@ -46,6 +55,8 @@ public final class CampaignCreateViewModel {
         !requiresApproval
     }
 
+    public var needsSubject: Bool { channel == .email || channel == .both }
+
     /// SMS char count (160-char boundary awareness).
     public var templateCharCount: Int { template.count }
 
@@ -56,14 +67,22 @@ public final class CampaignCreateViewModel {
 
     // MARK: Actions
 
+    /// Legacy compatibility — select a CRM segment as audience.
     public func selectSegment(id: String, name: String, count: Int) {
-        audienceSegmentId = id
-        audienceSegmentName = name
-        recipientsEstimate = count
+        audience = .segment(id: id, name: name, count: count)
+    }
+
+    /// Select an SMS group as audience.
+    public func selectSmsGroup(id: Int, name: String, count: Int) {
+        audience = .smsGroup(id: id, name: name, count: count)
+    }
+
+    public func clearAudience() {
+        audience = .all
     }
 
     public func insertDynamicVar(_ variable: String) {
-        template += "{\(variable)}"
+        template += "{{\(variable)}}"
     }
 
     public func save() async {
@@ -77,18 +96,20 @@ public final class CampaignCreateViewModel {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let scheduledAt: Date?
-            if case .scheduled(let date) = schedule { scheduledAt = date } else { scheduledAt = nil }
+            // Use the real server endpoint if we have a numeric segment id
+            let segmentIntId: Int? = audience.segmentIdString.flatMap { Int($0) }
+                ?? audience.smsGroupId  // treat smsGroup as segment_id on server
 
-            let req = CreateCampaignRequest(
+            let req = CreateCampaignServerRequest(
                 name: trimmedName,
-                audienceSegmentId: audienceSegmentId,
-                template: trimmedTemplate,
-                scheduledAt: scheduledAt,
-                variantB: abEnabled ? variantB.trimmingCharacters(in: .whitespaces) : nil
+                type: campaignType.rawValue,
+                channel: channel.rawValue,
+                templateBody: trimmedTemplate,
+                templateSubject: needsSubject ? templateSubject.trimmingCharacters(in: .whitespaces) : nil,
+                segmentId: segmentIntId
             )
-            let campaign = try await api.createCampaign(req)
-            successCampaign = campaign
+            let row = try await api.createCampaignServer(req)
+            successCampaign = Campaign.from(row)
         } catch {
             AppLog.ui.error("Campaign create failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

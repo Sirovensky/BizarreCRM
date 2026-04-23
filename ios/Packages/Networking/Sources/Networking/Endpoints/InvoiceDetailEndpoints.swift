@@ -166,3 +166,51 @@ public extension APIClient {
         try await get("/api/v1/invoices/\(id)", as: InvoiceDetail.self)
     }
 }
+
+// MARK: - Void endpoint
+// Server: POST /api/v1/invoices/:id/void
+// Allowed transitions: any non-void status with no payments (or draft)
+
+public struct InvoiceVoidRequest: Encodable, Sendable {
+    public let reason: String
+    public init(reason: String) { self.reason = reason }
+}
+
+public struct InvoiceVoidResponse: Decodable, Sendable {
+    public let message: String?
+    enum CodingKeys: String, CodingKey { case message }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/invoices/:id/void`
+    func voidInvoice(id: Int64, reason: String) async throws -> InvoiceVoidResponse {
+        try await post("/api/v1/invoices/\(id)/void",
+                       body: InvoiceVoidRequest(reason: reason),
+                       as: InvoiceVoidResponse.self)
+    }
+}
+
+// MARK: - Email receipt endpoint
+// Server: POST /api/v1/invoices/:id/email-receipt
+
+public struct EmailReceiptBody: Encodable, Sendable {
+    public let email: String
+    public let message: String?
+    public init(email: String, message: String? = nil) {
+        self.email = email
+        self.message = message
+    }
+}
+
+public struct EmailReceiptApiResponse: Decodable, Sendable {
+    public let success: Bool?
+}
+
+public extension APIClient {
+    /// `POST /api/v1/invoices/:id/email-receipt`
+    func emailReceipt(invoiceId: Int64, body: EmailReceiptBody) async throws -> EmailReceiptApiResponse {
+        try await post("/api/v1/invoices/\(invoiceId)/email-receipt",
+                       body: body,
+                       as: EmailReceiptApiResponse.self)
+    }
+}

@@ -31,7 +31,7 @@ function billingRateLimit(req: Request, res: Response, next: NextFunction): void
 function validateBaseDomain(req: Request, res: Response): string | null {
   if (!config.baseDomain || config.baseDomain === 'localhost') {
     if (config.nodeEnv === 'production') {
-      console.error('[Billing] BASE_DOMAIN must be set in production for billing redirects');
+      logger.error('billing_base_domain_missing', { env: config.nodeEnv });
       res.status(500).json({ success: false, message: 'Billing is not configured. Please contact support.' });
       return null;
     }
@@ -61,7 +61,7 @@ router.post('/checkout', billingRateLimit, async (req: Request, res: Response) =
     res.json({ success: true, data: { url } });
   } catch (e: unknown) {
     const err = e as Error;
-    console.error('[Billing] Checkout error:', err.message);
+    logger.error('billing_checkout_error', { error: err.message });
     res.status(500).json({ success: false, message: 'Unable to start checkout. Please try again or contact support.' });
   }
 });
@@ -88,7 +88,7 @@ router.get('/portal', billingRateLimit, async (req: Request, res: Response) => {
     res.json({ success: true, data: { url } });
   } catch (e: unknown) {
     const err = e as Error;
-    console.error('[Billing] Portal error:', err.message);
+    logger.error('billing_portal_error', { error: err.message });
     res.status(500).json({ success: false, message: 'Unable to open billing portal. Please try again or contact support.' });
   }
 });

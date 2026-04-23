@@ -1,7 +1,7 @@
 import XCTest
 @testable import Networking
 
-/// Validates snake_case JSON decoding for ClockEntry and ClockStatus.
+/// Validates snake_case JSON decoding for ClockEntry, ClockStatus, and HoursResponse.
 final class TimeclockEndpointsTests: XCTestCase {
 
     // MARK: - ClockEntry decode
@@ -103,8 +103,57 @@ final class TimeclockEndpointsTests: XCTestCase {
         XCTAssertEqual(set.count, 1)
     }
 
+    // MARK: - HoursResponse decode
+
+    func test_hoursResponse_decodesFullPayload() throws {
+        let json = """
+        {
+            "entries": [
+                {
+                    "id": 10,
+                    "user_id": 2,
+                    "clock_in": "2026-04-20T08:00:00Z",
+                    "clock_out": "2026-04-20T16:30:00Z",
+                    "total_hours": 8.5
+                },
+                {
+                    "id": 11,
+                    "user_id": 2,
+                    "clock_in": "2026-04-21T09:00:00Z"
+                }
+            ],
+            "total_hours": 8.5
+        }
+        """
+        let response = try decode(HoursResponse.self, from: json)
+        XCTAssertEqual(response.entries.count, 2)
+        XCTAssertEqual(response.entries[0].id, 10)
+        XCTAssertEqual(response.entries[1].clockOut, nil)
+        XCTAssertEqual(response.totalHours, 8.5, accuracy: 0.001)
+    }
+
+    func test_hoursResponse_decodesEmptyEntries() throws {
+        let json = """
+        { "entries": [], "total_hours": 0.0 }
+        """
+        let response = try decode(HoursResponse.self, from: json)
+        XCTAssertTrue(response.entries.isEmpty)
+        XCTAssertEqual(response.totalHours, 0.0, accuracy: 0.001)
+    }
+
+    func test_hoursResponse_totalHours_snakeCaseMapped() throws {
+        let json = """
+        { "entries": [], "total_hours": 42.75 }
+        """
+        let response = try decode(HoursResponse.self, from: json)
+        XCTAssertEqual(response.totalHours, 42.75, accuracy: 0.001)
+    }
+
     // MARK: - Helper
 
+    /// Decodes using default strategy (no key conversion).
+    /// All structs use explicit `CodingKeys` with the exact snake_case key
+    /// names used by the server, so no key-strategy conversion is needed.
     private func decode<T: Decodable>(_ type: T.Type, from jsonString: String) throws -> T {
         let data = Data(jsonString.utf8)
         let decoder = JSONDecoder()

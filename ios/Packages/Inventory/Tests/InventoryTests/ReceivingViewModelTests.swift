@@ -96,17 +96,94 @@ final class ReceivingDetailViewModelTests: XCTestCase {
     }
 }
 
+// MARK: - finalize delta logic tests
+
+@MainActor
+final class ReceivingFinalizeTests: XCTestCase {
+
+    func test_finalize_nothingEntered_setsErrorMessage() async {
+        let api = ReceivingStubAPIClient(order: nil)
+        let vm = ReceivingDetailViewModel(api: api, orderId: 1)
+        // Load order with receivedQty already = orderedQty (nothing new to receive)
+        vm.applyOrder(makeOrder(sku: "WDG-1", orderedQty: 5, receivedQty: 5))
+        vm.receivedQty[10] = "5"   // same as already received → delta = 0
+        await vm.finalize()
+        XCTAssertEqual(vm.errorMessage, "No quantities entered to receive.")
+        XCTAssertFalse(vm.showReconciliation)
+    }
+
+    func test_finalize_success_setsShowReconciliation() async {
+        let api = ReceivingStubAPIClient(order: .init(
+            id: 1, status: "open",
+            lineItems: [.init(id: 10, sku: "WDG-1", orderedQty: 5, receivedQty: 0)]
+        ))
+        let vm = ReceivingDetailViewModel(api: api, orderId: 1)
+        vm.applyOrder(makeOrder(sku: "WDG-1", orderedQty: 5, receivedQty: 0))
+        vm.receivedQty[10] = "3"   // receive 3 new (delta = 3)
+        await vm.finalize()
+        XCTAssertTrue(vm.showReconciliation)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.finalizeResult.count, 1)
+        XCTAssertEqual(vm.finalizeResult[0].receivedQty, 3)
+    }
+
+    func test_finalize_sendsOnlyDeltaLines() async {
+        let api = ReceivingStubAPIClient(order: nil)
+        let vm = ReceivingDetailViewModel(api: api, orderId: 1)
+        let order = ReceivingOrder(
+            id: 1, status: "open",
+            lineItems: [
+                ReceivingLineItem(id: 10, sku: "A", orderedQty: 5, receivedQty: 3),
+                ReceivingLineItem(id: 11, sku: "B", orderedQty: 4, receivedQty: 4)  // fully received
+            ]
+        )
+        vm._setOrderForTesting(order)
+        vm.receivedQty[10] = "5"   // A: new delta = 2
+        vm.receivedQty[11] = "4"   // B: no delta
+        await vm.finalize()
+        XCTAssertTrue(vm.showReconciliation)
+        XCTAssertEqual(vm.finalizeResult.count, 2)
+        // Line A reconciliation shows total qty received = 5
+        XCTAssertEqual(vm.finalizeResult.first(where: { $0.sku == "A" })?.receivedQty, 5)
+    }
+
+    func test_finalize_offline_showsReconciliationOptimistically() async {
+        let api = ReceivingStubAPIClient(order: nil, simulateNetworkError: true)
+        let vm = ReceivingDetailViewModel(api: api, orderId: 1)
+        vm.applyOrder(makeOrder(sku: "WDG-1", orderedQty: 5, receivedQty: 0))
+        vm.receivedQty[10] = "2"
+        await vm.finalize()
+        XCTAssertTrue(vm.showReconciliation)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    // MARK: - Helpers
+
+    private func makeOrder(sku: String, orderedQty: Int, receivedQty: Int) -> ReceivingOrder {
+        ReceivingOrder(
+            id: 1, status: "open",
+            lineItems: [ReceivingLineItem(id: 10, sku: sku,
+                                          orderedQty: orderedQty, receivedQty: receivedQty)]
+        )
+    }
+}
+
 // MARK: - Stub client
 
 actor ReceivingStubAPIClient: APIClient {
     let stubbedOrder: ReceivingOrder?
+    let simulateNetworkError: Bool
 
-    init(order: ReceivingOrder?) { self.stubbedOrder = order }
+    init(order: ReceivingOrder?, simulateNetworkError: Bool = false) {
+        self.stubbedOrder = order
+        self.simulateNetworkError = simulateNetworkError
+    }
 
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         throw APITransportError.noBaseURL
     }
     func post<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        if simulateNetworkError { throw URLError(.notConnectedToInternet) }
         // Finalize endpoint
         if let r = CreatedResource(id: 99) as? T { return r }
         throw APITransportError.noBaseURL

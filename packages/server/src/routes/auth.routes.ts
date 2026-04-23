@@ -16,8 +16,24 @@ import { createLogger } from '../utils/logger.js';
 import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('auth');
+
+// SCAN-646: Safe JSON parse for user.permissions — returns null on any parse/shape error.
+function safeParsePermissions(raw: string | null | undefined): Record<string, boolean> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // Validate values are boolean (per SCAN-184 policy):
+    const safe: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'boolean') safe[k] = v;
+    }
+    return safe;
+  } catch { return null; }
+}
 
 // SEC (A7): Max concurrent refresh-token sessions per user.
 // On login, if user has more than this many active sessions, the oldest
@@ -169,7 +185,7 @@ function consumeChallenge(token: string): number | null {
 }
 
 // Clean expired challenges every minute
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
@@ -343,8 +359,10 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // SEC-L34: `jti` uniquely identifies each issued token so future revocation lists
   // (see sessions table) can target a specific token rather than an entire session.
   // SEC-H103: sign with the dedicated per-purpose secret, not the shared JWT_SECRET.
+  // SEC (SCAN-613): Explicit type:'access' so the auth middleware strict check
+  // can reject any token without the field (refresh, scoped, super-admin, etc.).
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
@@ -396,7 +414,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     last_name: user.last_name,
     role: user.role,
     avatar_url: user.avatar_url || null,
-    permissions: user.permissions ? JSON.parse(user.permissions) : null,
+    permissions: safeParsePermissions(user.permissions),
   };
   return { accessToken, refreshToken, user: safeUser };
 }
@@ -1046,7 +1064,17 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   let currentBackupCodes: string = user.backup_codes;
 
   for (let attempt = 0; attempt < MAX_CONSUME_ATTEMPTS; attempt++) {
-    const hashedCodes: string[] = JSON.parse(currentBackupCodes);
+    // SCAN-645: Guard against malformed backup_codes in the DB.
+    let hashedCodes: string[];
+    try {
+      const parsed = JSON.parse(currentBackupCodes);
+      if (!Array.isArray(parsed)) {
+        return res.json({ valid: false });
+      }
+      hashedCodes = parsed as string[];
+    } catch {
+      return res.json({ valid: false });
+    }
     const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
     if (matchIdx === -1) {
@@ -1235,8 +1263,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SEC-L34: fresh `jti` on every rotation so refreshed tokens are distinguishable
     // from their predecessors.
     // SEC-H103: sign with dedicated per-purpose secret.
+    // SEC (SCAN-613): Explicit type:'access' on every rotated access token.
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
       config.accessJwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
@@ -1281,7 +1310,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       id: user.id, username: user.username, email: user.email,
       first_name: user.first_name, last_name: user.last_name,
       role: user.role, avatar_url: user.avatar_url || null,
-      permissions: user.permissions ? JSON.parse(user.permissions) : null,
+      permissions: safeParsePermissions(user.permissions),
     };
 
     // SEC-M10: Audit successful rotation so the full refresh lifecycle shows up
@@ -1425,8 +1454,9 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   // SEC (A6/A10): Explicit HS256 + iss + aud.
   // SEC-L34: unique `jti` per token issuance.
   // SEC-H103: sign with dedicated per-purpose secret.
+  // SEC (SCAN-613): Explicit type:'access' on PIN-switch access tokens.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
@@ -1436,7 +1466,8 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
-  user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
+  // SCAN-646: Parse permissions without mutating user — use a response-only copy.
+  const userForResponse = { ...user, permissions: safeParsePermissions(user.permissions) };
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
@@ -1464,7 +1495,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   res.json({
     success: true,
-    data: { accessToken, user },
+    data: { accessToken, user: userForResponse },
   });
 });
 

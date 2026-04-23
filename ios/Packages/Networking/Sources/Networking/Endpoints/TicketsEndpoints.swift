@@ -216,3 +216,287 @@ public extension APIClient {
         return try await get("/api/v1/tickets", query: items, as: TicketsListResponse.self)
     }
 }
+
+// MARK: - Note operations
+
+/// `POST /api/v1/tickets/:id/notes` body.
+/// Server route: tickets.routes.ts:2036. Required: `content`.
+/// Optional: `type` (internal/customer/diagnostic/sms/email), `is_flagged`, `ticket_device_id`.
+public struct AddTicketNoteRequest: Encodable, Sendable {
+    public let type: String
+    public let content: String
+    public let isFlagged: Bool
+    public let ticketDeviceId: Int64?
+
+    public init(
+        type: String = "internal",
+        content: String,
+        isFlagged: Bool = false,
+        ticketDeviceId: Int64? = nil
+    ) {
+        self.type = type
+        self.content = content
+        self.isFlagged = isFlagged
+        self.ticketDeviceId = ticketDeviceId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type, content
+        case isFlagged = "is_flagged"
+        case ticketDeviceId = "ticket_device_id"
+    }
+}
+
+/// Response from `POST /tickets/:id/notes` — the saved note row.
+public struct AddTicketNoteResponse: Decodable, Sendable {
+    public let id: Int64
+    public let type: String?
+    public let content: String?
+    public let isFlagged: Bool?
+    public let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, content
+        case isFlagged = "is_flagged"
+        case createdAt = "created_at"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/:id/notes`
+    func addTicketNote(ticketId: Int64, _ req: AddTicketNoteRequest) async throws -> AddTicketNoteResponse {
+        try await post(
+            "/api/v1/tickets/\(ticketId)/notes",
+            body: req,
+            as: AddTicketNoteResponse.self
+        )
+    }
+}
+
+// MARK: - Device operations
+
+/// `POST /api/v1/tickets/:id/devices` body.
+/// Server route: tickets.routes.ts:2617. Adds a device row to a ticket.
+public struct AddTicketDeviceRequest: Encodable, Sendable {
+    public let deviceName: String
+    public let deviceType: String?
+    public let imei: String?
+    public let serial: String?
+    public let securityCode: String?
+    public let color: String?
+    public let network: String?
+    public let price: Double
+    public let additionalNotes: String?
+    public let serviceId: Int64?
+
+    public init(
+        deviceName: String,
+        deviceType: String? = nil,
+        imei: String? = nil,
+        serial: String? = nil,
+        securityCode: String? = nil,
+        color: String? = nil,
+        network: String? = nil,
+        price: Double = 0,
+        additionalNotes: String? = nil,
+        serviceId: Int64? = nil
+    ) {
+        self.deviceName = deviceName
+        self.deviceType = deviceType
+        self.imei = imei
+        self.serial = serial
+        self.securityCode = securityCode
+        self.color = color
+        self.network = network
+        self.price = price
+        self.additionalNotes = additionalNotes
+        self.serviceId = serviceId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case imei, serial, color, network, price
+        case deviceName = "device_name"
+        case deviceType = "device_type"
+        case securityCode = "security_code"
+        case additionalNotes = "additional_notes"
+        case serviceId = "service_id"
+    }
+}
+
+/// `PUT /api/v1/tickets/devices/:deviceId` body.
+/// Server accepts a sparse update — only non-nil fields are sent.
+public struct UpdateTicketDeviceRequest: Encodable, Sendable {
+    public let deviceName: String?
+    public let imei: String?
+    public let serial: String?
+    public let securityCode: String?
+    public let color: String?
+    public let network: String?
+    public let price: Double?
+    public let additionalNotes: String?
+    public let serviceId: Int64?
+
+    public init(
+        deviceName: String? = nil,
+        imei: String? = nil,
+        serial: String? = nil,
+        securityCode: String? = nil,
+        color: String? = nil,
+        network: String? = nil,
+        price: Double? = nil,
+        additionalNotes: String? = nil,
+        serviceId: Int64? = nil
+    ) {
+        self.deviceName = deviceName
+        self.imei = imei
+        self.serial = serial
+        self.securityCode = securityCode
+        self.color = color
+        self.network = network
+        self.price = price
+        self.additionalNotes = additionalNotes
+        self.serviceId = serviceId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case imei, serial, color, network, price
+        case deviceName = "device_name"
+        case securityCode = "security_code"
+        case additionalNotes = "additional_notes"
+        case serviceId = "service_id"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/:id/devices`
+    func addTicketDevice(ticketId: Int64, _ req: AddTicketDeviceRequest) async throws -> CreatedResource {
+        try await post(
+            "/api/v1/tickets/\(ticketId)/devices",
+            body: req,
+            as: CreatedResource.self
+        )
+    }
+
+    /// `PUT /api/v1/tickets/devices/:deviceId`
+    func updateTicketDevice(deviceId: Int64, _ req: UpdateTicketDeviceRequest) async throws -> CreatedResource {
+        try await put(
+            "/api/v1/tickets/devices/\(deviceId)",
+            body: req,
+            as: CreatedResource.self
+        )
+    }
+
+    /// `DELETE /api/v1/tickets/devices/:deviceId`
+    func deleteTicketDevice(deviceId: Int64) async throws {
+        try await delete("/api/v1/tickets/devices/\(deviceId)")
+    }
+}
+
+// MARK: - Checklist operations
+
+/// A single pre/post-condition checklist item.
+public struct ChecklistItem: Codable, Sendable, Identifiable, Equatable {
+    public let id: String       // client-generated stable UUID string
+    public var label: String
+    public var checked: Bool
+
+    public init(id: String = UUID().uuidString, label: String, checked: Bool = false) {
+        self.id = id
+        self.label = label
+        self.checked = checked
+    }
+}
+
+/// `PUT /api/v1/tickets/devices/:deviceId/checklist` body.
+/// Server route: tickets.routes.ts:3158. `items` is a JSON array.
+public struct UpdateChecklistRequest: Encodable, Sendable {
+    public let items: [ChecklistItem]
+    public init(items: [ChecklistItem]) { self.items = items }
+}
+
+public extension APIClient {
+    /// `PUT /api/v1/tickets/devices/:deviceId/checklist`
+    func updateDeviceChecklist(deviceId: Int64, items: [ChecklistItem]) async throws -> CreatedResource {
+        let req = UpdateChecklistRequest(items: items)
+        return try await put(
+            "/api/v1/tickets/devices/\(deviceId)/checklist",
+            body: req,
+            as: CreatedResource.self
+        )
+    }
+}
+
+// MARK: - Parts operations
+
+/// `POST /api/v1/tickets/devices/:deviceId/parts` body.
+/// Server route: tickets.routes.ts:2893.
+public struct AddDevicePartRequest: Encodable, Sendable {
+    public let name: String
+    public let sku: String?
+    public let quantity: Int
+    public let price: Double
+    public let inventoryItemId: Int64?
+
+    public init(
+        name: String,
+        sku: String? = nil,
+        quantity: Int = 1,
+        price: Double = 0,
+        inventoryItemId: Int64? = nil
+    ) {
+        self.name = name
+        self.sku = sku
+        self.quantity = quantity
+        self.price = price
+        self.inventoryItemId = inventoryItemId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, sku, quantity, price
+        case inventoryItemId = "inventory_item_id"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/devices/:deviceId/parts`
+    func addDevicePart(deviceId: Int64, _ req: AddDevicePartRequest) async throws -> CreatedResource {
+        try await post(
+            "/api/v1/tickets/devices/\(deviceId)/parts",
+            body: req,
+            as: CreatedResource.self
+        )
+    }
+
+    /// `DELETE /api/v1/tickets/devices/parts/:partId`
+    func deleteDevicePart(partId: Int64) async throws {
+        try await delete("/api/v1/tickets/devices/parts/\(partId)")
+    }
+}
+
+// MARK: - Convert to invoice
+
+/// Response from `POST /tickets/:id/convert-to-invoice`.
+public struct ConvertToInvoiceResponse: Decodable, Sendable {
+    public let invoiceId: Int64?
+    public let id: Int64?
+
+    public var resolvedInvoiceId: Int64? { invoiceId ?? id }
+
+    enum CodingKeys: String, CodingKey {
+        case invoiceId = "invoice_id"
+        case id
+    }
+}
+
+private struct _EmptyBody: Encodable, Sendable {}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/:id/convert-to-invoice`
+    func convertTicketToInvoice(ticketId: Int64) async throws -> ConvertToInvoiceResponse {
+        try await post(
+            "/api/v1/tickets/\(ticketId)/convert-to-invoice",
+            body: _EmptyBody(),
+            as: ConvertToInvoiceResponse.self
+        )
+    }
+}

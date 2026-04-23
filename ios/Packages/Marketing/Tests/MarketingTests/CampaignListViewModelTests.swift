@@ -2,12 +2,13 @@ import Testing
 import Foundation
 @testable import Marketing
 
+/// Legacy CampaignListViewModel tests, updated to use server-row path.
 @Suite("CampaignListViewModel")
 @MainActor
 struct CampaignListViewModelTests {
 
-    private func makeCampaign(id: String, status: CampaignStatus = .draft) -> Campaign {
-        Campaign(id: id, name: "Campaign \(id)", status: status, template: "Hello", createdAt: Date())
+    private func makeRow(id: Int = 1, status: String = "draft") -> CampaignServerRow {
+        makeCampaignServerRow(id: id, status: status)
     }
 
     @Test("initial state is empty")
@@ -20,11 +21,11 @@ struct CampaignListViewModelTests {
         #expect(vm.hasMore == false)
     }
 
-    @Test("load populates campaigns from API")
+    @Test("load populates campaigns from server rows")
     func loadPopulates() async {
         let mock = MockAPIClient()
-        let campaigns = [makeCampaign(id: "1"), makeCampaign(id: "2", status: .sent)]
-        await mock.setListResult(.success(CampaignListResponse(campaigns: campaigns, nextCursor: nil)))
+        let rows = [makeRow(id: 1), makeRow(id: 2, status: "active")]
+        await mock.setCampaignServerListResult(.success(rows))
         let vm = CampaignListViewModel(api: mock)
         await vm.load()
         #expect(vm.campaigns.count == 2)
@@ -32,61 +33,42 @@ struct CampaignListViewModelTests {
         #expect(vm.hasMore == false)
     }
 
-    @Test("load sets hasMore when cursor returned")
-    func loadHasMore() async {
+    @Test("load with filter .all returns all")
+    func loadAllFilter() async {
         let mock = MockAPIClient()
-        await mock.setListResult(.success(CampaignListResponse(campaigns: [makeCampaign(id: "1")], nextCursor: "abc")))
+        let rows = [makeRow(id: 1, status: "active"), makeRow(id: 2, status: "archived")]
+        await mock.setCampaignServerListResult(.success(rows))
         let vm = CampaignListViewModel(api: mock)
         await vm.load()
-        #expect(vm.hasMore == true)
-        #expect(vm.nextCursor == "abc")
+        vm.filter = .all
+        #expect(vm.campaigns.count == 2)
     }
 
     @Test("load sets errorMessage on failure")
     func loadError() async {
         let mock = MockAPIClient()
-        await mock.setListResult(.failure(URLError(.timedOut)))
+        await mock.setCampaignServerListResult(.failure(URLError(.timedOut)))
         let vm = CampaignListViewModel(api: mock)
         await vm.load()
         #expect(vm.errorMessage != nil)
         #expect(vm.campaigns.isEmpty)
     }
 
-    @Test("loadNextPage appends campaigns")
-    func loadNextPage() async {
+    @Test("loadNextPage is a no-op (server returns all in one call)")
+    func loadNextPageNoOp() async {
         let mock = MockAPIClient()
-        // First page
-        await mock.setListResult(.success(CampaignListResponse(
-            campaigns: [makeCampaign(id: "1")],
-            nextCursor: "cur2"
-        )))
+        let rows = [makeRow(id: 1)]
+        await mock.setCampaignServerListResult(.success(rows))
         let vm = CampaignListViewModel(api: mock)
         await vm.load()
-        #expect(vm.campaigns.count == 1)
-
-        // Second page
-        await mock.setListResult(.success(CampaignListResponse(
-            campaigns: [makeCampaign(id: "2"), makeCampaign(id: "3")],
-            nextCursor: nil
-        )))
-        await vm.loadNextPage()
-        #expect(vm.campaigns.count == 3)
-        #expect(vm.hasMore == false)
-    }
-
-    @Test("loadNextPage skips when no cursor")
-    func loadNextPageSkipsWithoutCursor() async {
-        let mock = MockAPIClient()
-        await mock.setListResult(.success(CampaignListResponse(campaigns: [makeCampaign(id: "1")], nextCursor: nil)))
-        let vm = CampaignListViewModel(api: mock)
-        await vm.load()
-        // nextCursor is nil, so should no-op
+        // nextPage is a no-op — campaign count unchanged
         await vm.loadNextPage()
         #expect(vm.campaigns.count == 1)
     }
 }
 
 extension MockAPIClient {
+    /// Compat helper for old test shape.
     func setListResult(_ result: Result<CampaignListResponse, Error>) async {
         campaignListResult = result
     }

@@ -42,12 +42,23 @@ public final class MembershipEnrollViewModel {
     public func loadPlans() async {
         state = .loadingPlans
         do {
-            plans = try await api.get("/memberships/plans", as: [MembershipPlan].self)
+            // Server route: GET /api/v1/membership/tiers
+            let tiers = try await api.listMembershipTiers()
+            plans = tiers.map { tier in
+                MembershipPlan(
+                    id: String(tier.id),
+                    name: tier.name,
+                    pricePerPeriodCents: Int(tier.monthlyPrice * 100),
+                    periodDays: 30,
+                    perks: tier.discountPct > 0 ? [.percentageDiscount(tier.discountPct)] : [],
+                    signupBonusPoints: 0
+                )
+            }
             state = .plansLoaded
             if selectedPlanId == nil { selectedPlanId = plans.first?.id }
         } catch let t as APITransportError {
-            if case .httpStatus(let c, _) = t, c == 404 || c == 501 {
-                // Stub: create a sample plan so dev can test the UI.
+            if case .httpStatus(let c, _) = t, c == 404 || c == 402 || c == 501 {
+                // Feature not enabled or endpoint not yet live — show demo plans.
                 plans = [
                     MembershipPlan(
                         id: "demo-basic",

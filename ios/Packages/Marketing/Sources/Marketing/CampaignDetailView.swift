@@ -25,7 +25,13 @@ final class CampaignDetailViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            campaign = try await api.getCampaign(id: campaignId)
+            // Try loading from real server using numeric id; fall back to legacy path
+            if let numericId = Int(campaignId) {
+                let row = try await api.getCampaignServer(id: numericId)
+                campaign = Campaign.from(row)
+            } else {
+                campaign = try await api.getCampaign(id: campaignId)
+            }
         } catch {
             AppLog.ui.error("Campaign detail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -48,6 +54,9 @@ final class CampaignDetailViewModel {
 public struct CampaignDetailView: View {
     @State private var vm: CampaignDetailViewModel
     @State private var showApprovalSheet = false
+    @State private var showAudiencePreview = false
+    @State private var showAnalytics = false
+    @State private var showCoupons = false
     @State private var managerPin = ""
     @State private var approvalError: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -70,6 +79,19 @@ public struct CampaignDetailView: View {
         #endif
         .task { await vm.load() }
         .sheet(isPresented: $showApprovalSheet) { approvalSheet }
+        .sheet(isPresented: $showAudiencePreview) {
+            if let rowId = vm.campaign?.serverRowId {
+                CampaignAudiencePreviewView(api: api, campaignId: rowId)
+            }
+        }
+        .navigationDestination(isPresented: $showAnalytics) {
+            if let rowId = vm.campaign?.serverRowId {
+                CampaignAnalyticsView(api: api, campaignId: rowId)
+            }
+        }
+        .navigationDestination(isPresented: $showCoupons) {
+            CouponCodesView()
+        }
         .toolbar { sendToolbar }
     }
 
@@ -139,6 +161,9 @@ public struct CampaignDetailView: View {
                     }
                 }
 
+                // Action buttons (analytics, audience preview, coupons)
+                actionButtonsSection(campaign)
+
                 // Post-send report
                 if campaign.status == .sent, let report = campaign.report {
                     reportSection(report)
@@ -156,6 +181,59 @@ public struct CampaignDetailView: View {
             .padding(.horizontal, BrandSpacing.base)
             .padding(.vertical, BrandSpacing.lg)
         }
+    }
+
+    // MARK: - Action buttons
+
+    private func actionButtonsSection(_ campaign: Campaign) -> some View {
+        VStack(spacing: BrandSpacing.sm) {
+            if campaign.serverRowId != nil {
+                HStack(spacing: BrandSpacing.sm) {
+                    actionButton(
+                        icon: "chart.bar.fill",
+                        title: "Analytics",
+                        a11yId: "marketing.campaign.analytics"
+                    ) { showAnalytics = true }
+
+                    actionButton(
+                        icon: "person.3.fill",
+                        title: "Audience",
+                        a11yId: "marketing.campaign.audiencePreview"
+                    ) { showAudiencePreview = true }
+                }
+
+                actionButton(
+                    icon: "ticket.fill",
+                    title: "Coupon Codes",
+                    a11yId: "marketing.campaign.coupons"
+                ) { showCoupons = true }
+            }
+        }
+    }
+
+    private func actionButton(
+        icon: String,
+        title: String,
+        a11yId: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: icon).foregroundStyle(.bizarreOrange).accessibilityHidden(true)
+                Text(title).font(.brandTitleSmall()).foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.bizarreOnSurfaceMuted)
+                    .font(.system(size: 12)).accessibilityHidden(true)
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier(a11yId)
+        #if canImport(UIKit)
+        .hoverEffect(.highlight)
+        #endif
     }
 
     // MARK: - Approval banner

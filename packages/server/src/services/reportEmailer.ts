@@ -22,6 +22,7 @@
 
 import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { escapeHtml } from '../utils/escape.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('reportEmailer');
@@ -49,14 +50,54 @@ interface ScheduledReportRow {
   config_json: string | null;
 }
 
+// ─── Timezone helpers ────────────────────────────────────────────────────
+
+/**
+ * Return the current date in the given IANA timezone as `YYYY-MM-DD`.
+ * SCAN-622: mirrors scheduledReports.ts `getLocalTodayIsoDate` so weekly-
+ * window boundaries are tenant-local, not UTC.
+ */
+function getLocalTodayIsoDate(tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/**
+ * Return the date N calendar days before `todayLocalStr` (a `YYYY-MM-DD`
+ * string already anchored to tenant-local time). UTC arithmetic is safe
+ * because we only use the Y-M-D result.
+ * SCAN-622: replaces `Date.now() - N * 86400_000` UTC arithmetic.
+ */
+function subtractDays(todayLocalStr: string, days: number): string {
+  const anchor = new Date(`${todayLocalStr}T00:00:00Z`);
+  anchor.setUTCDate(anchor.getUTCDate() - days);
+  return anchor.toISOString().slice(0, 10);
+}
+
 // ─── Metric collection ───────────────────────────────────────────────────
 
-/** Pull the last-7-day metrics snapshot. Read-only — safe to invoke at any time. */
-export async function collectWeeklyMetrics(adb: AsyncDb): Promise<WeeklyMetrics> {
-  const now = new Date();
-  const sevenAgo = new Date(now.getTime() - 7 * 86400_000);
-  const fromIso = sevenAgo.toISOString().slice(0, 10);
-  const toIso = now.toISOString().slice(0, 10);
+/**
+ * Pull the last-7-day metrics snapshot. Read-only — safe to invoke at any time.
+ *
+ * @param timezone  IANA timezone string (e.g. `"America/Denver"`). When
+ *   omitted we fall back to UTC, which matches the old behaviour. Passing the
+ *   tenant's configured timezone (SCAN-622) prevents positive-offset tenants
+ *   from having the 7-day window shifted by up to a day.
+ */
+export async function collectWeeklyMetrics(adb: AsyncDb, timezone = 'UTC'): Promise<WeeklyMetrics> {
+  // SCAN-622: derive window dates in tenant-local time, not UTC.
+  const toIso = getLocalTodayIsoDate(timezone);
+  const fromIso = subtractDays(toIso, 7);
 
   // NOTE: payments.amount, ticket_device_parts.price, and tickets.total are
   // all REAL columns (see criticalaudit.md §M7 "money in floats"). We can't
@@ -84,15 +125,20 @@ export async function collectWeeklyMetrics(adb: AsyncDb): Promise<WeeklyMetrics>
          AND DATE(COALESCE(p.created_at, i.created_at)) >= ?`,
       fromIso
     ),
+    // SCAN-619: multi-action IN + LOWER TRIM match mirrors scheduledReports.ts
+    // ticketsClosed pattern so status renames and alternate action labels don't
+    // silently zero-out the count (previously a single-action JOIN could miss
+    // rows logged as 'status_changed' or 'status').
     adb.get<{ n: number }>(
       `SELECT COUNT(*) AS n
        FROM ticket_history th
        JOIN tickets t ON t.id = th.ticket_id
-       JOIN ticket_statuses ts ON ts.name = th.new_value
-       WHERE DATE(th.created_at) >= ?
-         AND th.action = 'status_change'
-         AND ts.is_closed = 1
-         AND t.is_deleted = 0`,
+       WHERE th.action IN ('status_change', 'status_changed', 'status')
+         AND LOWER(TRIM(th.new_value)) IN (
+           SELECT LOWER(TRIM(name)) FROM ticket_statuses WHERE is_closed = 1
+         )
+         AND t.is_deleted = 0
+         AND DATE(th.created_at) >= ?`,
       fromIso
     ),
     adb.get<{ n: number }>(
@@ -232,15 +278,6 @@ function renderText(m: WeeklyMetrics): string {
   return lines.join('\n');
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 // ─── Sending ─────────────────────────────────────────────────────────────
 
 export interface DeliveryTargets {
@@ -344,7 +381,8 @@ export async function sendWeeklySummary(targets: DeliveryTargets): Promise<Weekl
     return { smtpConfigured: true, attempted: 0, sent: 0, failed: 0 };
   }
 
-  const metrics = await collectWeeklyMetrics(adb);
+  // SCAN-622: pass tenant timezone so the 7-day window is tenant-local, not UTC.
+  const metrics = await collectWeeklyMetrics(adb, targets.timezone ?? 'UTC');
   const html = renderHtml(metrics);
   const text = renderText(metrics);
   const subject = `Weekly summary — ${metrics.period_label}`;

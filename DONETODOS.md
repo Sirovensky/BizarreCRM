@@ -1,3 +1,306 @@
+
+## Migrated 2026-04-23 from todo.md
+
+- [x] ~~AUDIT-WEB-026.~~ FIXED 2026-04-19 — see commit. **[SEC] Portal Bearer token double-transmitted** — `pages/portal/portalApi.ts:212-218` `verifySession(token)` sends token in both `Authorization: Bearer` header AND `{token}` body. Fix: header only.
+- [x] ~~AUDIT-WEB-027.~~ FIXED 2026-04-19 — see commit. **[SEC] enrichApi DELETE missing CSRF double-submit** — `pages/portal/components/enrichApi.ts:121-128` second Axios instance skips portal_csrf_token. Fix: mirror portalClient CSRF interceptor.
+- [x] ~~AUDIT-WEB-028.~~ FIXED 2026-04-19 — see commit. **[SEC] photo.path rendered as img src without URL validation** — `pages/portal/components/PhotoGallery.tsx:122` accepts `javascript:`/`data:` URIs. Fix: `/^https?:\/\//.test()` guard + placeholder fallback.
+- [x] ~~AUDIT-WEB-029.~~ FIXED 2026-04-19 — see commit. **[SEC] Open redirect in PayNowButton** — `pages/portal/components/PayNowButton.tsx:43` `window.location.href = url` no origin check. Fix: `new URL(url)` + origin allowlist before navigate.
+- [x] ~~AUDIT-WEB-030.~~ FIXED 2026-04-19 — see commit. **[SEC] Raw server error messages leaked to portal customers** — `pages/portal/PortalRegister.tsx:33,65` displays `err.response.data.message`. Fix: map HTTP status to user-friendly strings client-side.
+- [x] ~~AUDIT-WEB-031.~~ FIXED 2026-04-19 — see commit. **Portal PIN field missing inputmode=numeric** — mobile keyboard shows QWERTY. Fix: `inputMode="numeric"` + `pattern="[0-9]*"`.
+- [x] ~~AUDIT-WEB-032.~~ FIXED 2026-04-19 — see commit. **Currency symbol hardcoded `$` throughout portal/print** — EUR/GBP stores display wrong symbol. Fix: `Intl.NumberFormat` + `formatCurrency(value, currencyCode)` shared util.
+- [x] ~~AUDIT-WEB-033.~~ FIXED 2026-04-19 — see commit. **Date locale hardcoded `'en-US'` in portal** — ignores `usePortalI18n().locale`. Fix: pass locale from portal session/i18n hook.
+- [x] ~~AUDIT-WEB-034.~~ FIXED 2026-04-19 — see commit. **`revenue_change_pct` rendered without rounding** — `ReportsPage.tsx:209`. Fix: `toFixed(1)`.
+- [x] ~~AUDIT-WEB-035.~~ FIXED 2026-04-19 — see commit. **Insights CSV columns misaligned** — `ReportsPage.tsx:1218-1220` zips popularity+revenue arrays by index but backend sorts independently. Fix: Map<modelId, {popularity, revenue}>.
+- [x] ~~AUDIT-WEB-036.~~ FIXED 2026-04-19 — see commit. **CSV export re-fetches instead of using React Query cache** — `ReportsPage.tsx:1176-1263`. Fix: pass component-scope `data` to export handler; fallback to fresh fetch only if undefined.
+- [x] ~~AUDIT-WEB-037.~~ FIXED 2026-04-19 — see commit. **`fillMissingDates` defined but never called — dead code** — `ReportsPage.tsx:78-93`.
+- [x] ~~AUDIT-WEB-038.~~ FIXED 2026-04-19 — see commit. **SummaryCard/LoadingState/EmptyState/ErrorState duplicated inside ReportsPage** vs `components/ReportHelpers.tsx`. Fix: delete local, import from shared.
+- [x] ~~AUDIT-WEB-039.~~ FIXED 2026-04-19 — see commit. **maxClaims recalculated inside render loop — O(n²)** — `reports/components/WarrantyClaimsTab.tsx:69`. Fix: `useMemo`.
+- [x] ~~AUDIT-WEB-040.~~ FIXED 2026-04-19 — see commit. **Partner report year picker limited to 5 years** — `PartnerReportPage.tsx:40`. Fix: 10 years or derive from oldest transaction year.
+- [x] ~~AUDIT-WEB-041.~~ FIXED 2026-04-19 — see commit. **[SEC] Tax report jurisdiction input injected into URL without validation** — `TaxReportPage.tsx:56-63`. Fix: `encodeURIComponent` + alphanumeric-only regex pre-submit.
+- [x] ~~AUDIT-WEB-042.~~ FIXED 2026-04-19 — see commit. **DateRangePicker "From" missing `max` attribute** — `components/shared/DateRangePicker.tsx:228-237`. Fix: `max={value.to || todayISO}`.
+- [x] ~~AUDIT-WEB-043.~~ FIXED 2026-04-19 — see commit. **ConfirmDialog missing focus trap — WCAG 2.1.2 violation** — `components/shared/ConfirmDialog.tsx`. Fix: focus-trap-react or manual keydown cycle.
+- [x] ~~AUDIT-WEB-044.~~ FIXED 2026-04-19 — see commit. **KeyboardShortcutsPanel docs wrong for POS context** — `KeyboardShortcutsPanel.tsx:13-36` vs `usePosKeyboardShortcuts.ts`: F2/F3/F4/F6 rebound in POS mode but panel shows global defaults. Fix: context-aware panel showing active route's shortcut set.
+- [x] ~~AUDIT-WEB-045.~~ FIXED 2026-04-19 — see commit. **shortcutsPanelOpen state orphaned — never opened** — `AppShell.tsx:22` setter never called. Fix: bind `?` key with isTypingInField guard.
+- [x] ~~AUDIT-WEB-046.~~ FIXED 2026-04-19 — see commit. **[SEC] Recent searches in localStorage without sanitization / no TTL** — `CommandPalette.tsx` saveRecentSearch. PII risk on shared workstations. Fix: 2-char min-gate + sessionStorage + 10-entry cap + expiry.
+- [x] ~~AUDIT-WEB-047.~~ FIXED 2026-04-19 — see commit. **[SEC] React Query cache keys lack tenant ID — multi-tenant bleed risk** — global QueryClient in `main.tsx`. Between tenant switches stale Tenant A data served before background refetch. Fix: `['tenant', tenantId, ...]` key prefix + synchronous `queryClient.clear()` on login action.
+- [x] ~~AUDIT-WEB-048.~~ FIXED 2026-04-19 — see commit. **Reports page has inline DateRangePicker duplicate** — `ReportsPage.tsx:1289-1324` vs shared `DateRangePicker`. Fix: replace inline with shared.
+- [x] ~~AUDIT-WEB-049.~~ FIXED 2026-04-19 — see commit. **Kanban board fixed-width columns clip on narrow screens** — no `overflow-x: auto` container. Fix: wrap in `overflow-x-auto` + `min-w-max` inner.
+- [x] ~~AUDIT-AND-019.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] Deep-link intent-filter disables App Link verification** — `AndroidManifest.xml:64` `android:autoVerify="false"` — any app can intercept `bizarrecrm://`. Fix: set `autoVerify="true"` + migrate to verified https App Links with `/.well-known/assetlinks.json`.
+- [x] ~~AUDIT-AND-020.~~ FIXED 2026-04-19 — see commit. **CAMERA permission declared but never used at runtime** — `AndroidManifest.xml:18`. Barcode scan is manual-entry only. Fix: remove `<uses-permission>` until actual CameraX code ships.
+- [x] ~~AUDIT-AND-021.~~ FIXED 2026-04-19 — see commit. **READ_MEDIA_IMAGES unnecessary on API 33+ with GetContent** — `AndroidManifest.xml:38`. Fix: add `android:maxSdkVersion="32"` or switch to PickVisualMedia.
+- [x] ~~AUDIT-AND-022.~~ FIXED 2026-04-19 — see commit. **SyncWorker.syncNow enqueues without uniqueness guarantee** — `sync/SyncWorker.kt:53-63` rapid callers produce concurrent runs. Fix: `enqueueUniqueWork("sync_now", ExistingWorkPolicy.KEEP, request)`.
+- [x] ~~AUDIT-AND-023.~~ FIXED 2026-04-19 — see commit. **TOCTOU race in SyncManager.syncAll isSyncing guard** — `sync/SyncManager.kt:102,108` StateFlow check-then-set not atomic. Fix: `AtomicBoolean.compareAndSet(false, true)` or Mutex.
+- [x] ~~AUDIT-AND-024.~~ FIXED 2026-04-19 — see commit. **WebSocketService coroutine scope never cancelled** — `service/WebSocketService.kt:22` dangling coroutines post-logout.
+- [x] ~~AUDIT-AND-025.~~ FIXED 2026-04-19 — see commit. **WebSocketEventHandler coroutine scope never cancelled** — `service/WebSocketEventHandler.kt:25` same pattern. Fix: both — expose `fun close()` that cancels SupervisorJob; wire into logout.
+- [x] ~~AUDIT-AND-026.~~ FIXED 2026-04-19 — see commit. **CustomerEntity has no DB indices — full table scan on search** — `data/local/entity/CustomerEntity.kt:8`. Fix: `indices = [Index("last_name"), Index("email"), Index("phone")]` + Room migration.
+- [x] ~~AUDIT-AND-027.~~ FIXED 2026-04-19 — see commit. **FCM PendingIntent requestCode diverges from notificationId** — `service/FcmService.kt:107,136` `get()` vs `getAndIncrement()` race. Fix: capture single `val id = getAndIncrement()` used for BOTH.
+- [x] ~~AUDIT-AND-028.~~ FIXED 2026-04-19 — see commit. **Wizard back IconButton 32dp touch target (below 48dp)** — `LoginScreen.kt:808,909,980,1084` WCAG 2.5.5 fail. Fix: remove `Modifier.size(32.dp)` (default = 48).
+- [x] ~~AUDIT-AND-029.~~ FIXED 2026-04-19 — see commit. **WaveDivider hardcodes brand color outside theme** — `components/WaveDivider.kt:57` `Color(0xFFBC398F)`. Fix: CompositionLocal with light/dark variants.
+- [x] ~~AUDIT-AND-030.~~ FIXED 2026-04-19 — see commit. **Dashboard FAB scrim hardcoded `Color.Black`** — `DashboardScreen.kt:539`. Fix: `MaterialTheme.colorScheme.scrim.copy(alpha=0.32f)`.
+- [x] ~~AUDIT-AND-031.~~ FIXED 2026-04-19 — see commit. **PlaintextToEncryptedMigrator stores migration flag in plain SharedPrefs** — `PlaintextToEncryptedMigrator.kt:94`. Fix: move flag to EncryptedSharedPrefs (same instance as credentials).
+- [x] ~~AUDIT-AND-032.~~ FIXED 2026-04-19 — see commit. **WebSocketService constructs new Gson per event** — `WebSocketService.kt:61,68`. Fix: Hilt-inject singleton Gson.
+- [x] ~~AUDIT-AND-033.~~ FIXED 2026-04-19 — see commit. **buildProbeTlsClient creates fresh OkHttpClient per probe** — `LoginScreen.kt:149` accumulates thread pools. Fix: create once in ViewModel + reuse + shutdown dispatcher.
+- [x] ~~AUDIT-AND-034.~~ FIXED 2026-04-19 — see commit. **RepairInProgressService returns START_STICKY** — silent auto-restart after force-stop with null Intent. Fix: `START_NOT_STICKY` (or handle null Intent).
+- [x] ~~AUDIT-AND-035.~~ FIXED 2026-04-19 — see commit. **appScope uses Dispatchers.Main for reconnect/sync observer** — `BizarreCrmApp.kt:39`. Fix: `Dispatchers.Default`.
+- [x] ~~AUDIT-AND-036.~~ FIXED 2026-04-19 — see commit. **43 off-theme semantic Color constants not adaptive** — SuccessGreen/WarningAmber/ErrorRed/InfoBlue etc. across 13 files. Fix: `ExtendedColors` data class + CompositionLocal with light/dark variants.
+- [x] ~~AUDIT-AND-037.~~ FIXED 2026-04-19 — see commit. **[P0] Wizard ViewModels do not back state with SavedStateHandle — process death destroys 5-step form state** — TicketCreateViewModel, CustomerCreateViewModel, etc. Fix: `SavedStateHandle.getStateFlow()` at each step boundary.
+- [x] ~~AUDIT-AND-038.~~ FIXED 2026-04-19 — see commit. **AnimatedContent has no contentKey — transitions skip on same-enum re-emission** — `LoginScreen.kt:608`. Fix: `contentKey = { it.ordinal }` or monotonic sequence in UiState.
+- [x] ~~AUDIT-MGT-016.~~ FIXED 2026-04-19 — see commit. **No single-instance lock — double-click opens duplicate window** — `main/index.ts` missing `app.requestSingleInstanceLock()`. Fix: require lock + `app.on('second-instance')` to focus existing window.
+- [x] ~~AUDIT-MGT-017.~~ FIXED 2026-04-19 — see commit. **No custom-protocol/deep-link handler but architecture assumes one** — `main/index.ts` + `electron-builder.yml`. Fix: either document "no custom protocol" OR add `protocols` block + `open-url`/`second-instance` handlers with origin validation.
+- [x] ~~AUDIT-MGT-018.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] UPDATE_SKIP_TAG_VERIFY persistent env escape hatch with no UI warning** — `main/ipc/management-api.ts:307-334`. Fix: evaluate env per-call not module-load; renderer banner on bypass; audit log entry.
+- [x] ~~AUDIT-MGT-019.~~ FIXED 2026-04-19 — see commit. **[P0] HTTP response body unbounded string buffer in apiRequest** — `main/services/api-client.ts:264-267`. OOM risk. Fix: 10MB cap via `req.destroy(new Error('Response too large'))`.
+- [x] ~~AUDIT-MGT-020.~~ FIXED 2026-04-19 — see commit. **dashboard.log grows without bound** — `main/index.ts:44-45` flags:'a' no rotation. Fix: stat-size + 2-file rotation cap ~20MB total.
+- [x] ~~AUDIT-MGT-021.~~ FIXED 2026-04-19 — see commit. **wrapHandler swallows all errors as offline:true** — `main/ipc/management-api.ts:489-499` masks ZodError, EACCES, origin-reject. Fix: only set offline for network codes (ECONNREFUSED/ETIMEDOUT/ENOTFOUND).
+- [x] ~~AUDIT-MGT-022.~~ FIXED 2026-04-19 — see commit. **[P0 FUNCTIONAL] Tenant create always fails — SchemaCreateTenant requires company_name+admin_password but renderer sends shop_name no password** — `management-api.ts:99-105` + `TenantsPage.tsx:78-83`. Fix: align field names + add test.
+- [x] ~~AUDIT-MGT-023.~~ FIXED 2026-04-19 — see commit. **CrashMonitorPage/OverviewPage/ServerControlPage skip handleApiResponse** — 401 not auto-logged-out. Fix: pipe every authenticated IPC response through `handleApiResponse(res)`.
+- [x] ~~AUDIT-MGT-024.~~ FIXED 2026-04-19 — see commit. **ConfirmDialog has no focus trap + no Escape handler + no aria-modal** — `renderer/components/shared/ConfirmDialog.tsx`. Fix: role=dialog aria-modal + keydown Escape + focus-trap-react.
+- [x] ~~AUDIT-MGT-025.~~ FIXED 2026-04-19 — see commit. **authStore managementAuthExpired listener accumulates on Vite HMR** — `stores/authStore.ts:42-47`. Fix: `import.meta.hot.dispose` cleanup.
+- [x] ~~AUDIT-MGT-026.~~ FIXED 2026-04-19 — see commit. **ServerControlPage polls service:get-status every 3s unconditionally** — even in background. Fix: `visibilitychange` pause + 10s interval + async spawn.
+- [x] ~~AUDIT-MGT-027.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] isAllowedRendererUrl accepts any file:// in packaged build** — `main/window.ts:42-58` only checks protocol; attacker-controlled local HTML loads. Fix: apply same path-prefix check from assertRendererOrigin.
+- [x] ~~AUDIT-MGT-028.~~ FIXED 2026-04-19 — see commit. **management:audit-update-result IPC defined but never called from renderer** — `UpdatesPage.tsx` missing call. Update audit trail permanently incomplete. Fix: call after detecting rollback snapshot + clearRollback.
+- [x] ~~AUDIT-MGT-029.~~ FIXED 2026-04-19 — see commit. **parseDotEnv loads FULL .env including JWT_SECRET into child env** — `main/ipc/service-control.ts:401-421`. Fix: `isPathUnder` pre-read guard + allowlist-filter to (PORT/NODE_ENV/LOG_LEVEL).
+- [x] ~~AUDIT-MGT-030.~~ FIXED 2026-04-19 — see commit. **readDirectState trusts `root` from user-writable PID file without full trust validation** — `main/ipc/service-control.ts:292-309`. Fix: re-validate against `resolveTrustedProjectRoot()` exact match after `isProjectRoot`.
+- [x] ~~AUDIT-MGT-031.~~ FIXED 2026-04-19 — see commit. **Error messages forwarded verbatim with absolute paths** — `wrapHandler` + git reset errors etc. leak install dir in screenshots. Fix: `ErrorCode` constants + `path.relative(root, absPath)` sanitization.
+- [x] ~~AUDIT-WEB-001.~~ FIXED 2026-04-19 — see commit. **POS tax always $0** — `TAX_RATE_FALLBACK=0` used in `LeftPanel.tsx:417,608` + `CheckoutModal.tsx:68`; neither fetches `settingsApi.getTaxClasses()`. Fix: add `useQuery(['tax-classes'])` in `useCheckoutTotals()` and substitute default tax class rate.
+- [x] ~~AUDIT-WEB-002.~~ FIXED 2026-04-19 — server mints scoped photo-upload JWT via `POST /tickets/:id/devices/:deviceId/photo-upload-token` (aud='photo-upload', 30min exp); photos handler accepts either scoped token (cross-validated against ticket_id+ticket_device_id) or staff bearer; `SuccessScreen.tsx` fetches via `ticketApi.getPhotoUploadToken` with React Query (staleTime 25min, enabled gated on showSuccess+IDs); QR URL no longer carries full staff JWT; shows "QR unavailable" on mint failure.
+- [x] ~~AUDIT-WEB-003.~~ FIXED 2026-04-19 — simulation setTimeout removed; `useQuery(['blockchyp-status'])` resolves `blockchypConfigured`; Card button `disabled={!blockchypConfigured}` + cursor-not-allowed/opacity-50 + tooltip "Terminal not configured — go to Settings → Payments"; both processing spinner + Approved UI gated on blockchypConfigured; canComplete logic unchanged.
+- [x] ~~AUDIT-WEB-004.~~ FIXED 2026-04-19 — see commit. **FinancingButton renders live with dead flow** — `components/billing/FinancingButton.tsx:43-46`. Modal says "Live API keys needed." Fix: gate on second config key set only when real provider credentials exist, or remove button until integration complete.
+- [x] ~~AUDIT-WEB-005.~~ FIXED 2026-04-19 — see commit. **QrReceiptCode prints non-scannable fake QR** — `components/billing/QrReceiptCode.tsx:92-96` generates 25×25 hash-based pixel art. Fix: install `qrcode.react` (dep-allowlist per existing TODO comment); replace stub; keep labeled-text fallback.
+- [x] ~~AUDIT-WEB-006.~~ FIXED 2026-04-19 — `PaymentLinksPage.tsx` now reads `billing_pay_link_enabled` from store_config (default false, deny-by-default); "New payment request" button disabled w/tooltip + create form gated + banner explains why until provider wired; existing links still viewable for historic record.
+- [x] ~~AUDIT-WEB-007.~~ FIXED 2026-04-19 — see commit. **POS unified search ticket-load adds devices as products** — `pages/unified-pos/LeftPanel.tsx:63` pushes via `addProduct({..., inventoryItemId:0})` losing repair semantics. Fix: mirror hydration in `UnifiedPosPage.tsx:162-215` using `addRepair()`.
+- [x] ~~AUDIT-WEB-008.~~ FIXED 2026-04-19 — see commit. **Optimistic invoice void diverges on error** — `InvoiceDetailPage.tsx:112-120` writes optimistic void to cache; if request fails after unmount, stale optimistic state remains until manual refresh. Fix: snapshot previous cache pre-mutation + `setQueryData` restore on error regardless of mount state.
+- [x] ~~AUDIT-WEB-011.~~ FIXED 2026-04-19 — see commit. **ProtectedRoute infinite spinner on setup-status fetch failure** — `App.tsx:101-110` no retry:false, no error branch. Fix: `retry:1` + error case navigates to /login or "Server unreachable, reload" message.
+- [x] ~~AUDIT-WEB-012.~~ FIXED 2026-04-19 — see commit. **InvoiceDetailPage reads `data?.data?.data?.invoice` as `any`** — `InvoiceDetailPage.tsx:70-71`. If server returns shape with one fewer level, invoice undefined and page shows "Invoice not found." Fix: explicit typed generics to `invoiceApi.get()` / `invoiceApi.recordPayment()`.
+- [x] ~~AUDIT-WEB-013.~~ FIXED 2026-04-19 — see commit. **statuses array resolved with dual-path fallback** — `TicketDetailPage.tsx:199` + `TicketCreatePage.tsx:215` use `statusData?.data?.data?.statuses || statusData?.data?.statuses`. Fix: typed return on `settingsApi.getStatuses()`; drop fallback.
+- [x] ~~AUDIT-WEB-014.~~ FIXED 2026-04-19 — see commit. **Customer Create email field has no format validation** — `CustomerCreatePage.tsx:144` only validates first_name; email is not `type="email"` nor regex-validated. Fix: `type="email"` on input + client-side check in handleSubmit sets errors.email.
+- [x] ~~AUDIT-WEB-015.~~ FIXED 2026-04-19 — see commit. **POS unified search does not cancel in-flight fetches** — `LeftPanel.tsx:22-122` three concurrent API calls; unmount mid-flight triggers state-on-unmounted warning. Fix: `isCancelled` flag in useEffect cleanup; guard all setters.
+- [x] ~~AUDIT-WEB-016.~~ FIXED 2026-04-19 — see commit. **ExpensesPage deleteMut has no onError** — `pages/expenses/ExpensesPage.tsx:52-55`. 403/500 produces no toast. Fix: `onError: (e) => toast.error(e?.response?.data?.message || 'Failed to delete expense')`.
+- [x] ~~AUDIT-WEB-017.~~ FIXED 2026-04-19 — see commit. **isBareHostname() treats LAN IP as multi-tenant** — `App.tsx:162` checks only `localhost`/`127.0.0.1`; `192.168.x.x` falls through. Fix: add `/^[\d.]+$/.test(host)` IP check routing to single-tenant unconditionally.
+- [x] ~~AUDIT-WEB-018.~~ FIXED 2026-04-19 — see commit. **POS tax-toggle buttons no aria-label** — `LeftPanel.tsx:407-418, 490-500, 530-535` only title= tooltip. Fix: `aria-label="Toggle tax for [item name]"` + `aria-pressed={item.taxable}`.
+- [x] ~~AUDIT-WEB-019.~~ FIXED 2026-04-19 — see commit. **POS cart remove buttons no aria-label** — `LeftPanel.tsx:422-428` only title="Remove". Fix: `aria-label={`Remove ${item.device.device_name || item.name} from cart`}`.
+- [x] ~~AUDIT-WEB-020.~~ FIXED 2026-04-19 — see commit. **Ticket merge does not invalidate tickets list** — `TicketDetailPage.tsx:92-105` only invalidates `['ticket', id]` + `['ticket-history', id]`. Fix: add `queryClient.invalidateQueries({queryKey:['tickets']})`.
+- [x] ~~AUDIT-WEB-021.~~ FIXED 2026-04-19 — see commit. **New-customer sub-form allows double-submit** — `TicketCreatePage.tsx:250-263` Save Customer button not wired to `createCustomerMut.isPending`. Fix: `disabled={createCustomerMut.isPending}`.
+- [x] ~~AUDIT-WEB-022.~~ FIXED 2026-04-19 — see commit. **Overdue invoice count silently = 0 on null/non-ISO due_date** — `InvoiceListPage.tsx:112` `new Date(due_date) < new Date()` returns false on NaN. Fix: guard `inv.due_date ? new Date(...) < now : false` + ensure server returns ISO strings.
+- [x] ~~AUDIT-WEB-023.~~ FIXED 2026-04-19 — see commit. **POS store `showSuccess: any` — shape unknown across 3 consumers** — `pages/unified-pos/store.ts:53-54` with 8 optional-chain fallbacks in SuccessScreen. Fix: `CheckoutSuccessPayload` discriminated union for (checkout, create_ticket) modes.
+- [x] ~~AUDIT-WEB-024.~~ FIXED 2026-04-19 — see commit. **Forced logout clears auth but does not navigate** — `stores/authStore.ts:113-121` only clears user + toast. Fix: `window.location.href='/login'` or emit navigation event from LOGOUT_REQUIRED_EVENT handler.
+- [x] ~~AUDIT-WEB-025.~~ FIXED 2026-04-19 — see commit. **POS barcode scanner accumulates keystrokes with modal open** — `UnifiedPosPage.tsx:46-103` global keydown listener active during checkout modal. Fix: gate dispatch behind `!showCheckout && !showSuccess` before `addProduct()`.
+- [x] ~~AUDIT-AND-001.~~ FIXED 2026-04-19 — see commit. **FCM PendingIntent requestCode=0 breaks multi-notification taps** — `service/FcmService.kt:107` uses hardcoded 0 + `FLAG_UPDATE_CURRENT`; older notifications navigate to newest. Fix: unique requestCode per notification via `notificationId.get()` or `System.currentTimeMillis().toInt()`.
+- [x] ~~AUDIT-AND-002.~~ FIXED 2026-04-19 — both LoginScreen TLS call sites now use `buildProbeTlsClient(targetHost)` companion helper: DEBUG+LAN (loopback/RFC1918) installs platform-delegate trust manager that only bypasses when platform itself rejects; release OR public host uses platform defaults (full CA chain + hostname verification); `registerShop()` always targets CLOUD_DOMAIN → always platform CA.
+- [x] ~~AUDIT-AND-003.~~ FIXED 2026-04-19 — see commit. **Dark mode preference stored but never applied** — `MainActivity.kt:122` calls `BizarreCrmTheme {}` without darkTheme arg; `Theme.kt` defaults `darkTheme=true`. Fix: read `appPrefs.darkMode` in MainActivity + compute `isSystemInDarkTheme()` for "system" + pass to theme.
+- [x] ~~AUDIT-AND-004.~~ FIXED 2026-04-19 — see commit. **Checkout total loses precision via Double→Float→Double nav arg** — `AppNavGraph.kt:594` uses `NavType.FloatType`; $99.99 round-trips to 99.9899... . Fix: change nav arg to `NavType.StringType`, format as fixed-point string, parse with `toBigDecimal()` at destination.
+- [x] ~~AUDIT-AND-005.~~ FIXED 2026-04-19 — see commit. **`showBackupCodes!!` NPE on recomposition race** — `LoginScreen.kt:492`. Fix: replace `!!` with `.orEmpty()` or `?: emptyList()`.
+- [x] ~~AUDIT-AND-006.~~ FIXED 2026-04-19 — see commit. **Photo upload reads entire image into heap — OOM risk** — `PhotoCaptureScreen.kt:115-120` `copyTo(ByteArrayOutputStream)` no size cap. Fix: `ContentResolver.openFileDescriptor` + stat.size pre-check; cap at 20MB; downsample via `BitmapFactory.Options.inSampleSize` if over.
+- [x] ~~AUDIT-AND-007.~~ FIXED 2026-04-19 — see commit. **Dashboard LazyColumn missing key=** — `DashboardScreen.kt:493, 522` `items(state.myQueue)` + `items(state.needsAttention)` no key lambda; positional diffing loses scroll/expansion state. Fix: `items(list, key = { it.id })`.
+- [x] ~~AUDIT-AND-008.~~ FIXED 2026-04-19 — see commit. **Server URL stored before credentials verified** — `LoginScreen.kt:221` writes `authPreferences.serverUrl = url` after probe but before login verify. Fix: defer write to successful login completion callback, not probe callback.
+- [x] ~~AUDIT-AND-009.~~ FIXED 2026-04-19 — see commit. **CAMERA permission declared but never runtime-requested** — `AndroidManifest.xml:18` + `PhotoCaptureScreen.kt`. Fix: `rememberLauncherForActivityResult(RequestPermission())` + `ContextCompat.checkSelfPermission` before camera surface.
+- [x] ~~AUDIT-AND-011.~~ FIXED 2026-04-19 — `window.addFlags(FLAG_SECURE)` restored in `MainActivity.onCreate` before `setContent{}`; WindowManager already imported. No BackupCodesScreen composable exists (codes render via AlertDialog inside LoginScreen) so no DisposableEffect exemption needed.
+- [x] ~~AUDIT-AND-014.~~ FIXED 2026-04-19 — see commit. **isAuthEndpoint() logic allows stale token on 2FA** — `AuthInterceptor.kt:244-246` `return path.contains("/auth/login") && !path.contains("/auth/login/2fa")` means Bearer IS attached to 2FA submission. Fix: include both endpoints unconditionally — `return path.contains("/auth/login")` without the `!... /2fa` exclusion.
+- [x] ~~AUDIT-AND-015.~~ FIXED 2026-04-19 — `buildLogoutClient(logoutHost)` private helper replaces bare OkHttpClient: DEBUG+RFC1918/loopback gets LAN-only trust-all; release + cloud hosts use platform defaults. Fire-and-forget semantics preserved (errors swallowed with WARN log).
+- [x] ~~AUDIT-AND-016.~~ FIXED 2026-04-19 — see commit. **Biometric LaunchedEffect(Unit) won't re-trigger after recomposition** — `MainActivity.kt:168` runs once; background + restore can leave blank locked screen. Fix: key on `isLocked` state: `LaunchedEffect(isLocked) { if (isLocked) showBiometricPrompt() }`.
+- [x] ~~AUDIT-AND-018.~~ FIXED 2026-04-19 — see commit. **Offline-print uses Toast instead of Snackbar** — `TicketDetailScreen.kt:637` `android.widget.Toast` breaks UX contract; Android 12+ suppresses. Fix: `snackbarHostState.showSnackbar("Printing is not available offline")`.
+- [x] ~~AUDIT-MGT-001.~~ FIXED 2026-04-19 — deleted `packages/management/src/main.js` + `packages/management/src/preload.js`. Pre-checks: `package.json main` already → `dist/main/index.js`; `electron-builder.yml files` already covers only `dist/**/*`; zero residual references.
+- [x] ~~AUDIT-MGT-002.~~ FIXED 2026-04-19 — see commit. **assertRendererOrigin accepts ANY file:// URL** — `main/ipc/management-api.ts:100-107` only checks `url.startsWith('file://')`. Fix: compare against `app.getAppPath() + '/dist/renderer'` (or VITE_DEV_SERVER_URL in dev).
+- [x] ~~AUDIT-MGT-003.~~ FIXED 2026-04-19 — `SchemaCreateTenant` (slug regex, company_name/admin_email/admin_password bounds, plan enum, strict) + `SchemaUpdateConfig` (mirrors server ALLOWED_CONFIG_KEYS whitelist, strict) added; `.parse(data)` called before `apiRequest` in both handlers; Zod errors return `{success:false, message}` without forwarding to server.
+- [x] ~~AUDIT-MGT-004.~~ FIXED 2026-04-19 — `SchemaBackupSettings` (backup_path/schedule/retention_days/encryption_enabled, strict) added + `.parse(data)` called before apiRequest.
+- [x] ~~AUDIT-MGT-005.~~ FIXED 2026-04-19 — see commit. **system:get-disk-space + system:get-info + system:open-external skip assertRendererOrigin** — `main/ipc/system-info.ts:185-205, 209`. Fix: add `assertRendererOrigin(event)` as first line in each `system:*` handler.
+- [x] ~~AUDIT-MGT-006.~~ FIXED 2026-04-19 — see commit. **Cert pinning silently disabled when server.cert absent — no UI warning** — `main/services/api-client.ts:109-128`. Port-squatter on 443 can MITM pre-first-server-run. Fix: surface `certPinningDisabled` flag via IPC; renderer banner warns operator.
+- [x] ~~AUDIT-MGT-007.~~ FIXED 2026-04-19 — `resolveCertPath()` rewritten: `app.isPackaged ? path.join(process.resourcesPath, 'crm-source')` else monorepo root via `app.getAppPath()`; `electron-builder.yml extraResources` now includes `packages/server/certs/**` so cert is actually bundled in `resources/crm-source/packages/server/certs/`.
+- [x] ~~AUDIT-MGT-008.~~ FIXED 2026-04-19 — see commit. **super-admin:get-audit-log passes raw renderer query string** — `main/ipc/management-api.ts:606-612` constructs URL `?${p}` with only length-validated string. Fix: parse `params` into typed object with individual Zod fields (limit/offset/action/startDate/endDate); construct qs main-side from validated fields.
+- [x] ~~AUDIT-MGT-010.~~ FIXED 2026-04-19 — see commit. **useServerHealth auto-logout only fires on management:get-stats 401** — `renderer/src/hooks/useServerHealth.ts:59-70` other authenticated pages silently fail on expired JWT. Fix: centralise auth-expiry check in shared `handleApiResponse()` util, or subscribe to `authExpired` event from polling hook.
+- [x] ~~AUDIT-MGT-011.~~ FIXED 2026-04-19 — see commit. **service:kill-all double-confirm nested setConfirmAction race** — `renderer/src/pages/ServerControlPage.tsx:196-208` second dialog flashes + disappears due to setConfirmAction(null)→setConfirmAction({...}) race. Fix: implement step enum within ConfirmDialog OR dedicated KillAllDialog managing its own two-step flow.
+- [x] ~~AUDIT-MGT-012.~~ FIXED 2026-04-19 — see commit. **OverviewPage RequestRateGraph drawGraph closure stale after seed** — `renderer/src/pages/OverviewPage.tsx:167-334` seededRef effect has `[]` dep, captures initial `drawGraph` with avg=0. Fix: hoist `drawGraph` out of component OR pass `avg` as parameter rather than closure capture.
+- [x] ~~AUDIT-MGT-013.~~ FIXED 2026-04-19 — see commit. **BackupPage swallows ALL errors on refresh() — multi-tenant silent-fail catch too broad** — `renderer/src/pages/BackupPage.tsx:42-55`. Fix: check `res.status === 403`/FORBIDDEN to suppress expected multi-tenant; surface other failures via toast.error.
+- [x] ~~AUDIT-MGT-014.~~ FIXED 2026-04-19 — see commit. **update.bat spawned with full env — NODE_OPTIONS inherited** — `main/ipc/management-api.ts:807-813`. Fix: strip `ELECTRON_*`, `NODE_OPTIONS`, `NODE_PATH`: `const {ELECTRON_RUN_AS_NODE, NODE_OPTIONS, NODE_PATH, ...cleanEnv}=process.env; env:{...cleanEnv}`.
+- [x] ~~AUDIT-MGT-015.~~ FIXED 2026-04-19 — see commit. **LoginPage form inputs missing maxLength** — `renderer/src/pages/LoginPage.tsx:316-317, 341-342`. Large paste serialised via IPC before Zod rejection. Fix: `maxLength={256}` username, `maxLength={1024}` password.
+- [x] ~~SIGNUP-AUTO-LOGIN-TOKENS.~~ — migrated to DONETODOS 2026-04-19 (server-side tokens-on-signup shipped; iOS follow-up still needed per ios/TODO.md).
+- [x] ~~CROSS54. **Android Notifications page naming is ambiguous — inbox vs preferences:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AUD-20260414-H3.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AUD-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AUD-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AUD-20260414-M4.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AUD-20260414-M5.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AND-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AND-20260414-H5.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AND-20260414-H6.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AND-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~AND-20260414-M9.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD1. **Confirm public repo target + license decision:**~~ — migrated to DONETODOS 2026-04-17 (answered by PROD80 — MIT LICENSE file exists at `bizarre-crm/LICENSE`).
+- [x] ~~PROD3. **History depth audit (post `git init`):**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD4. **List + prune branches before publish:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD5. **List + prune tags before publish:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD6. **Drop / commit stashes:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD7. **Submodule check:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD8. **Untrack any DB/WAL/SHM files:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD9. **Untrack APK/AAB:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD10. **Untrack build output:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD11. **Cross-reference env vars vs `.env.example`:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD13. **VERIFY refresh token deleted from `sessions` on logout:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD14. **VERIFY 2FA server-side enforcement:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD15. **VERIFY rate limiting wired on `/auth/forgot-password` + `/signup`:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD16. **VERIFY admin session revocation UI exists:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD18. **Grep for routes querying by `id` alone w/o tenant scope:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD19. **Hunt SQL injection via template-string interpolation:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD20. **Audit `db.exec(...)` calls for dynamic input:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD21. **Deep-audit dynamic-WHERE routes:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD22. **Confirm validation library in use (zod/joi/express-validator):**~~ — migrated to DONETODOS 2026-04-17. **Zod installed but not yet used** — codebase currently uses custom `utils/validate.ts` helpers. Flagged as gap; schema validation work still required.
+- [x] ~~PROD23. **Spot-check 3 high-risk routes for `req.body` schema validation:**~~ — migrated to DONETODOS 2026-04-17. **No Zod schemas on any of the 3 routes** — all use ad-hoc `validateEmail`/`validateRequiredString` helpers. Gap flagged.
+- [x] ~~PROD24. **VERIFY multer `limits.fileSize` set in every upload route.**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD25. **VERIFY uploaded files served via controlled route (not raw filesystem path).**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD26. **Audit `dangerouslySetInnerHTML` usage in `packages/web/src`:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD27. **Email/SMS templates escape variables before substitution:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD28. **Path traversal grep:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict`~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD34. **VERIFY CSP config in `helmet({...})` block (`index.ts`):**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD36. **`credentials: true` only paired with explicit origins.**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD42. **Confirm per-tenant SQLite isolation:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD43. **`tenantResolver` fails closed:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD44. **Super-admin endpoints gated by separate auth check:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
+- [x] ~~PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD50. **VERIFY `services/crashTracker.ts` does NOT snapshot request bodies on crash.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD62. **`package-lock.json` committed at every package root.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD63. **No `node_modules/` tracked.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD66. **Strip local absolute paths from `scripts` blocks:** no `C:\Users\...`.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD67. **No sketchy `postinstall` scripts.**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD68.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD69.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD70. **`dist/` not in tree.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD72. **Audit `if (process.env.NODE_ENV === 'development')` blocks:** confirm none expose debug routes / dev-only endpoints / relaxed auth in prod.~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD73. **VERIFY `repair-tenant.ts` does no DB deletion.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD74. **Migrations idempotent + auto-run on boot:** re-running a completed migration must be safe.~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD75. **No migration deletes data without a guard.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD77.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD78.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD79.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD80.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD81.~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD82. **Manually read each `docs/*.md` before publish:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD83. **Verify scratch markdowns excluded:**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD84. **Repo-root markdown decision:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD85. **Hidden personal data sweep:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD86. **`pavel` / `bizarre` / owner-username intentionality audit:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD87. **Internal-IP scrub:**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD89. **Strip personal-opinion comments about people/customers/competitors.**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**~~ — migrated to DONETODOS 2026-04-17 (verified clean: seed.ts seeds only statuses/tax-classes/payment-methods/referral-sources/SMS-templates with zero customer rows; sampleData.ts uses synthetic demo names + 555-01xx reserved phones + @example.com emails; no `fixtures/` dirs exist in repo).
+- [x] ~~PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~PROD92. **Create `SECURITY.md` at repo root with private disclosure email.**~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:**~~ — migrated to DONETODOS 2026-04-17 (verified via `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` — matches `.gitignore:98:!.github/**/*.md` whitelist rule, NOT the `*.md` ignore rule; both `bug_report.md` and `feature_request.md` exist and will be staged when next `git add .github` runs).
+- [x] ~~PROD94. Optional: `CODE_OF_CONDUCT.md` for community engagement.~~ — migrated to DONETODOS 2026-04-17
+- [x] ~~PROD95. **CI workflows in `.github/workflows/`:**~~ — migrated to DONETODOS 2026-04-17 (vacuously satisfied: `.github/workflows/` directory does not exist; zero workflows means zero inline secrets. Re-open if/when CI is added).
+- [x] ~~PROD96. **Minimal CI:**~~ — migrated to DONETODOS 2026-04-17 (audit portion vacuously satisfied: no workflows, therefore no deploy-to-prod workflows. Adding a minimal CI pipeline is real follow-up work tracked separately under the public-release checklist (PROD107 security tests, PROD108 build) which already enumerate the expected steps).
+- [x] ~~PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.**~~ — migrated to DONETODOS 2026-04-17 (`packages/server/src/index.ts:3240-3247` wires both `process.on('uncaughtException', ...)` and `process.on('unhandledRejection', ...)` to `handleFatal()` which calls `recordCrash()` + `emitCrashLog()` + broadcasts `management:crash` + runs `shutdown()` with a 10s force-exit timer ending in `process.exit(1)`. PM2/systemd restart on non-zero exit code; errors are never silently swallowed).
+- [x] ~~PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/health` + `/api/v1/health` not `/healthz` — naming delta only; `packages/server/src/index.ts:1472-1487` wraps a single `db.prepare('SELECT 1').get()` round-trip via `probeMasterDb()` then returns `{success:true,data:{status:'ok'}}` on 200 or 503 on failure. No heap/size stats, no heavy query — LB-probe suitable).
+- [x] ~~PROD101. **`/readyz` (if present) checks DB connectivity.**~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/api/v1/health/ready` not `/readyz` — naming delta only; `packages/server/src/index.ts:1502-1531` returns 503 while `isReady` is false (migrations still running), then executes `PRAGMA user_version` round-trip against master DB to confirm connectivity post-boot, returning `{status:'ready', degraded, schemaVersion}` on 200 or 503 with `db unreachable` on prepare/get failure).
+- [x] ~~PROD102.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~PROD104.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~PROD105.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~PROD108.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~PROD116. **Migration prefix collision risk (Phase 99.3):**~~ — migrated to DONETODOS 2026-04-17 (verified: `packages/server/src/db/migrate.ts:24-26` calls `readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()` — lexicographic sort is deterministic across the three `049_*` files (`049_customer_is_active.sql` < `049_po_status_workflow.sql` < `049_sms_scheduled_and_archival.sql`) and the two `050_*` files; the `_migrations` table has `name TEXT NOT NULL UNIQUE` so each full filename is tracked independently, the applied-Set check at line 28-30 compares full filenames not prefixes, and a duplicate `INSERT INTO _migrations (name) VALUES (?)` would throw inside the transaction so no silent skip path exists).
+- [x] ~~PROD117. **`scripts/full-import.ts` + `scripts/reimport-notes.ts` are shop-specific (Phase 99.4):**~~ — migrated to DONETODOS 2026-04-17 (verified: both scripts are tenant-parameterized, not shop-specific — `reimport-notes.ts` requires `--tenant <slug>` and reads RD_API_KEY from env; `full-import.ts` reads `ADMIN_USERNAME`/`ADMIN_PASSWORD` from env. Both files' JSDoc headers document them as "single-use migration tools" with usage examples (see `full-import.ts:1-24` and `reimport-notes.ts:1-20`). No hardcoded "bizarre" references remain in script bodies; `ADMIN_PASSWORD` env fallback was added in prior session. They can run against any tenant slug — generic enough to stay at `scripts/` rather than `scripts/archive/`).
+- [x] ~~SEC-H20-stepup.~~ — migrated to DONETODOS 2026-04-19 (server-side `requireStepUpTotpSuperAdmin` middleware + wired at 10 destructive super-admin endpoints; FE TOTP prompt in management dashboard still to be wired).
+- [x] ~~SEC-H25.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H27. **Tracking token out of URL query** — hash at rest, move to `Authorization` header, add expiry. `tracking.routes.ts:99-141`. (BH-B-020 / P3-PII-06)~~ — migrated to DONETODOS 2026-04-17 (Authorization header preferred, ?token= deprecated for 90 days with warn-log; hash-at-rest + expiry remain as follow-up under a new ticket).
+- [x] ~~SEC-H32. **Tracking `/portal/:orderId/message` require portal session** for `customer_message` writes. `tracking.routes.ts:466`. (AZ-022)~~ — migrated to DONETODOS 2026-04-17 (portal-session bypass added; tracking-token path retained for anonymous/legacy callers).
+- [x] ~~SEC-H52. **Hash estimate `approval_token` at rest** (currently plaintext). `estimates.routes.ts:793-808`. (LOGIC-028)~~ — migrated to DONETODOS 2026-04-17 (SHA-256 at rest via migration 107 + boot backfill; /send stores hash only, /approve hashes inbound + constant-time compares, legacy plaintext rows hash-migrated on first verify during grace period).
+- [x] ~~SEC-H53.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H54. **Gate `/uploads/<slug>/*` behind auth;** signed-URL + HMAC(file_path+expires_at) for portal/MMS; separate `/admin-uploads` for licenses. `index.ts:845-865`. (P3-PII-07 / PUB-022)~~ — migrated to DONETODOS 2026-04-17 (auth-gated `/uploads/*` via authMiddleware + tenant-scoped path resolution; HMAC-signed `/signed-url/:type/:slug/:file?exp=...&sig=...` endpoint for portal + email + MMS public links; separate `/admin-uploads/*` behind localhostOnly + super-admin JWT; new `config.uploadsSecret` + `config.adminUploadsPath`; `.env.example` documented).
+- [x] ~~SEC-H55. **Audit `customer_viewed` on GET `/:id` + bulk list-with-stats.** `customers.routes.ts:88, 991-1019`. (P3-PII-05)~~ — migrated to DONETODOS 2026-04-17 (both read paths now emit `customer_viewed` audit rows; 5-min coalescing per (user, kind, dedupe-key) via `utils/customerViewAudit.ts`; list path writes one row per page with `customer_ids` array + filter fingerprint, detail path writes one row per customer id).
+- [x] ~~SEC-H56.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H57. **Retention rules for sms_messages, call_logs, email_messages, ticket_notes** (default 24mo, tenant-configurable). `services/retentionSweeper.ts:54-70`. (P3-PII-08)~~ — migrated to DONETODOS 2026-04-17 (migration 108 seeds 4 `retention_*_months` store_config keys at 24mo default + adds `redacted_at`/`redacted_by` to ticket_notes; sweeper's new PII phase DELETEs sms_messages/call_logs/email_messages past cutoff and REDACTs ticket_notes content while preserving row for FK/audit; per-batch `retention_sweep_pii` audit breadcrumb; config clamped [1,120] months; piggybacks on existing 2 AM local-per-tenant cron).
+- [x] ~~SEC-H58.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H59.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H60. **Backup restore filename slug+tenant_id match + HMAC over metadata** to prevent tampered `.db.enc` swap. `services/backup.ts:82-139, 432-458`, `super-admin.routes.ts:1161-1183`. (P3-PII-17, 18)~~ — migrated to DONETODOS 2026-04-17 (HMAC-signed `<name>.db.enc.meta.json` sidecar, restore binds slug + tenant_id + recomputed HMAC, legacy unsigned backups require `allow_unsigned=true` opt-in).
+- [x] ~~SEC-H62.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)~~ — migrated to DONETODOS 2026-04-17 (both endpoints now issue conditional UPDATE with `IS NULL` guards in WHERE; `changes === 0` returns 409 Conflict; pre-check SELECT retained for clean 404 + audit payload).
+- [x] ~~SEC-H65.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H69.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H70.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H71.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H73.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H76.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H77.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H81.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H82.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H83.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H85.~~ — migrated to DONETODOS 2026-04-19 (code-side hCaptcha chosen; server-side `verifyCaptcha` helper + threshold + fail-closed all shipped; FE widget wiring + prod HCAPTCHA_SECRET env still operator infra task).
+- [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H89.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H93.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H94.~~ — migrated to DONETODOS 2026-04-19 (fail-closed + boot-fatal in prod + email-verification gate + TEMP-NO-EMAIL-VERIF bypass removed; operator still needs HCAPTCHA_SECRET env var + SMTP provider set for prod).
+- [x] ~~SEC-H95.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H96.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H97.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H98.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H99.~~ — duplicate of AUD-20260414-H4, migrated to DONETODOS 2026-04-17.
+- [x] ~~SEC-H100.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H101.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H102.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H103.~~ — migrated to DONETODOS 2026-04-19.
+  - [ ] BLOCKED: multi-secret rotation spans config.ts, utils/configEncryption.ts, services/backup.ts, SEC-H52-era estimate-approval backfill, SEC-H60 backup-metadata HKDF fallback, SEC-H54 uploadsSecret derivation, all of which derive keys from `config.jwtSecret`. Proper split needs: (1) introduce the new env vars, (2) HKDF-derive from current JWT_SECRET as fallback for existing deployments, (3) dual-path every consumer during rollout, (4) key-rotation runbook. Multi-commit rollout; too large for single-item commit per CLAUDE.md rules.
+- [x] ~~SEC-H104.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H105.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H106.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H107.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H108.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H109.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H110.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H111.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H112.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H113.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H114.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H118.~~ — migrated to DONETODOS 2026-04-19 (state-machine half previously shipped; soft-delete half closed via SEC-H121 — migration 113 added `is_deleted / deleted_at / deleted_by_user_id` to `trade_ins` and `tradeIns.routes.ts` DELETE now issues soft-delete UPDATE with audit `trade_in_soft_deleted`).
+- [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H120.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H121.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H123.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-H124.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)~~ — migrated to DONETODOS 2026-04-17 (all mutating endpoints already validate slug shape + existence in master DB via `validateSlugParam` + `SELECT ... WHERE slug = ?`; invariant now codified in file header docstring).
+- [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-M26.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-M34.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-M35.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~SEC-M48.~~ — migrated to DONETODOS 2026-04-19.
+- [x] ~~SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)~~ — migrated to DONETODOS 2026-04-17 (auth.routes.ts scope only; super-admin.routes.ts still pending).
+- [x] ~~SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
+- [x] ~~SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)~~ — migrated to DONETODOS 2026-04-17.
+- [x] ~~SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)~~ — migrated to DONETODOS 2026-04-16.
 # Completed Tasks
 
 ## 2026-04-19

@@ -19,6 +19,16 @@ function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
+function safeJsonParseArray(s: string | null | undefined): unknown[] {
+  if (!s) return [];
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
 // SEC (PL6): Every write/billing route here must verify the actor is an admin,
 // regardless of whatever middleware the router is mounted under. Relying on
 // the mount point means a future routing refactor can silently expose tier
@@ -53,7 +63,7 @@ router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
   // Parse benefits JSON
   const shaped = tiers.map(t => ({
     ...t,
-    benefits: t.benefits ? JSON.parse(t.benefits) : [],
+    benefits: safeJsonParseArray(t.benefits),
   }));
   res.json({ success: true, data: shaped });
 }));
@@ -129,8 +139,8 @@ router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Respo
     ORDER BY cs.created_at DESC LIMIT 1
   `, customerId);
 
-  if (subscription?.benefits) {
-    subscription.benefits = JSON.parse(subscription.benefits);
+  if (subscription) {
+    subscription.benefits = safeJsonParseArray(subscription.benefits);
   }
 
   res.json({ success: true, data: subscription || null });

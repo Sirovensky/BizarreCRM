@@ -18,6 +18,7 @@ import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
+import { tryAutoRespond } from '../services/smsAutoResponderMatcher.js';
 
 const logger = createLogger('sms.routes');
 
@@ -836,6 +837,16 @@ router.post('/send', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Templates CRUD
 // ---------------------------------------------------------------------------
+
+// SCAN-532: template mutations are manager/admin-only — ordinary staff must
+// not be able to create, edit, or delete shared SMS templates.
+function requireManagerOrAdmin(req: Request): void {
+  const role = (req as any).user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Manager or admin role required', 403);
+  }
+}
+
 router.get('/templates', async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name');
@@ -848,6 +859,7 @@ router.get('/templates', async (req, res) => {
 });
 
 router.post('/templates', async (req, res) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category } = req.body;
   if (!name || !content) throw new AppError('Name and content required', 400);
@@ -857,6 +869,7 @@ router.post('/templates', async (req, res) => {
 });
 
 router.put('/templates/:id', async (req, res) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category, is_active } = req.body;
   await adb.run(`
@@ -870,6 +883,7 @@ router.put('/templates/:id', async (req, res) => {
 });
 
 router.delete('/templates/:id', async (req, res) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   await adb.run('UPDATE sms_templates SET is_active = 0 WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Template deleted' } });
@@ -878,6 +892,10 @@ router.delete('/templates/:id', async (req, res) => {
 router.post('/preview-template', async (req, res) => {
   const adb = req.asyncDb;
   const { template_id, vars } = req.body;
+  // SCAN-535: sms_templates has no tenant_id column (see migration 001_initial.sql).
+  // Tenant isolation is enforced at the DB-file level — each tenant has its own
+  // SQLite file so `req.asyncDb` already scopes every query to the correct tenant.
+  // Per-row tenant_id scoping is therefore not needed here.
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', template_id);
   if (!tpl) throw new AppError('Template not found', 404);
   const preview = substituteVars(tpl.content, vars || {});
@@ -1050,9 +1068,60 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
       }
     }
 
-    // Match phone to customer
+    // Auto-responder: attempt rule match on non-opt-out inbound messages.
+    // Wrapped in try/catch so any matcher failure never breaks the 2xx webhook response.
+    // Skip entirely if the inbound body was an opt-out keyword (STOP/UNSUBSCRIBE/CANCEL)
+    // so we don't auto-reply after the customer has already opted out.
+    if (!OPT_OUT_KEYWORDS.includes(bodyTrimmed)) {
+      // SCAN-530: check sms_opt_in before firing auto-responder — a customer
+      // who has set opt_in=0 must not receive any automated outbound message.
+      const arOptInRow = await adb.get<{ sms_opt_in: number | null }>(
+        'SELECT sms_opt_in FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
+        convPhone, convPhone,
+      );
+      const arOptedOut = arOptInRow && arOptInRow.sms_opt_in === 0;
+
+      if (arOptedOut) {
+        logger.info('sms auto-responder skipped — customer opted out', {
+          fromRedacted: redactPhone(from),
+        });
+      } else {
+      try {
+        const match = await tryAutoRespond(adb, {
+          from: convPhone,
+          body: msgBody,
+          tenant_slug: (req as any).tenantSlug ?? undefined,
+        });
+        if (match.matched && match.response) {
+          const { sendSmsTenant } = await import('../services/smsProvider.js');
+          await sendSmsTenant(db, (req as any).tenantSlug ?? null, convPhone, match.response);
+
+          // Record the auto-responder outbound message
+          await adb.run(`
+            INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto-responder', datetime('now'), datetime('now'))
+          `, to || '', convPhone, convPhone, match.response);
+
+          audit(db, 'sms_auto_responder_matched', null, 'webhook', {
+            responder_id: match.responder_id,
+            inbound_from: redactPhone(from),
+          });
+          logger.info('sms auto-responder fired', {
+            responder_id: match.responder_id,
+            fromRedacted: redactPhone(from),
+          });
+        }
+      } catch (autoResponderErr) {
+        logger.error('sms auto-responder block failed', {
+          error: autoResponderErr instanceof Error ? autoResponderErr.message : String(autoResponderErr),
+        });
+      }
+      } // end: !arOptedOut
+    }
+
+    // Match phone to customer — include sms_opt_in so SCAN-531 can reuse this row.
     const customer = await adb.get<any>(
-      'SELECT id, first_name, last_name FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
+      'SELECT id, first_name, last_name, sms_opt_in FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
       convPhone, convPhone
     );
 
@@ -1167,6 +1236,13 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
           }
 
           if (isOutsideHours) {
+            // SCAN-531: skip auto-reply if customer has opted out of SMS.
+            // `customer` already includes sms_opt_in (fetched above).
+            if (customer && customer.sms_opt_in === 0) {
+              logger.info('sms auto-reply skipped — customer opted out', {
+                fromRedacted: redactPhone(from),
+              });
+            } else {
             const [storeNameRow, storePhoneRow] = await Promise.all([
               adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
               adb.get<any>("SELECT value FROM store_config WHERE key = 'store_phone'"),
@@ -1187,6 +1263,7 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             `, to || '', from, convPhone, replyBody);
             // SEC-M56: redact sender — full inbound phone is customer PII.
             logger.info('sms auto-reply sent off-hours', { fromRedacted: redactPhone(from) });
+            } // end: !arOptedOut (SCAN-531)
           }
         }
       }

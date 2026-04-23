@@ -24,6 +24,7 @@ import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { logActivity } from '../utils/activityLog.js';
 
 type AnyRow = Record<string, any>;
 
@@ -760,7 +761,7 @@ router.post(
 
     for (const id of customer_ids) {
       const customer = await adb.get<AnyRow>(
-        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in FROM customers WHERE id = ? AND is_deleted = 0',
+        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in, sms_consent_marketing FROM customers WHERE id = ? AND is_deleted = 0',
         Number(id));
 
       if (!customer) {
@@ -775,10 +776,10 @@ router.post(
         continue;
       }
 
-      // ENR-SMS2: Validate SMS opt-in for bulk/broadcast messages
-      if (!customer.sms_opt_in) {
+      // ENR-SMS2: Validate SMS opt-in and marketing consent for bulk/broadcast messages
+      if (!customer.sms_opt_in || customer.sms_consent_marketing === 0) {
         results.skipped++;
-        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in not enabled' });
+        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in or marketing consent not enabled' });
         continue;
       }
 
@@ -1011,6 +1012,14 @@ router.post(
 
     // Fire automations (async, non-blocking)
     runAutomations(db, 'customer_created', { customer: { ...(customer as any), phones, emails } });
+
+    // SCAN-522: fire-and-forget activity log
+    logActivity(adb, {
+      actor_user_id: req.user!.id,
+      entity_kind: 'customer',
+      entity_id: customerId,
+      action: 'created',
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,

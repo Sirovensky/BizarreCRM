@@ -12,6 +12,9 @@ public struct CampaignStatusBadge: View {
     private var bg: Color {
         switch status {
         case .draft:      return .bizarreSurface2
+        case .active:     return .bizarreSuccess
+        case .paused:     return .bizarreWarning
+        case .archived:   return .bizarreSurface2
         case .scheduled:  return .bizarreTeal
         case .sending:    return .bizarreWarning
         case .sent:       return .bizarreSuccess
@@ -21,9 +24,10 @@ public struct CampaignStatusBadge: View {
 
     private var fg: Color {
         switch status {
-        case .draft:  return .bizarreOnSurface
-        case .failed: return .white
-        default:      return .black
+        case .draft:     return .bizarreOnSurface
+        case .archived:  return .bizarreOnSurfaceMuted
+        case .failed:    return .white
+        default:         return .black
         }
     }
 

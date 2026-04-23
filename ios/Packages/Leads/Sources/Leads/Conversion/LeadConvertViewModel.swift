@@ -12,7 +12,8 @@ public final class LeadConvertViewModel {
     public enum State: Sendable {
         case idle
         case submitting
-        case success(customerId: Int64, ticketId: Int64?)
+        /// Conversion succeeded; ticket has been created.
+        case success(ticketId: Int64, customerId: Int64?)
         case failed(String)
 
         public var isSuccess: Bool {
@@ -41,12 +42,14 @@ public final class LeadConvertViewModel {
         guard case .idle = state else { return }
         state = .submitting
         do {
+            // The convert endpoint always sends `createTicket: true` effectively
+            // because the server always creates a ticket on conversion.
+            // The `createTicket` flag is kept in the body for API contract completeness.
             let body = LeadConvertBody(createTicket: createTicket)
             let response = try await api.convertLead(id: leadId, body: body)
-            // Mark lead as won via status update (fire-and-forget).
-            let wonBody = LeadStatusUpdateBody(status: "won")
-            try? await api.updateLeadStatus(id: leadId, body: wonBody)
-            state = .success(customerId: response.customerId, ticketId: response.ticketId)
+            // Server transitions the lead to 'converted' automatically; no
+            // additional status PATCH needed.
+            state = .success(ticketId: response.ticketId, customerId: response.customerId)
         } catch {
             AppLog.ui.error("Lead convert failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

@@ -426,7 +426,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       "SELECT id, slug, status, db_path, plan, max_tickets_month, max_users, storage_limit_mb, trial_started_at, trial_ends_at FROM tenants WHERE slug = ?"
     ).get(slug) as typeof tenant;
   } catch (err) {
-    console.error('[TenantResolver] DB query failed for slug:', slug, err);
+    log.error('tenant_db_query_failed', { slug, err: err instanceof Error ? err.message : String(err) });
     next(); // Let the request through — better to serve static assets than crash
     return;
   }
@@ -488,7 +488,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
     const tenantDbPath = path.join(config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'), `${tenant.slug}.db`);
     req.asyncDb = createAsyncDb(tenantDbPath);
   } catch (err) {
-    console.error(`[Tenant] Failed to open DB for ${tenant.slug}:`, err);
+    log.error('tenant_db_open_failed', { slug: tenant.slug, err: err instanceof Error ? err.message : String(err) });
     // Invalidate cached plan so next request retries fresh
     planCache.delete(tenant.id);
     res.status(500).json(errorBody(

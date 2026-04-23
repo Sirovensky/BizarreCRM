@@ -13,6 +13,14 @@ const EXPENSE_CATEGORIES = [
   'Travel', 'Maintenance', 'Taxes & Fees', 'Other',
 ] as const;
 
+interface ExpenseFormPayload {
+  category: string;
+  amount: number;
+  description?: string;
+  date?: string;
+  location_id?: number;
+}
+
 export function ExpensesPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -38,7 +46,7 @@ export function ExpensesPage() {
   const categories = data?.data?.data?.categories || [];
 
   const createMut = useMutation({
-    mutationFn: (d: any) => editingId ? expenseApi.update(editingId, d) : expenseApi.create(d),
+    mutationFn: (d: ExpenseFormPayload) => editingId ? expenseApi.update(editingId, d) : expenseApi.create(d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       toast.success(editingId ? 'Expense updated' : 'Expense added');

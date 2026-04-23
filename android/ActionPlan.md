@@ -4094,3 +4094,519 @@ All events target tenant server (§32).
 ## Changelog
 
 - 2026-04-20 — Initial skeleton. Android-native adaptation of iOS ActionPlan. Content fills in batch; every item starts `[ ]`.
+
+## Web-Parity Backend Contracts (2026-04-23)
+
+New server endpoints built to close mobile → web parity gaps flagged in `todo.md` (SCAN-472, SCAN-475, SCAN-478-482, SCAN-484-489, SCAN-497). All routes require a Bearer JWT (`authMiddleware` applied at parent mount). Per-endpoint role gates + rate-limits + input validation are enforced inside each router. Response shape is the project convention `{ success: true, data: <payload> }`.
+
+Migrations added this wave: **120_expenses_approval_mileage_perdiem.sql**, **121_shifts_timeoff_timesheet.sql**, **122_inventory_variants_bundles.sql**, **123_recurring_invoices.sql**, **124_activity_notifprefs_heldcarts.sql**.
+
+Cron added: `startRecurringInvoicesCron` — fires every 15 min from `index.ts` post-listen, scanning every tenant DB for active `invoice_templates` whose `next_run_at <= now()`, generating invoices, advancing the cycle.
+
+---
+
+### 1. Expense Approvals + Mileage + Per-Diem (SCAN-480/481/482)
+
+Base: `/api/v1/expenses/…`. Approve/deny require manager or admin. Mileage/per-diem use the same approval workflow as general expenses.
+
+**GET /** — extended with two new query filters:
+| Param | Values |
+|---|---|
+| `status` | `pending` / `approved` / `denied` |
+| `expense_subtype` | `general` / `mileage` / `perdiem` |
+
+**POST /mileage** — compute `amount_cents = round(miles * rate_cents)`.
+```json
+{
+  "vendor": "Personal vehicle",
+  "description": "Customer site visit",
+  "incurred_at": "2026-04-23",
+  "miles": 42.5,
+  "rate_cents": 67,
+  "category": "Travel",
+  "customer_id": 101
+}
+```
+Constraints: `miles` 0–1000, `rate_cents` 1–50000, `customer_id` optional.
+
+**POST /perdiem** — compute `amount_cents = days * rate_cents`.
+```json
+{
+  "description": "Conference travel — Atlanta",
+  "incurred_at": "2026-04-20",
+  "days": 3,
+  "rate_cents": 7500,
+  "category": "Per Diem"
+}
+```
+Constraints: `days` 1–90, `rate_cents` 1–50000.
+
+**POST /:id/approve** — manager/admin. Empty body. Sets `status=approved` + `approved_by_user_id` + `approved_at`.
+
+**POST /:id/deny** — manager/admin. Body `{ "reason": "..." }` (≤500 chars). Sets `status=denied` + `denial_reason`.
+
+Response shapes mirror existing expense row + new columns (`status`, `expense_subtype`, `mileage_miles`, `mileage_rate_cents`, `perdiem_days`, `perdiem_rate_cents`, `approved_by_user_id`, `approved_at`, `denial_reason`).
+
+---
+
+### 2. Shift Schedule + Time-Off + Timesheet (SCAN-475/484/485)
+
+#### Shifts — `/api/v1/schedule`
+- `GET /shifts?user_id=&from_date=&to_date=` — non-managers see own only.
+- `POST /shifts` (manager+) `{ user_id, start_at, end_at, role_tag?, location_id?, notes? }`.
+- `PATCH /shifts/:id` (manager+) — partial.
+- `DELETE /shifts/:id` (manager+).
+- `POST /shifts/:id/swap-request` (shift owner only) `{ target_user_id }` → returns pending swap row.
+- `POST /swap/:requestId/accept` (target user) — transfers shift.user_id.
+- `POST /swap/:requestId/decline` (target user).
+- `POST /swap/:requestId/cancel` (requester only, only while pending).
+
+Example create:
+```json
+POST /api/v1/schedule/shifts
+{ "user_id": 3, "start_at": "2026-05-01T09:00:00", "end_at": "2026-05-01T17:00:00",
+  "role_tag": "tech", "location_id": 1, "notes": "Opening shift" }
+```
+
+#### Time-off — `/api/v1/time-off`
+- `POST /` — self-service `{ start_date, end_date, kind: "pto"|"sick"|"unpaid", reason? }`.
+- `GET /?user_id=&status=` — self by default; manager+ sees all.
+- `POST /:id/approve` (manager+).
+- `POST /:id/deny` (manager+) `{ reason? }`.
+
+Writes dual-column (`approver_user_id` + legacy `approved_by_user_id`, `decided_at` + legacy `approved_at`) for migration-096 backward compatibility.
+
+#### Timesheet — `/api/v1/timesheet`
+- `GET /clock-entries?user_id=&from_date=&to_date=` — manager+ or self.
+- `PATCH /clock-entries/:id` (manager+) `{ clock_in?, clock_out?, notes?, reason }`. `reason` REQUIRED. Audit row inserted into `clock_entry_edits` with before/after JSON. `audit()` fires with `event='clock_entry_edited'`.
+
+---
+
+### 3. Inventory Variants + Bundles (SCAN-486/487)
+
+Mutating endpoints gated by `requirePermission('inventory.adjust')`. Money stored as INTEGER cents per SEC-H34 policy.
+
+#### Variants — `/api/v1/inventory-variants`
+- `GET /items/:itemId/variants?active_only=true|false` — list.
+- `POST /items/:itemId/variants` `{ sku, variant_type, variant_value, retail_price_cents, cost_price_cents?, in_stock? }`.
+- `PATCH /variants/:id` — partial.
+- `DELETE /variants/:id` — soft (`is_active=0`).
+- `PATCH /variants/:id/stock` `{ delta, reason }` — atomic in tx. Rejects negative result.
+
+Example:
+```json
+POST /api/v1/inventory-variants/items/42/variants
+{ "sku": "SCRN-IPHONE14-BLK", "variant_type": "color", "variant_value": "Black",
+  "retail_price_cents": 8999, "cost_price_cents": 4500, "in_stock": 10 }
+```
+
+#### Bundles — `/api/v1/inventory-bundles`
+- `GET /?page=&pagesize=&is_active=&keyword=` — list.
+- `GET /:id` — detail + resolved items array.
+- `POST /` `{ name, sku, retail_price_cents, description?, items:[{item_id, variant_id?, qty}] }`.
+- `PATCH /:id` — partial.
+- `DELETE /:id` — soft.
+- `POST /:id/items` `{ item_id, variant_id?, qty }`.
+- `DELETE /:id/items/:bundleItemId`.
+
+Audit events: `inventory_variant_*` (created/updated/deactivated/stock_adjusted), `inventory_bundle_*`.
+
+---
+
+### 4. Recurring Invoices + Credit Notes (SCAN-478/479/489) + cron
+
+#### Recurring Invoices — `/api/v1/recurring-invoices` (admin-only writes)
+- `GET /?page=&pagesize=&status=` — list templates.
+- `GET /:id` — detail + last 20 runs from `invoice_template_runs`.
+- `POST /` `{ name, customer_id, interval_kind: "daily"|"weekly"|"monthly"|"yearly", interval_count, start_date, line_items:[{description, quantity, unit_price_cents, tax_class_id?}], notes_template? }`.
+- `PATCH /:id` — partial (`status`, `next_run_at`, `notes_template`, `line_items`).
+- `POST /:id/pause` | `/resume` | `/cancel` — lifecycle transitions. Audited.
+
+Example:
+```json
+POST /api/v1/recurring-invoices
+{ "name": "Monthly hosting fee", "customer_id": 42,
+  "interval_kind": "monthly", "interval_count": 1, "start_date": "2026-05-01",
+  "line_items": [{ "description": "Hosting", "quantity": 1, "unit_price_cents": 4999 }] }
+```
+
+#### Cron — `startRecurringInvoicesCron`
+Runs every 15 minutes. Per tenant DB it executes:
+1. Atomically advance `next_run_at` (UPDATE ... WHERE next_run_at <= now()) → double-fire protection.
+2. Create `invoices` + `invoice_line_items` rows.
+3. Insert `invoice_template_runs` row (`succeeded=1`).
+On error: record `succeeded=0` + `error_message` and move on.
+
+#### Credit Notes — `/api/v1/credit-notes` (manager+ for apply/void)
+- `GET /?page=&pagesize=&status=&customer_id=`.
+- `GET /:id`.
+- `POST /` `{ customer_id, original_invoice_id, amount_cents, reason }`.
+- `POST /:id/apply` `{ invoice_id }` — tx: reduce `invoices.amount_due` by the credit; mark `status=applied`; audit.
+- `POST /:id/void` — only `open` notes. Audit.
+
+---
+
+### 5. Activity Feed + Notification Preferences + Held Carts (SCAN-488/472/497)
+
+#### Activity Feed — `/api/v1/activity`
+- `GET /?cursor=&limit=&entity_kind=&actor_user_id=` — cursor-based (monotonic id). Non-managers: `actor_user_id` clamped to `req.user.id`. Default 25, max 100.
+- `GET /me` — shortcut.
+
+Response:
+```json
+{ "success": true, "data": {
+  "events": [
+    { "id": 42, "actor_user_id": 1, "entity_kind": "ticket", "entity_id": 519,
+      "action": "status_changed", "created_at": "2026-04-23 14:00:00",
+      "actor_first_name": "Pavel", "actor_last_name": "Ivanov",
+      "metadata": { "from": "open", "to": "in_progress" } }
+  ],
+  "next_cursor": "41"
+}}
+```
+
+Helper `logActivity(adb, {...})` exported from `utils/activityLog.ts` — call from any route handler to emit an event (never throws; logs warn on failure).
+
+#### Notification Preferences — `/api/v1/notification-preferences`
+- `GET /me` — returns matrix backfilled with `enabled=true` defaults.
+- `PUT /me` `{ preferences: [{ event_type, channel, enabled, quiet_hours? }, ...] }` — batch upsert.
+
+Valid `event_type` (20): `ticket_created`, `ticket_status`, `invoice_created`, `payment_received`, `estimate_sent`, `estimate_signed`, `customer_created`, `lead_new`, `appointment_reminder`, `inventory_low`, `backup_complete`, `backup_failed`, `marketing_campaign`, `dunning_step`, `security_alert`, `system_update`, `review_received`, `refund_processed`, `expense_submitted`, `time_off_requested`.
+Valid `channel` (4): `push`, `in_app`, `email`, `sms`.
+
+Payload cap: 32 KB total. Rate limit 30/min.
+
+#### Held Carts — `/api/v1/pos/held-carts`
+- `GET /` — own active carts (admins may add `?all=1`).
+- `GET /:id` — own or admin.
+- `POST /` `{ cart_json, label?, workstation_id?, customer_id?, total_cents? }` — `cart_json` ≤ 64 KB.
+- `DELETE /:id` — soft via `discarded_at`. Audited.
+- `POST /:id/recall` — sets `recalled_at`, returns full row (client reads `cart_json` to restore).
+
+---
+
+### Security checklist applied to every endpoint in this wave
+
+- Integer IDs validated `Number.isInteger && > 0` before SQL.
+- Parameterized queries only — no string-interpolated SQL.
+- Length caps on every string field + byte caps on JSON bodies.
+- Role gates via `requireAdmin` / `requireManagerOrAdmin` / `requirePermission` from `middleware/auth.ts`.
+- Rate limits via `checkWindowRate` + `recordWindowAttempt` (not deprecated `recordWindowFailure`).
+- Audit writes via `audit(db, {...})` for every sensitive operation.
+- Money columns `INTEGER` cents with `CHECK >= 0` at schema level.
+- Soft deletes (`is_active=0` / `discarded_at`) to preserve FK integrity where needed.
+- Errors thrown via `AppError(msg, status)` — no raw `throw` leaking stack traces.
+
+### Registration order in `packages/server/src/index.ts`
+
+After existing `bench` mount, authenticated routes registered in this order:
+`/schedule`, `/time-off`, `/timesheet`, `/inventory-variants`, `/inventory-bundles`, `/recurring-invoices`, `/credit-notes`, `/activity`, `/notification-preferences`, `/pos/held-carts`.
+
+## Web-Parity Backend Contracts — Wave 2 (2026-04-23)
+
+Second wave of endpoints built to close mobile → web parity gaps. Closes SCAN-464, 465, 468, 469, 470, 490, 494, 495, 498. All routes JWT-gated (authMiddleware applied at parent mount in index.ts) EXCEPT the explicitly-public estimate-sign endpoints — those use signed single-use tokens as the credential.
+
+Migrations added: **125_labels_shared_device.sql**, **126_estimate_signatures_export_schedules.sql**, **127_sms_autoresponders_groups.sql**, **128_checklist_sla.sql**, **129_ticket_signatures_receipt_ocr.sql**.
+
+Crons added: **startDataExportScheduleCron** (hourly), **startSlaBreachCron** (every 5 min).
+
+---
+
+### 1. Ticket Labels + Shared-Device Mode (SCAN-470 / SCAN-469)
+
+#### Labels — `/api/v1/ticket-labels` (manager+ on writes)
+- `GET /?show_inactive=true|false` — list.
+- `POST /` `{ name, color_hex?, description?, sort_order? }` — 409 on UNIQUE(name) collision.
+- `PATCH /:id` — partial.
+- `DELETE /:id` — soft (`is_active=0`). Assignments preserved via CASCADE.
+- `POST /tickets/:ticketId/assign` `{ label_id }` — 409 if already assigned, 422 if label deactivated.
+- `DELETE /tickets/:ticketId/labels/:labelId`.
+- `GET /tickets/:ticketId` — list labels on ticket.
+
+Color validated against `/^#[0-9A-Fa-f]{6}$/`. Rate-limit 60 writes/min/user.
+
+#### Shared-Device Mode — settings config keys (admin PUT, any authed GET)
+Accessed via existing `/api/v1/settings/config`. New keys added to `ALLOWED_CONFIG_KEYS`:
+- `shared_device_mode_enabled` — `"0"` / `"1"` (default `"0"`)
+- `shared_device_auto_logoff_minutes` — integer string (default `"0"` disables)
+- `shared_device_require_pin_on_switch` — `"0"` / `"1"` (default `"1"`)
+
+Seed row `INSERT OR IGNORE` in migration 125 sets safe defaults.
+
+---
+
+### 2. Estimate E-Sign Public URL (SCAN-494) + Data-Export Schedules (SCAN-498)
+
+#### Estimate Sign Token
+Format: `base64url(estimateId) + '.' + hex(HMAC-SHA256(key, estimateId + '.' + expiresTs))`. Signing key: `ESTIMATE_SIGN_SECRET` env var (≥32 chars) OR HKDF-SHA256 over `JWT_SECRET` with info `estimate-sign`. Persisted as `sha256(rawToken)` in `estimate_sign_tokens.token_hash` — raw token returned to caller once, never stored.
+
+#### Authed endpoints
+- `POST /api/v1/estimates/:id/sign-url` (manager+) body `{ ttl_minutes?=4320 }` → `{ url, expires_at, estimate_id }`. Rate-limit 5/hr/estimate.
+- `GET /api/v1/estimates/:id/signatures` (manager+) — lists captured signatures (data URL omitted from list view).
+
+#### Public endpoints — NO JWT, token is credential, 10 req/hr per IP
+- `GET /public/api/v1/estimate-sign/:token` — returns estimate summary (line items, totals, customer name). 410 if consumed/expired.
+- `POST /public/api/v1/estimate-sign/:token` body `{ signer_name, signer_email?, signature_data_url }` — atomic tx marks token consumed + inserts `estimate_signatures` row + sets `estimates.status='signed'`. Size cap: decoded image ≤ 200 KB.
+
+#### Data-Export Schedules — `/api/v1/data-export/schedules` (admin-only)
+- `GET /`, `GET /:id` (with last 20 runs), `POST /`, `PATCH /:id`.
+- `POST /:id/pause` | `/resume` | `/cancel`.
+
+Create payload:
+```json
+{ "name": "Weekly full backup", "export_type": "full",
+  "interval_kind": "weekly", "interval_count": 1,
+  "start_date": "2026-04-28T00:00:00Z",
+  "delivery_email": "owner@example.com" }
+```
+`export_type`: `full|customers|tickets|invoices|inventory|expenses`. `interval_kind`: `daily|weekly|monthly`.
+
+#### Cron — `startDataExportScheduleCron`
+Hourly. Claims due schedules via atomic UPDATE. Heartbeat row inserted into `data_export_schedule_runs`. Full generation deferred until `dataExport.routes.ts` streaming logic is extracted to a service.
+
+---
+
+### 3. SMS Auto-Responders + Group Messaging (SCAN-495)
+
+#### Auto-Responders — `/api/v1/sms/auto-responders` (manager+ writes)
+- `GET /`, `GET /:id` (+ last 20 matches), `POST /`, `PATCH /:id`, `DELETE /:id`, `POST /:id/toggle`.
+
+`rule_json` shape:
+```json
+{ "type": "keyword", "match": "STOP", "case_sensitive": false }
+```
+or
+```json
+{ "type": "regex", "match": "\\bhours?\\b", "case_sensitive": false }
+```
+
+#### Groups — `/api/v1/sms/groups`
+- `GET /`, `GET /:id` (paginated members), `POST /`, `PATCH /:id`, `DELETE /:id` (manager+).
+- `POST /:id/members` (static groups only) `{ customer_ids: number[] }` (max 500) → `{ added, skipped }`.
+- `DELETE /:id/members/:customerId`.
+- `POST /:id/send` `{ body, send_at? }` → 202 with queued `sms_group_sends` row. Rate-limit 5/day/group. TCPA opt-in filter applied.
+- `GET /:id/sends` — past sends + status.
+
+#### `tryAutoRespond(adb, {from, body, tenant_slug?})` helper — exported from `services/smsAutoResponderMatcher.ts`. Returns `{ matched: boolean, response?, responder_id? }`. Never throws. Caller decides to send.
+
+---
+
+### 4. Daily Checklist (SCAN-468) + SLA Tracking (SCAN-464)
+
+#### Checklist — `/api/v1/checklists`
+- `GET /templates?kind=open|close|midday|custom&active=1`, `POST /templates` (manager+), `PATCH /templates/:id` (manager+), `DELETE /templates/:id` (manager+ soft).
+- `GET /instances?user_id=&template_id=&from_date=&to_date=` (non-managers scoped to self).
+- `POST /instances` `{ template_id }` → new instance with `status='in_progress'`, empty `completed_items_json="[]"`.
+- `PATCH /instances/:id` `{ completed_items_json?, notes?, status? }` — owner or manager+.
+- `POST /instances/:id/complete` → marks `status='completed'` + `completed_at`.
+- `POST /instances/:id/abandon`.
+
+`items_json` shape:
+```json
+[ { "id": "unlock_door", "label": "Unlock front door", "required": true } ]
+```
+
+#### SLA — `/api/v1/sla`
+- `GET /policies?active=1`, `POST /policies` (manager+), `PATCH /policies/:id` (manager+), `DELETE /policies/:id` (manager+ soft).
+- `GET /tickets/:ticketId/status` — computed SLA state: `{ policy, first_response_due_at, resolution_due_at, remaining_ms, breached, breach_log_entries }`.
+- `GET /breaches?from=&to=&breach_type=` (manager+).
+
+Policy payload:
+```json
+{ "name": "High Priority SLA", "priority_level": "high",
+  "first_response_hours": 2, "resolution_hours": 24,
+  "business_hours_only": true }
+```
+`priority_level`: `low|normal|high|critical`. Only one active policy per level (409 collision).
+
+`tickets` table extended with `sla_policy_id`, `sla_first_response_due_at`, `sla_resolution_due_at`, `sla_breached`. Call `computeSlaForTicket(adb, {...})` from ticket create/update (future wave).
+
+#### Cron — `startSlaBreachCron`
+Every 5 min. Per tenant: scans for first-response + resolution breaches (idempotent — only flips `sla_breached=0→1`). Inserts `sla_breach_log` rows. Broadcasts `sla_breached` WS event (best-effort; failures logged not rethrown).
+
+---
+
+### 5. Ticket Signatures (SCAN-465) + Expense Receipt OCR (SCAN-490)
+
+#### Signatures — `/api/v1/tickets/:ticketId/signatures`
+- `GET /` — list (data URL omitted from list).
+- `POST /` `{ signature_kind, signer_name, signer_role?, signature_data_url, waiver_text?, waiver_version? }`. Rate-limit 30/min/user. `signature_data_url` must start with `data:image/png;base64,` or `data:image/jpeg;base64,`; length ≤ 500k chars. IP from `req.socket.remoteAddress` (not `req.ip` — SCAN-194 anti-spoof). user_agent capped 500 chars.
+- `GET /:signatureId` — full row (includes data URL).
+- `DELETE /:signatureId` (admin+).
+
+`signature_kind`: `check_in|check_out|waiver|payment`. `signer_role`: `customer|technician|manager`.
+
+#### Receipt OCR — `/api/v1/expenses/:expenseId/receipt`
+Expense owner OR manager+ required.
+- `POST /` multipart `receipt` field. MIME allowlist: jpeg/png/webp/heic. Max 10 MB. Rate-limit 20/min. Stored at `packages/server/uploads/{tenant_slug}/receipts/{hex16}.{ext}`. `ocr_status='pending'` on insert.
+- `GET /` — returns current receipt + OCR state.
+- `DELETE /` — deletes file + row + NULLs the 4 `expenses.receipt_*` columns.
+
+OCR enum: `pending|processing|completed|failed`. Real OCR processor wired future wave — current `receiptOcr.ts` stub only enqueues + logs.
+
+---
+
+### Security checklist (uniform across wave 2)
+
+- Integer IDs: `validateId` / `validateIntId` accepts `unknown`, narrows, requires `Number.isInteger && > 0`.
+- Parameterized SQL only.
+- Length caps on every string field + byte caps on JSON bodies (32 KB notif prefs, 64 KB cart_json, 8 KB metadata, 200 KB signature data URL, 500 KB ticket signature, 10 MB receipt upload).
+- Role gates: `requireAdmin` / `requireManagerOrAdmin` / `requirePermission`.
+- Rate limits via `checkWindowRate` + `recordWindowAttempt`.
+- Audit writes via `audit(db, {...})` on every sensitive op.
+- Money columns INTEGER cents with CHECK >= 0.
+- Soft deletes where FK preservation needed.
+- HMAC signed tokens with `timingSafeEqual` + single-use consumed-at atomic flag for public estimate sign.
+- IP capture for audit via `req.socket.remoteAddress` (XFF-spoofable `req.ip` avoided per SCAN-194).
+
+### Registration order in `packages/server/src/index.ts`
+
+Wave 2 routes mount AFTER wave 1 block, in this order: `/ticket-labels`, `/public/api/v1/estimate-sign` (NO auth), `/estimates/:id` (authed sub-router), `/data-export/schedules`, `/sms/auto-responders`, `/sms/groups`, `/checklists`, `/sla`, `/tickets/:ticketId/signatures`, `/expenses/:expenseId/receipt`.
+
+Wave 2 crons start inside `server.listen` callback alongside wave-1 `recurringInvoicesCron`: `startDataExportScheduleCron` + `startSlaBreachCron`. Timer handles pushed into `backgroundIntervals[]` for graceful shutdown.
+
+## Web-Parity Backend Contracts — Wave 3 (2026-04-23)
+
+Third wave. Closes SCAN-462, 466, 467, 471, 473 + wires previously-exported helpers into existing route handlers (SMS auto-responder on inbound webhook; SLA compute on ticket create/update).
+
+Migrations 130–134. No new crons this wave. Public endpoints: `/public/api/v1/booking/*` (IP rate-limited).
+
+---
+
+### 1. Helper wiring (SCAN-465 / SCAN-495 follow-through)
+
+#### `tryAutoRespond` — wired into `sms.routes.ts` inbound webhook
+After successful inbound INSERT + opt-out filter, calls `tryAutoRespond(adb, {from, body, tenant_slug})`. On match: sends via `sendSmsTenant`, inserts outbound row, audits `sms_auto_responder_matched` with redacted phone. Entire block try/catch — autoresponder failure never breaks webhook 2xx response. Opt-out keywords (STOP/UNSUBSCRIBE/CANCEL) bypass auto-reply entirely.
+
+#### `computeSlaForTicket` — wired into `tickets.routes.ts` POST / + PATCH /:id
+On ticket create: after INSERT, captures `ticketCreatedAt`, calls `computeSlaForTicket(adb, {ticket_id, priority_level: body.priority || 'normal', created_at})` fail-open. On PATCH: if `body.priority !== undefined`, re-computes with new priority + existing created_at. Ticket operations never fail on SLA errors.
+
+Note: `tickets` table has no `priority` column yet (only `sla_policy_id`/`sla_*_due_at`/`sla_breached` from migration 128). The helper accepts whatever `priority_level` string is passed; migration adding the column lands in a future wave.
+
+---
+
+### 2. Field Service + Dispatch (SCAN-466)
+
+Base: `/api/v1/field-service`. Mobile §57 (iOS) / §59 (Android). Manager+ on writes; technician sees own assigned jobs only.
+
+#### Jobs
+- `GET /jobs?status=&assigned_technician_id=&from_date=&to_date=&page=&pagesize=`
+- `GET /jobs/:id`, `POST /jobs`, `PATCH /jobs/:id`, `DELETE /jobs/:id` (soft → `canceled`)
+- `POST /jobs/:id/assign` `{technician_id}` + `POST /jobs/:id/unassign`
+- `POST /jobs/:id/status` `{status, location_lat?, location_lng?, notes?}` — technician-self-or-manager+, state machine validated, inserts `dispatch_status_history`
+
+State machine:
+```
+unassigned → assigned → en_route → on_site → completed (terminal)
+any non-terminal → canceled (terminal)
+any non-terminal → deferred → unassigned
+```
+
+#### Routes
+- `GET /routes?technician_id=&from_date=&to_date=`, `GET /routes/:id`
+- `POST /routes` (manager+) `{technician_id, route_date, job_order_json: [job_ids]}` — validates jobs belong to tech
+- `PATCH /routes/:id`, `DELETE /routes/:id`
+- `POST /routes/optimize` `{technician_id, route_date, job_ids}` — returns `{proposed_order, total_distance_km, algorithm: "greedy-nearest-neighbor", note}`. Does NOT persist — caller follows up with POST /routes.
+
+lat/lng: required on create, validated `[-90,90]` / `[-180,180]`. Stored as REAL.
+
+Audit: `job_created`, `job_assigned`, `job_unassigned`, `job_canceled`, `job_status_changed`, `route_created`, `route_updated`, `route_deleted`.
+
+---
+
+### 3. Owner P&L Aggregator (SCAN-467)
+
+Base: `/api/v1/owner-pl`. **Admin-only**. 30 req/min/user rate-limit. 60s LRU cache (64 entries, keyed by tenant+from+to+rollup).
+
+#### `GET /summary?from=YYYY-MM-DD&to=YYYY-MM-DD&rollup=day|week|month`
+Default 30-day span, max 365 days. Response composes revenue/COGS/gross-profit/expenses/net-profit/tax/AR-aging/inventory-value/time-series/top-customers/top-services. All money INTEGER cents. SQL patterns reused from reports.routes.ts + dunning.routes.ts.
+
+#### `POST /snapshot` (admin) `{from, to}` — persists to `pl_snapshots` + returns `{snapshot_id, summary}`. Invalidates cache for that (tenant, from, to).
+#### `GET /snapshots`, `GET /snapshots/:id` — list + retrieve saved snapshots.
+
+---
+
+### 4. Multi-Location (core) (SCAN-462)
+
+Base: `/api/v1/locations`. SCOPE: **core only**. This wave adds the locations registry + user-location assignments. `location_id` is NOT yet on tickets/invoices/inventory/users — that is a separate migration epic.
+
+#### Location CRUD (admin on writes)
+- `GET /`, `GET /:id` (with user_count)
+- `POST /`, `PATCH /:id`, `DELETE /:id` (soft `is_active=0`; blocked if only active OR `is_default=1`)
+- `POST /:id/set-default` — trigger cascades other rows to `is_default=0`
+
+#### User-location assignment (manager+)
+- `GET /users/:userId/locations`, `POST /users/:userId/locations/:locationId` `{is_primary?, role_at_location?}`, `DELETE /users/:userId/locations/:locationId` (blocked if would leave user with 0)
+- `GET /me/locations`, `GET /me/default-location`
+
+Seeded row: `id=1 "Main Store" is_default=1` (single-location tenants see no behavior change).
+
+**Follow-up epic:** Add `location_id INTEGER REFERENCES locations(id)` to tickets / invoices / inventory / users, backfill to id=1, scope domain queries.
+
+---
+
+### 5. Appointment Self-Booking Admin + Public (SCAN-471)
+
+#### Admin — `/api/v1/booking-config` (admin writes)
+- Services CRUD: `GET /services`, `POST /services`, `PATCH /services/:id`, `DELETE /services/:id` (soft). Fields: name, description, duration_minutes, buffer_before_minutes, buffer_after_minutes, deposit_required, deposit_amount_cents, visible_on_booking, sort_order.
+- Hours: `GET /hours`, `PATCH /hours/:dayOfWeek` (dayOfWeek 0=Sun..6=Sat).
+- Exceptions: `GET /exceptions?from=&to=`, `POST /exceptions` `{date, is_closed, open_time?, close_time?, reason?}`, `PATCH /exceptions/:id`, `DELETE /exceptions/:id` (hard).
+
+Settings keys seeded via `store_config`: `booking_enabled`, `booking_min_notice_hours` (24), `booking_max_lead_days` (30), `booking_require_phone` (1), `booking_require_email` (0), `booking_confirmation_mode` (manual).
+
+#### Public — `/public/api/v1/booking` (NO auth, IP rate-limited)
+- `GET /config` (60/IP/hr) — returns enabled flag + visible services + weekly hours + next-90-day exceptions + store name/phone + settings. Returns `{enabled:false}` if booking_enabled != '1'.
+- `GET /availability?service_id=&date=YYYY-MM-DD` (120/IP/hr, `Cache-Control: max-age=60`) — returns 30-min slot array `[{start_time, end_time, available}]`. Empty on booking-disabled/closed-day/below-min-notice/past-max-lead-days.
+
+Availability algorithm:
+1. Validate service_id int + date regex
+2. Service active + visible on booking
+3. booking_exceptions first; fallback booking_hours
+4. Generate 30-min windows open..(close-duration)
+5. Subtract overlapping appointments (expanded by buffer_before + buffer_after)
+6. For today: filter slots before now + min_notice_hours
+7. Return with boolean `available` only — NEVER customer names/appointment ids
+
+---
+
+### 6. Sync Conflict Resolution (SCAN-473)
+
+Base: `/api/v1/sync/conflicts`. **Lightweight queue only** — declarative resolution. Server records the decision; client must replay the chosen version via regular entity endpoints.
+
+#### Report (any authed user, 60/min/user, 202 Accepted)
+- `POST /` `{entity_kind, entity_id, conflict_type, client_version_json, server_version_json, device_id?, platform?}`. Blobs ≤ 32KB each.
+
+`conflict_type`: `concurrent_update | stale_write | duplicate_create | deleted_remote`.
+`platform`: `android | ios | web`.
+
+#### Manage (manager+)
+- `GET /?status=&entity_kind=&page=&pagesize=` (default 25, max 100)
+- `GET /:id`
+- `POST /:id/resolve` `{resolution, resolution_notes?}` — `resolution`: `keep_client | keep_server | merge | manual | rejected`. Atomic status/resolution/resolved_by/at. Audit.
+- `POST /:id/reject` `{notes?}`
+- `POST /:id/defer`
+- `POST /bulk-resolve` `{conflict_ids: number[] (≤100), resolution}` — skips already-resolved silently.
+
+Limitations:
+- No merge engine. `resolution='merge'|'manual'` records intent only.
+- No entity writeback — client replays via regular routes.
+- Opaque blobs — server validates JSON + size only, no schema interpretation.
+- `device_id` client-supplied, not cryptographically verified.
+
+---
+
+### Security applied uniformly
+
+- Parameterized SQL; integer id guards; length/byte caps (conflict blobs 32KB/64KB, cart_json 64KB, signature data URL 500KB, receipt 10MB, notif prefs 32KB)
+- Role gates inside handlers: `requireAdmin` / `requireManagerOrAdmin` / `requirePermission`
+- Rate-limits via `checkWindowRate` + `recordWindowAttempt` (30/min writes generally; 60/IP/hr public booking; 120/IP/hr availability)
+- Audit via `audit(db, {...})` on every sensitive op
+- Money INTEGER cents with CHECK ≥ 0
+- Soft delete where FK preservation needed
+- IP via `req.socket.remoteAddress` (XFF-resistant, SCAN-194)
+- Public booking: no customer names/appointment IDs in responses; only boolean availability
+
+### Registration order in `packages/server/src/index.ts`
+
+Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
+`/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.
