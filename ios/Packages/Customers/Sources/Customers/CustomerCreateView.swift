@@ -159,6 +159,10 @@ public struct CustomerCreateView: View {
                     state: $vm.state,
                     postcode: $vm.postcode,
                     notes: $vm.notes,
+                    customFields: .constant([]),
+                    onCustomFieldChange: { _, _ in },
+                    isLoadingCustomFields: false,
+                    conflictMessage: nil,
                     errorMessage: vm.errorMessage
                 )
                 .onChange(of: vm.firstName)      { _, _ in vm.scheduleAutoSave() }
