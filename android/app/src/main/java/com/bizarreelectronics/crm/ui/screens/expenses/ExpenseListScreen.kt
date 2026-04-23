@@ -1,6 +1,10 @@
 package com.bizarreelectronics.crm.ui.screens.expenses
 
 // @audit-fixed: removed clickable import — ExpenseCard no longer has a click target
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +17,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -64,7 +70,47 @@ data class ExpenseListUiState(
     val error: String? = null,
     val searchQuery: String = "",
     val selectedCategory: String = "All",
+    /** Pre-grouped slices for the pie chart; empty = no data for this period. */
+    val categorySlices: List<ExpenseSlice> = emptyList(),
 )
+
+// Cycling palette for pie slices. Color(Long) is Compose's recommended pattern for
+// compile-time color literals; the 0xFF prefix encodes alpha=FF (fully opaque).
+private val SLICE_COLORS = listOf(
+    Color(0xFF6750A4), // primary purple
+    Color(0xFF625B71), // secondary
+    Color(0xFF7D5260), // tertiary
+    Color(0xFF4CAF50), // green
+    Color(0xFF2196F3), // blue
+    Color(0xFFFF9800), // amber
+    Color(0xFFF44336), // red
+    Color(0xFF9C27B0), // purple
+    Color(0xFF00BCD4), // cyan
+    Color(0xFFFF5722), // deep-orange
+    Color(0xFF607D8B), // blue-grey
+    Color(0xFF8BC34A), // light-green
+    Color(0xFFE91E63), // pink
+    Color(0xFF795548), // brown
+)
+
+/** Build [ExpenseSlice] list from raw entity list. Pure — safe to call from any thread. */
+internal fun buildCategorySlices(expenses: List<ExpenseEntity>): List<ExpenseSlice> {
+    if (expenses.isEmpty()) return emptyList()
+    // Group and sum, preserving insertion order of first occurrence
+    val grouped = linkedMapOf<String, Long>()
+    expenses.forEach { e ->
+        grouped[e.category] = (grouped[e.category] ?: 0L) + e.amount
+    }
+    // Sort descending by total so largest slice comes first
+    val sorted = grouped.entries.sortedByDescending { it.value }
+    return sorted.mapIndexed { idx, entry ->
+        ExpenseSlice(
+            category = entry.key,
+            totalCents = entry.value,
+            color = SLICE_COLORS[idx % SLICE_COLORS.size],
+        )
+    }
+}
 
 @HiltViewModel
 class ExpenseListViewModel @Inject constructor(
@@ -114,6 +160,7 @@ class ExpenseListViewModel @Inject constructor(
                     _state.value = _state.value.copy(
                         expenses = expenses,
                         totalAmount = expenses.sumOf { it.amount },
+                        categorySlices = buildCategorySlices(expenses),
                         isLoading = false,
                         isRefreshing = false,
                     )
@@ -149,6 +196,17 @@ fun ExpenseListScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val categories = listOf("All") + EXPENSE_CATEGORIES
+    var chartExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // ReduceMotion: read once per composition — no AppPreferences injection needed here;
+    // fall back to the system animator scale check only (in-app toggle not wired at this level).
+    val reduceMotion = remember(context) {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
 
     Scaffold(
         topBar = {
@@ -241,6 +299,65 @@ fun ExpenseListScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Collapsible "By category" section — shows pie chart when expanded
+            if (!state.isLoading && state.error == null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                BrandCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Column {
+                        // Header row — tap to toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { chartExpanded = !chartExpanded }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "By category",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Icon(
+                                imageVector = if (chartExpanded) {
+                                    Icons.Default.KeyboardArrowUp
+                                } else {
+                                    Icons.Default.KeyboardArrowDown
+                                },
+                                contentDescription = if (chartExpanded) {
+                                    "Collapse category chart"
+                                } else {
+                                    "Expand category chart"
+                                },
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // Animated chart content
+                        AnimatedVisibility(
+                            visible = chartExpanded,
+                            enter = expandVertically(),
+                            exit = shrinkVertically(),
+                        ) {
+                            ExpenseCategoryPieChart(
+                                slices = state.categorySlices,
+                                modifier = Modifier.padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    bottom = 16.dp,
+                                ),
+                                reduceMotion = reduceMotion,
                             )
                         }
                     }
