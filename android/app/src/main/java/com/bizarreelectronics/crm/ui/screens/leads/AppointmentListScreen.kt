@@ -10,6 +10,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -225,6 +232,7 @@ fun AppointmentListScreen(
                 ),
                 actions = {
                     IconButton(onClick = { showDatePicker = true }) {
+                        // a11y: descriptive label mirrors "Pick date" intent
                         Icon(
                             Icons.Default.CalendarMonth,
                             contentDescription = "Pick date",
@@ -232,9 +240,10 @@ fun AppointmentListScreen(
                         )
                     }
                     IconButton(onClick = { viewModel.loadAppointments() }) {
+                        // a11y: screen-specific label — mirrors "Refresh tickets" / "Refresh expenses" pattern
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = "Refresh appointments",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -246,7 +255,8 @@ fun AppointmentListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create appointment")
+                // a11y: spec §26 — "Create new appointment" (imperative, mirrors "Create new ticket")
+                Icon(Icons.Default.Add, contentDescription = "Create new appointment")
             }
         },
     ) { padding ->
@@ -256,8 +266,24 @@ fun AppointmentListScreen(
                 .padding(padding),
         ) {
             // Selected date header
+            // a11y: liveRegion=Polite so TalkBack re-announces when the date or count changes
+            // after the user picks a new day. mergeDescendants collapses "Selected date",
+            // the formatted date, and the count into one coherent sentence.
+            val selectedDateLabel = formatDayHeader(state.selectedDateMillis)
+            val countLabel = if (!state.isLoading) {
+                val n = state.appointments.size
+                if (n == 1) "1 appointment" else "$n appointments"
+            } else {
+                "loading"
+            }
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        // a11y: live region so date/count changes are announced automatically
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Selected date: $selectedDateLabel, $countLabel"
+                    },
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Row(
@@ -272,7 +298,7 @@ fun AppointmentListScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            formatDayHeader(state.selectedDateMillis),
+                            selectedDateLabel,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -290,30 +316,66 @@ fun AppointmentListScreen(
 
             when {
                 state.isOffline -> {
-                    EmptyState(
-                        icon = Icons.Default.CloudOff,
-                        title = "Offline",
-                        subtitle = "Appointments require an online connection",
-                    )
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the offline state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.CloudOff,
+                            title = "Offline",
+                            subtitle = "Appointments require an online connection",
+                        )
+                    }
                 }
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 5,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading appointments" on a single focus stop rather than each shimmer
+                    // box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading appointments"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 5,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    ErrorState(
-                        message = state.error ?: "Error",
-                        onRetry = { viewModel.loadAppointments() },
-                    )
+                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
+                    // tells the user about the error rather than leaving them in silence.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Error",
+                            onRetry = { viewModel.loadAppointments() },
+                        )
+                    }
                 }
                 state.appointments.isEmpty() -> {
-                    EmptyState(
-                        icon = Icons.Default.EventBusy,
-                        title = "No appointments",
-                        subtitle = "Nothing scheduled for this day",
-                    )
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the empty state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.EventBusy,
+                            title = "No appointments",
+                            subtitle = "Nothing scheduled for this day",
+                        )
+                    }
                 }
                 else -> {
                     @OptIn(ExperimentalMaterial3Api::class)
@@ -372,9 +434,12 @@ private fun DayHeader(dayKey: String) {
     } catch (_: Exception) {
         dayKey
     }
+    // a11y: heading() lets TalkBack users swipe by headings to jump between day groups
     Text(
         label,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        modifier = Modifier
+            .padding(top = 8.dp, bottom = 4.dp)
+            .semantics { heading() },
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,
@@ -384,7 +449,30 @@ private fun DayHeader(dayKey: String) {
 @Composable
 private fun AppointmentCard(appointment: AppointmentDetail) {
     val meta = appointmentStatusMeta(appointment.status)
-    Card(modifier = Modifier.fillMaxWidth()) {
+
+    // a11y: build the announcement string once. The card is visually tappable (Row with
+    // clickable), so Role.Button is appropriate. mergeDescendants collapses time label +
+    // title + customer name + status badge into one TalkBack focus stop.
+    val timeLabel = DateFormatter.formatDateTime(appointment.startTime)
+    val titleLabel = appointment.title?.takeIf { it.isNotBlank() } ?: "Untitled"
+    val customerLabel = appointment.customerName?.takeIf { it.isNotBlank() }
+    val cardA11yDesc = buildString {
+        append("Appointment at $timeLabel")
+        if (customerLabel != null) append(" with $customerLabel")
+        append(" for $titleLabel")
+        append(". ${meta.label}.")
+        append(" Tap to open.")
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                // a11y: single focus stop with full context; Role.Button signals it is activatable
+                contentDescription = cardA11yDesc
+                role = Role.Button
+            },
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
