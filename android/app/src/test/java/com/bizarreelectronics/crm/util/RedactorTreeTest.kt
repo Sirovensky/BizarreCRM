@@ -29,7 +29,7 @@ class RedactorTreeTest {
         var lastMessage: String = ""
         var lastThrowable: Throwable? = null
 
-        override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+        public override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
             lastPriority = priority
             lastTag = tag
             lastMessage = message
@@ -254,28 +254,28 @@ class RedactorTreeTest {
 
     @Test fun `delegate receives sanitised message`() {
         val (tree, capture) = treeUnderTest()
-        tree.log(android.util.Log.DEBUG, "MyTag", """{"password":"p@ss"}""", null)
+        tree.log(android.util.Log.DEBUG, "MyTag", """{"password":"p@ss"}""", null as Throwable?)
         assertFalse(capture.lastMessage.contains("p@ss"))
         assertTrue(capture.lastMessage.contains(RedactorTree.MASK))
     }
 
     @Test fun `delegate receives correct priority and tag`() {
         val (tree, capture) = treeUnderTest()
-        tree.log(android.util.Log.WARN, "TestTag", "safe message", null)
+        tree.log(android.util.Log.WARN, "TestTag", "safe message", null as Throwable?)
         assertEquals(android.util.Log.WARN, capture.lastPriority)
         assertEquals("TestTag", capture.lastTag)
     }
 
     @Test fun `null throwable forwarded as null`() {
         val (tree, capture) = treeUnderTest()
-        tree.log(android.util.Log.DEBUG, null, "no throwable", null)
+        tree.log(priority = android.util.Log.DEBUG, tag = null, message = "no throwable", t = null)
         assertNull(capture.lastThrowable)
     }
 
     @Test fun `delegate receives safe text unchanged`() {
         val (tree, capture) = treeUnderTest()
         val msg = "Sync complete: 42 records updated"
-        tree.log(android.util.Log.INFO, "SyncWorker", msg, null)
+        tree.log(android.util.Log.INFO, "SyncWorker", msg, null as Throwable?)
         assertEquals(msg, capture.lastMessage)
     }
 }

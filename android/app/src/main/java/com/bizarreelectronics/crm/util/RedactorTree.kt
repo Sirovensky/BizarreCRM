@@ -34,10 +34,10 @@ import timber.log.Timber
  */
 class RedactorTree(private val delegate: Timber.Tree) : Timber.Tree() {
 
-    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+    public override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
         val safeMessage = redact(message)
         val safeThrowable = t?.let { redactThrowable(it) }
-        delegate.log(priority, tag, safeMessage, safeThrowable)
+        LOG4.invoke(delegate, priority, tag, safeMessage, safeThrowable)
     }
 
     /**
@@ -111,6 +111,17 @@ class RedactorTree(private val delegate: Timber.Tree) : Timber.Tree() {
         )
 
         const val MASK = "***REDACTED***"
+
+        /**
+         * Reflected handle to Timber.Tree's protected abstract
+         * `log(Int, String?, String, Throwable?)` — the 4-arg core method.
+         * Using reflection lets us call it on a delegate instance without
+         * triggering the Kotlin overload resolution that would otherwise pick
+         * the public vararg overloads `log(Int, String, Object...)`.
+         */
+        private val LOG4 = Timber.Tree::class.java
+            .getDeclaredMethod("log", Int::class.java, String::class.java, String::class.java, Throwable::class.java)
+            .also { it.isAccessible = true }
 
         /**
          * Single compiled alternation regex — one pass, O(n) in message length.
