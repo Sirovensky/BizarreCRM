@@ -37,9 +37,10 @@ import javax.inject.Singleton
  * supply a fake clock through [RateLimiter.forTest].
  */
 @Singleton
-class RateLimiter @Inject constructor() : RateLimiterCore(
-    nowMs = System::currentTimeMillis,
-    delayFn = { ms -> delay(ms) },
+open class RateLimiter @Inject constructor() : RateLimiterCore(
+    nowMs    = System::currentTimeMillis,
+    delayFn  = { ms -> delay(ms) },
+    jitterFn = { ms -> (0L..(ms / 4).coerceAtLeast(1L)).random() },
 ) {
     companion object
 }
@@ -51,10 +52,17 @@ class RateLimiter @Inject constructor() : RateLimiterCore(
  * ([nowMs]) and a fake delay ([delayFn]) without requiring Android framework
  * classes. Production code should use [RateLimiter] directly; tests should
  * use [RateLimiter.forTest].
+ *
+ * @param jitterFn  Maps a base-wait duration (ms) to a jitter addend (ms).
+ *                  Production default: uniform random in [0, wait/4] — spreads
+ *                  thundering-herd wake-ups across a 25 % window of the base
+ *                  wait so callers don't all hit the server simultaneously after
+ *                  a shared pause expires.  Tests inject `{ 0L }` for determinism.
  */
 open class RateLimiterCore(
     internal val nowMs: () -> Long,
     internal val delayFn: suspend (Long) -> Unit,
+    private  val jitterFn: (Long) -> Long = { ms -> (0L..(ms / 4).coerceAtLeast(1L)).random() },
 ) {
     // -------------------------------------------------------------------------
     // Public types
@@ -189,7 +197,7 @@ open class RateLimiterCore(
      *   - Auth endpoints: path starts with "/auth/"
      *   - Offline-queue flush: OkHttp request tag is "sync-flush"
      */
-    fun isExempt(method: String, path: String, tag: String?): Boolean {
+    open fun isExempt(method: String, path: String, tag: String?): Boolean {
         if (tag == SYNC_FLUSH_TAG) return true
         val normPath = path.lowercase()
         if (normPath.startsWith("/auth/") || normPath == "/auth") return true
@@ -200,10 +208,13 @@ open class RateLimiterCore(
      * Acquires one token from [category]'s bucket, suspending until a token
      * is available or [ACQUIRE_TIMEOUT_MS] is reached.
      *
+     * Marked `open` so test subclasses can override acquisition behaviour
+     * (e.g. always return false) without requiring a full fake clock setup.
+     *
      * @return true  when a token was successfully acquired.
      * @return false when the timeout was reached before a token became available.
      */
-    suspend fun acquire(category: Category): Boolean {
+    open suspend fun acquire(category: Category): Boolean {
         val bkt = bucket(category)
         val deadline = nowMs() + ACQUIRE_TIMEOUT_MS
         return acquireInner(bkt, deadline)
@@ -254,10 +265,21 @@ open class RateLimiterCore(
             // Check pause first (no lock needed for a quick read).
             val pausedUntil = bkt.pausedUntilMs
             if (pausedUntil != null && now < pausedUntil) {
-                val waitMs = (pausedUntil - now).coerceAtMost(deadline - now)
-                if (waitMs <= 0L) return false
+                val pauseRemaining = pausedUntil - now
+                val timeoutRemaining = deadline - now
+
+                // Fail-fast: if the server-mandated pause extends beyond our
+                // remaining timeout budget, return false immediately rather than
+                // waiting partial time and then timing out anyway.  The caller
+                // (RateLimitInterceptor) will synthesize a local 429 response so
+                // the upstream error path handles it gracefully.
+                if (pauseRemaining > timeoutRemaining) return false
+
+                val baseWait = pauseRemaining.coerceAtMost(timeoutRemaining)
+                if (baseWait <= 0L) return false
+                val jitter = jitterFn(baseWait)
                 incrementQueue()
-                delayFn(waitMs)
+                delayFn(baseWait + jitter)
                 decrementQueue()
                 continue
             }
@@ -281,12 +303,13 @@ open class RateLimiterCore(
 
             if (acquired) return true
 
-            // No token available — wait one refill interval and retry.
-            val waitMs = (bkt.refillIntervalMs).coerceAtMost((deadline - nowMs()).coerceAtLeast(0L))
-            if (waitMs <= 0L) return false
+            // No token available — wait one refill interval (+ jitter) and retry.
+            val baseWait = (bkt.refillIntervalMs).coerceAtMost((deadline - nowMs()).coerceAtLeast(0L))
+            if (baseWait <= 0L) return false
+            val jitter = jitterFn(baseWait)
 
             incrementQueue()
-            delayFn(waitMs)
+            delayFn(baseWait + jitter)
             decrementQueue()
         }
 
@@ -319,8 +342,26 @@ open class RateLimiterCore(
         /**
          * Maximum time [acquire] will wait before giving up and returning false.
          * Prevents unbounded suspension that would appear as an app hang.
+         *
+         * ## Rationale for 30 s (DO BOTH strategy):
+         * Common server Retry-After values are 30–60 s.  The original 10 s
+         * was shorter than the most common hint, causing [acquire] to return
+         * false (after Bug 1 fix) for every request during a 30 s 429 window —
+         * flooding the UI with synthetic 429 errors.  Raising to 30 s absorbs
+         * the common case while still acting as a safety net.
+         *
+         * The complementary fail-fast path inside [acquireInner] handles the
+         * remaining gap: when a server-mandated pause exceeds the remaining
+         * timeout budget, [acquire] returns false immediately (no partial wait)
+         * so the caller gets a clean, prompt synthetic 429 rather than a
+         * truncated partial wait followed by the same outcome.
+         *
+         * Together these two measures cover both ends of the spectrum:
+         *   - Short Retry-After (≤ 30 s): timeout absorbs the wait.
+         *   - Long Retry-After  (> 30 s): fail-fast returns false immediately,
+         *     letting the caller decide when to retry.
          */
-        const val ACQUIRE_TIMEOUT_MS = 10_000L
+        const val ACQUIRE_TIMEOUT_MS = 30_000L
 
         /**
          * Hard retry cap inside the acquisition loop.
@@ -348,18 +389,22 @@ open class RateLimiterCore(
 // -------------------------------------------------------------------------
 
 /**
- * Creates a [RateLimiterCore] with a controlled clock and delay function
- * for JVM unit tests. Bypasses Android Context entirely.
+ * Creates a [RateLimiterCore] with a controlled clock, delay function, and
+ * jitter function for JVM unit tests. Bypasses Android Context entirely.
  *
  * Accessed via `RateLimiter.forTest(...)` in tests.
  *
- * @param nowMs   Clock provider — advance this to simulate elapsed time.
- * @param delayFn Delay implementation — typically a no-op or TestDispatcher-backed function.
+ * @param nowMs    Clock provider — advance this to simulate elapsed time.
+ * @param delayFn  Delay implementation — typically a no-op or TestDispatcher-backed function.
+ * @param jitterFn Jitter function — pass `{ 0L }` for deterministic tests.
+ *                 Defaults to zero so existing tests need no changes.
  */
 fun RateLimiter.Companion.forTest(
-    nowMs: () -> Long,
-    delayFn: suspend (Long) -> Unit = {},
+    nowMs:    () -> Long,
+    delayFn:  suspend (Long) -> Unit = {},
+    jitterFn: (Long) -> Long = { 0L },
 ): RateLimiterCore = RateLimiterCore(
-    nowMs = nowMs,
-    delayFn = delayFn,
+    nowMs    = nowMs,
+    delayFn  = delayFn,
+    jitterFn = jitterFn,
 )

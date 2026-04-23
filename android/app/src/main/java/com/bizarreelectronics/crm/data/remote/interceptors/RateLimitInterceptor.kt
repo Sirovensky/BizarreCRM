@@ -4,7 +4,10 @@ import com.bizarreelectronics.crm.util.RateLimiterCore
 import com.bizarreelectronics.crm.util.RateLimiter
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.Protocol
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,8 +62,27 @@ class RateLimitInterceptor @Inject constructor(
 
         // Bridge coroutine suspension to the OkHttp blocking thread.
         // acquire() returns immediately when a token is available; it only
-        // suspends (and therefore blocks here) when the bucket is empty.
-        runBlocking { rateLimiter.acquire(category) }
+        // suspends (and therefore blocks here) when the bucket is empty or paused.
+        val acquired = runBlocking { rateLimiter.acquire(category) }
+
+        // Bug fix: if acquire() timed out (bucket paused for longer than the
+        // client timeout, or bucket stayed empty), synthesize a local 429 rather
+        // than firing the request anyway.  Firing the request when the server
+        // already sent us a Retry-After would re-trigger the 429, extend the
+        // server's pause window, and create a positive-feedback loop.
+        // The synthetic response is indistinguishable from a real 429 to
+        // Retrofit / upstream error handlers, so the normal retry path applies.
+        if (!acquired) {
+            return Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(HTTP_TOO_MANY_REQUESTS)
+                .message("Client rate-limited (no token acquired within timeout)")
+                .body("".toResponseBody("application/json".toMediaTypeOrNull()))
+                .header(HEADER_RETRY_AFTER, DEFAULT_429_RETRY_SECONDS.toString())
+                .addHeader(HEADER_CLIENT_RATE_LIMIT, "true")
+                .build()
+        }
 
         val response = chain.proceed(request)
 
@@ -104,10 +126,18 @@ class RateLimitInterceptor @Inject constructor(
         private const val HEADER_RATE_LIMIT_REMAINING = "X-RateLimit-Remaining"
 
         /**
+         * Sentinel response header added to synthetic 429 responses so callers
+         * can distinguish a client-side rate-limit (token not acquired) from a
+         * real server 429.  No sensitive request headers are forwarded into the
+         * synthesized response.
+         */
+        internal const val HEADER_CLIENT_RATE_LIMIT = "X-Bizarre-Client-RateLimit"
+
+        /**
          * When a 429 arrives without a Retry-After header, pause for this many
          * seconds before retrying. Conservative enough not to hammer the server,
          * short enough not to stall the user indefinitely.
          */
-        private const val DEFAULT_429_RETRY_SECONDS = 10L
+        internal const val DEFAULT_429_RETRY_SECONDS = 10L
     }
 }
