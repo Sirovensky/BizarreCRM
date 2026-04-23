@@ -109,6 +109,13 @@ data class LoginUiState(
     // §2.12-L358 — mirrors NetworkMonitor.isOnline; true when device has no network.
     // Auth is online-only: this banner is informational only, cannot be bypassed.
     val networkOffline: Boolean = false,
+    // §2.13-L366 — wall-clock expiry for the challenge token issued by the server.
+    // Set to System.currentTimeMillis() + 600_000 when a challengeToken is received.
+    // Null on the CREDENTIALS step (no active challenge token yet).
+    val challengeTokenExpiresAtMs: Long? = null,
+    // §2.13-L366 — true once the LaunchedEffect ticker determines the challenge token
+    // has expired. Resets to false when the user restarts login (step → CREDENTIALS).
+    val challengeExpired: Boolean = false,
     // Registration fields
     val registerShopName: String = "",
     val registerEmail: String = "",
@@ -507,23 +514,32 @@ class LoginViewModel @Inject constructor(
 
                 val challengeToken = data.challengeToken ?: throw Exception("No challenge token received")
 
+                // §2.13-L366: record expiry deadline at the moment the challenge token
+                // is received. The 10-minute window matches the server-side TTL so the
+                // client proactively resets the flow before the server returns a silent 401.
+                val expiresAt = System.currentTimeMillis() + 600_000L
                 when {
                     data.requiresPasswordSetup == true -> {
                         _state.value = _state.value.copy(
                             isLoading = false,
                             challengeToken = challengeToken,
+                            challengeTokenExpiresAtMs = expiresAt,
+                            challengeExpired = false,
                             step = SetupStep.SET_PASSWORD,
                         )
                     }
                     data.requires2faSetup == true || data.totpEnabled != true -> {
-                        // Need to set up 2FA first
-                        setup2FA(challengeToken)
+                        // Need to set up 2FA first — setup2FA will update expiresAt when
+                        // it receives its own fresh challengeToken from the server.
+                        setup2FA(challengeToken, expiresAt)
                     }
                     else -> {
                         // 2FA already set up, just need code
                         _state.value = _state.value.copy(
                             isLoading = false,
                             challengeToken = challengeToken,
+                            challengeTokenExpiresAtMs = expiresAt,
+                            challengeExpired = false,
                             step = SetupStep.TWO_FA_VERIFY,
                         )
                     }
@@ -578,17 +594,28 @@ class LoginViewModel @Inject constructor(
                 val response = authApi.setPassword(SetPasswordRequest(s.challengeToken, s.newPassword))
                 val data = response.data ?: throw Exception(response.message ?: "Failed to set password")
                 val newChallenge = data.challengeToken ?: throw Exception("No challenge token")
+                // §2.13-L366: password-set gives us a new challengeToken; start a fresh
+                // 10-minute window for the subsequent 2FA setup step.
+                val freshExpiresAt = System.currentTimeMillis() + 600_000L
 
                 // Password set, now set up 2FA
-                setup2FA(newChallenge)
+                setup2FA(newChallenge, freshExpiresAt)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = extractErrorMessage(e))
             }
         }
     }
 
-    /** Step 3a: Request 2FA QR code */
-    private fun setup2FA(challengeToken: String) {
+    /**
+     * Step 3a: Request 2FA QR code.
+     *
+     * [inheritedExpiresAt] is the expiry deadline inherited from the calling step.
+     * If the server returns a fresh challengeToken we keep the same window (the
+     * server still honours the original token's TTL). Pass null to use a fresh
+     * 10-minute window from now (e.g. when called from setPassword which already
+     * has an updated token).
+     */
+    private fun setup2FA(challengeToken: String, inheritedExpiresAt: Long? = null) {
         viewModelScope.launch {
             try {
                 val response = authApi.setup2FA(mapOf("challengeToken" to challengeToken))
@@ -596,10 +623,14 @@ class LoginViewModel @Inject constructor(
                 // Server returns { qr: "data:image/png;base64,...", secret: "...", challengeToken: "..." }
                 val qrCode = data.qrCode ?: data.qr ?: ""
                 val newChallenge = data.challengeToken ?: challengeToken
-
+                // §2.13-L366: preserve the expiry window started at login(), or start a
+                // fresh one if called without a prior window (e.g. from setPassword path).
+                val expiresAt = inheritedExpiresAt ?: (System.currentTimeMillis() + 600_000L)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     challengeToken = newChallenge,
+                    challengeTokenExpiresAtMs = expiresAt,
+                    challengeExpired = false,
                     qrCodeDataUrl = qrCode,
                     step = SetupStep.TWO_FA_SETUP,
                 )
@@ -661,6 +692,36 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null)
     }
 
+    /**
+     * §2.13-L366 — called by the UI expiry LaunchedEffect when the 10-minute challenge
+     * token window has elapsed. Clears the challenge, marks challengeExpired = true, and
+     * resets the step back to CREDENTIALS so the user must restart login.
+     * Username is preserved; password is cleared for security.
+     */
+    fun onChallengeTokenExpired() {
+        _state.value = _state.value.copy(
+            challengeToken = "",
+            challengeTokenExpiresAtMs = null,
+            challengeExpired = true,
+            step = SetupStep.CREDENTIALS,
+            // Clear sensitive mid-flow fields
+            totpCode = "",
+            newPassword = "",
+            confirmPassword = "",
+            qrCodeDataUrl = "",
+            isLoading = false,
+            error = null,
+        )
+    }
+
+    /**
+     * §2.13-L366 — called by the UI when the challengeExpired snackbar/banner is
+     * acknowledged (or automatically dismissed). Clears the flag so the banner hides.
+     */
+    fun clearChallengeExpired() {
+        _state.value = _state.value.copy(challengeExpired = false)
+    }
+
     private fun extractErrorMessage(e: Exception): String {
         // Try to extract server error message from Retrofit HttpException
         if (e is retrofit2.HttpException) {
@@ -691,6 +752,35 @@ fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // §2.13-L366 — expiry ticker: runs only while a challenge token is active
+    // (challengeTokenExpiresAtMs != null). Ticks every second and fires
+    // onChallengeTokenExpired() when the deadline passes. Cancels automatically
+    // when challengeTokenExpiresAtMs changes (new token) or becomes null
+    // (CREDENTIALS step reset or successful verify2FA which clears the token).
+    val expiresAtMs = state.challengeTokenExpiresAtMs
+    LaunchedEffect(expiresAtMs) {
+        if (expiresAtMs == null) return@LaunchedEffect
+        while (true) {
+            delay(1_000L)
+            if (System.currentTimeMillis() >= expiresAtMs) {
+                viewModel.onChallengeTokenExpired()
+                break
+            }
+        }
+    }
+
+    // §2.13-L366 — show snackbar when challengeExpired flips to true.
+    LaunchedEffect(state.challengeExpired) {
+        if (state.challengeExpired) {
+            snackbarHostState.showSnackbar(
+                message = "Sign-in timed out. Please start over.",
+                duration = SnackbarDuration.Short,
+            )
+            viewModel.clearChallengeExpired()
+        }
+    }
 
     // Backup codes dialog — must be dismissed before proceeding to dashboard
     if (state.showBackupCodes != null) {
@@ -741,8 +831,13 @@ fun LoginScreen(
         )
     }
 
+    // §2.13-L366: Scaffold provides the snackbar host for challenge-expired notification.
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
     Box(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding(),
+        modifier = Modifier.fillMaxSize().padding(innerPadding).statusBarsPadding().imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -846,6 +941,7 @@ fun LoginScreen(
             }
         }
     }
+    } // end Scaffold
 }
 
 @Composable
@@ -902,6 +998,60 @@ private fun ErrorMessage(error: String?) {
     if (error != null) {
         Spacer(Modifier.height(12.dp))
         Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/**
+ * §2.13-L366 — Countdown timer shown at the bottom of the challenge steps
+ * (SET_PASSWORD, TWO_FA_SETUP, TWO_FA_VERIFY). Updates every second.
+ * Renders in warning/error color when < 60 s remain.
+ *
+ * Only rendered when [expiresAtMs] is non-null (i.e. a challenge token is active).
+ */
+@Composable
+private fun ChallengeTokenCountdown(expiresAtMs: Long?) {
+    if (expiresAtMs == null) return
+
+    val now = System.currentTimeMillis()
+    var remainingMs by remember(expiresAtMs) {
+        mutableStateOf((expiresAtMs - now).coerceAtLeast(0L))
+    }
+
+    // Tick every second while expiresAtMs is stable.
+    LaunchedEffect(expiresAtMs) {
+        while (remainingMs > 0L) {
+            delay(1_000L)
+            remainingMs = (expiresAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        }
+    }
+
+    val totalSec = remainingMs / 1000L
+    val minutes = totalSec / 60
+    val seconds = totalSec % 60
+    val label = "%d:%02d".format(minutes, seconds)
+
+    val warningColor = MaterialTheme.colorScheme.error
+    val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = if (remainingMs < 60_000L) warningColor else normalColor
+
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Timer,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = textColor,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "Sign-in expires in $label",
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+        )
     }
 }
 
@@ -1443,6 +1593,9 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
             Text("Set Password")
         }
     }
+
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Step 3a: 2FA Setup (QR Code) ──────────────────────────────────
@@ -1493,6 +1646,8 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
 
     Spacer(Modifier.height(16.dp))
     TotpCodeInputContent(state, viewModel, onSuccess)
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Step 3b: 2FA Verify (code only) ────────────────────────────────
@@ -1511,6 +1666,8 @@ private fun TwoFaVerifyStep(state: LoginUiState, viewModel: LoginViewModel, onSu
     Spacer(Modifier.height(24.dp))
 
     TotpCodeInputContent(state, viewModel, onSuccess)
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Shared TOTP code input ─────────────────────────────────────────

@@ -628,4 +628,6 @@ object RetrofitClient {
     @Provides @Singleton fun provideLeadApi(retrofit: Retrofit): LeadApi = retrofit.create(LeadApi::class.java)
     @Provides @Singleton fun provideEstimateApi(retrofit: Retrofit): EstimateApi = retrofit.create(EstimateApi::class.java)
     @Provides @Singleton fun provideExpenseApi(retrofit: Retrofit): ExpenseApi = retrofit.create(ExpenseApi::class.java)
+    // §2.12 L355 — tenant support-contact (server endpoint pending; client degrades gracefully)
+    @Provides @Singleton fun provideTenantsApi(retrofit: Retrofit): TenantsApi = retrofit.create(TenantsApi::class.java)
 }
