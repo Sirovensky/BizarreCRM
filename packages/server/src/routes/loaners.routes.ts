@@ -64,7 +64,7 @@ router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 }));
 
 // POST / — Create loaner device
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { name, serial, imei, condition = 'good', notes } = req.body;
   if (!name) throw new AppError('Name required', 400);
@@ -77,7 +77,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // PUT /:id — Update loaner device details (API-3)
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get('SELECT id FROM loaner_devices WHERE id = ? AND is_deleted = 0', req.params.id);
   if (!existing) throw new AppError('Loaner device not found', 404);
@@ -101,7 +101,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 }));
 
 // POST /:id/loan — Loan out to customer
-router.post('/:id/loan', asyncHandler(async (req, res) => {
+router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { customer_id, ticket_device_id, notes } = req.body;
@@ -136,7 +136,7 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
 }));
 
 // POST /:id/return — Return loaner
-router.post('/:id/return', asyncHandler(async (req, res) => {
+router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { condition_in, notes } = req.body;
@@ -159,7 +159,7 @@ router.post('/:id/return', asyncHandler(async (req, res) => {
 // preserve audit trail. The device row is marked is_deleted = 1 so it
 // disappears from all normal list/detail queries. loaner_history rows are
 // intentionally kept intact — they form the per-device loan audit trail.
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const device = await adb.get(
     'SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0',

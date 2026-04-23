@@ -36,9 +36,13 @@ function requireAutomationsFeature(req: Request): void {
 // ---------------------------------------------------------------------------
 // GET / – List all automation rules
 // ---------------------------------------------------------------------------
+// SCAN-584: action_config may contain SMS/email template bodies. Gate this
+// behind requireAdmin so technician-role users cannot enumerate automation
+// rules or harvest template content.
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
+    requireAdmin(_req);
     const adb = _req.asyncDb;
     const automations = await adb.all(`
       SELECT * FROM automations ORDER BY sort_order ASC, created_at DESC

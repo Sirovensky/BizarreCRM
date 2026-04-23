@@ -87,6 +87,12 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    // SCAN-580: opening a session is a manager/admin action — it anchors the
+    // entire count workflow; technicians and cashiers must not create sessions.
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const adb: AsyncDb = req.asyncDb;
     const name = validateTextLength(req.body?.name, 120, 'name');
     if (!name) throw new AppError('name is required', 400);
@@ -170,6 +176,12 @@ router.get(
 router.post(
   '/:id/counts',
   asyncHandler(async (req, res) => {
+    // SCAN-581: cashiers must not submit scan counts — only admin, manager,
+    // and technician roles are permitted to handle physical inventory scanning.
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager' && role !== 'technician') {
+      throw new AppError('Admin, manager, or technician role required', 403);
+    }
     const adb: AsyncDb = req.asyncDb;
     const id = parseInt(qs(req.params.id), 10);
     if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);

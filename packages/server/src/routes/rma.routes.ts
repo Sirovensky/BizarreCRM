@@ -95,14 +95,16 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 // GET /:id — Single RMA with items
 router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
+  const rmaId = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(rmaId) || rmaId <= 0) throw new AppError('Invalid RMA id', 400);
   const [rma, items] = await Promise.all([
-    adb.get<any>('SELECT * FROM rma_requests WHERE id = ? AND is_deleted = 0', req.params.id),
+    adb.get<any>('SELECT * FROM rma_requests WHERE id = ? AND is_deleted = 0', rmaId),
     adb.all(`
       SELECT ri.*, ii.name AS item_name, ii.sku
       FROM rma_items ri
       LEFT JOIN inventory_items ii ON ii.id = ri.inventory_item_id
       WHERE ri.rma_id = ?
-    `, req.params.id),
+    `, rmaId),
   ]);
   if (!rma) throw new AppError('RMA not found', 404);
   const safe = redactRmaForRole(rma, req.user?.role);

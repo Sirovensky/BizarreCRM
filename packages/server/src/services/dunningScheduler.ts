@@ -166,6 +166,15 @@ interface CustomerRow {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  /** TCPA: 0 = opted out of all SMS. */
+  sms_opt_in: number | null;
+  /**
+   * TCPA: consent for transactional SMS (invoices, debt collection).
+   * Dunning is transactional — requires this flag OR sms_opt_in.
+   */
+  sms_consent_transactional: number | null;
+  /** CAN-SPAM / similar: 0 = opted out of all email. */
+  email_opt_in: number | null;
 }
 
 interface StoreConfigRow {
@@ -473,7 +482,8 @@ function loadCustomer(
   try {
     return db
       .prepare(
-        `SELECT id, first_name, last_name, email, phone, mobile
+        `SELECT id, first_name, last_name, email, phone, mobile,
+                sms_opt_in, sms_consent_transactional, email_opt_in
            FROM customers
           WHERE id = ?`,
       )
@@ -604,6 +614,24 @@ async function dispatchStep(
       };
     }
 
+    // TCPA / SCAN-582: Dunning is transactional (debt collection).
+    // Require either global sms_opt_in OR explicit sms_consent_transactional.
+    // A NULL value (column absent on legacy rows) is treated as opted-in so
+    // existing customers are not silently suppressed after a deploy; new rows
+    // must be explicit (migration sets defaults to 1).
+    const smsAllowed =
+      customer.sms_opt_in !== 0 && customer.sms_consent_transactional !== 0;
+    if (!smsAllowed) {
+      logger.info('dunning SMS skipped — customer opted out of transactional SMS', {
+        invoice_id: invoice.id,
+        order_id: invoice.order_id,
+        customer_id: customer.id,
+        sms_opt_in: customer.sms_opt_in,
+        sms_consent_transactional: customer.sms_consent_transactional,
+      });
+      return { outcome: 'skipped', warning: 'sms_opt_out' };
+    }
+
     // Prefer the template sms_body; fall back to a minimal built-in message.
     const bodyTemplate =
       template?.sms_body ??
@@ -614,10 +642,24 @@ async function dispatchStep(
     try {
       // Tenant slug is not known inside this worker — pass null and let
       // getProviderForDb derive the provider config from the tenant DB.
+      // Expected return shape: SmsProviderResult { success: boolean, error?: string, providerName: string }
       const result = await sendSmsTenant(db as any, null, phone, body);
-      if (!result || (result as any).success === false) {
-        const reason =
-          (result as any)?.error || 'provider returned failure';
+
+      // SCAN-583: check for explicit success shape rather than relying on
+      // truthiness. SmsProviderResult always has a boolean `success` field.
+      // An undefined/null result means the provider returned nothing — treat as failure.
+      if (!result) {
+        logger.warn('dunning SMS: sendSmsTenant returned nullish — unexpected provider shape', {
+          invoice_id: invoice.id,
+          order_id: invoice.order_id,
+        });
+        return {
+          outcome: 'failed',
+          warning: `SMS dispatch failed for ${invoice.order_id}: provider returned no result`,
+        };
+      }
+      if (result.success === false) {
+        const reason = result.error ?? 'provider returned failure';
         return {
           outcome: 'failed',
           warning: `SMS dispatch failed for ${invoice.order_id}: ${reason}`,
@@ -649,6 +691,17 @@ async function dispatchStep(
       outcome: 'failed',
       warning: `Invoice ${invoice.order_id}: customer has no email on file.`,
     };
+  }
+
+  // TCPA / SCAN-582: Respect email opt-out for dunning emails.
+  // NULL is treated as opted-in (legacy rows pre-migration default).
+  if (customer.email_opt_in === 0) {
+    logger.info('dunning email skipped — customer opted out of email', {
+      invoice_id: invoice.id,
+      order_id: invoice.order_id,
+      customer_id: customer.id,
+    });
+    return { outcome: 'skipped', warning: 'email_opt_out' };
   }
 
   if (!isEmailConfigured(db)) {
