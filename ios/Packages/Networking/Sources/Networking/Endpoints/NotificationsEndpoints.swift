@@ -78,3 +78,124 @@ public extension APIClient {
                        as: MarkAllReadResponse.self)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Notification Preferences — /api/v1/notification-preferences
+// Server routes: GET /me, PUT /me
+// ---------------------------------------------------------------------------
+
+/// Single row in the full 20-event × 4-channel matrix returned by GET /me.
+public struct NotificationPrefRow: Decodable, Sendable {
+    public let eventType: String
+    public let channel: String
+    public let enabled: Bool
+    /// Quiet-hours blob. Structure: `{ start: Int, end: Int, allowCriticalOverride: Bool }`.
+    public let quietHours: NotificationPrefQuietHours?
+
+    public init(
+        eventType: String, channel: String,
+        enabled: Bool, quietHours: NotificationPrefQuietHours?
+    ) {
+        self.eventType = eventType
+        self.channel = channel
+        self.enabled = enabled
+        self.quietHours = quietHours
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case eventType = "event_type"
+        case channel
+        case enabled
+        case quietHours = "quiet_hours"
+    }
+}
+
+/// Quiet-hours window as returned from the server preferences endpoint.
+public struct NotificationPrefQuietHours: Codable, Sendable {
+    public let start: Int
+    public let end: Int
+    public let allowCriticalOverride: Bool
+
+    public init(start: Int, end: Int, allowCriticalOverride: Bool) {
+        self.start = start
+        self.end = end
+        self.allowCriticalOverride = allowCriticalOverride
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case allowCriticalOverride = "allow_critical_override"
+    }
+}
+
+/// Full response for GET /api/v1/notification-preferences/me.
+public struct NotificationPrefsResponse: Decodable, Sendable {
+    public let preferences: [NotificationPrefRow]
+    public let eventTypes: [String]
+    public let channels: [String]
+
+    public init(preferences: [NotificationPrefRow], eventTypes: [String], channels: [String]) {
+        self.preferences = preferences
+        self.eventTypes = eventTypes
+        self.channels = channels
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case preferences
+        case eventTypes = "event_types"
+        case channels
+    }
+}
+
+/// Single-item upsert body for PUT /api/v1/notification-preferences/me.
+/// The server expects an array under `preferences`.
+public struct NotificationPrefUpdateItem: Encodable, Sendable {
+    public let eventType: String
+    public let channel: String
+    public let enabled: Bool
+    public let quietHours: NotificationPrefQuietHours?
+
+    public init(eventType: String, channel: String, enabled: Bool,
+                quietHours: NotificationPrefQuietHours? = nil) {
+        self.eventType = eventType
+        self.channel = channel
+        self.enabled = enabled
+        self.quietHours = quietHours
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case eventType = "event_type"
+        case channel
+        case enabled
+        case quietHours = "quiet_hours"
+    }
+}
+
+public struct NotificationPrefUpdateBody: Encodable, Sendable {
+    public let preferences: [NotificationPrefUpdateItem]
+    public init(preferences: [NotificationPrefUpdateItem]) {
+        self.preferences = preferences
+    }
+}
+
+public extension APIClient {
+    /// GET `/api/v1/notification-preferences/me` — full 20×4 matrix.
+    func fetchNotificationPreferences() async throws -> NotificationPrefsResponse {
+        try await get("/api/v1/notification-preferences/me",
+                      query: nil,
+                      as: NotificationPrefsResponse.self)
+    }
+
+    /// PUT `/api/v1/notification-preferences/me` — batch-upsert one or more rows.
+    /// Returns the refreshed full matrix on success.
+    func updateNotificationPreferences(
+        _ items: [NotificationPrefUpdateItem]
+    ) async throws -> NotificationPrefsResponse {
+        try await put(
+            "/api/v1/notification-preferences/me",
+            body: NotificationPrefUpdateBody(preferences: items),
+            as: NotificationPrefsResponse.self
+        )
+    }
+}
