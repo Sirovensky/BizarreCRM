@@ -302,8 +302,8 @@ router.post(
     const userId = req.user!.id;
     const id = validateId(req.params.id);
 
-    // Per-user write rate limit: 10 calls/min (SCAN-505)
-    const rlKey = String(userId);
+    // Per-user+IP write rate limit: 10 calls/min (SCAN-505)
+    const rlKey = `sms_groups_members:${userId}:${req.ip || 'unknown'}`;
     if (!checkWindowRate(db, 'sms_group_member_add', rlKey, RL_MEMBER_ADD_MAX, RL_MEMBER_ADD_WINDOW_MS)) {
       throw new AppError('Too many member-add requests — please slow down', 429);
     }
@@ -383,9 +383,18 @@ router.post(
 router.delete(
   '/:id/members/:customerId',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const adb = req.asyncDb;
+    const userId = req.user!.id;
     const id = validateId(req.params.id);
     const customerId = validateId(req.params.customerId, 'customerId');
+
+    // Per-user+IP write rate limit: 10 calls/min (SCAN-505)
+    const rlKey = `sms_groups_members:${userId}:${req.ip || 'unknown'}`;
+    if (!checkWindowRate(db, 'sms_group_member_add', rlKey, RL_MEMBER_ADD_MAX, RL_MEMBER_ADD_WINDOW_MS)) {
+      throw new AppError('Too many member-remove requests — please slow down', 429);
+    }
+    recordWindowAttempt(db, 'sms_group_member_add', rlKey, RL_MEMBER_ADD_WINDOW_MS);
 
     const group = await adb.get<{ id: number; is_dynamic: number }>(
       'SELECT id, is_dynamic FROM sms_customer_groups WHERE id = ?',

@@ -548,9 +548,16 @@ router.post(
       throw new AppError('total_cents must be a finite number', 400);
     }
     const previous = parseTrainingTxList(session.fake_transactions_json);
+    let cartParsed: unknown;
+    try {
+      cartParsed = JSON.parse(cartSerialized);
+    } catch (parseErr) {
+      logger.error('cart_parse_failed', { err: parseErr instanceof Error ? parseErr.message : String(parseErr) });
+      throw new AppError('Corrupt cart session data', 500);
+    }
     const nextEntry = {
       at: new Date().toISOString(),
-      cart: JSON.parse(cartSerialized),
+      cart: cartParsed,
       total_cents: Math.round(totalCentsRaw),
     };
     const updated = [...previous, nextEntry];

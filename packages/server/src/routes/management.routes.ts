@@ -55,6 +55,7 @@ import { getMasterDb } from '../db/master-connection.js';
 import { getMetricsHistory } from '../services/metricsCollector.js';
 import { createLogger } from '../utils/logger.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('management');
@@ -135,7 +136,7 @@ router.get('/setup-status', (_req: Request, res: Response) => {
 const setupAttemptsByIp = new Map<string, { count: number; firstAt: number }>();
 const SETUP_MAX_ATTEMPTS = 5;
 const SETUP_WINDOW_MS = 60_000;
-setInterval(() => {
+trackInterval(() => {
   const cutoff = Date.now() - SETUP_WINDOW_MS;
   for (const [ip, v] of setupAttemptsByIp) {
     if (v.firstAt < cutoff) setupAttemptsByIp.delete(ip);

@@ -68,6 +68,17 @@ function decryptTotpSecret(ciphertext: string): string {
   return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
 }
 
+// SCAN-648: Guard that all values in a request body map are strings.
+// Rejects non-string values at the boundary instead of silently coercing them.
+function isStringMap(obj: unknown): obj is Record<string, string> {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    !Array.isArray(obj) &&
+    Object.values(obj as Record<string, unknown>).every(v => typeof v === 'string')
+  );
+}
+
 const router = Router();
 
 // Multer for logo upload
@@ -418,6 +429,11 @@ router.put('/config', adminOnly, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
   }
 
+  // SCAN-648: Reject if any value is not a string — indicates a client bug.
+  if (!isStringMap(req.body)) {
+    return res.status(400).json({ success: false, message: 'All config values must be strings' });
+  }
+
   // ENR-S2: Read old values for audit trail before updating
   const oldRows = await adb.all<any>('SELECT key, value FROM store_config');
   const oldConfig: Record<string, string> = {};
@@ -425,10 +441,10 @@ router.put('/config', adminOnly, async (req, res) => {
     oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
   }
 
-  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+  for (const [key, value] of Object.entries(req.body)) {
     if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
     if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue;
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
 
@@ -483,10 +499,15 @@ router.get('/store', async (req, res) => {
 router.put('/store', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  // SCAN-648: Reject if any value is not a string.
+  if (!isStringMap(req.body)) {
+    logger.warn('PUT /store: non-string value in request body — potential client bug');
+    return res.status(400).json({ success: false, message: 'All store values must be strings' });
+  }
   const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
-  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+  for (const [key, value] of Object.entries(req.body)) {
     if (!allowed.includes(key)) continue;
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
   }
@@ -1827,11 +1848,16 @@ router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.jso
 // POST /settings/import — Import settings from JSON, validate keys
 router.post('/import', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const data = req.body as Record<string, string>;
 
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     throw new AppError('Request body must be a JSON object', 400);
   }
+  // SCAN-648: Reject non-string values — settings are all string-valued.
+  if (!isStringMap(req.body)) {
+    logger.warn('POST /import: non-string value in settings import payload — potential client bug');
+    return res.status(400).json({ success: false, message: 'All settings values must be strings' });
+  }
+  const data = req.body;
 
   let imported = 0;
   let skipped = 0;
@@ -1842,7 +1868,7 @@ router.post('/import', adminOnly, async (req, res) => {
       skipped++;
       continue;
     }
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     queries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: [key, storedVal] });
     imported++;

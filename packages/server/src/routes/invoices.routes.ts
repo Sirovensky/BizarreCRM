@@ -25,6 +25,7 @@ import { recordCustomerInteraction } from '../services/customerHealthScore.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import { logActivity } from '../utils/activityLog.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('invoices');
 const router = Router();
@@ -518,7 +519,7 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
 
 // Payment dedup: prevent double-submit within 5 seconds for same invoice+amount
 const recentPayments = new Map<string, number>();
-setInterval(() => { const now = Date.now(); for (const [k, v] of recentPayments) { if (now - v > 30000) recentPayments.delete(k); } }, 30000);
+trackInterval(() => { const now = Date.now(); for (const [k, v] of recentPayments) { if (now - v > 30000) recentPayments.delete(k); } }, 30000);
 
 // POST /invoices/:id/payments
 // SEC-H25: recording a payment is a financial write — gate behind invoices.record_payment.

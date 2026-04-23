@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import { isFeatureAllowed, FEATURE_NAMES, type PlanFeatures } from '@bizarre-crm/shared';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('tierGate');
 
 /** Middleware factory: gates access to Pro-only features based on tenant plan. */
 export function requireFeature(feature: keyof PlanFeatures) {
@@ -14,7 +17,7 @@ export function requireFeature(feature: keyof PlanFeatures) {
     // If it's missing, the middleware chain is broken — fail closed (reject) rather than
     // silently defaulting to 'free' which could mask bugs.
     if (!req.tenantPlan) {
-      console.warn(`[tierGate] Missing tenantPlan on ${req.method} ${req.path} — middleware chain issue? Rejecting.`);
+      logger.warn('tenant_plan_missing', { method: req.method, path: req.path, note: 'middleware chain issue — rejecting' });
       res.status(500).json(errorBody(
         ERROR_CODES.ERR_TENANT_CONTEXT_MISSING,
         'Tenant context not initialized. Please try again.',
@@ -25,7 +28,7 @@ export function requireFeature(feature: keyof PlanFeatures) {
 
     if (isFeatureAllowed(req.tenantPlan, feature)) { next(); return; }
 
-    console.warn(`[tierGate] Feature "${feature}" blocked for plan "${req.tenantPlan}" on tenant ${req.tenantId} (${req.tenantSlug})`);
+    logger.warn('feature_gated', { feature, plan: req.tenantPlan, tenantId: req.tenantId, tenantSlug: req.tenantSlug });
     res.status(403).json(errorBody(
       ERROR_CODES.ERR_PERM_FEATURE_GATED,
       `${FEATURE_NAMES[feature]} requires a Pro plan. Upgrade to unlock this feature.`,

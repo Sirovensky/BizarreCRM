@@ -2088,7 +2088,7 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
   if (newStatus?.notify_customer) {
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
       sendTicketStatusNotification(db, { ticketId, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
-    }).catch(err => console.error('[Notification] Import error:', err));
+    }).catch(err => logger.error('notification_import_failed', { err: err instanceof Error ? err.message : String(err) }));
   }
 
   // SW-D14: Schedule feedback SMS after ticket close (HTTP-only side-effect)
@@ -2129,7 +2129,7 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
             `, feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
             logger.info('feedback sms sent', { toRedacted: redactPhone(feedbackPhone), orderId: ticket!.order_id });
           } catch (err) {
-            console.error('[Feedback] Failed to send feedback SMS:', err);
+            logger.error('feedback_sms_failed', { err: err instanceof Error ? err.message : String(err) });
           }
         }, delayMs);
       }

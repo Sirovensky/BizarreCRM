@@ -310,7 +310,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
   if (next_run_at !== undefined) {
     if (typeof next_run_at !== 'string') throw new AppError('next_run_at must be a string', 400);
-    if (isNaN(Date.parse(next_run_at))) throw new AppError('Invalid next_run_at format', 400);
+    if (Number.isNaN(Date.parse(next_run_at))) throw new AppError('next_run_at must be a valid ISO date', 400);
     updates.push('next_run_at = ?');
     vals.push(next_run_at);
   }

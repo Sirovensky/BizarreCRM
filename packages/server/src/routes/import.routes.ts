@@ -28,6 +28,7 @@ import { createLogger } from '../utils/logger.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { readJobState, buildJobId } from '../services/importJobState.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('import');
@@ -1398,7 +1399,7 @@ export function getRdAccessToken(): string | null {
 // OAuth state store: state -> expiry timestamp (5 minute TTL)
 const oauthStates = new Map<string, number>();
 // Clean up expired states periodically
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [state, expiry] of oauthStates) {
     if (now > expiry) oauthStates.delete(state);

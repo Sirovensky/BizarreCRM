@@ -16,8 +16,24 @@ import { createLogger } from '../utils/logger.js';
 import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('auth');
+
+// SCAN-646: Safe JSON parse for user.permissions — returns null on any parse/shape error.
+function safeParsePermissions(raw: string | null | undefined): Record<string, boolean> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // Validate values are boolean (per SCAN-184 policy):
+    const safe: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'boolean') safe[k] = v;
+    }
+    return safe;
+  } catch { return null; }
+}
 
 // SEC (A7): Max concurrent refresh-token sessions per user.
 // On login, if user has more than this many active sessions, the oldest
@@ -169,7 +185,7 @@ function consumeChallenge(token: string): number | null {
 }
 
 // Clean expired challenges every minute
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
@@ -398,7 +414,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     last_name: user.last_name,
     role: user.role,
     avatar_url: user.avatar_url || null,
-    permissions: user.permissions ? JSON.parse(user.permissions) : null,
+    permissions: safeParsePermissions(user.permissions),
   };
   return { accessToken, refreshToken, user: safeUser };
 }
@@ -1048,7 +1064,17 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   let currentBackupCodes: string = user.backup_codes;
 
   for (let attempt = 0; attempt < MAX_CONSUME_ATTEMPTS; attempt++) {
-    const hashedCodes: string[] = JSON.parse(currentBackupCodes);
+    // SCAN-645: Guard against malformed backup_codes in the DB.
+    let hashedCodes: string[];
+    try {
+      const parsed = JSON.parse(currentBackupCodes);
+      if (!Array.isArray(parsed)) {
+        return res.json({ valid: false });
+      }
+      hashedCodes = parsed as string[];
+    } catch {
+      return res.json({ valid: false });
+    }
     const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
     if (matchIdx === -1) {
@@ -1284,7 +1310,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       id: user.id, username: user.username, email: user.email,
       first_name: user.first_name, last_name: user.last_name,
       role: user.role, avatar_url: user.avatar_url || null,
-      permissions: user.permissions ? JSON.parse(user.permissions) : null,
+      permissions: safeParsePermissions(user.permissions),
     };
 
     // SEC-M10: Audit successful rotation so the full refresh lifecycle shows up
@@ -1440,7 +1466,8 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
-  user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
+  // SCAN-646: Parse permissions without mutating user — use a response-only copy.
+  const userForResponse = { ...user, permissions: safeParsePermissions(user.permissions) };
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
@@ -1468,7 +1495,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   res.json({
     success: true,
-    data: { accessToken, user },
+    data: { accessToken, user: userForResponse },
   });
 });
 

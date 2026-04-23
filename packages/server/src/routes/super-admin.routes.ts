@@ -52,6 +52,7 @@ import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -167,7 +168,7 @@ function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
   map.set(key, value);
 }
 
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);

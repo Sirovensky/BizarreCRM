@@ -14,6 +14,7 @@ import { sendEmail } from '../services/email.js';
 import { logSecurityAlert } from '../utils/masterAudit.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { JWT_SIGN_OPTIONS } from '../middleware/auth.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('signup');
@@ -39,7 +40,7 @@ const signupEmailCounters = new Map<string, EmailRateEntry>();
 
 // Sweep expired counter entries every 5 min so the map cannot grow
 // unbounded in long-lived processes.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [email, entry] of signupEmailCounters) {
     if (now - entry.firstAt > SIGNUP_EMAIL_WINDOW_MS) {
@@ -98,7 +99,7 @@ const pendingSignups = new Map<string, {
 }>();
 
 // Sweep expired entries so the map does not grow without bound.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [token, entry] of pendingSignups) {
     if (now - entry.createdAt > PENDING_SIGNUP_TTL_MS) {
@@ -149,7 +150,7 @@ const slugCheckCounters = new Map<string, SlugCheckCounter>();
 
 // Sweep expired counter entries so the map doesn't grow without bound. Runs
 // every 5 min on the same cadence as the pending-signup sweeper above.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of slugCheckCounters) {
     if (now - entry.firstAt > SLUG_CHECK_COUNTER_WINDOW_MS) {

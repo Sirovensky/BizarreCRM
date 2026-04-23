@@ -58,6 +58,7 @@ import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTrack
 import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
 import { redactPhone } from './utils/phone.js';
+import { trackInterval, backgroundIntervals } from './utils/trackInterval.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -678,42 +679,9 @@ const httpRedirectServer = createServer((req, res) => {
   res.end();
 });
 
-// SEC-BG7: Track every setInterval handle so shutdown() can cancel them explicitly.
-// Background timers were previously .unref()'d, which lets the process exit when nothing
-// else holds it — but does NOT cancel in-flight ticks. During a graceful shutdown a tick
-// could still fire AFTER we start closing DB handles, causing "DB is closed" crashes in
-// logs. trackInterval() is a drop-in wrapper: call it INSTEAD of setInterval().
-//
-// Accepts either a sync void callback or an async callback — the return value is
-// deliberately discarded, matching setInterval's behavior.
-const backgroundIntervals: NodeJS.Timeout[] = [];
-function trackInterval(
-  fn: () => void | Promise<void>,
-  ms: number,
-  options: { unref?: boolean } = {}
-): NodeJS.Timeout {
-  const handle = setInterval(() => {
-    try {
-      const result = fn();
-      // If the callback returns a promise, catch any rejection so the timer never
-      // triggers an unhandledRejection.
-      if (result && typeof (result as Promise<void>).catch === 'function') {
-        (result as Promise<void>).catch((err) => {
-          log.error('trackInterval: async callback rejected', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
-    } catch (err) {
-      log.error('trackInterval: sync callback threw', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, ms);
-  if (options.unref !== false) handle.unref();
-  backgroundIntervals.push(handle);
-  return handle;
-}
+// SEC-BG7: trackInterval + backgroundIntervals are imported from
+// utils/trackInterval.ts (see import above). The comment is preserved
+// here as a cross-reference for future readers tracing the shutdown path.
 
 // SEC-AL5: Audit log retention policy — default 730 days (2 years) for compliance.
 // Override via env var AUDIT_LOG_RETENTION_DAYS. Values < 1 fall back to 730.
@@ -2488,7 +2456,10 @@ server.listen(config.port, config.host, async () => {
   // mtime-based, not cron-tick-based.
   if (config.multiTenant) {
     import('./services/tenantTermination.js')
-      .then(({ purgeExpiredDeletions }) => {
+      .then(({ purgeExpiredDeletions, startTenantTerminationSweeper }) => {
+        // SCAN-652: start the token-reaper cron so it is tracked by
+        // backgroundIntervals and cancelled on graceful shutdown.
+        startTenantTerminationSweeper();
         try {
           purgeExpiredDeletions();
         } catch (err) {

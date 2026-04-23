@@ -12,6 +12,7 @@ import {
 } from '../services/backup.js';
 import { audit } from '../utils/audit.js';
 import { logger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { authMiddleware } from '../middleware/auth.js';
 import {
@@ -50,12 +51,12 @@ function generateToken(): string {
 
 // SCAN-575: sweep expired entries every 5 min so the Map doesn't accumulate stale tokens
 // even when traffic is low (cap-overflow eviction alone only fires under sustained load).
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of adminTokens) {
     if (v.expires < now) adminTokens.delete(k);
   }
-}, 5 * 60 * 1000).unref();
+}, 5 * 60 * 1000);
 
 const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -110,7 +111,7 @@ function adminAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 // Clean expired tokens periodically
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of adminTokens) { if (v.expires < now) adminTokens.delete(k); }
 }, 60_000);

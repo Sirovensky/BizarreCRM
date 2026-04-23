@@ -40,6 +40,7 @@ import { closeTenantDb } from '../db/tenant-pool.js';
 import { deleteTenantDnsRecord } from './cloudflareDns.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('tenant-termination');
 
@@ -72,13 +73,22 @@ interface TerminationToken {
  */
 const tokens = new Map<string, TerminationToken>();
 
-/** Best-effort reaper so we don't hold expired tokens forever. */
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of tokens) {
-    if (v.expiresAt < now) tokens.delete(k);
-  }
-}, 60_000).unref?.();
+/**
+ * SCAN-652: Token reaper extracted from module scope into a named start
+ * function so index.ts can wire it into the trackInterval registry for
+ * graceful shutdown. Call once post-listen alongside other crons.
+ */
+let sweepTimer: NodeJS.Timeout | null = null;
+
+export function startTenantTerminationSweeper(): void {
+  if (sweepTimer) return;
+  sweepTimer = trackInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of tokens) {
+      if (v.expiresAt < now) tokens.delete(k);
+    }
+  }, 60_000);
+}
 
 function newToken(): string {
   return crypto.randomBytes(32).toString('hex');

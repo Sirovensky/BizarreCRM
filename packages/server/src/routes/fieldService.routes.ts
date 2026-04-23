@@ -749,16 +749,22 @@ router.post('/routes', asyncHandler(async (req: Request, res: Response) => {
     return n;
   });
 
-  // Verify all jobs exist and are assigned to this technician
-  await Promise.all(jobIds.map(async (jobId) => {
-    const job = await adb.get<AnyRow>(
-      'SELECT id, assigned_technician_id FROM field_service_jobs WHERE id = ?', jobId,
+  // Verify all jobs exist and are assigned to this technician (single query)
+  {
+    const placeholders = jobIds.map(() => '?').join(',');
+    const rows = await adb.all<{ id: number; assigned_technician_id: number | null }>(
+      `SELECT id, assigned_technician_id FROM field_service_jobs WHERE id IN (${placeholders})`,
+      ...jobIds,
     );
-    if (!job) throw new AppError(`Job ${jobId} not found`, 404);
-    if (job.assigned_technician_id !== techId) {
-      throw new AppError(`Job ${jobId} is not assigned to technician ${techId}`, 400);
+    if (rows.length !== jobIds.length) {
+      throw new AppError('One or more jobs not found', 404);
     }
-  }));
+    for (const row of rows) {
+      if (row.assigned_technician_id !== techId) {
+        throw new AppError('Job not assigned to this technician', 400);
+      }
+    }
+  }
 
   const ts = now();
   const result = await adb.run(`
@@ -798,16 +804,22 @@ router.patch('/routes/:id', asyncHandler(async (req: Request, res: Response) => 
       }
       return n;
     });
-    // Verify jobs exist and belong to this route's technician
-    await Promise.all(jobIds.map(async (jobId) => {
-      const job = await adb.get<AnyRow>(
-        'SELECT id, assigned_technician_id FROM field_service_jobs WHERE id = ?', jobId,
+    // Verify jobs exist and belong to this route's technician (single query)
+    {
+      const placeholders = jobIds.map(() => '?').join(',');
+      const rows = await adb.all<{ id: number; assigned_technician_id: number | null }>(
+        `SELECT id, assigned_technician_id FROM field_service_jobs WHERE id IN (${placeholders})`,
+        ...jobIds,
       );
-      if (!job) throw new AppError(`Job ${jobId} not found`, 404);
-      if (job.assigned_technician_id !== existing.technician_id) {
-        throw new AppError(`Job ${jobId} is not assigned to this route's technician`, 400);
+      if (rows.length !== jobIds.length) {
+        throw new AppError('One or more jobs not found', 404);
       }
-    }));
+      for (const row of rows) {
+        if (row.assigned_technician_id !== existing.technician_id) {
+          throw new AppError('Job not assigned to this technician', 400);
+        }
+      }
+    }
     jobOrderStr = JSON.stringify(jobIds);
   }
 
@@ -890,17 +902,23 @@ router.post('/routes/optimize', asyncHandler(async (req: Request, res: Response)
     return n;
   });
 
-  // Load jobs (must all be assigned to this technician)
-  const jobs = await Promise.all(jobIds.map(async (jobId) => {
-    const job = await adb.get<AnyRow>(
-      'SELECT id, lat, lng, assigned_technician_id FROM field_service_jobs WHERE id = ?', jobId,
-    );
-    if (!job) throw new AppError(`Job ${jobId} not found`, 404);
-    if (job.assigned_technician_id !== techId) {
-      throw new AppError(`Job ${jobId} is not assigned to technician ${techId}`, 400);
+  // Load jobs (must all be assigned to this technician) — single query
+  const placeholders = jobIds.map(() => '?').join(',');
+  const jobRows = await adb.all<AnyRow>(
+    `SELECT id, lat, lng, assigned_technician_id FROM field_service_jobs WHERE id IN (${placeholders})`,
+    ...jobIds,
+  );
+  if (jobRows.length !== jobIds.length) {
+    throw new AppError('One or more jobs not found', 404);
+  }
+  for (const row of jobRows) {
+    if ((row.assigned_technician_id as number | null) !== techId) {
+      throw new AppError(`Job ${row.id as number} is not assigned to technician ${techId}`, 400);
     }
-    return job;
-  }));
+  }
+  const jobMap = new Map<number, AnyRow>(jobRows.map((j) => [j.id as number, j]));
+  // Preserve the requested order for the greedy algorithm input
+  const jobs = jobIds.map((jid) => jobMap.get(jid)!);
 
   // Determine start location: use technician's home_lat/home_lng if present,
   // otherwise seed from the first job.

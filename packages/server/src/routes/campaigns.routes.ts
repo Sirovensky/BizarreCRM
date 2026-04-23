@@ -29,7 +29,7 @@
  * with the reason in .response. No lying about success.
  */
 
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -747,7 +747,7 @@ if (!INTERNAL_SERVICE_TOKEN) {
   );
 }
 
-function requireAdminOrServiceToken(req: any): void {
+function requireAdminOrServiceToken(req: Request): void {
   // Fast path: admin JWT.
   if (req?.user?.role === 'admin') return;
   // Alternate path: internal service token (disabled if env var not set).

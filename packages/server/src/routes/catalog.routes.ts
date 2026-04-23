@@ -577,7 +577,9 @@ router.get('/parts-search', asyncHandler(async (req, res) => {
 // Results are cached in supplier_catalog for future searches.
 // POST body: { source: 'mobilesentrix'|'phonelcdparts', q: string }
 router.post('/live-search', asyncHandler(async (req, res) => {
-  const { source, q } = req.body as { source: CatalogSource; q: string };
+  const { source, q } = req.body as { source: CatalogSource; q: unknown };
+  // SCAN-650: Guard string type before calling .trim().
+  if (typeof q !== 'string') throw new AppError('q must be a string', 400);
   if (!VALID_SOURCES.includes(source)) throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
   if (!q || q.trim().length < 2) throw new AppError('q must be at least 2 characters');
 
