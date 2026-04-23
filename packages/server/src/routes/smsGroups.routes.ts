@@ -15,8 +15,9 @@
  *   GET /:id/sends        — any authenticated user
  *
  * Rate limits:
- *   Group creates: 20/hr per user  (category 'sms_group_create')
- *   Group sends: 5/day per group   (category 'sms_group_send')
+ *   Group creates: 20/hr per user        (category 'sms_group_create')
+ *   Group sends: 5/day per group         (category 'sms_group_send')
+ *   Member add: 10/min per user          (category 'sms_group_member_add')
  *
  * Length caps:
  *   group name ≤ 100, description ≤ 500, send body ≤ 1600
@@ -26,7 +27,7 @@ import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
-import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { consumeWindowRate, checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import {
   validateRequiredString,
@@ -45,6 +46,8 @@ const RL_CREATE_MAX = 20;
 const RL_CREATE_WINDOW_MS = 3_600_000;     // 1 hour
 const RL_SEND_MAX = 5;
 const RL_SEND_WINDOW_MS = 86_400_000;      // 24 hours
+const RL_MEMBER_ADD_MAX = 10;
+const RL_MEMBER_ADD_WINDOW_MS = 60_000;    // 1 minute
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -203,6 +206,7 @@ router.post(
 router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = validateId(req.params.id);
 
@@ -293,8 +297,17 @@ router.delete(
 router.post(
   '/:id/members',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const adb = req.asyncDb;
+    const userId = req.user!.id;
     const id = validateId(req.params.id);
+
+    // Per-user write rate limit: 10 calls/min (SCAN-505)
+    const rlKey = String(userId);
+    if (!checkWindowRate(db, 'sms_group_member_add', rlKey, RL_MEMBER_ADD_MAX, RL_MEMBER_ADD_WINDOW_MS)) {
+      throw new AppError('Too many member-add requests — please slow down', 429);
+    }
+    recordWindowAttempt(db, 'sms_group_member_add', rlKey, RL_MEMBER_ADD_WINDOW_MS);
 
     const group = await adb.get<{ id: number; is_dynamic: number }>(
       'SELECT id, is_dynamic FROM sms_customer_groups WHERE id = ?',
@@ -407,6 +420,7 @@ router.delete(
 router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const userId = req.user!.id;

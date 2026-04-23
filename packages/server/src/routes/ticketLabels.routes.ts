@@ -203,7 +203,13 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   const updated = await adb.get('SELECT * FROM ticket_labels WHERE id = ?', id);
   audit(db, 'ticket_label.updated', req.user!.id, req.ip || 'unknown', {
-    label_id: id, changes: req.body,
+    label_id: id,
+    changes: {
+      name: req.body.name,
+      color_hex: req.body.color_hex,
+      description: req.body.description,
+      sort_order: req.body.sort_order,
+    },
   });
   res.json({ success: true, data: updated });
 }));

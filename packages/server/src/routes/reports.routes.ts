@@ -1847,11 +1847,6 @@ router.get('/cash-flow-forecast', requireFeature('advancedReports'), asyncHandle
 // BUSINESS INTELLIGENCE LAYER (audit 47) — additive, does not touch existing
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// TODO(MEDIUM, §26): wire report emailer cron — import { startReportEmailer } from
-// '../services/reportEmailer.js' in packages/server/src/index.ts and call
-// startReportEmailer(() => Promise.resolve([{ db, adb, recipients: [ownerEmail] }]))
-// once after the HTTP server is listening. The emailer is idempotent.
-//
 //
 // Every endpoint in this block is new. None of the queries above have been
 // modified. If you need to edit the old reports, scroll up — the cutoff is

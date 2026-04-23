@@ -113,15 +113,16 @@ interface ParsedToken {
  * Does NOT verify the HMAC — the caller must call verifySignTokenHmac()
  * after loading expires_at from the DB.
  */
-function parseSignToken(token: string): ParsedToken {
-  if (typeof token !== 'string' || !token.includes('.')) {
+function parseSignToken(token: unknown): ParsedToken {
+  const s = Array.isArray(token) ? String(token[0] ?? '') : typeof token === 'string' ? token : String(token ?? '');
+  if (!s.includes('.')) {
     throw new AppError('Invalid sign token format', 400);
   }
 
   // Split on the FIRST dot — idPart is base64url (no dots); hex HMAC is never dots.
-  const dotIdx = token.indexOf('.');
-  const idPart = token.slice(0, dotIdx);
-  const givenHmac = token.slice(dotIdx + 1);
+  const dotIdx = s.indexOf('.');
+  const idPart = s.slice(0, dotIdx);
+  const givenHmac = s.slice(dotIdx + 1);
 
   // givenHmac must be a 64-char hex string (SHA-256 HMAC output).
   if (!/^[0-9a-f]{64}$/i.test(givenHmac)) {
@@ -162,8 +163,9 @@ function verifySignTokenHmac(estimateId: number, expiresTs: number, givenHmac: s
 }
 
 /** SHA-256 a raw token to get the value stored in token_hash. */
-function hashToken(rawToken: string): string {
-  return crypto.createHash('sha256').update(rawToken, 'utf8').digest('hex');
+function hashToken(rawToken: unknown): string {
+  const s = Array.isArray(rawToken) ? String(rawToken[0] ?? '') : typeof rawToken === 'string' ? rawToken : String(rawToken ?? '');
+  return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 }
 
 /** Convert an ISO/SQLite timestamp to epoch ms. */

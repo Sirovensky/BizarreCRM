@@ -59,6 +59,7 @@ function writeRateLimit(req: Request): void {
 // GET /
 // ---------------------------------------------------------------------------
 router.get('/', async (req, res) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const {
     page = '1',
@@ -130,6 +131,7 @@ router.get('/', async (req, res) => {
 // GET /:id
 // ---------------------------------------------------------------------------
 router.get('/:id', async (req, res) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const id = validateId(req.params.id);
 

@@ -150,6 +150,14 @@ import slaRoutes from './routes/sla.routes.js';
 import { startSlaBreachCron } from './services/slaBreachCron.js';
 import ticketSignaturesRoutes from './routes/ticketSignatures.routes.js';
 import expenseReceiptsRoutes from './routes/expenseReceipts.routes.js';
+// Web-parity backend wave 3 (2026-04-23).
+import fieldServiceRoutes from './routes/fieldService.routes.js';
+import ownerPlRoutes from './routes/ownerPl.routes.js';
+import locationRoutes from './routes/locations.routes.js';
+import bookingConfigRoutes from './routes/bookingConfig.routes.js';
+import bookingPublicRoutes from './routes/bookingPublic.routes.js';
+import syncConflictsRoutes from './routes/syncConflicts.routes.js';
+import { startReceiptOcrCron } from './services/receiptOcrCron.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
@@ -1619,6 +1627,14 @@ app.use('/api/v1/checklists', authMiddleware, checklistRoutes);
 app.use('/api/v1/sla', authMiddleware, slaRoutes);
 app.use('/api/v1/tickets/:ticketId/signatures', authMiddleware, ticketSignaturesRoutes);
 app.use('/api/v1/expenses/:expenseId/receipt', authMiddleware, expenseReceiptsRoutes);
+// Web-parity backend wave 3 (2026-04-23) — field service, owner P&L, locations,
+// booking config (admin + public), sync conflicts. Public booking uses IP rate-limit.
+app.use('/api/v1/field-service', authMiddleware, fieldServiceRoutes);
+app.use('/api/v1/owner-pl', authMiddleware, ownerPlRoutes);
+app.use('/api/v1/locations', authMiddleware, locationRoutes);
+app.use('/api/v1/booking-config', authMiddleware, bookingConfigRoutes);
+app.use('/public/api/v1/booking', bookingPublicRoutes);
+app.use('/api/v1/sync/conflicts', authMiddleware, syncConflictsRoutes);
 // Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
 // TODO(MEDIUM, §26): wire a daily cron that runs recalculateAllCustomerHealth()
 // + the birthday/churn dispatch helpers. For now these endpoints are invoked
@@ -2043,6 +2059,24 @@ server.listen(config.port, config.host, async () => {
     backgroundIntervals.push(slaBreachTimer);
   } catch (err) {
     log.error('Failed to start SLA breach cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // Receipt OCR cron (SCAN-490 / web-parity wave 4 2026-04-23).
+  // Runs every 2 min; batches up to 10 pending uploads per tenant.
+  // Stale-cleanup: pending > 24h → failed (prevents infinite pending).
+  // Graceful when tesseract.js is not installed — sets status=failed + error_message.
+  try {
+    const receiptOcrTimer = startReceiptOcrCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    }, config.uploadsPath);
+    backgroundIntervals.push(receiptOcrTimer);
+  } catch (err) {
+    log.error('Failed to start receipt OCR cron', {
       error: err instanceof Error ? err.message : String(err),
     });
   }

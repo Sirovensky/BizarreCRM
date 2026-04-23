@@ -346,18 +346,21 @@ router.post('/swap/:requestId/accept', asyncHandler(async (req: any, res: any) =
     throw new AppError(`Swap request is already ${swap.status}`, 409);
   }
 
-  // Transfer shift ownership.
-  await adb.run(
-    `UPDATE shift_schedules SET user_id = ?, updated_at = datetime('now') WHERE id = ?`,
-    callerId, swap.shift_id,
-  );
-
-  await adb.run(
-    `UPDATE shift_swap_requests
-     SET status = 'accepted', decided_at = datetime('now')
-     WHERE id = ?`,
-    reqId,
-  );
+  // Transfer shift ownership atomically — both updates must succeed together.
+  await adb.transaction([
+    {
+      sql: `UPDATE shift_schedules SET user_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      params: [callerId, swap.shift_id],
+      expectChanges: true,
+      expectChangesError: 'Shift no longer exists',
+    },
+    {
+      sql: `UPDATE shift_swap_requests SET status = 'accepted', decided_at = datetime('now') WHERE id = ?`,
+      params: [reqId],
+      expectChanges: true,
+      expectChangesError: 'Swap request no longer exists',
+    },
+  ]);
 
   audit(db, 'shift_swap_accepted', callerId, req.ip || 'unknown', {
     swap_id: reqId, shift_id: swap.shift_id, from_user_id: swap.requester_user_id,
