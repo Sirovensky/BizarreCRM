@@ -35,9 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_clock_entries_location
   ON clock_entries(location_id);
 
 -- ─── shift_schedules ─────────────────────────────────────────────────────────
-
-ALTER TABLE shift_schedules
-  ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+-- NOTE: `location_id` was already added to shift_schedules by migration 121
+-- (as a plain INTEGER with no FK constraint). We intentionally do NOT re-add
+-- the column here — SQLite has no `ADD COLUMN IF NOT EXISTS` and re-adding
+-- would throw "duplicate column name: location_id". We only backfill any
+-- rows that were inserted before 121 (or before the application layer began
+-- populating the column) and ensure the index exists.
 
 UPDATE shift_schedules SET location_id = 1 WHERE location_id IS NULL;
 
