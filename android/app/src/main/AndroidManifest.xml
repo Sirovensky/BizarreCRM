@@ -34,6 +34,33 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
         android:maxSdkVersion="32" />
 
+    <!-- Package-visibility declarations (Android 11+ / API 30+).
+         Without these entries the OS hides matching apps from queryIntentActivities
+         and Intent.resolveActivity returns null, breaking ACTION_DIAL, ACTION_SENDTO,
+         ACTION_VIEW(geo), and ACTION_SENDTO(mailto) implicit intents. -->
+    <queries>
+        <!-- Phone dialer — used in CustomerDetailScreen / TicketDetailScreen -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <!-- SMS / MMS apps — used for customer SMS shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <!-- Maps / navigation — used for customer address shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <!-- Email client — used for customer email shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
     <application
         android:name=".BizarreCrmApp"
         android:allowBackup="false"
@@ -67,6 +94,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="bizarrecrm.app" />
+            </intent-filter>
+
+            <!-- App Links for the tenant subdomain app.bizarrecrm.com (plan §1.5 L205).
+                 Kept as a separate filter block from bizarrecrm.app above — the OS
+                 verifies each autoVerify filter independently; merging hosts into one
+                 filter causes verification to fail if either domain is unreachable.
+                 Server-side: deploy /.well-known/assetlinks.json at
+                 https://app.bizarrecrm.com — see TODO.md CROSS-PLATFORM section.
+                 Until assetlinks.json is live, links open in the browser (safe fallback). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.bizarrecrm.com" />
             </intent-filter>
 
             <!-- Custom-scheme filter for internal use (launcher shortcuts,
