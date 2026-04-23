@@ -586,6 +586,7 @@ public struct PosView: View {
             methodLabel: methodLabel,
             receiptText: text,
             receiptHtml: html,
+            receiptPayload: snapshot,
             defaultEmail: cart.customer?.email,
             defaultPhone: cart.customer?.phone,
             api: api,
