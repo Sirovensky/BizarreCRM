@@ -105,7 +105,7 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
 // GET /invoices
 router.get('/', async (req, res) => {
   const adb = req.asyncDb;
-  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
   const offset = (p - 1) * ps;
@@ -119,6 +119,8 @@ router.get('/', async (req, res) => {
   if (customer_id) { where += ' AND inv.customer_id = ?'; params.push(customer_id); }
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(inv.created_at) <= ?'; params.push(to_date); }
+  // SCAN-462 / migration 139: optional location filter (backwards-compat — omitting it returns all)
+  if (location_id && /^\d+$/.test(location_id)) { where += ' AND inv.location_id = ?'; params.push(parseInt(location_id, 10)); }
   if (keyword) {
     // Escape %/_/\ so users can't smuggle LIKE wildcards.
     where += " AND (inv.order_id LIKE ? ESCAPE '\\' OR c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\')";
@@ -244,9 +246,25 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const {
     customer_id, ticket_id, line_items = [], discount = 0, discount_reason,
     notes, due_date, is_deposit, deposit_amount: reqDepositAmount, parent_invoice_id,
+    location_id: bodyLocationId,
   } = req.body;
 
   if (!customer_id) throw new AppError('Customer is required', 400);
+
+  // SCAN-462 / migration 139: resolve location_id — default to 1 (Main Store) when not provided.
+  // Validate that the supplied id references an existing, active location.
+  let invoiceLocationId: number = 1;
+  if (bodyLocationId !== undefined && bodyLocationId !== null) {
+    if (!Number.isInteger(bodyLocationId) || (bodyLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const loc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      bodyLocationId,
+    );
+    if (!loc) throw new AppError('location_id references an unknown or inactive location', 400);
+    invoiceLocationId = bodyLocationId as number;
+  }
 
   // V8: Validate due_date format if provided (accept ISO YYYY-MM-DD or full ISO timestamp)
   const validatedDueDate = validateIsoDate(due_date, 'due_date');
@@ -333,11 +351,11 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const result = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
       total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
-      is_deposit, deposit_amount, parent_invoice_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+      is_deposit, deposit_amount, parent_invoice_id, location_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
   `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
     total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
-    depositFlag, depositAmount, parent_invoice_id || null);
+    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId);
 
   const invoiceId = result.lastInsertRowid;
 
@@ -390,10 +408,24 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
   if (!existing) throw new AppError('Invoice not found', 404);
   if (existing.status === 'void') throw new AppError('Cannot modify a voided invoice', 400);
 
-  const { notes, due_date, due_on, discount, discount_reason, payment_plan } = req.body;
+  const { notes, due_date, due_on, discount, discount_reason, payment_plan, location_id: patchLocationId } = req.body;
   // V8: Validate whichever due date field the client sent
   const rawDueDate = due_date ?? due_on;
   const dueDate = validateIsoDate(rawDueDate, 'due_date');
+
+  // SCAN-462 / migration 139: validate location_id if provided
+  let resolvedLocationId: number | null = null;
+  if (patchLocationId !== undefined && patchLocationId !== null) {
+    if (!Number.isInteger(patchLocationId) || (patchLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const patchLoc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      patchLocationId,
+    );
+    if (!patchLoc) throw new AppError('location_id references an unknown or inactive location', 400);
+    resolvedLocationId = patchLocationId as number;
+  }
 
   // V10 / ENR-I8: Validate payment_plan with structural + size guard so we don't
   // accept circular refs, unbounded blobs, or malformed values.
@@ -455,12 +487,14 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
       total = ?,
       amount_due = ?,
       payment_plan = COALESCE(?, payment_plan),
+      location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
     WHERE id = ?
   `,
     notes ?? null, dueDate, newDiscount, discount_reason ?? null,
     total, Math.max(0, amountDue),
     serializedPaymentPlan,
+    resolvedLocationId,
     req.params.id,
   );
 

@@ -232,7 +232,7 @@ router.get('/availability', asyncHandler(async (req, res) => {
     serviceId,
   );
   if (!service) {
-    throw new AppError('Service not found', 404);
+    throw new AppError('Invalid service', 400);
   }
 
   // --- Determine open/close for the requested date ---

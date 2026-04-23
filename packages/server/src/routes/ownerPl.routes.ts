@@ -81,6 +81,7 @@ interface PlSummary {
     outstanding_cents: number;
     overdue_cents: number;
     aging_buckets: AgingBuckets;
+    truncated: boolean;
   };
   inventory_value: { cents: number; sku_count: number };
   time_series: TimeBucket[];
@@ -289,6 +290,9 @@ async function computeSummary(
 
   // ── AR / aging ─────────────────────────────────────────────────────────────
   // Pattern reused from dunning.routes.ts /invoices/aging.
+  // Capped at AR_LIMIT rows to prevent heap bloat on large datasets.
+  // If arTruncated is true the aging buckets are approximate (first 10 000 rows).
+  const AR_LIMIT = 10_000;
   const arQuery = `
     SELECT
       i.id,
@@ -298,6 +302,7 @@ async function computeSummary(
     FROM invoices i
     WHERE i.status IN ('unpaid','overdue','partial','draft')
       AND i.amount_due > 0
+    LIMIT ?
   `;
 
   // ── Inventory value ────────────────────────────────────────────────────────
@@ -391,7 +396,7 @@ async function computeSummary(
     adb.all<Row>(expensesByCategoryQuery, from, to),
     adb.get<Row>(taxCollectedQuery, from, to),
     adb.get<Row>(taxRemittedQuery, from, to),
-    adb.all<Row>(arQuery),
+    adb.all<Row>(arQuery, AR_LIMIT),
     adb.get<Row>(inventoryQuery),
     adb.all<Row>(timeSeriesQuery, from, to),
     adb.all<Row>(timeSeriesExpQuery, from, to),
@@ -426,6 +431,7 @@ async function computeSummary(
   const taxOutstandingCents = Math.max(0, taxCollectedCents - taxRemittedCents);
 
   // ── AR aging ───────────────────────────────────────────────────────────────
+  const arTruncated = arRows.length >= AR_LIMIT;
   const now = Date.now();
   const aging: AgingBuckets = { '0_30': 0, '31_60': 0, '61_90': 0, '91_plus': 0 };
   let arOutstandingCents = 0;
@@ -501,6 +507,7 @@ async function computeSummary(
       outstanding_cents: arOutstandingCents,
       overdue_cents: arOverdueCents,
       aging_buckets: aging,
+      truncated: arTruncated,
     },
     inventory_value: {
       cents: Number(inventoryRow?.cents ?? 0),

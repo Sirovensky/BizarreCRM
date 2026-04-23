@@ -60,15 +60,16 @@ interface UploadIdRow {
  */
 function cleanStale(slug: string, db: Database.Database): void {
   try {
+    const staleModifier = `-${STALE_PENDING_HOURS} hours`;
     const result = db
       .prepare(
         `UPDATE expense_receipt_uploads
             SET ocr_status    = 'failed',
                 error_message = 'OCR processor not configured — tesseract.js not installed'
           WHERE ocr_status = 'pending'
-            AND created_at <= datetime('now', '-${STALE_PENDING_HOURS} hours')`,
+            AND created_at <= datetime('now', ?)`,
       )
-      .run();
+      .run(staleModifier);
 
     if (result.changes > 0) {
       logger.warn('OCR: stale pending uploads marked failed', {
