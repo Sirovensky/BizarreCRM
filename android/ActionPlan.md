@@ -38,7 +38,7 @@ in-progress and lags the audit.
 | 2 | Auth & Onboarding | ~55% | Login + 2FA + setPassword + signup + logout + refresh-retry + **PIN lock end-to-end (NEW Settings + nav)** + **SessionRevoked banner (NEW)** + **/auth/me cold-start (NEW)** DONE. Missing: passkeys, SSO, magic-link, hardware key, shared-device. |
 | 3 | Dashboard | ~55% | KPIs, my-queue, FAB, sync badge, greeting, error states, onboarding checklist, clock-in tile + **KPI tile tap-through to Tickets / Appointments / Inventory (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode, filtered-list params. |
 | 4 | Tickets | ~16% | List + detail + create scaffolds; §4.17 IMEI Luhn validator + **live IMEI supportingText + TAC model suggestion in TicketCreate (NEW)** DONE. Missing: Paging3, signatures, bench, SLA, QC checklist, inventory trade-in hookup. |
-| 5 | Customers | ~30% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. Missing: tags UI, segments, merge, bulk, communication prefs. |
+| 5 | Customers | ~33% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. **Tag chips row on detail (commit 392d1d5 via `ui/components/TagChip.kt` + FlowRow).** Missing: tag picker in create/edit, segments, merge, bulk, communication prefs. |
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
 | 7 | Invoices | ~30% | List (status tabs), detail w/ payments DONE. Missing: create, refund, send, dunning, pagination. |
 | 8 | Estimates | ~15% | List + detail header DONE. Missing: send, approve, e-sign, versioning, create. |
@@ -1470,8 +1470,8 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [x] Base list + summary header.
 - [~] **Filters** — category / date range / employee / reimbursable flag / approval status.
 - [ ] **Sort** — date / amount / category.
-- [ ] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending.
-- [ ] **Category breakdown pie** (tablet/ChromeOS).
+- [~] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending. (commit f8f6a90 — By-category donut pie shipped; Total tile + Reimbursable-pending tile pending)
+- [x] **Category breakdown pie** (tablet/ChromeOS). (commit f8f6a90 — `ExpenseCategoryPieChart.kt` Canvas donut + tappable legend + collapsible card on ExpenseListScreen; ReduceMotion-aware)
 - [ ] **Export CSV** via SAF.
 - [ ] **Swipe** — edit / delete.
 - [ ] **Context menu** — Open, Duplicate, Delete.
@@ -1992,15 +1992,15 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`.
 
 ### 19.4 Appearance
-- [~] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`).
-- [ ] Dynamic color on/off (Android 12+).
+- [x] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`). (commit 6cfcefa — `ui/screens/settings/ThemeScreen.kt` with radio rows; `AppPreferences.darkModeFlow` + MainActivity observes via `collectAsState`; no activity recreate needed)
+- [x] Dynamic color on/off (Android 12+). (commit 6cfcefa — ThemeScreen Switch gated on `SDK_INT >= S`; `AppPreferences.dynamicColorFlow` → BizarreCrmTheme)
 - [ ] Tenant accent override color picker.
 - [ ] Density mode (§3.18).
 - [ ] Font-scale preview.
 - [ ] High-contrast toggle (swaps to AA 7:1 palette).
 
 ### 19.5 Language & region
-- [ ] Per-app language via `LocaleManager.setApplicationLocales` (Android 13+); pre-13 falls back to in-app `ConfigurationCompat` + `AppCompatDelegate.setApplicationLocales`.
+- [x] Per-app language via `LocaleManager.setApplicationLocales` (Android 13+); pre-13 falls back to in-app `ConfigurationCompat` + `AppCompatDelegate.setApplicationLocales`. (commit d3d546c — `util/LanguageManager.kt` + `ui/screens/settings/LanguageScreen.kt` + `locales_config.xml`)
 - [ ] Timezone override.
 - [ ] Date / time / number formats follow locale.
 - [ ] Currency display override (§5.17).
