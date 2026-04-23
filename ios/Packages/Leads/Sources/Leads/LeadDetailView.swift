@@ -7,10 +7,9 @@ import Networking
 import UIKit
 #endif
 
-/// §19.x Lead detail — fetches `/leads/{id}` on mount and renders the
+/// §9 Phase 4 Lead detail — fetches `/leads/{id}` on mount and renders the
 /// deep record: header + contact + pipeline status + attached devices +
-/// scheduled appointments. Read-only for now; edit/convert actions land
-/// with the Leads pipeline work in a later phase.
+/// scheduled appointments. Edit and Convert actions wired in Phase 4.
 @MainActor
 @Observable
 public final class LeadDetailViewModel {
@@ -46,8 +45,13 @@ public final class LeadDetailViewModel {
 
 public struct LeadDetailView: View {
     @State private var vm: LeadDetailViewModel
+    /// API client kept so Edit / Convert sheets can init their own VMs.
+    private let api: APIClient
+    @State private var showingEdit = false
+    @State private var showingConvert = false
 
     public init(api: APIClient, id: Int64) {
+        self.api = api
         _vm = State(wrappedValue: LeadDetailViewModel(api: api, id: id))
     }
 
@@ -60,8 +64,50 @@ public struct LeadDetailView: View {
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar { detailToolbar }
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .sheet(isPresented: $showingEdit) {
+            if case .loaded(let detail) = vm.state {
+                LeadEditView(api: api, lead: detail) { updated in
+                    vm.state = .loaded(updated)
+                }
+            }
+        }
+        .sheet(isPresented: $showingConvert) {
+            if case .loaded(let detail) = vm.state {
+                LeadConvertSheet(api: api, lead: detail) { _, _ in
+                    // Reload so status chip shows 'converted'.
+                    Task { await vm.load() }
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if case .loaded(let detail) = vm.state {
+                // Only show Convert if not already converted / lost.
+                if detail.status != "converted" && detail.status != "lost" {
+                    Button {
+                        showingConvert = true
+                    } label: {
+                        Label("Convert", systemImage: "arrow.right.circle")
+                    }
+                    .accessibilityLabel("Convert lead to ticket")
+                }
+                Button {
+                    showingEdit = true
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .accessibilityLabel("Edit lead")
+                #if canImport(UIKit)
+                .keyboardShortcut("e", modifiers: .command)
+                #endif
+            }
+        }
     }
 
     private var title: String {
