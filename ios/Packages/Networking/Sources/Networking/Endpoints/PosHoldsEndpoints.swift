@@ -118,3 +118,93 @@ public extension APIClient {
         try await get("/api/v1/pos/holds", as: [PosHold].self)
     }
 }
+
+// MARK: - Held Carts (server-side persistent holds)
+//
+// The server exposes a richer held-carts table at `/api/v1/pos/held-carts`
+// (see packages/server/src/routes/heldCarts.routes.ts).
+// These wrappers are the authoritative network calls for §16.17 HeldCarts.
+
+/// A held-cart row returned by the server.
+public struct HeldCartRow: Decodable, Sendable, Identifiable {
+    public let id: Int64
+    public let userId: Int64
+    public let workstationId: Int64?
+    public let label: String?
+    /// JSON-serialised cart snapshot; parse with `PosCartSnapshotStore`.
+    public let cartJson: String
+    public let customerId: Int64?
+    public let totalCents: Int?
+    public let createdAt: String
+    public let recalledAt: String?
+    public let discardedAt: String?
+    public let ownerFirstName: String?
+    public let ownerLastName: String?
+
+    public var ownerDisplayName: String {
+        let parts = [ownerFirstName, ownerLastName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        return parts.isEmpty ? "Cashier" : parts.joined(separator: " ")
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, label
+        case userId          = "user_id"
+        case workstationId   = "workstation_id"
+        case cartJson        = "cart_json"
+        case customerId      = "customer_id"
+        case totalCents      = "total_cents"
+        case createdAt       = "created_at"
+        case recalledAt      = "recalled_at"
+        case discardedAt     = "discarded_at"
+        case ownerFirstName  = "owner_first_name"
+        case ownerLastName   = "owner_last_name"
+    }
+}
+
+/// Request body for `POST /api/v1/pos/held-carts`.
+public struct CreateHeldCartRequest: Encodable, Sendable {
+    /// JSON-serialised cart (max 64 KB, validated server-side).
+    public let cartJson: String
+    public let label: String?
+    public let customerId: Int64?
+    public let totalCents: Int?
+
+    public init(cartJson: String, label: String? = nil, customerId: Int64? = nil, totalCents: Int? = nil) {
+        self.cartJson = cartJson
+        self.label = label
+        self.customerId = customerId
+        self.totalCents = totalCents
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case cartJson    = "cart_json"
+        case customerId  = "customer_id"
+        case totalCents  = "total_cents"
+    }
+}
+
+public extension APIClient {
+    /// List open held carts for the current user.
+    func heldCarts() async throws -> [HeldCartRow] {
+        try await get("/api/v1/pos/held-carts", as: [HeldCartRow].self)
+    }
+
+    /// Save a new held cart.
+    func createHeldCart(_ body: CreateHeldCartRequest) async throws -> HeldCartRow {
+        try await post("/api/v1/pos/held-carts", body: body, as: HeldCartRow.self)
+    }
+
+    /// Recall (restore) a held cart — marks `recalled_at` and returns the `cart_json`.
+    func recallHeldCart(id: Int64) async throws -> HeldCartRow {
+        try await post("/api/v1/pos/held-carts/\(id)/recall", body: EmptyBody(), as: HeldCartRow.self)
+    }
+
+    /// Soft-delete (discard) a held cart.
+    func discardHeldCart(id: Int64) async throws {
+        try await delete("/api/v1/pos/held-carts/\(id)")
+    }
+}
+
+/// Empty encodable body for POST calls that send no payload.
+private struct EmptyBody: Encodable {}
