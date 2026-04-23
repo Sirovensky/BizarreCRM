@@ -538,10 +538,19 @@ router.get(
     const ticketId = Number(req.params.ticketId);
     if (!Number.isFinite(ticketId)) throw new AppError('Invalid ticket id', 400);
 
-    const rows = (await adb.all(
-      'SELECT * FROM bench_timers WHERE ticket_id = ? ORDER BY started_at DESC',
-      ticketId,
-    )) as BenchTimerRow[];
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+
+    const rows = isPrivileged
+      ? ((await adb.all(
+          'SELECT * FROM bench_timers WHERE ticket_id = ? ORDER BY started_at DESC',
+          ticketId,
+        )) as BenchTimerRow[])
+      : ((await adb.all(
+          'SELECT * FROM bench_timers WHERE ticket_id = ? AND user_id = ? ORDER BY started_at DESC',
+          ticketId,
+          req.user?.id,
+        )) as BenchTimerRow[]);
 
     const totalSeconds = rows
       .filter((r) => r.total_seconds != null)
@@ -702,20 +711,28 @@ router.get(
 
     const qcRequired = (await getStoreFlag(adb, 'qc_required', 'false')) === 'true';
 
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+
+    const signOffData = signOff
+      ? {
+          ...signOff,
+          checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
+            signOff.checklist_results_json,
+            [],
+          ),
+          // Strip file paths for non-admin/non-manager callers
+          tech_signature_path: isPrivileged ? signOff.tech_signature_path : undefined,
+          working_photo_path: isPrivileged ? signOff.working_photo_path : undefined,
+        }
+      : null;
+
     res.json({
       success: true,
       data: {
         qc_required: qcRequired,
         signed: !!signOff,
-        sign_off: signOff
-          ? {
-              ...signOff,
-              checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
-                signOff.checklist_results_json,
-                [],
-              ),
-            }
-          : null,
+        sign_off: signOffData,
       },
     });
   }),
@@ -1085,10 +1102,14 @@ router.get(
   }),
 );
 
-// GET /bench/defects/by-item/:id — recent reports for a single part
+// GET /bench/defects/by-item/:id — recent reports for a single part (admin/manager only)
 router.get(
   '/defects/by-item/:id',
   asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);

@@ -53,10 +53,11 @@ import { backfillEstimateApprovalTokenHashes } from './services/estimateApproval
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
-import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
+import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
+import { redactPhone } from './utils/phone.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -1067,10 +1068,18 @@ function isCorsOriginAllowed(origin: string): boolean {
 // timestamp and emit at most once per 60s per origin — still visible
 // enough that an operator finds it quickly, but not log-flood territory.
 const corsRejectionLog = new Map<string, number>();
+const CORS_REJECTION_WINDOW_MS = 60_000;
+// SCAN-572: evict stale entries every 5 min so subdomain spray doesn't grow the Map forever.
+trackInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of corsRejectionLog) {
+    if (now - t > CORS_REJECTION_WINDOW_MS) corsRejectionLog.delete(k);
+  }
+}, 5 * 60 * 1000);
 function logCorsRejection(origin: string): void {
   const now = Date.now();
   const last = corsRejectionLog.get(origin) ?? 0;
-  if (now - last < 60_000) return;
+  if (now - last < CORS_REJECTION_WINDOW_MS) return;
   corsRejectionLog.set(origin, now);
   log.warn('CORS origin rejected', {
     origin,
@@ -2700,7 +2709,8 @@ server.listen(config.port, config.host, async () => {
         try {
           const upcoming = tenantDb.prepare(`
             SELECT a.id, a.title, a.start_time, a.customer_id,
-              c.first_name, c.mobile, c.phone
+              c.first_name, c.mobile, c.phone,
+              c.sms_opt_in, c.sms_consent_transactional
             FROM appointments a
             LEFT JOIN customers c ON c.id = a.customer_id
             WHERE a.reminder_sent = 0
@@ -2722,11 +2732,15 @@ server.listen(config.port, config.host, async () => {
           for (const appt of upcoming) {
             const phone = appt.mobile || appt.phone;
             if (!phone) continue;
+
+            // TCPA: Skip customers who have not opted in or lack transactional consent
+            if (appt.sms_opt_in === 0 || appt.sms_consent_transactional === 0) continue;
+
             const body = `Hi ${appt.first_name || 'there'}, reminder: you have an appointment at ${storeName} — ${appt.title}. See you soon!`;
             try {
               await sendSmsTenant(tenantDb, slug, phone, body);
               tenantDb.prepare('UPDATE appointments SET reminder_sent = 1 WHERE id = ?').run(appt.id);
-              console.log(`[Reminder${slug ? `:${slug}` : ''}] Sent to ${phone} for appointment ${appt.id}`);
+              log.info('Appointment reminder: SMS sent', { tenantSlug: slug, appointmentId: appt.id, toRedacted: redactPhone(phone) });
             } catch (err) {
               // SEC-T13: surfaced instead of silently swallowed.
               // NOTE: a single SMS failure does NOT count as a per-tenant
@@ -2945,7 +2959,8 @@ server.listen(config.port, config.host, async () => {
         // - stall_followup_sent = 0 (not already sent)
         const staleTickets = tenantDb.prepare(`
           SELECT t.id, t.order_id, t.customer_id,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM tickets t
           LEFT JOIN customers c ON c.id = t.customer_id
           LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
@@ -2976,6 +2991,9 @@ server.listen(config.port, config.host, async () => {
           const phone = ticket.customer_phone || ticket.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (ticket.sms_opt_in === 0 || ticket.sms_consent_transactional === 0) continue;
+
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for ticket ${ticket.order_id}`);
@@ -2992,7 +3010,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, ticket.id);
             // Mark as sent so we don't send again
             tenantDb.prepare('UPDATE tickets SET stall_followup_sent = 1 WHERE id = ?').run(ticket.id);
-            console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Sent follow-up to ${phone} for ticket ${ticket.order_id}`);
+            log.info('StaleTicket: SMS sent', { tenantSlug: slug, ticketOrderId: ticket.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('StaleTicket: SMS send failed', {
               tenantSlug: slug,
@@ -3029,7 +3047,8 @@ server.listen(config.port, config.host, async () => {
         // Find unpaid invoices older than N days that haven't had a recent reminder
         const overdueInvoices = tenantDb.prepare(`
           SELECT i.id, i.order_id, i.amount_due, i.customer_id, i.created_at,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM invoices i
           LEFT JOIN customers c ON c.id = i.customer_id
           WHERE i.status IN ('sent', 'partial', 'overdue')
@@ -3053,6 +3072,9 @@ server.listen(config.port, config.host, async () => {
           const phone = inv.customer_phone || inv.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (inv.sms_opt_in === 0 || inv.sms_consent_transactional === 0) continue;
+
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for invoice ${inv.order_id}`);
@@ -3075,7 +3097,7 @@ server.listen(config.port, config.host, async () => {
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, inv.id);
             // Update reminder timestamp
             tenantDb.prepare("UPDATE invoices SET reminder_sent_at = datetime('now') WHERE id = ?").run(inv.id);
-            console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Sent to ${phone} for invoice ${inv.order_id}`);
+            log.info('InvoiceReminder: SMS sent', { tenantSlug: slug, invoiceOrderId: inv.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('InvoiceReminder: SMS send failed', {
               tenantSlug: slug,
@@ -3106,7 +3128,8 @@ server.listen(config.port, config.host, async () => {
         // Find estimates with status='sent' and sent_at older than N days, not yet followed up
         const estimates = tenantDb.prepare(`
           SELECT e.id, e.order_id, e.customer_id, e.sent_at, e.total,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM estimates e
           LEFT JOIN customers c ON c.id = e.customer_id
           WHERE e.status = 'sent'
@@ -3129,6 +3152,9 @@ server.listen(config.port, config.host, async () => {
           const phone = est.customer_phone || est.customer_phone2;
           if (!phone) continue;
 
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (est.sms_opt_in === 0 || est.sms_consent_transactional === 0) continue;
+
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for estimate ${est.order_id}`);
             continue;
@@ -3142,7 +3168,7 @@ server.listen(config.port, config.host, async () => {
               VALUES (?, ?, ?, ?, 'sent', 'outbound', 'auto', 'estimate', ?, datetime('now'), datetime('now'))
             `).run(storePhone, phone, phone.replace(/\D/g, '').replace(/^1/, ''), body, est.id);
             tenantDb.prepare("UPDATE estimates SET followup_sent_at = datetime('now') WHERE id = ?").run(est.id);
-            console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Sent to ${phone} for estimate ${est.order_id}`);
+            log.info('EstimateFollowup: SMS sent', { tenantSlug: slug, estimateOrderId: est.order_id, toRedacted: redactPhone(phone) });
           } catch (err) {
             log.error('EstimateFollowup: SMS send failed', {
               tenantSlug: slug,
@@ -3192,13 +3218,23 @@ server.listen(config.port, config.host, async () => {
 
           try {
             if (item.type === 'sms') {
+              // TCPA: Verify recipient has opted in before dispatching
+              const consent = tenantDb.prepare(
+                'SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE phone = ? OR mobile = ? LIMIT 1'
+              ).get(item.recipient, item.recipient) as { sms_opt_in: number; sms_consent_transactional: number } | undefined;
+              if (!consent || consent.sms_opt_in === 0 || consent.sms_consent_transactional === 0) {
+                tenantDb.prepare(
+                  "UPDATE notification_queue SET status = 'skipped', error = 'opt_out' WHERE id = ?"
+                ).run(item.id);
+                continue;
+              }
               const { sendSmsTenant } = await import('./services/smsProvider.js');
               const result = await sendSmsTenant(tenantDb, slug, item.recipient, item.body);
               if (result.success) {
                 tenantDb.prepare(
                   "UPDATE notification_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
                 ).run(item.id);
-                console.log(`[JobQueue${label}] SMS sent to ${item.recipient}`);
+                log.info('JobQueue: SMS sent', { tenantSlug: slug, itemId: item.id, toRedacted: redactPhone(item.recipient) });
               } else {
                 throw new Error(result.error || 'SMS send failed');
               }
@@ -3653,7 +3689,7 @@ function handleFatal(type: 'uncaughtException' | 'unhandledRejection', error: Er
   }
   fatalShuttingDown = true;
 
-  const route = currentRequestRoute || 'unknown';
+  const route = getCurrentRoute() || 'unknown';
   log.error('FATAL: unrecoverable process error — initiating shutdown', {
     type,
     route,

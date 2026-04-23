@@ -604,8 +604,11 @@ export async function runBackup(
     // same second don't collide. ISO format with ms: 2025-01-01T00-00-00-000Z
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const rand = crypto.randomBytes(3).toString('hex'); // 6 hex chars
+    // SCAN-574: defence-in-depth — validate slug even though it's regex-checked upstream.
+    const rawSlug = opts?.tenantSlug;
+    const safeSlug = rawSlug && /^[a-z0-9-]+$/.test(rawSlug) ? rawSlug : 'tenant';
     const prefix = opts?.tenantSlug
-      ? `${opts.tenantSlug}-t${opts.tenantId ?? 0}`
+      ? `${safeSlug}-t${opts.tenantId ?? 0}`
       : 'bizarre-crm';
     const dbDest = path.join(backupDir, `${prefix}-${ts}-${rand}.db`);
     const uploadsDest = path.join(backupDir, `uploads-${ts}-${rand}`);

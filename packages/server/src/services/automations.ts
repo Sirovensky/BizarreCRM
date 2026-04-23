@@ -224,9 +224,32 @@ interface ActionResult {
   error?: string;
 }
 
+/**
+ * Automation trigger-type → SMS consent category mapping (SCAN-585 / TCPA).
+ *
+ * Marketing triggers: birthday, review_request, promo, loyalty, win_back.
+ *   → require sms_consent_marketing = 1
+ *
+ * Transactional triggers: ticket_status_changed, ready_for_pickup, invoice_due,
+ *   appointment_reminder, and everything else.
+ *   → require sms_consent_transactional = 1 OR sms_opt_in = 1
+ *
+ * NULL column values (legacy rows pre-migration) are treated as opted-in so
+ * existing customers are not silently suppressed after deploy.
+ */
+const MARKETING_TRIGGERS = new Set([
+  'birthday',
+  'review_request',
+  'promo',
+  'loyalty',
+  'win_back',
+]);
+
 async function executeSendSms(
+  db: any,
   config: ActionConfig,
   vars: Record<string, unknown>,
+  triggerType: string,
 ): Promise<ActionResult> {
   const to = config.to
     ? interpolate(String(config.to), vars, 'sms')
@@ -236,6 +259,51 @@ async function executeSendSms(
     logger.info('send_sms skipped — missing to or template', { to: !!to, body: !!body });
     return { success: false, error: 'missing to or template' };
   }
+
+  // SCAN-585: check customer consent before sending any automation SMS.
+  try {
+    const row = db.prepare(
+      'SELECT sms_opt_in, sms_consent_marketing, sms_consent_transactional FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
+    ).get(to, to) as {
+      sms_opt_in: number | null;
+      sms_consent_marketing: number | null;
+      sms_consent_transactional: number | null;
+    } | undefined;
+
+    if (row) {
+      const isMarketing = MARKETING_TRIGGERS.has(triggerType);
+      let allowed: boolean;
+      if (isMarketing) {
+        // Marketing: explicit marketing consent required.
+        allowed = row.sms_consent_marketing !== 0 && row.sms_opt_in !== 0;
+      } else {
+        // Transactional: either global opt-in or transactional consent.
+        allowed = row.sms_opt_in !== 0 && row.sms_consent_transactional !== 0;
+      }
+      if (!allowed) {
+        logger.info('send_sms skipped — customer opted out', {
+          to: to.slice(-4),
+          triggerType,
+          isMarketing,
+          sms_opt_in: row.sms_opt_in,
+          sms_consent_marketing: row.sms_consent_marketing,
+          sms_consent_transactional: row.sms_consent_transactional,
+        });
+        return { success: true }; // skipped but not a failure — don't surface as error
+      }
+    }
+    // No customer row found for this phone — allow send (could be an explicit
+    // `to` override in config that isn't tied to a customer record).
+  } catch (consentErr) {
+    // Consent check must not block the send if the DB query fails (e.g. column
+    // absent on an old tenant DB without the consent migration). Log and proceed.
+    logger.warn('send_sms consent check failed — proceeding without check', {
+      to: to.slice(-4),
+      triggerType,
+      error: consentErr instanceof Error ? consentErr.message : String(consentErr),
+    });
+  }
+
   try {
     // AU5: await the send + propagate the error to the caller so it can be logged.
     await sendSms(to, body);
@@ -531,7 +599,7 @@ export function runAutomations(
           let result: ActionResult;
           switch (rule.action_type) {
             case 'send_sms':
-              result = await executeSendSms(actionConfig, vars);
+              result = await executeSendSms(db, actionConfig, vars, trigger);
               break;
             case 'send_email':
               result = await executeSendEmail(db, actionConfig, vars);

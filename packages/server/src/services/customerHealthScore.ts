@@ -114,16 +114,16 @@ function bucketPoints(
   return 0;
 }
 
-export function computeRecencyPoints(daysSinceLastInteraction: number | null): number {
+function computeRecencyPoints(daysSinceLastInteraction: number | null): number {
   if (daysSinceLastInteraction === null) return 0;
   return bucketPoints(daysSinceLastInteraction, RECENCY_BUCKETS, 'maxDays');
 }
 
-export function computeFrequencyPoints(ticketsLast12Months: number): number {
+function computeFrequencyPoints(ticketsLast12Months: number): number {
   return bucketPoints(ticketsLast12Months, FREQUENCY_BUCKETS, 'maxTickets');
 }
 
-export function computeMonetaryPoints(lifetimeValueCents: number): number {
+function computeMonetaryPoints(lifetimeValueCents: number): number {
   return bucketPoints(lifetimeValueCents, MONETARY_BUCKETS, 'maxCents');
 }
 
@@ -131,7 +131,7 @@ export function computeMonetaryPoints(lifetimeValueCents: number): number {
  * Convert an RFM-style input into the final score + tier. Immutable — takes
  * readonly inputs, returns a new result object.
  */
-export function computeHealthScore(inputs: HealthScoreInputs): HealthScoreResult {
+function computeHealthScore(inputs: HealthScoreInputs): HealthScoreResult {
   const recencyPoints = computeRecencyPoints(inputs.daysSinceLastInteraction);
   const frequencyPoints = computeFrequencyPoints(inputs.ticketsLast12Months);
   const monetaryPoints = computeMonetaryPoints(inputs.lifetimeValueCents);

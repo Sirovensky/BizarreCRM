@@ -100,6 +100,23 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: expense });
 }));
 
+// ---------------------------------------------------------------------------
+// Location validation helper
+// ---------------------------------------------------------------------------
+
+async function resolveLocationId(adb: AsyncDb, rawValue: unknown): Promise<number> {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return 1; // default to Main Store
+  }
+  const locId = Number(rawValue);
+  if (!Number.isInteger(locId) || locId <= 0) {
+    throw new AppError('location_id must be a positive integer', 400);
+  }
+  const loc = await adb.get<{ id: number }>('SELECT id FROM locations WHERE id = ? AND is_active = 1', locId);
+  if (!loc) throw new AppError('location_id does not reference an active location', 400);
+  return locId;
+}
+
 // POST / — Create expense
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
@@ -114,13 +131,15 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   if (amt > 100_000) throw new AppError('Expense amount cannot exceed $100,000', 400);
   if (!category) throw new AppError('Category required', 400);
 
+  const locationId = await resolveLocationId(adb, req.body.location_id);
+
   const result = await adb.run(`
-    INSERT INTO expenses (category, amount, description, date, receipt_path, user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, category, amt, description || null, date || now().substring(0, 10), receipt_path || null, req.user!.id, now(), now());
+    INSERT INTO expenses (category, amount, description, date, receipt_path, user_id, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, category, amt, description || null, date || now().substring(0, 10), receipt_path || null, req.user!.id, locationId, now(), now());
 
   // @audit-fixed: audit() coverage on expense create — financial mutation, was untracked
-  audit(db, 'expense_created', req.user!.id, req.ip || 'unknown', { expense_id: Number(result.lastInsertRowid), amount: amt, category });
+  audit(db, 'expense_created', req.user!.id, req.ip || 'unknown', { expense_id: Number(result.lastInsertRowid), amount: amt, category, location_id: locationId });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
 }));
 
@@ -142,12 +161,21 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
       throw new AppError('Expense amount must be a positive number <= $100,000', 400);
     }
   }
+
+  // Validate location_id only when caller supplies it
+  let locationIdForUpdate: number | null = null;
+  if (req.body.location_id !== undefined && req.body.location_id !== null) {
+    locationIdForUpdate = await resolveLocationId(adb, req.body.location_id);
+  }
+
   await adb.run(`
     UPDATE expenses SET category = COALESCE(?, category), amount = COALESCE(?, amount),
       description = COALESCE(?, description), date = COALESCE(?, date),
-      receipt_path = COALESCE(?, receipt_path), updated_at = ?
+      receipt_path = COALESCE(?, receipt_path),
+      location_id = COALESCE(?, location_id), updated_at = ?
     WHERE id = ?
-  `, category ?? null, amount ?? null, description ?? null, date ?? null, receipt_path ?? null, now(), id);
+  `, category ?? null, amount ?? null, description ?? null, date ?? null, receipt_path ?? null,
+     locationIdForUpdate, now(), id);
 
   res.json({ success: true, data: { id } });
 }));
@@ -262,15 +290,17 @@ router.post('/mileage', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Invalid customer_id', 400);
   }
 
+  const locationId = await resolveLocationId(adb, req.body.location_id);
+
   const result = await adb.run(`
     INSERT INTO expenses
       (category, amount, description, date, vendor, user_id,
        expense_subtype, mileage_miles, mileage_rate_cents,
-       status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'mileage', ?, ?, 'pending', ?, ?)
+       location_id, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'mileage', ?, ?, ?, 'pending', ?, ?)
   `,
     category, amount, description, incurred_at, vendor, req.user!.id,
-    miles, rate_cents,
+    miles, rate_cents, locationId,
     now(), now()
   );
 
@@ -317,15 +347,17 @@ router.post('/perdiem', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Invalid customer_id', 400);
   }
 
+  const locationId = await resolveLocationId(adb, req.body.location_id);
+
   const result = await adb.run(`
     INSERT INTO expenses
       (category, amount, description, date, user_id,
        expense_subtype, perdiem_days, perdiem_rate_cents,
-       status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'perdiem', ?, ?, 'pending', ?, ?)
+       location_id, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'perdiem', ?, ?, ?, 'pending', ?, ?)
   `,
     category, amount, description, incurred_at, req.user!.id,
-    days, rate_cents,
+    days, rate_cents, locationId,
     now(), now()
   );
 

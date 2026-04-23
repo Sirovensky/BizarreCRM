@@ -470,7 +470,17 @@ router.post(
   '/appointments',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence } = req.body;
+    const { lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, location_id: rawLocationId } = req.body;
+
+    // Validate and resolve location_id; default to 1.
+    let resolvedLocationId = 1;
+    if (rawLocationId !== undefined && rawLocationId !== null) {
+      const parsed = Number(rawLocationId);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new AppError('location_id must be a positive integer', 400);
+      }
+      resolvedLocationId = parsed;
+    }
 
     if (!start_time) throw new AppError('start_time is required');
 
@@ -513,8 +523,8 @@ router.post(
     }
 
     const result = await adb.run(`
-      INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, location_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       lead_id ?? null,
       customer_id ?? null,
@@ -525,6 +535,7 @@ router.post(
       status ?? 'scheduled',
       notes ?? null,
       recurrence || null,
+      resolvedLocationId,
     );
 
     const parentId = result.lastInsertRowid;
@@ -575,8 +586,8 @@ router.post(
 
         const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
         const childResult = await adb.run(`
-          INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id, location_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
           lead_id ?? null,
           customer_id ?? null,
@@ -588,6 +599,7 @@ router.post(
           notes ?? null,
           recurrence,
           parentId,
+          resolvedLocationId,
         );
         recurringIds.push(childResult.lastInsertRowid);
       }

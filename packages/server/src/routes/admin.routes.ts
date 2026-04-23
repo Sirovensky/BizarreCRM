@@ -28,13 +28,34 @@ type AnyRow = Record<string, any>;
 // Token-based admin auth (short-lived, in-memory)
 const adminTokens = new Map<string, { user: string; expires: number }>();
 const TOKEN_TTL = 30 * 60 * 1000; // 30 minutes
+const ADMIN_TOKENS_CAP = 1000;
 
 import crypto from 'crypto';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 
+// SCAN-563: evict oldest entry (insertion-order) when the Map would exceed cap,
+// preventing unbounded heap growth under sustained login load.
+function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
+  if (map.size >= cap && !map.has(key)) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey);
+  }
+  map.delete(key); // re-insert to bump to most-recent
+  map.set(key, value);
+}
+
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
+
+// SCAN-575: sweep expired entries every 5 min so the Map doesn't accumulate stale tokens
+// even when traffic is low (cap-overflow eviction alone only fires under sustained load).
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of adminTokens) {
+    if (v.expires < now) adminTokens.delete(k);
+  }
+}, 5 * 60 * 1000).unref();
 
 const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -58,7 +79,7 @@ router.post('/login', async (req: Request, res: Response) => {
   }
   audit(db, 'admin_login_success', null, ip, { username });
   const token = generateToken();
-  adminTokens.set(token, { user: username, expires: Date.now() + TOKEN_TTL });
+  addWithCap(adminTokens, token, { user: username, expires: Date.now() + TOKEN_TTL }, ADMIN_TOKENS_CAP);
   res.json({ success: true, data: { token } });
 });
 
@@ -184,7 +205,7 @@ router.post(
       audit(tenantDb, 'tenant_terminate_step3_finalize_attempt', req.user.id, ip, {
         slug: req.tenantSlug,
       });
-      const result = await finalizeTermination({ token, typedSlug, typedPhrase });
+      const result = await finalizeTermination({ token, typedSlug, typedPhrase, requestIp: ip ?? null });
       if (!result.ok) {
         audit(tenantDb, 'tenant_terminate_step3_finalize_rejected', req.user.id, ip, {
           slug: req.tenantSlug,
@@ -500,7 +521,42 @@ router.post('/backups/:filename/restore', async (req: Request, res: Response) =>
 // PUT /admin/backup-settings
 router.put('/backup-settings', (req, res) => {
   const db = req.db;
-  updateBackupSettings(db, req.body);
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const { path, schedule, retention, encrypt } = body;
+
+  if (path !== undefined) {
+    if (typeof path !== 'string' || path.includes('..') || path.length > 500) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid path' });
+      return;
+    }
+  }
+
+  if (schedule !== undefined) {
+    if (typeof schedule !== 'string' || schedule.length > 100) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Invalid schedule' });
+      return;
+    }
+  }
+
+  if (retention !== undefined) {
+    if (!Number.isInteger(retention) || (retention as number) < 1 || (retention as number) > 3650) {
+      res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'retention must be 1-3650' });
+      return;
+    }
+  }
+
+  if (encrypt !== undefined && typeof encrypt !== 'boolean') {
+    res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'encrypt must be boolean' });
+    return;
+  }
+
+  const safe: Parameters<typeof updateBackupSettings>[1] = {
+    ...(path !== undefined && { path: path as string }),
+    ...(schedule !== undefined && { schedule: schedule as string }),
+    ...(retention !== undefined && { retention: retention as number }),
+    ...(encrypt !== undefined && { encrypt: encrypt as boolean }),
+  };
+  updateBackupSettings(db, safe);
   res.json({ success: true, data: getBackupSettings(db) });
 });
 

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
+import { SUPER_ADMIN_TOKEN_KEY } from './api/client';
 import { extractApiError } from './utils/apiError';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -166,6 +167,33 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/setup" replace />;
   }
 
+  return <>{children}</>;
+}
+
+/**
+ * Guards routes that require an active super-admin session (SCAN-599).
+ * Reads the SA JWT from localStorage; if absent, renders an access-denied
+ * screen so the wrapped page is never mounted and never fires tenant-list API
+ * calls on behalf of a regular tenant-admin who typed the URL directly.
+ *
+ * Note: TenantsListPage already has its own embedded login form and disables
+ * its query when no token is present. This guard adds a hard outer gate so the
+ * page component is not even constructed inside the AppShell render tree.
+ */
+function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const hasSaToken = Boolean(localStorage.getItem(SUPER_ADMIN_TOKEN_KEY));
+  if (!hasSaToken) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-4">
+        <p className="text-lg font-semibold text-surface-800 dark:text-surface-200">
+          Super-admin access required
+        </p>
+        <p className="text-sm text-surface-500 dark:text-surface-400">
+          You do not have an active super-admin session.
+        </p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 
@@ -421,8 +449,8 @@ export default function App() {
                     <Route path="/loaners" element={<LoanersPage />} />
                     {/* Automations standalone page. */}
                     <Route path="/automations" element={<AutomationsListPage />} />
-                    {/* Super-admin tenant management. */}
-                    <Route path="/super-admin/tenants" element={<TenantsListPage />} />
+                    {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
+                    <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}
                     <Route path="/voice" element={<VoiceCallsListPage />} />
                     {/* Customer review moderation. */}

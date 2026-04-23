@@ -7,6 +7,10 @@
  * Caller is responsible for actually sending the response — this module
  * only evaluates rules and increments counters.
  *
+ * Rule evaluation cap: only the first MATCHER_LIMIT (200) active rules are
+ * loaded, ordered by id ASC. Rules are evaluated in that order — first match
+ * wins. Tenants with more than 200 rules should consolidate them.
+ *
  * Rule shapes supported:
  *   { type: 'keyword', match: string, case_sensitive?: boolean }
  *   { type: 'regex',   match: string, case_sensitive?: boolean }
@@ -131,11 +135,14 @@ export async function tryAutoRespond(
   msg: InboundSmsMessage,
 ): Promise<MatchResult> {
   try {
+    const MATCHER_LIMIT = 200;
     const rows = await adb.all<AutoResponderRow>(
       `SELECT id, rule_json, response_body
          FROM sms_auto_responders
         WHERE is_active = 1
-        ORDER BY id ASC`,
+        ORDER BY id ASC
+        LIMIT ?`,
+      MATCHER_LIMIT,
     );
 
     if (rows.length === 0) return { matched: false };

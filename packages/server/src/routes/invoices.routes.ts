@@ -21,8 +21,12 @@ import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { accruePaymentPoints } from '../services/notifications.js';
+import { recordCustomerInteraction } from '../services/customerHealthScore.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { createLogger } from '../utils/logger.js';
+import { logActivity } from '../utils/activityLog.js';
 
+const logger = createLogger('invoices');
 const router = Router();
 
 /**
@@ -103,9 +107,9 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
 }
 
 // GET /invoices
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
-  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
   const offset = (p - 1) * ps;
@@ -119,6 +123,8 @@ router.get('/', async (req, res) => {
   if (customer_id) { where += ' AND inv.customer_id = ?'; params.push(customer_id); }
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(inv.created_at) <= ?'; params.push(to_date); }
+  // SCAN-462 / migration 139: optional location filter (backwards-compat — omitting it returns all)
+  if (location_id && /^\d+$/.test(location_id)) { where += ' AND inv.location_id = ?'; params.push(parseInt(location_id, 10)); }
   if (keyword) {
     // Escape %/_/\ so users can't smuggle LIKE wildcards.
     where += " AND (inv.order_id LIKE ? ESCAPE '\\' OR c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\')";
@@ -194,7 +200,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /invoices/stats — KPIs and distribution data for overview
-router.get('/stats', async (req, res) => {
+router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
 
   const [kpis, statusDist, methodDist] = await Promise.all([
@@ -244,9 +250,25 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const {
     customer_id, ticket_id, line_items = [], discount = 0, discount_reason,
     notes, due_date, is_deposit, deposit_amount: reqDepositAmount, parent_invoice_id,
+    location_id: bodyLocationId,
   } = req.body;
 
   if (!customer_id) throw new AppError('Customer is required', 400);
+
+  // SCAN-462 / migration 139: resolve location_id — default to 1 (Main Store) when not provided.
+  // Validate that the supplied id references an existing, active location.
+  let invoiceLocationId: number = 1;
+  if (bodyLocationId !== undefined && bodyLocationId !== null) {
+    if (!Number.isInteger(bodyLocationId) || (bodyLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const loc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      bodyLocationId,
+    );
+    if (!loc) throw new AppError('location_id references an unknown or inactive location', 400);
+    invoiceLocationId = bodyLocationId as number;
+  }
 
   // V8: Validate due_date format if provided (accept ISO YYYY-MM-DD or full ISO timestamp)
   const validatedDueDate = validateIsoDate(due_date, 'due_date');
@@ -333,11 +355,11 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const result = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
       total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
-      is_deposit, deposit_amount, parent_invoice_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+      is_deposit, deposit_amount, parent_invoice_id, location_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
   `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
     total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
-    depositFlag, depositAmount, parent_invoice_id || null);
+    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId);
 
   const invoiceId = result.lastInsertRowid;
 
@@ -368,6 +390,15 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const invoice = await getInvoiceDetail(adb, invoiceId as number);
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
+  // SCAN-522: fire-and-forget activity log
+  logActivity(adb, {
+    actor_user_id: req.user!.id,
+    entity_kind: 'invoice',
+    entity_id: invoiceId as number,
+    action: 'created',
+    metadata: { amount_cents: toCents(total), status: 'draft' },
+  }).catch(() => {});
+
   // ENR-A6: Fire webhook
   // SA10-1: use the already-computed local `orderId` instead of reading it
   // back off the `invoice` detail row (which was typed `any` via `adb.get<any>`).
@@ -390,10 +421,24 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
   if (!existing) throw new AppError('Invoice not found', 404);
   if (existing.status === 'void') throw new AppError('Cannot modify a voided invoice', 400);
 
-  const { notes, due_date, due_on, discount, discount_reason, payment_plan } = req.body;
+  const { notes, due_date, due_on, discount, discount_reason, payment_plan, location_id: patchLocationId } = req.body;
   // V8: Validate whichever due date field the client sent
   const rawDueDate = due_date ?? due_on;
   const dueDate = validateIsoDate(rawDueDate, 'due_date');
+
+  // SCAN-462 / migration 139: validate location_id if provided
+  let resolvedLocationId: number | null = null;
+  if (patchLocationId !== undefined && patchLocationId !== null) {
+    if (!Number.isInteger(patchLocationId) || (patchLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const patchLoc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      patchLocationId,
+    );
+    if (!patchLoc) throw new AppError('location_id references an unknown or inactive location', 400);
+    resolvedLocationId = patchLocationId as number;
+  }
 
   // V10 / ENR-I8: Validate payment_plan with structural + size guard so we don't
   // accept circular refs, unbounded blobs, or malformed values.
@@ -455,12 +500,14 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
       total = ?,
       amount_due = ?,
       payment_plan = COALESCE(?, payment_plan),
+      location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
     WHERE id = ?
   `,
     notes ?? null, dueDate, newDiscount, discount_reason ?? null,
     total, Math.max(0, amountDue),
     serializedPaymentPlan,
+    resolvedLocationId,
     req.params.id,
   );
 
@@ -526,11 +573,12 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   }
   recentPayments.set(dedupKey, Date.now());
 
-  await adb.run(`
+  const paymentResult = await adb.run(`
     INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, req.params.id, amount, method, method_detail || null,
     transaction_id || null, notes || null, payment_type, req.user!.id);
+  const paymentId = paymentResult.lastInsertRowid as number;
 
   const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?', req.params.id);
   const totalPaidRaw = totalPaidRow?.t || 0;
@@ -630,10 +678,9 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT') {
         // No-op: commission already recorded by a concurrent request.
       } else {
-        console.warn(
-          `[invoices] failed to write commission for payment on invoice ${req.params.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+        logger.warn(
+          `[invoices] failed to write commission for payment on invoice ${req.params.id}`,
+          { err },
         );
       }
     }
@@ -651,11 +698,15 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       paymentAmount: amount,
     });
   } catch (err: unknown) {
-    console.warn(
-      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+    logger.warn(
+      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}`,
+      { err },
     );
+  }
+
+  // SCAN-524: update customer last_interaction_at + lifetime_value_cents (fire-and-forget)
+  if (invoice.customer_id) {
+    recordCustomerInteraction(adb, invoice.customer_id, toCents(amount)).catch(() => {});
   }
 
   if (overpayment > 0 && invoice.customer_id) {
@@ -692,8 +743,7 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       );
     } catch (creditErr: unknown) {
       // Do not fail the payment flow if the credit insert fails — log and continue.
-      const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
-      console.warn(`[invoices] failed to record overpayment store credit: ${msg}`);
+      logger.warn(`[invoices] failed to record overpayment store credit`, { err: creditErr });
     }
   }
   const updated = await getInvoiceDetail(adb, req.params.id as string);
@@ -707,6 +757,15 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     amount,
     method,
   });
+
+  // SCAN-522: fire-and-forget activity log for payment
+  logActivity(adb, {
+    actor_user_id: req.user!.id,
+    entity_kind: 'payment',
+    entity_id: paymentId,
+    action: 'received',
+    metadata: { amount_cents: toCents(amount), method },
+  }).catch(() => {});
 
   res.status(201).json({ success: true, data: updated });
 });
@@ -783,11 +842,10 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
     });
   } catch (err: unknown) {
     if (err instanceof AppError) throw err;
-    console.warn(
-      `[invoices] failed to reverse commissions on void for invoice ${req.params.id}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    logger.warn('invoices_reverse_commissions_failed', {
+      invoice_id: req.params.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   recordWindowFailure(db, 'invoice_void', String(userId), 60000);
@@ -876,14 +934,101 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
             errors.push({ invoice_id: id, error: 'Invalid invoice balance — cannot mark paid' });
             continue;
           }
-          await adb.run(`
+          const bulkPayResult = await adb.run(`
             INSERT INTO payments (invoice_id, amount, method, notes, user_id)
             VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
           `, id, remaining, req.user!.id);
+          const bulkPaymentId = bulkPayResult.lastInsertRowid as number;
 
           await adb.run(`
             UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
           `, id);
+
+          // SCAN-623: replicate loyalty accrual from single-payment path (best-effort)
+          try {
+            await accruePaymentPoints({
+              adb,
+              customerId: invoice.customer_id,
+              invoiceId: Number(id),
+              paymentAmount: Number(remaining),
+            });
+          } catch (loyaltyErr: unknown) {
+            logger.warn(`[invoices] bulk mark_paid: loyalty accrual failed for invoice ${id}`, { err: loyaltyErr });
+          }
+
+          // SCAN-623: replicate commission writing from single-payment path (best-effort)
+          if (invoice.created_by) {
+            try {
+              const bulkCreatedByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
+                'SELECT commission_type, commission_rate FROM users WHERE id = ?',
+                invoice.created_by,
+              );
+              const bulkCType = bulkCreatedByRow?.commission_type ?? null;
+              const bulkCRate = Number(bulkCreatedByRow?.commission_rate ?? 0);
+              if (bulkCType && bulkCType !== 'none' && bulkCRate > 0) {
+                const bulkInvTotal = Number(invoice.total ?? 0);
+                const bulkInvTax = Number(invoice.total_tax ?? 0);
+                const bulkInvPreTax = roundCents(Math.max(0, bulkInvTotal - bulkInvTax));
+                let bulkShouldWrite = false;
+                let bulkPaymentPreTaxBaseCents = 0;
+                if (bulkCType === 'percent_ticket' || bulkCType === 'percent_service') {
+                  if (bulkInvTotal > 0 && bulkInvPreTax > 0) {
+                    const bulkPaymentFraction = Math.min(1, Number(remaining) / bulkInvTotal);
+                    const bulkPaymentPreTax = roundCents(bulkInvPreTax * bulkPaymentFraction);
+                    if (bulkPaymentPreTax > 0) {
+                      bulkShouldWrite = true;
+                      bulkPaymentPreTaxBaseCents = toCents(bulkPaymentPreTax);
+                    }
+                  }
+                } else if (bulkCType === 'flat_per_ticket') {
+                  // mark_paid always results in 'paid' status — check idempotency
+                  const bulkExisting = await adb.get<{ id: number }>(
+                    `SELECT id FROM commissions
+                       WHERE invoice_id = ?
+                         AND COALESCE(type, '') != 'reversal'
+                       LIMIT 1`,
+                    id,
+                  );
+                  if (!bulkExisting) {
+                    bulkShouldWrite = true;
+                    bulkPaymentPreTaxBaseCents = 1;
+                  }
+                }
+                if (bulkShouldWrite) {
+                  await writeCommission(adb, {
+                    userId: invoice.created_by,
+                    source: 'invoice_payment',
+                    invoiceId: Number(id),
+                    ticketId: invoice.ticket_id ?? null,
+                    commissionableAmountCents: bulkPaymentPreTaxBaseCents,
+                  });
+                }
+              }
+            } catch (commErr: unknown) {
+              if (commErr instanceof AppError) throw commErr;
+              const commCode = (commErr as NodeJS.ErrnoException & { code?: string }).code;
+              if (commCode !== 'SQLITE_CONSTRAINT_UNIQUE' && commCode !== 'SQLITE_CONSTRAINT') {
+                logger.warn(`[invoices] bulk mark_paid: commission write failed for invoice ${id}`, { err: commErr });
+              }
+            }
+          }
+
+          // SCAN-627: replicate logActivity from single-payment path (fire-and-forget)
+          logActivity(adb, {
+            actor_user_id: req.user!.id,
+            entity_kind: 'payment',
+            entity_id: bulkPaymentId,
+            action: 'received',
+            metadata: { amount_cents: toCents(Number(remaining)), method: 'cash' },
+          }).catch(() => {});
+
+          // SCAN-627: replicate fireWebhook from single-payment path
+          fireWebhook(db, 'payment_received', {
+            invoice_id: Number(id),
+            amount: Number(remaining),
+            method: 'cash',
+          });
+
           successCount++;
           break;
         }
@@ -1007,8 +1152,8 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-      amount_paid, amount_due, notes, credit_note_for, status, created_by)
-    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?)
+      amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id)
+    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?)
   `,
     orderId,
     original.customer_id,
@@ -1018,6 +1163,7 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
     `Credit note: ${reason.trim()}`,
     invoiceId,     // link to original
     req.user!.id,
+    original.location_id ?? 1,
   );
 
   const creditNoteId = cnResult.lastInsertRowid;
@@ -1088,7 +1234,7 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
       );
     } catch (creditErr: unknown) {
       const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
-      console.warn(`[invoices] failed to record credit-note overflow store credit: ${msg}`);
+      logger.warn('invoices_credit_note_overflow_store_credit_failed', { error: msg });
     }
   }
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);

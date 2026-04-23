@@ -343,8 +343,10 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // SEC-L34: `jti` uniquely identifies each issued token so future revocation lists
   // (see sessions table) can target a specific token rather than an entire session.
   // SEC-H103: sign with the dedicated per-purpose secret, not the shared JWT_SECRET.
+  // SEC (SCAN-613): Explicit type:'access' so the auth middleware strict check
+  // can reject any token without the field (refresh, scoped, super-admin, etc.).
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
@@ -1235,8 +1237,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SEC-L34: fresh `jti` on every rotation so refreshed tokens are distinguishable
     // from their predecessors.
     // SEC-H103: sign with dedicated per-purpose secret.
+    // SEC (SCAN-613): Explicit type:'access' on every rotated access token.
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
       config.accessJwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
@@ -1425,8 +1428,9 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   // SEC (A6/A10): Explicit HS256 + iss + aud.
   // SEC-L34: unique `jti` per token issuance.
   // SEC-H103: sign with dedicated per-purpose secret.
+  // SEC (SCAN-613): Explicit type:'access' on PIN-switch access tokens.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );

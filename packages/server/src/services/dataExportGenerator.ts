@@ -15,9 +15,9 @@
  *   - Generated filenames contain only a safe ISO date + 6-byte hex nonce
  *     and the export type — no user-supplied strings.
  *   - Files are written with mode 0o600 (owner-only read/write).
- *   - Large tables are read with .all() into memory one table at a time,
- *     then serialised row-by-row via a write stream so peak heap stays
- *     bounded (same strategy as the HTTP route).
+ *   - Large tables are streamed row-by-row via .iterate() (better-sqlite3)
+ *     into the write stream so peak heap stays bounded regardless of table
+ *     size (same strategy as the HTTP route).
  */
 
 import crypto from 'crypto';
@@ -199,32 +199,43 @@ export async function generateExportToFile(
 
       for (const table of tables) {
         // Table name comes from sqlite_master — not user input.
-        // Still quote the identifier for reserved-word safety.
-        let rows: Array<Record<string, unknown>>;
-        try {
-          rows = db.prepare(`SELECT * FROM "${table}"`).all() as Array<Record<string, unknown>>;
-        } catch (err) {
-          logger.warn('data-export-generator: failed to read table — skipping', {
-            table,
-            tenantSlug,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          rows = [];
+        // Guard with a regex to ensure it is a safe SQL identifier before
+        // embedding in the quoted identifier position.
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+          logger.warn('data-export-generator: skipping table with unsafe name', { table, tenantSlug });
+          continue;
         }
 
-        rowCounts[table] = rows.length;
-        totalRows += rows.length;
+        let tableRows = 0;
+        let firstRow = true;
 
         if (!firstTable) writeStream.write(',');
         firstTable = false;
 
         writeStream.write(`${JSON.stringify(table)}:[`);
-        for (let i = 0; i < rows.length; i++) {
-          if (i > 0) writeStream.write(',');
-          const clean = sanitizeRow(table, rows[i]!);
-          writeStream.write(JSON.stringify(clean));
+
+        try {
+          // Use .iterate() so rows are streamed one-at-a-time without loading
+          // the full table into memory.
+          const stmt = db.prepare(`SELECT * FROM "${table}"`);
+          for (const row of stmt.iterate() as Iterable<Record<string, unknown>>) {
+            if (!firstRow) writeStream.write(',');
+            firstRow = false;
+            const clean = sanitizeRow(table, row);
+            writeStream.write(JSON.stringify(clean));
+            tableRows++;
+          }
+        } catch (err) {
+          logger.warn('data-export-generator: failed to read table — skipping rows', {
+            table,
+            tenantSlug,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
+
         writeStream.write(']');
+        rowCounts[table] = tableRows;
+        totalRows += tableRows;
       }
 
       writeStream.write('},');

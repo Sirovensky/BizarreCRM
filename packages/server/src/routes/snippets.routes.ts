@@ -77,8 +77,13 @@ router.put(
 
     const { shortcode, title, content, category } = req.body;
 
-    // Length validation
-    if (shortcode !== undefined && shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    // Length and format validation
+    if (shortcode !== undefined) {
+      if (typeof shortcode !== 'string' || !/^[a-zA-Z0-9_\-]+$/.test(shortcode)) {
+        throw new AppError('shortcode must match [a-zA-Z0-9_-]+', 400);
+      }
+      if (shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    }
     if (title !== undefined && title.length > 200) throw new AppError('title must be 200 characters or less', 400);
     if (content !== undefined && content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
