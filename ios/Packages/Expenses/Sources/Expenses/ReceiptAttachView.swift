@@ -1,12 +1,12 @@
 import SwiftUI
 import Observation
+import PhotosUI
 import Core
 import DesignSystem
 import Networking
 #if canImport(UIKit)
 import Camera
 import UIKit
-import PhotosUI
 #endif
 
 // MARK: - ViewModel
@@ -55,18 +55,6 @@ public final class ReceiptAttachViewModel {
     }
 
     @MainActor
-    public func handlePhotoLibraryItem(_ item: PhotosPickerItem?) async {
-        showingPhotoLibrary = false
-        guard let item else { return }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else {
-            uploadState = .failed("Could not load the selected photo.")
-            return
-        }
-        await ocrAndUpload(image: image)
-    }
-
-    @MainActor
     private func ocrAndUpload(image: UIImage) async {
         isOCRRunning = true
         if let total = await ReceiptEdgeDetector.ocrTotal(image) {
@@ -80,6 +68,35 @@ public final class ReceiptAttachViewModel {
         await upload(imageData: data, mimeType: "image/jpeg", filename: "receipt.jpg")
     }
 #endif
+
+    /// Handles photo library item selection (cross-platform; OCR runs only on UIKit).
+    @MainActor
+    public func handlePhotoLibraryItem(_ item: PhotosPickerItem?) async {
+        showingPhotoLibrary = false
+        guard let item else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            uploadState = .failed("Could not load the selected photo.")
+            return
+        }
+        #if canImport(UIKit)
+        guard let image = UIImage(data: data) else {
+            uploadState = .failed("Could not decode the selected photo.")
+            return
+        }
+        isOCRRunning = true
+        if let total = await ReceiptEdgeDetector.ocrTotal(image) {
+            ocrTotal = total
+        }
+        isOCRRunning = false
+        guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+            uploadState = .failed("Could not compress the receipt image.")
+            return
+        }
+        await upload(imageData: jpegData, mimeType: "image/jpeg", filename: "receipt.jpg")
+        #else
+        await upload(imageData: data, mimeType: "image/png", filename: "receipt.png")
+        #endif
+    }
 
     public func upload(imageData: Data, mimeType: String, filename: String) async {
         uploadState = .uploading(progress: 0)
@@ -112,12 +129,9 @@ public final class ReceiptAttachViewModel {
 public struct ReceiptAttachView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: ReceiptAttachViewModel
+    @State private var photoLibraryItem: PhotosPickerItem?
     /// Callback fired on successful upload; carries the new receipt path.
     public let onSuccess: (String) -> Void
-
-    #if canImport(UIKit)
-    @State private var photoLibraryItem: PhotosPickerItem?
-    #endif
 
     public init(api: APIClient, expenseId: Int64, authToken: String?, onSuccess: @escaping (String) -> Void) {
         _vm = State(wrappedValue: ReceiptAttachViewModel(api: api, expenseId: expenseId, authToken: authToken))
@@ -148,10 +162,10 @@ public struct ReceiptAttachView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        #endif
         .onChange(of: photoLibraryItem) { _, newItem in
             Task { await vm.handlePhotoLibraryItem(newItem) }
         }
-        #endif
         .onChange(of: vm.uploadState.isSuccess) { _, success in
             if success, let path = vm.uploadState.successPath {
                 onSuccess(path)
@@ -236,6 +250,7 @@ public struct ReceiptAttachView: View {
                 ) {
                     Label("Choose from Library", systemImage: "photo.on.rectangle")
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 }
                 .buttonStyle(.bordered)
                 .tint(.bizarreOrange)

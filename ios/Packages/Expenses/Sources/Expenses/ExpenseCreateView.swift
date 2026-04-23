@@ -1,12 +1,12 @@
 import SwiftUI
 import Observation
+import PhotosUI
 import Core
 import DesignSystem
 import Networking
 #if canImport(UIKit)
 import Camera
 import UIKit
-import PhotosUI
 #endif
 
 // MARK: - ViewModel
@@ -54,7 +54,7 @@ public final class ExpenseCreateViewModel {
             && (taxAmount == nil || (taxAmount! >= 0 && taxAmount! <= 100_000))
     }
 
-    // MARK: - OCR from camera
+    // MARK: - OCR from camera / photo library
 
 #if canImport(UIKit)
     @MainActor
@@ -70,24 +70,27 @@ public final class ExpenseCreateViewModel {
             }
         }
     }
+#endif
 
     /// Called after user picks a photo from library (`PhotosPickerItem`).
+    /// OCR runs only on UIKit (iOS); on macOS the data load is a no-op.
     @MainActor
     public func handlePhotoLibraryItem(_ item: PhotosPickerItem?) async {
         showingPhotoLibraryPicker = false
         guard let item else { return }
         isOCRRunning = true
         defer { isOCRRunning = false }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let img = UIImage(data: data) else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        #if canImport(UIKit)
+        guard let img = UIImage(data: data) else { return }
         if let total = await ReceiptEdgeDetector.ocrTotal(img) {
             let formatted = String(format: "%.2f", total)
             if amountText.isEmpty || (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) == 0 {
                 amountText = formatted
             }
         }
+        #endif
     }
-#endif
 
     // MARK: - Submit
 
@@ -141,9 +144,7 @@ public final class ExpenseCreateViewModel {
 public struct ExpenseCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: ExpenseCreateViewModel
-    #if canImport(UIKit)
     @State private var photoLibraryItem: PhotosPickerItem?
-    #endif
 
     public init(api: APIClient) { _vm = State(wrappedValue: ExpenseCreateViewModel(api: api)) }
 
@@ -165,10 +166,10 @@ public struct ExpenseCreateView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        #endif
         .onChange(of: photoLibraryItem) { _, newItem in
             Task { await vm.handlePhotoLibraryItem(newItem) }
         }
-        #endif
     }
 
     // MARK: - Form
