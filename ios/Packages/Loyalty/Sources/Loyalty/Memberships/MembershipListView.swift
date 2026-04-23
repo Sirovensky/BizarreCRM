@@ -30,8 +30,25 @@ public final class MembershipListViewModel {
     public func load() async {
         state = .loading
         do {
-            let dtos = try await api.get("/memberships", as: [MembershipDTO].self)
-            let domain = dtos.map { $0.toDomain() }
+            // Server route: GET /api/v1/membership/subscriptions (admin)
+            let adminSubs = try await api.listAllSubscriptions()
+            // Map AdminSubscriptionDTO → domain Membership
+            let domain: [Membership] = adminSubs.map { sub in
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+                let startDate = isoFormatter.date(from: sub.currentPeriodStart) ?? Date()
+                let endDate = isoFormatter.date(from: sub.currentPeriodEnd)
+                return Membership(
+                    id: String(sub.id),
+                    customerId: String(sub.customerId),
+                    planId: String(sub.tierId),
+                    status: MembershipStatus(rawValue: sub.status) ?? .active,
+                    startDate: startDate,
+                    endDate: endDate,
+                    autoRenew: true,
+                    nextBillingAt: endDate
+                )
+            }
             await manager.hydrate(memberships: domain)
             memberships = await manager.activeMemberships
             state = .loaded

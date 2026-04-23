@@ -70,11 +70,16 @@ public actor MembershipSubscriptionManager {
         store[id] = membership
 
         // Best-effort server sync; failures logged but don't block UX.
+        // Server route: POST /api/v1/membership/subscribe
+        // Requires integer customer_id and tier_id — plan.id is the tier UUID
+        // on the server, which stores it as an integer primary key.
+        // The plan.id value from the server's MembershipTierDTO is an Int,
+        // but MembershipPlan.id is a String for domain-model flexibility.
         if let api {
             do {
                 let body = EnrollMembershipRequest(customerId: customerId, planId: plan.id)
                 let response = try await api.post(
-                    "/memberships",
+                    "/membership/subscribe",
                     body: body,
                     as: MembershipDTO.self
                 )
@@ -129,7 +134,8 @@ public actor MembershipSubscriptionManager {
     public func renew(membershipId: String) async -> Membership? {
         guard let existing = store[membershipId] else { return nil }
         // Best-effort; server handles billing.
-        await serverPost("/memberships/\(membershipId)/renew")
+        // Server route: POST /api/v1/membership/:id/resume (renew uses resume)
+        await serverPost("/membership/\(membershipId)/resume")
         let updated = existing.withStatus(.active)
         store[membershipId] = updated
         return updated
@@ -148,7 +154,7 @@ public actor MembershipSubscriptionManager {
         guard let api else { return }
         let body = MembershipActionRequest(action: action)
         _ = try? await api.post(
-            "/memberships/\(membershipId)/\(action)",
+            "/membership/\(membershipId)/\(action)",
             body: body,
             as: EmptyMembershipResponse.self
         )
