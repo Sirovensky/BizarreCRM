@@ -25,6 +25,27 @@ public struct GlobalSearchResults: Decodable, Sendable {
         public let display: String?
         public let type: String?
         public let subtitle: String?
+
+        /// Memberwise init for constructing rows in tests and merge logic.
+        public init(id: Int64, display: String?, type: String?, subtitle: String?) {
+            self.id = id
+            self.display = display
+            self.type = type
+            self.subtitle = subtitle
+        }
+    }
+
+    /// Memberwise init for constructing synthetic results in tests and merge logic.
+    public init(
+        customers: [Row],
+        tickets: [Row],
+        inventory: [Row],
+        invoices: [Row]
+    ) {
+        self.customers = customers
+        self.tickets = tickets
+        self.inventory = inventory
+        self.invoices = invoices
     }
 
     enum CodingKeys: String, CodingKey { case customers, tickets, inventory, invoices }
