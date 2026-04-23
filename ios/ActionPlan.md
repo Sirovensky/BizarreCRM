@@ -272,7 +272,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
 - [ ] **Paste-from-clipboard** auto-detect 6-digit string.
-- [blocked: policy — 2FA self-service disable not allowed per user directive 2026-04-23. iOS shipped this UI previously; **it must be removed**. Code to rip: `ios/Packages/Auth/Sources/Auth/TwoFactor/TwoFactorSettingsView.swift` (Disable 2FA button + alert lines 41, 127-129), `TwoFactorRepository.disable()` (line 51), `TwoFactorEndpoints.twoFactorDisable()` (lines 116-121), related ViewModel state, `TwoFactorEnrollmentViewModelTests` `.disable` path (line 474). Legitimate recovery remains via backup-code flow (resets password + disables 2FA server-side) and super-admin force-disable for emergency tenant-admin override.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
+- [x] Confirmed removed 2026-04-23 (commit 8270aea) — self-service 2FA disable UI + endpoint wiring ripped from iOS per security policy. Legitimate recovery remains via backup-code flow (`POST /auth/recover-with-backup-code` — atomic password + 2FA reset) and super-admin force-disable (`POST /tenants/:slug/users/:id/force-disable-2fa` — Step-Up TOTP gated). **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
