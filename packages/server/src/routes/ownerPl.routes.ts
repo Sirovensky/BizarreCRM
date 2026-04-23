@@ -593,7 +593,11 @@ router.post('/snapshot', asyncHandler(async (req: Request, res: Response) => {
     summary.tax_liability.outstanding_cents,
     summary.ar.outstanding_cents,
     summary.inventory_value.cents,
-    JSON.stringify({ rollup: 'day', generated_by: req.user?.id }),
+    // NOTE: generated_by is intentionally NOT included here — it is already
+    // stored in the typed column `generated_by_user_id` on this same row.
+    // Duplicating it in metadata_json would leak the user id via SELECT * on
+    // GET /snapshots/:id without benefit (SCAN-514).
+    JSON.stringify({ rollup: 'day' }),
     req.user?.id ?? null,
   );
 

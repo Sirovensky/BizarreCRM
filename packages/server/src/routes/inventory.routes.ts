@@ -61,7 +61,7 @@ const inventoryImageUpload = multer({
 // GET /inventory - list items
 router.get('/', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { page = '1', pagesize = '20', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
   const ps = Math.min(250, Math.max(1, parseInt(pagesize, 10) || 20));
   const offset = (p - 1) * ps;
@@ -74,6 +74,8 @@ router.get('/', async (req, res) => {
   if (low_stock === 'true') { where += " AND i.item_type != 'service' AND i.is_reorderable = 1 AND i.in_stock <= i.reorder_level AND i.low_stock_dismissed_at IS NULL"; }
   if (reorderable_only === 'true') { where += ' AND i.is_reorderable = 1'; }
   if (supplier_id) { where += ' AND i.supplier_id = ?'; params.push(parseInt(supplier_id, 10)); }
+  // SCAN-462 / migration 140: optional location filter (backwards-compat — omitting it returns all)
+  if (location_id && /^\d+$/.test(location_id)) { where += ' AND i.location_id = ?'; params.push(parseInt(location_id, 10)); }
   if (manufacturer) { where += " AND i.manufacturer LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(manufacturer)}%`); }
   // V18: validate min/max price filters — reject NaN/Infinity/negative.
   if (min_price) { where += ' AND i.retail_price >= ?'; params.push(validatePrice(min_price, 'min_price')); }
@@ -950,10 +952,26 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
     reorder_level: rawReorderLevel = 0, stock_warning: rawStockWarning = 5, tax_class_id, tax_inclusive = 0,
     is_serialized = 0, is_reorderable = 1, supplier_id, image_url,
     location, shelf, bin,
+    location_id: bodyLocationId,
   } = req.body;
 
   if (!name) throw new AppError('Name is required', 400);
   if (!['product', 'part', 'service'].includes(item_type)) throw new AppError('Invalid item_type', 400);
+
+  // SCAN-462 / migration 140: resolve location_id — default to 1 (Main Store) when not provided.
+  // Validate that the supplied id references an existing, active location.
+  let itemLocationId: number = 1;
+  if (bodyLocationId !== undefined && bodyLocationId !== null) {
+    if (!Number.isInteger(bodyLocationId) || (bodyLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const loc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      bodyLocationId,
+    );
+    if (!loc) throw new AppError('location_id references an unknown or inactive location', 400);
+    itemLocationId = bodyLocationId as number;
+  }
 
   // @audit-fixed: validate prices and quantities BEFORE insert. Previously the
   // raw client values flowed straight to the column — NaN, Infinity, "abc", and
@@ -986,14 +1004,14 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
     INSERT INTO inventory_items (name, description, item_type, category, manufacturer, device_type,
       sku, upc, cost_price, retail_price, in_stock, reorder_level, stock_warning,
       tax_class_id, tax_inclusive, is_serialized, is_reorderable, supplier_id, image_url,
-      location, shelf, bin)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      location, shelf, bin, location_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, safeName, safeDescription || null, item_type, safeCategory || null, safeManufacturer || null,
     device_type || null, finalSku, safeUpc || null, cost_price, retail_price, in_stock,
     reorder_level, stock_warning, tax_class_id || null, tax_inclusive, is_serialized,
     item_type === 'service' ? 0 : (is_reorderable ? 1 : 0),
     supplier_id || null, image_url || null,
-    location || '', shelf || '', bin || '');
+    location || '', shelf || '', bin || '', itemLocationId);
 
   // Record initial stock movement
   if (in_stock > 0 && item_type !== 'service') {
@@ -1021,6 +1039,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
     sku, upc, cost_price, retail_price, reorder_level, stock_warning,
     tax_class_id, tax_inclusive, is_serialized, is_reorderable, supplier_id, image_url,
     location, shelf, bin, cost_locked,
+    location_id: putLocationId,
   } = req.body;
 
   // @audit-fixed: validate the numeric fields the client supplies on update.
@@ -1030,6 +1049,20 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
   if (retail_price !== undefined && retail_price !== null) validatePrice(retail_price, 'retail_price');
   if (reorder_level !== undefined && reorder_level !== null) validateIntegerQuantity(reorder_level, 'reorder_level');
   if (stock_warning !== undefined && stock_warning !== null) validateIntegerQuantity(stock_warning, 'stock_warning');
+
+  // SCAN-462 / migration 140: validate location_id if provided
+  let resolvedLocationId: number | null = null;
+  if (putLocationId !== undefined && putLocationId !== null) {
+    if (!Number.isInteger(putLocationId) || (putLocationId as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const putLoc = await adb.get<{ id: number }>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      putLocationId,
+    );
+    if (!putLoc) throw new AppError('location_id references an unknown or inactive location', 400);
+    resolvedLocationId = putLocationId as number;
+  }
 
   // S8: if the item's cost is locked, silently ignore any incoming cost_price
   //     change so supplier sync and careless edits can't clobber a negotiated
@@ -1082,6 +1115,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       shelf = COALESCE(?, shelf),
       bin = COALESCE(?, bin),
       cost_locked = COALESCE(?, cost_locked),
+      location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
     WHERE id = ?
   `, name ?? null, description ?? null, item_type ?? null, category ?? null,
@@ -1090,7 +1124,8 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
     tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
     is_reorderable !== undefined && is_reorderable !== null ? (Number(is_reorderable) ? 1 : 0) : null,
     supplier_id ?? null, image_url ?? null,
-    location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked, req.params.id);
+    location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked,
+    resolvedLocationId, req.params.id);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });

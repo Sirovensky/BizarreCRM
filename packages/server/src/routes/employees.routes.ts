@@ -174,7 +174,8 @@ router.get(
     const adb = req.asyncDb;
     const employees = await adb.all(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, created_at, updated_at
+             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
+             created_at, updated_at
       FROM users
       WHERE is_active = 1
       ORDER BY first_name, last_name
@@ -226,7 +227,8 @@ router.get(
 
     const employee = await adb.get<any>(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, created_at, updated_at
+             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
+             created_at, updated_at
       FROM users WHERE id = ?
     `, id);
 

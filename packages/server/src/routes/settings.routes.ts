@@ -899,11 +899,29 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   const db = req.db;
   const targetUserId = Number(req.params.id);
   // bcrypt imported at top level
-  const { email, first_name, last_name, role, pin, password, is_active, admin_confirm_password, admin_totp_code } = req.body;
+  const { email, first_name, last_name, role, pin, password, is_active, home_location_id, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
   // SEC: Reject any role value that is not in the shared allowlist.
   if (role !== undefined && role !== null && !VALID_ROLES.has(role)) {
     throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
+  }
+  // Validate home_location_id: must be a positive integer pointing at an active location.
+  let validatedHomeLocationId: number | null | undefined;
+  if (home_location_id !== undefined) {
+    if (home_location_id === null) {
+      validatedHomeLocationId = null;
+    } else {
+      const hlid = parseInt(String(home_location_id), 10);
+      if (!Number.isInteger(hlid) || hlid <= 0) {
+        throw new AppError('home_location_id must be a positive integer', 400);
+      }
+      const locRow = await adb.get<{ id: number }>(
+        'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+        hlid,
+      );
+      if (!locRow) throw new AppError('home_location_id references an unknown or inactive location', 400);
+      validatedHomeLocationId = hlid;
+    }
   }
 
   // Fetch the target user's current state — needed for A3 admin guard and
@@ -1046,15 +1064,21 @@ router.put('/users/:id', adminOnly, async (req, res) => {
 
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
+  // home_location_id: use explicit sentinel to distinguish "not supplied"
+  // (undefined → skip via COALESCE) from "explicitly cleared" (null → write NULL).
+  const homeLocSql = validatedHomeLocationId !== undefined
+    ? ', home_location_id = ?'
+    : '';
+  const homeLocParam = validatedHomeLocationId !== undefined ? [validatedHomeLocationId] : [];
   await adb.run(`
     UPDATE users SET
       email = COALESCE(?, email), first_name = COALESCE(?, first_name),
       last_name = COALESCE(?, last_name), role = COALESCE(?, role),
       pin = COALESCE(?, pin), is_active = COALESCE(?, is_active),
-      password_hash = COALESCE(?, password_hash),
+      password_hash = COALESCE(?, password_hash)${homeLocSql},
       updated_at = datetime('now')
     WHERE id = ?
-  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, req.params.id);
+  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id);
 
   // SEC-L13: If password was changed, invalidate all sessions except the current admin's
   if (password) {
@@ -1086,7 +1110,10 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     await adb.run('DELETE FROM sessions WHERE user_id = ?', req.params.id);
   }
 
-  const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', req.params.id);
+  const user = await adb.get<any>(
+    'SELECT id, username, email, first_name, last_name, role, is_active, home_location_id FROM users WHERE id = ?',
+    req.params.id,
+  );
   res.json({ success: true, data: user });
 });
 

@@ -192,14 +192,35 @@ router.get('/me/locations', asyncHandler(async (req: Request, res: Response) => 
 }));
 
 // ---------------------------------------------------------------------------
-// GET /me/default-location — user's is_primary=1 location, else global default
+// GET /me/default-location — resolve the user's active work location for UI
+// defaulting.  Priority order (Phase 4 — migration 141):
+//   1. users.home_location_id   (explicit preference, if set and location is active)
+//   2. user_locations.is_primary=1  (junction-table primary assignment)
+//   3. locations.is_default=1   (global store default)
 // Any authenticated user.
 // ---------------------------------------------------------------------------
 router.get('/me/default-location', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
 
-  // Try is_primary assignment first
+  // Step 1: check users.home_location_id (added in migration 141)
+  const userRow = await adb.get<{ home_location_id: number | null }>(
+    'SELECT home_location_id FROM users WHERE id = ?',
+    userId,
+  );
+  if (userRow?.home_location_id != null) {
+    const homeLocation = await adb.get<LocationRow>(
+      'SELECT * FROM locations WHERE id = ? AND is_active = 1',
+      userRow.home_location_id,
+    );
+    if (homeLocation) {
+      res.json({ success: true, data: homeLocation });
+      return;
+    }
+    // home_location_id set but location is now inactive — fall through
+  }
+
+  // Step 2: try is_primary=1 assignment in junction table
   const primary = await adb.get<LocationRow>(
     `SELECT l.* FROM user_locations ul
      JOIN locations l ON l.id = ul.location_id
@@ -213,7 +234,7 @@ router.get('/me/default-location', asyncHandler(async (req: Request, res: Respon
     return;
   }
 
-  // Fall back to the global default location
+  // Step 3: fall back to the global default location
   const globalDefault = await adb.get<LocationRow>(
     'SELECT * FROM locations WHERE is_default = 1 AND is_active = 1 LIMIT 1',
   );
