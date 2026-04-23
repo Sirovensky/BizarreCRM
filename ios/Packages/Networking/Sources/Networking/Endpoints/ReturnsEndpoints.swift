@@ -119,3 +119,22 @@ public extension APIClient {
         )
     }
 }
+
+// MARK: - Refund approval
+// Server: PATCH /api/v1/refunds/:id/approve (admin only)
+
+public struct RefundApprovalResponse: Decodable, Sendable {
+    public let id: Int64
+}
+
+public extension APIClient {
+    /// `PATCH /api/v1/refunds/:id/approve`
+    /// Admin only. Atomically flips pending → completed and decrements invoice amount_paid.
+    func approveRefund(refundId: Int64) async throws -> RefundApprovalResponse {
+        try await patch("/api/v1/refunds/\(refundId)/approve",
+                        body: RefundApproveBody(),
+                        as: RefundApprovalResponse.self)
+    }
+}
+
+private struct RefundApproveBody: Encodable, Sendable {}
