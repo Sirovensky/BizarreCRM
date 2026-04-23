@@ -13,6 +13,7 @@ public struct ImportStartView: View {
 
     private var rowCount: Int { vm.preview?.totalRows ?? 0 }
     private var sourceName: String { vm.selectedSource?.displayName ?? "file" }
+    private var entityName: String { vm.selectedEntity.displayName }
     private var filename: String { vm.selectedFilename ?? "your file" }
 
     public var body: some View {
@@ -63,9 +64,11 @@ public struct ImportStartView: View {
 
             row(label: "Source", value: sourceName)
             Divider()
+            row(label: "Entity", value: entityName)
+            Divider()
             row(label: "File", value: filename)
             Divider()
-            row(label: "Customers to import", value: "\(rowCount)")
+            row(label: "\(entityName) to import", value: "\(rowCount)")
         }
         .padding(DesignTokens.Spacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
