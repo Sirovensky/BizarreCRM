@@ -57,6 +57,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
+import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
@@ -223,6 +224,9 @@ sealed class Screen(val route: String) {
     // §2.5 — Switch User (shared device): PIN entry to switch active identity.
     // Entry point: Settings > "Switch user" row (and TODO: long-press avatar in top bar).
     data object SwitchUser : Screen("settings/switch-user")
+
+    // §27 — Per-app language picker (ActionPlan §27).
+    data object Language : Screen("settings/language")
 
     // §2.8 — Password reset + backup-code recovery screens (pre-auth)
     data object ForgotPassword : Screen("auth/forgot-password")
@@ -1092,6 +1096,8 @@ fun AppNavGraph(
                     },
                     onEditProfile = { navController.navigate(Screen.Profile.route) },
                     onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                    // §27 — Language picker sub-screen.
+                    onLanguage = { navController.navigate(Screen.Language.route) },
                     // §2.6 — Security sub-screen (biometric + PIN + password + lock now).
                     onSecurity = { navController.navigate(Screen.Security.route) },
                     // AUD-20260414-M5: entry into the Sync Issues diagnostic
@@ -1164,6 +1170,15 @@ fun AppNavGraph(
                     },
                 )
             }
+            // §27 — Language picker: per-app language selection.
+            // On API 33+ the OS recreates the activity after setApplicationLocales;
+            // on older APIs LanguageScreen triggers recreate() explicitly.
+            composable(Screen.Language.route) {
+                LanguageScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             // AUD-20260414-M5: Sync Issues screen — lists dead-letter
             // sync_queue entries with per-row Retry. Entry point is a badged
             // tile on the Settings screen when count > 0.

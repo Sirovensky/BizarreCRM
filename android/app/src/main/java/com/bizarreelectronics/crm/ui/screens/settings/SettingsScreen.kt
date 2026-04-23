@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -55,6 +56,8 @@ class SettingsViewModel @Inject constructor(
     private val webSocketEventHandler: WebSocketEventHandler,
     syncQueueDao: SyncQueueDao,
     private val pinPreferences: com.bizarreelectronics.crm.data.local.prefs.PinPreferences,
+    // §27 — exposes current language display name for the Language row subtitle.
+    val languageManager: LanguageManager,
 ) : ViewModel() {
 
     /** §2.5 — drives the PIN row label ("Set up PIN" vs "Change PIN"). */
@@ -219,6 +222,9 @@ fun SettingsScreen(
     // Nullable so previews and any callers that don't want the row can omit
     // the wiring. Rendered as a top-level SettingsRow under SETTINGS.
     onNotificationSettings: (() -> Unit)? = null,
+    // §27 — opens the Language picker sub-screen.
+    // Nullable so previews and callers that don't wire it can omit it.
+    onLanguage: (() -> Unit)? = null,
     // AUD-20260414-M5: navigate to the Sync Issues diagnostic screen. Tile
     // is gated on deadLetterCount > 0 so callers never see it unless there
     // is actually something to retry.
@@ -296,6 +302,20 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     title = "Notifications",
                     onClick = onNotificationSettings,
+                )
+            }
+
+            // §27 — Language picker. Subtitle shows the currently active language
+            // display name so the user can see the selection without opening the screen.
+            // Nullable so previews and callers that don't wire navigation can omit it.
+            if (onLanguage != null) {
+                val currentLanguageTag by viewModel.languageManager.currentLanguage.collectAsState()
+                val currentLanguageDisplay = viewModel.languageManager.displayNameForTag(currentLanguageTag)
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.Language,
+                    title = "Language",
+                    subtitle = currentLanguageDisplay,
+                    onClick = onLanguage,
                 )
             }
 

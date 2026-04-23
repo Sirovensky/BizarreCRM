@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Per-app language configuration (ActionPlan §27).
+    Android 13+ (API 33) reads this file to populate the system Languages screen
+    so users can pick a per-app language without opening the app first.
+    Adding a locale here does NOT require translated string resources — the app
+    falls back to "en" (the authoritative locale) via normal Android locale
+    resolution when no translated strings are present for a given locale.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="es" />
+    <locale android:name="fr" />
+</locale-config>

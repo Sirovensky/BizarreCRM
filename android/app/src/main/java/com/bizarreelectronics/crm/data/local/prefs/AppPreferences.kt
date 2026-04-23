@@ -187,6 +187,18 @@ class AppPreferences @Inject constructor(
         set(value) = prefs.edit().putBoolean("reduce_motion_enabled", value).apply()
 
     /**
+     * §27 — per-app language tag (ActionPlan §27).
+     * Stored as a BCP-47 tag ("en", "es", "fr") or "system" to follow the
+     * device locale. LanguageManager reads/writes this key and mirrors it to
+     * the OS via LocaleManager (API 33+) or a manual Configuration override
+     * (API 26-32). "system" means "clear the per-app override" so the device
+     * locale takes effect.
+     */
+    var languageTag: String
+        get() = prefs.getString("language_tag", "system") ?: "system"
+        set(value) = prefs.edit().putString("language_tag", value).apply()
+
+    /**
      * §1.4 (ActionPlan line 190) — Material You dynamic color opt-in.
      * Defaults FALSE so the Bizarre brand palette always renders out of the
      * box. When true AND device runs Android 12+ (API 31+), BizarreCrmTheme /
