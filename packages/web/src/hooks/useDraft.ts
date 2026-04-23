@@ -31,15 +31,18 @@ export function useDraft(
 
   // Debounced save to localStorage
   useEffect(() => {
+    // Capture key at schedule time so a key change between schedule and fire
+    // doesn't write the old value under the new key (SCAN-601).
+    const currentKey = keyRef.current;
     clearTimeout(timerRef.current);
     if (!value) {
       // If empty, remove the draft
-      localStorage.removeItem(keyRef.current);
+      localStorage.removeItem(currentKey);
       setHasDraft(false);
       return;
     }
     timerRef.current = setTimeout(() => {
-      localStorage.setItem(keyRef.current, value);
+      localStorage.setItem(currentKey, value);
       setHasDraft(true);
     }, debounceMs);
     return () => clearTimeout(timerRef.current);

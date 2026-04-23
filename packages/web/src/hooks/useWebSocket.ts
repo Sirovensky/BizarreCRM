@@ -187,6 +187,13 @@ const INITIAL_BACKOFF = 1_000;
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
+  // Keep queryClient in a ref so connect()'s useCallback doesn't need it as a
+  // dep. Without this, a queryClient identity change (e.g. React Query DevTools
+  // reinstantiation) recreates connect → re-runs the mount effect → opens a new
+  // WS before the old one tears down → the old socket's onclose fires
+  // scheduleReconnect while the new socket is already live (SCAN-600).
+  const queryClientRef = useRef(queryClient);
+  useEffect(() => { queryClientRef.current = queryClient; }, [queryClient]);
   const wsRef = useRef<WebSocket | null>(null);
   const backoffRef = useRef(INITIAL_BACKOFF);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,20 +274,20 @@ export function useWebSocket() {
         const entry = invalidationMap.current[type];
         if (entry) {
           for (const qk of entry.queryKeys) {
-            queryClient.invalidateQueries({ queryKey: qk.filter((k) => k !== undefined) });
+            queryClientRef.current.invalidateQueries({ queryKey: qk.filter((k) => k !== undefined) });
           }
 
           // Also invalidate specific entity if data.id is present
           if (data?.id) {
             if (type.startsWith('ticket:')) {
-              queryClient.invalidateQueries({ queryKey: ['ticket', String(data.id)] });
-              queryClient.invalidateQueries({ queryKey: ['ticket', Number(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['ticket', String(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['ticket', Number(data.id)] });
             } else if (type.startsWith('invoice:')) {
-              queryClient.invalidateQueries({ queryKey: ['invoice', String(data.id)] });
-              queryClient.invalidateQueries({ queryKey: ['invoice', Number(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['invoice', String(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['invoice', Number(data.id)] });
             } else if (type.startsWith('inventory:')) {
-              queryClient.invalidateQueries({ queryKey: ['inventory-item', String(data.id)] });
-              queryClient.invalidateQueries({ queryKey: ['inventory-item', Number(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['inventory-item', String(data.id)] });
+              queryClientRef.current.invalidateQueries({ queryKey: ['inventory-item', Number(data.id)] });
             }
           }
 
@@ -311,7 +318,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [getToken, queryClient, setConnected, setLastMessage]); // scheduleReconnect accessed via ref, not in dep array
+  }, [getToken, setConnected, setLastMessage]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;

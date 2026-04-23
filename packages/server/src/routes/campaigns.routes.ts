@@ -728,10 +728,42 @@ router.get(
 // Event-driven triggers
 // -----------------------------------------------------------------------------
 
+// SCAN-596: This route may be called by an internal server-to-server event
+// (e.g. ticket-pickup webhook) in addition to admin UI users. Accept either
+// an admin JWT (via requireAdminCampaigns) OR a pre-shared
+// X-Internal-Service-Token header matching INTERNAL_SERVICE_TOKEN env var.
+//
+// If INTERNAL_SERVICE_TOKEN is not set in the environment, this route is
+// admin-JWT-only and server-to-server callers must use an admin session.
+// Set INTERNAL_SERVICE_TOKEN to a strong random secret to enable that path.
+const INTERNAL_SERVICE_TOKEN = (process.env.INTERNAL_SERVICE_TOKEN ?? '').trim();
+if (!INTERNAL_SERVICE_TOKEN) {
+  // Warn at module load time so operators know the token path is disabled.
+  // Using createLogger at module scope would create a circular import risk;
+  // a single startup warning via console is acceptable here.
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[campaigns] INTERNAL_SERVICE_TOKEN not set — /review-request/trigger is admin-JWT-only',
+  );
+}
+
+function requireAdminOrServiceToken(req: any): void {
+  // Fast path: admin JWT.
+  if (req?.user?.role === 'admin') return;
+  // Alternate path: internal service token (disabled if env var not set).
+  if (
+    INTERNAL_SERVICE_TOKEN &&
+    req.headers['x-internal-service-token'] === INTERNAL_SERVICE_TOKEN
+  ) {
+    return;
+  }
+  throw new AppError('Admin role or internal service token required', 403);
+}
+
 router.post(
   '/review-request/trigger',
   asyncHandler(async (req, res) => {
-    requireAdminCampaigns(req);
+    requireAdminOrServiceToken(req);
     const db = req.db;
     const adb = req.asyncDb;
     const body = (req.body ?? {}) as Record<string, unknown>;

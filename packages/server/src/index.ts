@@ -53,7 +53,7 @@ import { backfillEstimateApprovalTokenHashes } from './services/estimateApproval
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
-import { crashGuardMiddleware, currentRequestRoute } from './middleware/crashResiliency.js';
+import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
 import { createLogger } from './utils/logger.js';
 import { consumeWindowRate } from './utils/rateLimiter.js';
@@ -3661,7 +3661,7 @@ function handleFatal(type: 'uncaughtException' | 'unhandledRejection', error: Er
   }
   fatalShuttingDown = true;
 
-  const route = currentRequestRoute || 'unknown';
+  const route = getCurrentRoute() || 'unknown';
   log.error('FATAL: unrecoverable process error — initiating shutdown', {
     type,
     route,

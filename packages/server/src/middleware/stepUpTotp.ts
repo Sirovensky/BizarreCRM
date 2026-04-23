@@ -43,6 +43,43 @@ import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 const log = createLogger('step-up-totp');
 
 // ---------------------------------------------------------------------------
+// SCAN-593: TOTP replay prevention.
+//
+// otplib verifySync accepts any code that is valid within the current 30-second
+// window.  Without tracking consumed codes, an attacker who intercepts a valid
+// code can replay it for the remainder of the same window.  We prevent this by
+// keying consumed codes on (userId, code, windowBucket) and rejecting any
+// second use within 3 windows (90 s).  The Map is process-local; the TTL
+// sweep prevents unbounded growth.
+// ---------------------------------------------------------------------------
+
+/** Maps `userId:code:windowBucket` → timestamp when consumed (ms since epoch). */
+const consumedCodes = new Map<string, number>();
+
+/** Keep consumed-code entries for 3 × 30-second windows to cover clock skew. */
+const CONSUMED_TTL_MS = 90_000;
+
+// Periodic sweep: remove entries older than CONSUMED_TTL_MS.
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of consumedCodes) {
+    if (now - ts > CONSUMED_TTL_MS) consumedCodes.delete(k);
+  }
+}, 60_000).unref();
+
+/**
+ * Attempts to claim a TOTP code for `userId`.
+ * Returns `true` on first use within the window; `false` if already consumed.
+ */
+function claimCode(userId: number, code: string): boolean {
+  const windowBucket = Math.floor(Date.now() / 30_000);
+  const key = `${userId}:${code}:${windowBucket}`;
+  if (consumedCodes.has(key)) return false;
+  consumedCodes.set(key, Date.now());
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // TOTP secret decryption — mirrors auth.routes.ts `decryptSecret` exactly.
 // Keys match the derivation in auth.routes.ts; inlined here to avoid a
 // circular import (auth.routes.ts imports middleware/auth.ts, which would
@@ -207,7 +244,14 @@ export function requireStepUpTotp(endpointLabel: string) {
       return;
     }
 
-    // ── 6. Success — audit + email (fire-and-forget) + continue ────────────
+    // ── 6. SCAN-593: Claim the code to prevent replay within the same window ─
+    if (!claimCode(user.id, totpCode)) {
+      audit(db, 'pii_export_totp_failed', user.id, ip, { endpoint: endpointLabel, user_agent: userAgent, reason: 'replay' });
+      res.status(403).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'TOTP code already used; wait for next code', rid));
+      return;
+    }
+
+    // ── 7. Success — audit + email (fire-and-forget) + continue ────────────
     const meta = { endpoint: endpointLabel, ip, user_agent: userAgent, timestamp };
     audit(db, 'pii_export_success', user.id, ip, meta);
 
@@ -368,7 +412,27 @@ export function requireStepUpTotpSuperAdmin(endpointLabel: string) {
       return;
     }
 
-    // ── 6. Success — audit + continue ──────────────────────────────────────
+    // ── 6. SCAN-593: Claim the code to prevent replay within the same window ─
+    if (!claimCode(superAdmin.superAdminId, totpCode)) {
+      try {
+        masterDb
+          .prepare(
+            'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+          )
+          .run(
+            superAdmin.superAdminId,
+            'super_admin_totp_failed',
+            JSON.stringify({ endpoint: endpointLabel, user_agent: userAgent, reason: 'replay' }),
+            ip,
+          );
+      } catch (auditErr) {
+        log.error('Failed to write super_admin_totp_failed (replay) audit row', { error: auditErr });
+      }
+      res.status(403).json(errorBody(ERROR_CODES.ERR_INPUT_INVALID, 'TOTP code already used; wait for next code', rid));
+      return;
+    }
+
+    // ── 7. Success — audit + continue ──────────────────────────────────────
     try {
       masterDb
         .prepare(

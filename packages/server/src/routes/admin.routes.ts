@@ -205,7 +205,7 @@ router.post(
       audit(tenantDb, 'tenant_terminate_step3_finalize_attempt', req.user.id, ip, {
         slug: req.tenantSlug,
       });
-      const result = await finalizeTermination({ token, typedSlug, typedPhrase });
+      const result = await finalizeTermination({ token, typedSlug, typedPhrase, requestIp: ip ?? null });
       if (!result.ok) {
         audit(tenantDb, 'tenant_terminate_step3_finalize_rejected', req.user.id, ip, {
           slug: req.tenantSlug,
