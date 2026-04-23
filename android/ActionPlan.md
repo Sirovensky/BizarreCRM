@@ -59,7 +59,7 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~22% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + BrandListItem mergeDescendants/Role.Button + **DashboardScreen sweep (commit 881b404 — KPI tiles mergeDescendants + Role.Button + contentDescription; section headers heading(); decorative icons nulled; liveRegion Polite on KPI grid; 48dp minHeight).** Missing: per-screen sweep across other feature modules, fontScale, a11y framework tests. |
+| 26 | Accessibility | ~33% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + BrandListItem mergeDescendants/Role.Button + DashboardScreen sweep (881b404) + TicketListScreen sweep (bf211de) + **CustomerListScreen sweep (commit cda8fb0 — row contentDescription "Customer NAME, CONTACT" + count-text liveRegion Polite + error-state Assertive + loading-state mergeDescendants + FAB "Create new customer").** Missing: per-screen sweep across remaining domains (Invoices/Estimates/Leads/Inventory/Appointments/Expenses/SMS), fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~72% | SQLCipher + EncryptedSharedPrefs + cert pinning + Network Security Config + FLAG_SECURE (partial) + setRecentsScreenshotEnabled + RedactingHttpLogger + ClipboardUtil sensitive-clear + OTP detect + SessionRevoked banner + Biometric STRONG + 401 remote sign-out + ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints, Blur-on-recents, Timber RedactorTree. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
@@ -2439,7 +2439,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 27.1 Locale handling
 - [x] Per-app language (Android 13+) via `LocaleManager.setApplicationLocales(LocaleList.forLanguageTags("es-MX"))`. (commit d3d546c — `util/LanguageManager.kt` with TIRAMISU-gated LocaleManager path)
-- [~] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply. (commit d3d546c — API 26-32 Configuration override + `Activity.recreate()`; `wrapContext()` helper ready; `MainActivity.attachBaseContext` wiring pending for full cold-start coverage)
+- [x] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply. (commit d3d546c + 112b67f — API 26-32 Configuration override + `Activity.recreate()`; `LanguageManager.wrapContext` now called from `MainActivity.attachBaseContext` so cold starts honor persisted locale pre-Hilt)
 - [x] Settings → Language picker lists all translated locales plus "System default". (commit d3d546c — `ui/screens/settings/LanguageScreen.kt` radio list + Settings row with current-language subtitle; `locales_config.xml` declares en/es/fr)
 
 ### 27.2 Translations
