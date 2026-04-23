@@ -35,6 +35,26 @@ export function runMigrations(db: any): void {
     console.log(`Running migration: ${file}`);
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
 
+    // Some migrations target tables that only exist in the master (multi-tenant
+    // controller) DB — e.g. `tenants`, `super_admins`. When migrate.ts runs
+    // against a legacy single-tenant DB, those tables are absent and the
+    // migration's ALTER/UPDATE would crash. Opt in with a header:
+    //   -- @skip-if-no-table: tenants
+    // If the named table is missing on the target DB, the migration is marked
+    // as applied (so it is not re-attempted) and skipped silently.
+    const skipIfNoTableMatch = /^[\t ]*--\s*@skip-if-no-table:\s*(\w+)\s*$/m.exec(sql);
+    if (skipIfNoTableMatch) {
+      const tableName = skipIfNoTableMatch[1];
+      const tableExists = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+        .get(tableName);
+      if (!tableExists) {
+        db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+        console.log(`  Skipped (no such table: ${tableName}): ${file}`);
+        continue;
+      }
+    }
+
     // Some migrations must run OUTSIDE a transaction — e.g. anything that
     // toggles `PRAGMA writable_schema` or issues `PRAGMA foreign_keys`, both of
     // which SQLite refuses to honor mid-transaction. Opt in with a header:

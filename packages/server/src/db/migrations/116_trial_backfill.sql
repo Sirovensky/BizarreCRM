@@ -1,4 +1,11 @@
+-- @skip-if-no-table: tenants
 -- Migration 116: back-fill trial_started_at / trial_ends_at for existing tenants
+--
+-- This migration targets the MASTER (multi-tenant controller) DB — the
+-- `tenants` table lives only there. migrate.ts also runs this file against
+-- the legacy single-tenant DB on boot, where `tenants` is absent. The
+-- @skip-if-no-table directive above makes migrate.ts mark it applied and
+-- skip it on any DB without a `tenants` table.
 --
 -- Any active/provisioning tenant that was created before the trial columns were
 -- added to the INSERT statement has NULL for both fields.  isTrialActive() returns
