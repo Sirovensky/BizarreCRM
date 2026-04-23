@@ -15,9 +15,11 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
+import com.bizarreelectronics.crm.util.RedactorTree
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
 import dagger.hilt.android.HiltAndroidApp
+import timber.log.Timber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +67,17 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     override fun onCreate() {
         System.loadLibrary("sqlcipher")
         super.onCreate()
+        // §1 L228 / §28 L64 — plant Timber with a RedactorTree so all
+        // Timber calls are sanitised before reaching Logcat or the delegate
+        // tree. RedactorTree strips sensitive key-value pairs and then
+        // delegates PII sweeps (tokens, email, phone, IMEI) to LogRedactor.
+        // Must be planted BEFORE crashReporter.install() so that any
+        // Timber usage during crash-reporter wiring is also covered.
+        val baseTree: Timber.Tree = if (BuildConfig.DEBUG) Timber.DebugTree()
+        else Timber.DebugTree() // TODO: replace with CrashReporterTree once a
+        // dedicated Timber-based release tree exists (currently CrashReporter
+        // operates as an UncaughtExceptionHandler, not a Timber.Tree).
+        Timber.plant(RedactorTree(baseTree))
         // §32.3 — wire the uncaught-exception handler before anything else
         // so init-path crashes are still captured.
         crashReporter.install()

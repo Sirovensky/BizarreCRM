@@ -231,6 +231,9 @@ dependencies {
     // DataStore (for simple prefs)
     implementation(libs.androidx.datastore.preferences)
 
+    // Timber (structured logging, RedactorTree wraps this)
+    implementation(libs.timber)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
