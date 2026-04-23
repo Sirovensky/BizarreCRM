@@ -107,7 +107,9 @@ final class CustomerMergeViewModelTests: XCTestCase {
     func test_performMerge_conflictSetsConflictMessage() async {
         let primary = makePrimary()
         let secondary = makeSecondary()
-        let stub = MergeStubAPIClient(mergeResult: .failure(APITransportError.httpStatus(409, message: "customer has open ticket — resolve first")))
+        let stub = MergeStubAPIClient(
+            mergeResult: .failure(APITransportError.httpStatus(409, message: "customer has open ticket — resolve first"))
+        )
         let vm = CustomerMergeViewModel(api: stub, primary: primary)
 
         await vm.selectCandidate(secondary)
@@ -121,7 +123,9 @@ final class CustomerMergeViewModelTests: XCTestCase {
     func test_performMerge_serverErrorSetsErrorMessage() async {
         let primary = makePrimary()
         let secondary = makeSecondary()
-        let stub = MergeStubAPIClient(mergeResult: .failure(APITransportError.httpStatus(500, message: "Internal error")))
+        let stub = MergeStubAPIClient(
+            mergeResult: .failure(APITransportError.httpStatus(500, message: "Internal error"))
+        )
         let vm = CustomerMergeViewModel(api: stub, primary: primary)
 
         await vm.selectCandidate(secondary)
@@ -135,9 +139,46 @@ final class CustomerMergeViewModelTests: XCTestCase {
     func test_performMerge_withNoCandidate_doesNothing() async {
         let stub = MergeStubAPIClient(mergeResult: .success(makePrimary()))
         let vm = CustomerMergeViewModel(api: stub, primary: makePrimary())
-        // No selectCandidate call
+        // No selectCandidate call → guard fires
         await vm.performMerge()
         XCTAssertFalse(vm.mergeComplete)
+    }
+
+    func test_performMerge_sendsCorrectKeepAndMergeIds() async throws {
+        // Verify the stub sees keep_id = primary.id and merge_id = secondary.id.
+        let primary = makePrimary(id: 10)
+        let secondary = makeSecondary(id: 20)
+        let stub = MergeStubAPIClient(mergeResult: .success(primary), captureRequest: true)
+        let vm = CustomerMergeViewModel(api: stub, primary: primary)
+
+        await vm.selectCandidate(secondary)
+        await vm.performMerge()
+
+        XCTAssertTrue(vm.mergeComplete)
+        let captured = await stub.capturedMergeRequest
+        XCTAssertEqual(captured?.keepId, 10)
+        XCTAssertEqual(captured?.mergeId, 20)
+    }
+
+    func test_performMerge_fieldPreferencesDoNotAffectApiCall() async {
+        // Field prefs are local-only; changing them must not change the API body
+        // (there is no field_preferences key in the server body).
+        let primary = makePrimary()
+        let secondary = makeSecondary()
+        let stub = MergeStubAPIClient(mergeResult: .success(primary), captureRequest: true)
+        let vm = CustomerMergeViewModel(api: stub, primary: primary)
+
+        await vm.selectCandidate(secondary)
+        vm.setWinner(.secondary, forRowId: "email")
+        vm.setWinner(.secondary, forRowId: "name")
+        await vm.performMerge()
+
+        XCTAssertTrue(vm.mergeComplete)
+        // API must still receive exactly keep_id/merge_id; no field_preferences.
+        let captured = await stub.capturedMergeRequest
+        XCTAssertNotNil(captured)
+        XCTAssertEqual(captured?.keepId, primary.id)
+        XCTAssertEqual(captured?.mergeId, secondary.id)
     }
 
     func test_searchCandidates_excludesPrimary() async {
@@ -152,36 +193,68 @@ final class CustomerMergeViewModelTests: XCTestCase {
         XCTAssertTrue(vm.candidateResults.allSatisfy { $0.id != 1 })
         XCTAssertEqual(vm.candidateResults.count, 1)
     }
+
+    func test_searchCandidates_shortQueryClearsResults() async {
+        let stub = MergeStubAPIClient()
+        let vm = CustomerMergeViewModel(api: stub, primary: makePrimary())
+        vm.candidateQuery = "B"   // 1 char — below threshold
+
+        await vm.searchCandidates()
+
+        XCTAssertTrue(vm.candidateResults.isEmpty)
+    }
+
+    func test_fieldRows_defaultWinnerIsPrimary() async {
+        let vm = CustomerMergeViewModel(api: MergeStubAPIClient(), primary: makePrimary())
+        await vm.selectCandidate(makeSecondary())
+        XCTAssertTrue(vm.fieldRows.allSatisfy { $0.winner == .primary })
+    }
+
+    func test_fieldRows_winnerValueReflectsSelection() async {
+        let vm = CustomerMergeViewModel(api: MergeStubAPIClient(), primary: makePrimary())
+        await vm.selectCandidate(makeSecondary())
+
+        vm.setWinner(.secondary, forRowId: "email")
+        let row = vm.fieldRows.first(where: { $0.id == "email" })!
+        XCTAssertEqual(row.winnerValue, row.secondaryValue)
+
+        vm.setWinner(.primary, forRowId: "email")
+        let row2 = vm.fieldRows.first(where: { $0.id == "email" })!
+        XCTAssertEqual(row2.winnerValue, row2.primaryValue)
+    }
 }
 
 // MARK: - MergeStubAPIClient
 
 /// Extended stub supporting merge + list endpoints.
+/// Set `captureRequest: true` to record the `CustomerMergeRequest` for assertion.
 actor MergeStubAPIClient: APIClient {
     let mergeResult: Result<CustomerDetail, Error>?
     let listResult: Result<[CustomerSummary], Error>?
+    let shouldCapture: Bool
+    private(set) var capturedMergeRequest: CustomerMergeRequest?
 
     init(
         mergeResult: Result<CustomerDetail, Error>? = nil,
-        listResult: Result<[CustomerSummary], Error>? = nil
+        listResult: Result<[CustomerSummary], Error>? = nil,
+        captureRequest: Bool = false
     ) {
         self.mergeResult = mergeResult
         self.listResult = listResult
+        self.shouldCapture = captureRequest
     }
 
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         if path == "/api/v1/customers", let listResult {
             switch listResult {
             case .success(let summaries):
-                // Re-encode by round-tripping through per-id JSON stubs.
                 let items = summaries.map { s -> String in
                     """
                     {"id":\(s.id),"first_name":"\(s.firstName ?? "")","last_name":"\(s.lastName ?? "")","email":null,"phone":null,"mobile":null,"organization":null,"city":null,"state":null,"customer_group_name":null,"created_at":null,"ticket_count":0}
                     """
                 }.joined(separator: ",")
                 let wrapper = "{\"customers\":[\(items)],\"pagination\":null}"
-                let decoder = JSONDecoder()
-                let response = try decoder.decode(CustomersListResponse.self, from: Data(wrapper.utf8))
+                let response = try JSONDecoder().decode(CustomersListResponse.self, from: Data(wrapper.utf8))
                 guard let cast = response as? T else { throw APITransportError.decoding("type mismatch") }
                 return cast
             case .failure(let err):
@@ -192,7 +265,12 @@ actor MergeStubAPIClient: APIClient {
     }
 
     func post<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
-        if path == "/api/v1/customers/merge", let mergeResult {
+        if path == "/api/v1/customers/merge" {
+            // Capture the request body for assertion tests.
+            if shouldCapture, let req = body as? CustomerMergeRequest {
+                capturedMergeRequest = req
+            }
+            guard let mergeResult else { throw APITransportError.noBaseURL }
             switch mergeResult {
             case .success(let detail):
                 guard let cast = detail as? T else { throw APITransportError.decoding("type mismatch") }

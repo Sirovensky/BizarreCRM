@@ -5,14 +5,22 @@ import Networking
 
 // §5.5 Customer merge ViewModel — Phase 4 write flow.
 // Drives three-step merge: pick candidate → diff fields → confirm.
+//
+// Server contract: POST /api/v1/customers/merge { keep_id, merge_id }
+// The server always preserves the keep customer's field values and migrates
+// all relational data (tickets, invoices, SMS, contacts) from merge_id → keep_id.
+//
+// Field preferences shown in the UI are LOCAL ONLY — they give staff a diff
+// preview so they know what survives. If staff want the secondary's value for a
+// field, that requires a separate PUT /customers/:id update (noted in §5.5 gap doc).
 
-/// The side whose field value wins for a given field.
+/// The side whose field value wins (used for local-only diff preview).
 public enum MergeFieldWinner: String, CaseIterable, Sendable {
     case primary
     case secondary
 }
 
-/// One row in the field-diff table.
+/// One row in the field-diff table (local preview only — not sent to server).
 public struct MergeFieldRow: Identifiable, Sendable {
     public let id: String          // field key e.g. "name"
     public let label: String
@@ -119,6 +127,8 @@ public final class CustomerMergeViewModel {
 
     // MARK: - Merge
 
+    /// Calls `POST /api/v1/customers/merge { keep_id: primary.id, merge_id: candidate.id }`.
+    /// On success all relational data is migrated server-side; `mergeComplete` flips to `true`.
     public func performMerge() async {
         guard let candidate = selectedCandidate, !isMerging else { return }
         isMerging = true
@@ -126,33 +136,35 @@ public final class CustomerMergeViewModel {
         conflictMessage = nil
         defer { isMerging = false }
 
-        let prefs = CustomerMergeFieldPreferences(
-            name:    fieldRows.first(where: { $0.id == "name" })?.winner.rawValue    ?? "primary",
-            phone:   fieldRows.first(where: { $0.id == "phone" })?.winner.rawValue   ?? "primary",
-            email:   fieldRows.first(where: { $0.id == "email" })?.winner.rawValue   ?? "primary",
-            address: fieldRows.first(where: { $0.id == "address" })?.winner.rawValue ?? "primary",
-            notes:   fieldRows.first(where: { $0.id == "notes" })?.winner.rawValue   ?? "primary"
-        )
-
         let req = CustomerMergeRequest(
-            primaryId: primary.id,
-            secondaryId: candidate.id,
-            fieldPreferences: prefs
+            keepId: primary.id,
+            mergeId: candidate.id
         )
 
         do {
             _ = try await api.mergeCustomers(req)
             mergeComplete = true
         } catch {
-            // Check both AppError.conflict and APITransportError HTTP 409.
-            if let appErr = error as? AppError, case .conflict(let reason) = appErr {
-                conflictMessage = reason ?? "This customer has an open ticket — resolve it first."
-            } else if let transport = error as? APITransportError,
-                      case .httpStatus(409, let msg) = transport {
+            // HTTP 409 = conflict (e.g. open ticket on the merge candidate).
+            if let transport = error as? APITransportError,
+               case .httpStatus(409, let msg) = transport {
                 conflictMessage = msg ?? "This customer has an open ticket — resolve it first."
+            } else if let appErr = error as? AppError, case .conflict(let reason) = appErr {
+                conflictMessage = reason ?? "This customer has an open ticket — resolve it first."
             } else {
                 errorMessage = AppError.from(error).localizedDescription
             }
         }
     }
+
+    // MARK: - Field preferences (local-only gap note)
+    //
+    // The server merge endpoint (POST /customers/merge) does not accept per-field
+    // preferences; it always keeps the keep_id customer's field values and migrates
+    // only relational data. The field diff shown in the UI is informational.
+    //
+    // Gap: if staff prefer the secondary's name/phone/email/address, they need to
+    // edit the primary BEFORE merging (via PUT /customers/:id). A future enhancement
+    // could automate this by issuing a PATCH after a successful merge when any
+    // fieldRows have winner == .secondary. Tracked in §5.5 gap doc.
 }
