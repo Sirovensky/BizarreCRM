@@ -78,6 +78,6 @@ class RoomSchemaFilesTest {
     }
 
     private companion object {
-        val REQUIRED_SCHEMAS = listOf("1.json", "2.json", "4.json")
+        val REQUIRED_SCHEMAS = listOf("1.json", "2.json", "4.json", "5.json", "6.json")
     }
 }
