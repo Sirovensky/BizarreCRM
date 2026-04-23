@@ -39,8 +39,10 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -51,8 +53,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import com.bizarreelectronics.crm.BuildConfig
+import java.net.ConnectException
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -95,6 +99,16 @@ data class LoginUiState(
     val isProbing: Boolean = false,
     // §2.1 — probe error message (inline retry on credentials step)
     val probeError: String? = null,
+    // §2.12-L356 — true when a login attempt fails because the host was unreachable
+    // (UnknownHostException / ConnectException). Shows inline error + Retry CTA.
+    val unreachableHost: Boolean = false,
+    // §2.12-L357 — true when the server returned 429 Too Many Requests.
+    // rateLimitResetMs is the System.currentTimeMillis() at which the wait expires.
+    val rateLimited: Boolean = false,
+    val rateLimitResetMs: Long? = null,
+    // §2.12-L358 — mirrors NetworkMonitor.isOnline; true when device has no network.
+    // Auth is online-only: this banner is informational only, cannot be bypassed.
+    val networkOffline: Boolean = false,
     // Registration fields
     val registerShopName: String = "",
     val registerEmail: String = "",
@@ -107,6 +121,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val authApi: AuthApi,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     companion object {
@@ -201,6 +216,17 @@ class LoginViewModel @Inject constructor(
     ))
     val state = _state.asStateFlow()
 
+    init {
+        // §2.12-L358 — observe device network state and mirror it into uiState.
+        // This is purely informational: the offline banner cannot be bypassed
+        // because login always requires a real network round-trip.
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _state.value = _state.value.copy(networkOffline = !online)
+            }
+        }
+    }
+
     // AND-033: Cache the probe OkHttpClient per target host so repeated probes
     // (retry, reconnect) to the same server do not allocate a new client each
     // time. A new client is built only when the host changes.
@@ -243,8 +269,12 @@ class LoginViewModel @Inject constructor(
     fun updateRegisterShopName(value: String) { _state.value = _state.value.copy(registerShopName = value, error = null) }
     fun updateRegisterEmail(value: String) { _state.value = _state.value.copy(registerEmail = value, error = null) }
     fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
-    fun updateUsername(value: String) { _state.value = _state.value.copy(username = value, error = null) }
-    fun updatePassword(value: String) { _state.value = _state.value.copy(password = value, error = null) }
+    fun updateUsername(value: String) {
+        _state.value = _state.value.copy(username = value, error = null, unreachableHost = false, rateLimited = false)
+    }
+    fun updatePassword(value: String) {
+        _state.value = _state.value.copy(password = value, error = null, unreachableHost = false, rateLimited = false)
+    }
     fun updateNewPassword(value: String) { _state.value = _state.value.copy(newPassword = value, error = null) }
     fun updateConfirmPassword(value: String) { _state.value = _state.value.copy(confirmPassword = value, error = null) }
     fun updateTotpCode(value: String) {
@@ -499,8 +529,39 @@ class LoginViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                // §2.12-L357: 429 Too Many Requests → rate-limit countdown.
+                // Prefer Retry-After header if present; otherwise default to 60s.
+                // Avoid touching AuthApi.kt (Wave-7G scope) — no signature change.
+                if (e is retrofit2.HttpException && e.code() == 429) {
+                    val retryAfterSec: Long = try {
+                        e.response()?.headers()?.get("Retry-After")?.toLong() ?: 60L
+                    } catch (_: NumberFormatException) { 60L }
+                    val resetAt = System.currentTimeMillis() + retryAfterSec * 1000L
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        rateLimited = true,
+                        rateLimitResetMs = resetAt,
+                        error = null,
+                    )
+                    return@launch
+                }
+                // §2.12-L356: host unreachable (bad URL / no route to server).
+                if (e is UnknownHostException || e is ConnectException ||
+                    (e.cause is UnknownHostException) || (e.cause is ConnectException)) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        unreachableHost = true,
+                        error = null,
+                    )
+                    return@launch
+                }
                 val errorMsg = extractErrorMessage(e)
-                _state.value = _state.value.copy(isLoading = false, error = errorMsg)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    unreachableHost = false,
+                    rateLimited = false,
+                    error = errorMsg,
+                )
             }
         }
     }
@@ -593,6 +654,11 @@ class LoginViewModel @Inject constructor(
 
     fun dismissBackupCodes() {
         _state.value = _state.value.copy(showBackupCodes = null)
+    }
+
+    /** §2.12-L357 — called by the UI countdown LaunchedEffect when the timer reaches zero. */
+    fun clearRateLimit() {
+        _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null)
     }
 
     private fun extractErrorMessage(e: Exception): String {
@@ -1136,6 +1202,112 @@ private fun CredentialsStep(
         }
     }
 
+    // §2.12-L358 — offline banner: device has no network.
+    // Informational only — user must restore connectivity to sign in.
+    if (state.networkOffline) {
+        Surface(
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.WifiOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    "You're offline. Connect to sign in.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    // §2.12-L356 — server unreachable banner: bad URL or no route.
+    if (state.unreachableHost) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.CloudOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    "Can't reach this server. Check the address.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = viewModel::login,
+                    contentPadding = PaddingValues(4.dp),
+                ) {
+                    Text("Retry", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+
+    // §2.12-L357 — rate-limit banner with ticking countdown.
+    // Countdown runs via LaunchedEffect; button re-enables automatically when timer expires.
+    if (state.rateLimited) {
+        // Derive remaining seconds from rateLimitResetMs, floor at 0.
+        val resetMs = state.rateLimitResetMs ?: (System.currentTimeMillis() + 60_000L)
+        var remainingSec by remember(resetMs) {
+            mutableStateOf(((resetMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L))
+        }
+        LaunchedEffect(resetMs) {
+            while (remainingSec > 0L) {
+                delay(1_000L)
+                remainingSec = ((resetMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+            }
+            // Countdown expired — clear rate-limit state so button re-enables.
+            viewModel.clearRateLimit()
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Timer,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    if (remainingSec > 0L) "Too many attempts. Try again in ${remainingSec}s."
+                    else "You can try again now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
@@ -1187,9 +1359,11 @@ private fun CredentialsStep(
     // CROSS48: Sign In is the single dominant CTA on this step — route
     // through BrandPrimaryButton so every primary button in the app
     // shares the same orange filled / onPrimary text / 12dp theme shape.
+    // §2.12-L357/L358: disabled while offline or rate-limited.
     BrandPrimaryButton(
         onClick = viewModel::login,
-        enabled = state.username.isNotBlank() && state.password.isNotBlank() && !state.isLoading,
+        enabled = state.username.isNotBlank() && state.password.isNotBlank()
+                && !state.isLoading && !state.networkOffline && !state.rateLimited,
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
