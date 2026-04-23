@@ -1,14 +1,33 @@
+/**
+ * ============================================================
+ * DESIGN DECISION — NO GLASSMORPHISM ON ANDROID
+ * ActionPlan §1.4 line 196
+ * ============================================================
+ * Android's Compose rendering pipeline does not offer a first-class
+ * blur-behind primitive (unlike iOS UIVisualEffectView). Faking it via
+ * RenderEffect (API 31+) is expensive, causes jank on mid-range devices,
+ * and fails silently on API < 31. Glassmorphism effects are therefore
+ * explicitly prohibited in this codebase. Use semi-transparent surfaces
+ * backed by a solid scrim instead (Surface + alpha layering).
+ *
+ * Do NOT add:
+ *   - BlurMaskFilter on large layered surfaces
+ *   - RenderEffect.createBlurEffect on window decorations
+ *   - Any "frosted glass" visual pattern
+ *
+ * See also: Android_audit.md §1.4, business-context.md § UI constraints.
+ * ============================================================
+ */
 package com.bizarreelectronics.crm.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 
 // ---------------------------------------------------------------------------
 // Primitive palette — Wave 1 brand foundation
@@ -135,30 +154,41 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 // ---------------------------------------------------------------------------
-// Shapes — CROSS33 brand shape tokens
+// Shapes — moved to Shapes.kt (CROSS33 / ActionPlan §1.4 line 191)
+// ---------------------------------------------------------------------------
+// BizarreShapes is now defined in Shapes.kt with the full extraSmall/small/
+// medium/large/extraLarge token set. The import is automatic within this
+// package — no explicit import needed.
+
+// ---------------------------------------------------------------------------
+// Tenant accent — ActionPlan §1.4 line 195
 // ---------------------------------------------------------------------------
 
 /**
- * Shape tokens unify every surface + button across the app. Material3's
- * default `Shapes.medium` (12.dp rounded corners) is used by `Button`,
- * `OutlinedButton`, `Card`, `FilterChip`, etc. — which is why the previous
- * implicit mix (fully-rounded pill CTAs like "Continue to Details" vs
- * rectangular rounded buttons like "Sign In") happened: components fell
- * back to their library default instead of a theme-wide value.
- *
- * Locking `medium = RoundedCornerShape(12.dp)` here makes every themed
- * button resolve to the same 12dp radius unless a site explicitly opts
- * out by passing `shape = ...` to the component.
- *
- * Primary `Button` uses `shapes.medium` by default, so this wipes out the
- * pill/rectangle inconsistency without touching individual screens.
- *
- * `small` / `extraLarge` are left at their Material3 defaults (4dp/28dp)
- * because Wave 1 cards + chips already visually anchor to those sizes.
+ * Logo orange: the canonical Bizarre Electronics brand accent.
+ * Matches primary in DarkColorScheme and Blue600.
  */
-private val BizarreShapes = Shapes(
-    medium = RoundedCornerShape(12.dp),
-)
+val BrandAccent: Color = Color(0xFFF58220)
+
+/**
+ * Returns the tenant-supplied accent color when non-null, falling back to
+ * [BrandAccent] (logo orange). Future multi-tenant builds can inject a
+ * per-tenant override at the theme call site; single-tenant builds simply
+ * pass null and always receive the canonical orange.
+ */
+fun tenantAccentOrFallback(override: Color? = null): Color = override ?: BrandAccent
+
+/**
+ * CompositionLocal carrying the active tenant brand accent.
+ * Provided by [BizarreCrmTheme] / [DesignSystemTheme] via
+ * [CompositionLocalProvider]. Composables read:
+ * ```kotlin
+ * val accent = LocalBrandAccent.current
+ * ```
+ * Uses [staticCompositionLocalOf] because the accent does not change during
+ * a composition — only at a theme re-entry boundary.
+ */
+val LocalBrandAccent = staticCompositionLocalOf<Color> { BrandAccent }
 
 // ---------------------------------------------------------------------------
 // Theme entry point
@@ -171,9 +201,13 @@ fun BizarreCrmTheme(
     // this stub reads the pref so the toggle hook is wired even though the UI
     // doesn't exist yet.
     darkTheme: Boolean = true,
-    // Dynamic color disabled by default so the Bizarre scheme always renders.
-    // A power-user could pass true to re-enable Material You on Android 12+.
+    // ActionPlan §1.4 line 190: dynamicColor reads AppPreferences.dynamicColorEnabled.
+    // Defaults FALSE so the Bizarre brand palette always renders out of the box.
+    // When true AND Android 12+ (API 31+), Material You derives the color scheme
+    // from the user's wallpaper via dynamicLightColorScheme / dynamicDarkColorScheme.
     dynamicColor: Boolean = false,
+    // Tenant accent override — null uses BrandAccent (logo orange).
+    tenantAccent: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
@@ -190,7 +224,13 @@ fun BizarreCrmTheme(
     // hardcoded top-level color vals.
     val extendedColors = if (darkTheme) darkExtended() else lightExtended()
 
-    CompositionLocalProvider(LocalExtendedColors provides extendedColors) {
+    // §1.4 line 195: resolve tenant accent (falls back to logo orange).
+    val resolvedAccent = tenantAccentOrFallback(tenantAccent)
+
+    CompositionLocalProvider(
+        LocalExtendedColors provides extendedColors,
+        LocalBrandAccent provides resolvedAccent,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = BizarreTypography,
@@ -198,4 +238,37 @@ fun BizarreCrmTheme(
             content = content,
         )
     }
+}
+
+// ---------------------------------------------------------------------------
+// DesignSystemTheme — ActionPlan §1.4 line 189
+// ---------------------------------------------------------------------------
+
+/**
+ * [DesignSystemTheme] is the forward-looking entry point for the Bizarre CRM
+ * design system. It currently wraps [BizarreCrmTheme] 1-to-1 so all existing
+ * callers that use [BizarreCrmTheme] continue to compile unchanged.
+ *
+ * When AndroidX Material3 Expressive reaches stable (currently in alpha as
+ * `androidx.compose.material3.expressive`), this wrapper will be updated to
+ * call `MaterialExpressiveTheme` instead of `MaterialTheme` inside
+ * [BizarreCrmTheme], without changing the public signature here.
+ *
+ * TODO(M3Expressive): Replace inner MaterialTheme call with MaterialExpressiveTheme
+ * once androidx.compose.material3:material3-expressive is stable. Track at:
+ * https://developer.android.com/jetpack/compose/material3/expressive
+ */
+@Composable
+fun DesignSystemTheme(
+    darkTheme: Boolean = true,
+    dynamicColor: Boolean = false,
+    tenantAccent: Color? = null,
+    content: @Composable () -> Unit,
+) {
+    BizarreCrmTheme(
+        darkTheme = darkTheme,
+        dynamicColor = dynamicColor,
+        tenantAccent = tenantAccent,
+        content = content,
+    )
 }

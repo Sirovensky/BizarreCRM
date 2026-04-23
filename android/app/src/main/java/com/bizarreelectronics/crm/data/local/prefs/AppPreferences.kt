@@ -186,6 +186,17 @@ class AppPreferences @Inject constructor(
         get() = prefs.getBoolean("reduce_motion_enabled", false)
         set(value) = prefs.edit().putBoolean("reduce_motion_enabled", value).apply()
 
+    /**
+     * §1.4 (ActionPlan line 190) — Material You dynamic color opt-in.
+     * Defaults FALSE so the Bizarre brand palette always renders out of the
+     * box. When true AND device runs Android 12+ (API 31+), BizarreCrmTheme /
+     * DesignSystemTheme will use dynamicLightColorScheme / dynamicDarkColorScheme
+     * derived from the user's wallpaper. Exposed via Settings > Appearance.
+     */
+    var dynamicColorEnabled: Boolean
+        get() = prefs.getBoolean("dynamic_color_enabled", false)
+        set(value) = prefs.edit().putBoolean("dynamic_color_enabled", value).apply()
+
     // --- §18.1 recent global-search queries ---------------------------------
     //
     // Stored as a single \u0001-separated string under "recent_searches". The
