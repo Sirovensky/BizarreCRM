@@ -60,3 +60,28 @@ data class UserDto(
 )
 
 // RegisterDeviceRequest removed — /auth/register-device does not exist on server
+
+// §2.8 — Password reset + backup-code recovery DTOs
+
+data class ForgotPasswordRequest(
+    val email: String,
+)
+
+data class ResetPasswordRequest(
+    val token: String,
+    val password: String,
+)
+
+/** §2.8 backup-code recovery — server takes email + backupCode + newPassword */
+data class BackupCodeRecoveryRequest(
+    val email: String,
+    @SerializedName("backupCode")
+    val backupCode: String,
+    @SerializedName("newPassword")
+    val newPassword: String,
+)
+
+/** Generic server message wrapper used by forgot-password, reset-password, and recovery */
+data class MessageResponse(
+    val message: String?,
+)

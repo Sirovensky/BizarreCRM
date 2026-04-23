@@ -30,7 +30,10 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.screens.auth.BackupCodeRecoveryScreen
+import com.bizarreelectronics.crm.ui.screens.auth.ForgotPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.auth.LoginScreen
+import com.bizarreelectronics.crm.ui.screens.auth.ResetPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.dashboard.DashboardScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDetailScreen
@@ -196,6 +199,13 @@ sealed class Screen(val route: String) {
 
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
+
+    // §2.8 — Password reset + backup-code recovery screens (pre-auth)
+    data object ForgotPassword : Screen("auth/forgot-password")
+    data object ResetPassword : Screen("auth/reset-password/{token}") {
+        fun createRoute(token: String) = "auth/reset-password/$token"
+    }
+    data object BackupCodeRecovery : Screen("auth/backup-recovery")
 }
 
 data class BottomNavItem(
@@ -363,7 +373,11 @@ fun AppNavGraph(
             // AUD-20260414-M5: Sync Issues is a modal-ish diagnostic screen
             // reached from Settings, so hide the bottom bar like other
             // non-root detail routes.
-            currentRoute != Screen.SyncIssues.route
+            currentRoute != Screen.SyncIssues.route &&
+            // §2.8 — pre-auth password-reset screens hide the bottom bar
+            currentRoute != Screen.ForgotPassword.route &&
+            !currentRoute.startsWith("auth/reset-password/") &&
+            currentRoute != Screen.BackupCodeRecovery.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -566,6 +580,50 @@ fun AppNavGraph(
                     sessionRevokedReason = sessionRevokedReason,
                     onSessionBannerDismissed = {
                         entry.savedStateHandle["session_revoked_reason"] = null
+                    },
+                    // §2.8 — show on credentials step; routes to forgot-password flow
+                    onForgotPassword = {
+                        navController.navigate(Screen.ForgotPassword.route)
+                    },
+                )
+            }
+            // §2.8 — Forgot password: user enters their email to receive a reset link.
+            composable(Screen.ForgotPassword.route) {
+                ForgotPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §2.8 — Reset password: token arrives via nav arg (App Link or manual entry).
+            // On 410/expired the screen shows a CTA that routes back to ForgotPasswordScreen.
+            composable(
+                route = Screen.ResetPassword.route,
+                arguments = listOf(
+                    navArgument("token") { type = NavType.StringType },
+                ),
+            ) {
+                ResetPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onSuccess = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onExpired = {
+                        navController.navigate(Screen.ForgotPassword.route) {
+                            popUpTo(Screen.ForgotPassword.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §2.8 — Backup-code recovery: email + backup code + new password.
+            // On success navigate back to Login so the user can sign in fresh.
+            composable(Screen.BackupCodeRecovery.route) {
+                BackupCodeRecoveryScreen(
+                    onBack = { navController.popBackStack() },
+                    onSuccess = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     },
                 )
             }

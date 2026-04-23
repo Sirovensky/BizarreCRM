@@ -555,6 +555,8 @@ fun LoginScreen(
     // form. Pure user-logout passes null so the banner doesn't appear.
     sessionRevokedReason: String? = null,
     onSessionBannerDismissed: () -> Unit = {},
+    // §2.8 — shown on the CREDENTIALS step only; routes to ForgotPasswordScreen.
+    onForgotPassword: (() -> Unit)? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -703,7 +705,7 @@ fun LoginScreen(
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel)
-                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel)
+                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel, onForgotPassword)
                             SetupStep.SET_PASSWORD -> SetPasswordStep(state, viewModel)
                             SetupStep.TWO_FA_SETUP -> TwoFaSetupStep(state, viewModel, onLoginSuccess)
                             SetupStep.TWO_FA_VERIFY -> TwoFaVerifyStep(state, viewModel, onLoginSuccess)
@@ -979,7 +981,11 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
 // ─── Step 2: Credentials ────────────────────────────────────────────
 
 @Composable
-private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
+private fun CredentialsStep(
+    state: LoginUiState,
+    viewModel: LoginViewModel,
+    onForgotPassword: (() -> Unit)? = null,
+) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
 
@@ -1043,6 +1049,20 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Sign In")
+        }
+    }
+
+    // §2.8 — Forgot password link, shown on username step only
+    if (onForgotPassword != null) {
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = onForgotPassword,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "Forgot password?",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }

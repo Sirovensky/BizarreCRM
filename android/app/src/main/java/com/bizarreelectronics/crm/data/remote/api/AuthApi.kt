@@ -1,9 +1,13 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
+import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginResponse
+import com.bizarreelectronics.crm.data.remote.dto.MessageResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
+import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
@@ -50,4 +54,14 @@ interface AuthApi {
 
     @POST("auth/change-pin")
     suspend fun changePin(@Body body: Map<String, String>): ApiResponse<Unit>
+
+    // §2.8 — Password reset + backup-code recovery
+    @POST("auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): ApiResponse<MessageResponse>
+
+    @POST("auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): ApiResponse<MessageResponse>
+
+    @POST("auth/recover-with-backup-code")
+    suspend fun recoverWithBackupCode(@Body request: BackupCodeRecoveryRequest): ApiResponse<MessageResponse>
 }
