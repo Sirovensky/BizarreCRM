@@ -2,25 +2,24 @@
  * dataExportScheduleCron.ts — SCAN-498
  *
  * Hourly cron that claims due data_export_schedules rows (status='active',
- * next_run_at <= now()), records a run entry, and advances next_run_at.
+ * next_run_at <= now()), generates the export file via dataExportGenerator,
+ * records a run entry with the real file path + byte count, and advances
+ * next_run_at.
  *
  * Overlap / double-fire protection:
- *   UPDATE ... SET status='running' WHERE status='active' AND next_run_at <= now()
+ *   UPDATE ... SET next_run_at = ? WHERE status='active' AND next_run_at <= now()
  *   returns changes=0 for any row already claimed this tick — the first claimer wins.
  *
- *   NOTE: 'running' is not a persisted status in the CHECK constraint;  we restore to
- *   'active' immediately after advancing next_run_at (within the same transaction).
- *   This is a within-process lock only. In a future multi-process deployment a
+ *   NOTE: This is a within-process lock only. In a future multi-process deployment a
  *   proper advisory lock or separate claim table would be needed.
  *
- * Export generation:
- *   The actual data-export streaming logic in dataExport.routes.ts is coupled to
- *   Express (streams directly to res). Extracting it to a shared service without
- *   modifying the HTTP handler is out of scope for this changeset. The cron records
- *   a run with succeeded=0, error_message='export generation not yet extracted to
- *   service — cron heartbeat only' so the schedule machinery is fully wired and
- *   run history is visible in the UI. Refactoring the generator into a service is
- *   tracked as a follow-up.
+ * Email delivery:
+ *   When delivery_email is set, a notification email is sent after a successful
+ *   export using the tenant's SMTP config (services/email.ts). The email
+ *   references the file by path; it does NOT attach the file (large JSON
+ *   attachments would likely exceed SMTP size limits). A download link via
+ *   a signed URL would require an additional endpoint; that is deferred — see
+ *   TODO below.
  *
  * Wiring (do NOT edit index.ts — use the snippet below):
  *
@@ -34,9 +33,13 @@
  * entries — same shape as the existing recurringInvoicesCron helper.
  */
 
+import path from 'path';
 import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
+import { config } from '../config.js';
 import { advanceScheduleNextRun } from '../routes/dataExportSchedules.routes.js';
+import { generateExportToFile, type ExportType } from './dataExportGenerator.js';
+import { sendEmail } from './email.js';
 
 const logger = createLogger('data-export-schedule-cron');
 
@@ -67,7 +70,7 @@ interface ScheduleRow {
 // Per-tenant tick
 // ---------------------------------------------------------------------------
 
-function runForTenant(slug: string | null, db: Database.Database): void {
+async function runForTenant(slug: string | null, db: Database.Database): Promise<void> {
   let dueSchedules: ScheduleRow[];
 
   try {
@@ -94,12 +97,13 @@ function runForTenant(slug: string | null, db: Database.Database): void {
 
   if (dueSchedules.length === 0) return;
 
+  // Process schedules sequentially per tenant to avoid parallel DB writes.
   for (const schedule of dueSchedules) {
-    processSchedule(slug, db, schedule);
+    await processSchedule(slug, db, schedule);
   }
 }
 
-function processSchedule(slug: string | null, db: Database.Database, schedule: ScheduleRow): void {
+async function processSchedule(slug: string | null, db: Database.Database, schedule: ScheduleRow): Promise<void> {
   const nextRunAt = advanceScheduleNextRun(
     schedule.next_run_at,
     schedule.interval_kind as 'daily' | 'weekly' | 'monthly',
@@ -108,65 +112,140 @@ function processSchedule(slug: string | null, db: Database.Database, schedule: S
 
   const runAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
+  // ── 1. Idempotency claim ────────────────────────────────────────────────
+  // Atomically advance next_run_at. If another process already claimed this
+  // row (changes=0) we skip cleanly with no run record.
+  let claimed = false;
   try {
-    db.transaction(() => {
-      // Idempotency guard: atomically claim the schedule.
-      // If another process or a concurrent tick already advanced next_run_at,
-      // the WHERE clause matches 0 rows and we skip cleanly.
-      const claimResult = db.prepare(`
-        UPDATE data_export_schedules
-           SET next_run_at = ?,
-               last_run_at = datetime('now'),
-               updated_at  = datetime('now')
-         WHERE id         = ?
-           AND status     = 'active'
-           AND next_run_at <= datetime('now')
-      `).run(nextRunAt, schedule.id);
+    const claimResult = db.prepare(`
+      UPDATE data_export_schedules
+         SET next_run_at = ?,
+             last_run_at = datetime('now'),
+             updated_at  = datetime('now')
+       WHERE id         = ?
+         AND status     = 'active'
+         AND next_run_at <= datetime('now')
+    `).run(nextRunAt, schedule.id);
 
-      if (claimResult.changes === 0) {
-        // Already claimed by another tick — skip this schedule.
-        return;
-      }
-
-      // Export generation is not yet extracted from the Express handler.
-      // Record a stub run so the cron heartbeat and run history are visible.
-      // TODO: refactor dataExport.routes.ts streaming logic into a service
-      // function and call it here, then set succeeded=1 and store the file path.
-      db.prepare(`
-        INSERT INTO data_export_schedule_runs
-          (schedule_id, run_at, succeeded, export_file, error_message)
-        VALUES (?, ?, 0, NULL, ?)
-      `).run(
-        schedule.id,
-        runAt,
-        'export generation not yet extracted to service — cron heartbeat only',
-      );
-
-      logger.info('data-export-schedule cron claimed schedule', {
-        slug,
-        schedule_id: schedule.id,
-        name: schedule.name,
-        export_type: schedule.export_type,
-        next_run_at: nextRunAt,
-      });
-    })();
+    claimed = claimResult.changes > 0;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error('data-export-schedule cron: schedule processing failed', {
+    logger.error('data-export-schedule cron: claim query failed', {
       slug,
       schedule_id: schedule.id,
-      err: msg,
+      err: err instanceof Error ? err.message : String(err),
     });
+    return;
+  }
 
-    // Best-effort failure run record — don't throw if this also fails.
+  if (!claimed) {
+    // Already claimed by another tick — skip.
+    return;
+  }
+
+  logger.info('data-export-schedule cron: claimed schedule, starting export', {
+    slug,
+    schedule_id: schedule.id,
+    name: schedule.name,
+    export_type: schedule.export_type,
+    next_run_at: nextRunAt,
+  });
+
+  // ── 2. Generate the export file ─────────────────────────────────────────
+  // outputDir is always config.exportsPath — never user-supplied.
+  // Use a per-slug subdirectory so files from different tenants don't mix.
+  const safeSlug = (slug ?? 'default').toLowerCase().replace(/[^a-z0-9-_]/g, '-').slice(0, 64);
+  const outputDir = path.join(config.exportsPath, safeSlug);
+
+  // Validate export_type before passing to the generator.
+  const VALID_EXPORT_TYPES: ReadonlySet<string> = new Set([
+    'full', 'customers', 'tickets', 'invoices', 'inventory', 'expenses',
+  ]);
+  const exportType: ExportType = VALID_EXPORT_TYPES.has(schedule.export_type)
+    ? (schedule.export_type as ExportType)
+    : 'full';
+
+  let filePath: string | null = null;
+  let rowCount = 0;
+  let bytes = 0;
+  let exportError: string | null = null;
+
+  try {
+    const result = await generateExportToFile(db, exportType, outputDir, safeSlug);
+    filePath = result.file_path;
+    rowCount = result.row_count;
+    bytes = result.bytes;
+  } catch (err) {
+    exportError = err instanceof Error ? err.message : String(err);
+    logger.error('data-export-schedule cron: export generation failed', {
+      slug,
+      schedule_id: schedule.id,
+      export_type: exportType,
+      err: exportError,
+    });
+  }
+
+  // ── 3. Record run result ─────────────────────────────────────────────────
+  const succeeded = exportError === null ? 1 : 0;
+
+  try {
+    db.prepare(`
+      INSERT INTO data_export_schedule_runs
+        (schedule_id, run_at, succeeded, export_file, error_message)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      schedule.id,
+      runAt,
+      succeeded,
+      filePath,
+      exportError ? exportError.slice(0, 1000) : null,
+    );
+  } catch (err) {
+    // Best-effort — don't let a logging failure mask the export result.
+    logger.warn('data-export-schedule cron: failed to insert run record', {
+      slug,
+      schedule_id: schedule.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (succeeded) {
+    logger.info('data-export-schedule cron: export succeeded', {
+      slug,
+      schedule_id: schedule.id,
+      export_type: exportType,
+      rows: rowCount,   // counts only, no PII
+      bytes,
+    });
+  }
+
+  // ── 4. Delivery email (if configured) ───────────────────────────────────
+  // TODO(CROSS): Add a signed download-link endpoint so the email can include
+  // a link like /api/v1/data-export/downloads/<signed-token> rather than
+  // just the raw file-system path. Until that endpoint exists, the email
+  // contains the filename only (safe — no PII in the path).
+  if (succeeded && schedule.delivery_email) {
+    const fileName = filePath ? path.basename(filePath) : 'export.json';
     try {
-      db.prepare(`
-        INSERT INTO data_export_schedule_runs
-          (schedule_id, run_at, succeeded, export_file, error_message)
-        VALUES (?, ?, 0, NULL, ?)
-      `).run(schedule.id, runAt, msg.slice(0, 1000));
-    } catch {
-      // Suppress — don't let logging failure mask the original error.
+      await sendEmail(db, {
+        to: schedule.delivery_email,
+        subject: `Data export ready — ${schedule.name}`,
+        html: [
+          `<p>Your scheduled data export "<strong>${schedule.name}</strong>" has completed.</p>`,
+          `<ul>`,
+          `<li>Export type: ${exportType}</li>`,
+          `<li>Rows exported: ${rowCount.toLocaleString()}</li>`,
+          `<li>File: ${fileName}</li>`,
+          `</ul>`,
+          `<p>Contact your administrator to retrieve the file from the server exports directory.</p>`,
+        ].join(''),
+      });
+    } catch (emailErr) {
+      // Email failure must NOT break the cron — log and continue.
+      logger.warn('data-export-schedule cron: delivery email failed', {
+        slug,
+        schedule_id: schedule.id,
+        err: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      });
     }
   }
 }
@@ -193,10 +272,11 @@ function processSchedule(slug: string | null, db: Database.Database, schedule: S
 export function startDataExportScheduleCron(
   getDbsFn: () => Iterable<TenantDbEntry>,
 ): NodeJS.Timeout {
-  function tick(): void {
+  async function tick(): Promise<void> {
     try {
       for (const { slug, db } of getDbsFn()) {
-        runForTenant(slug, db);
+        // Sequential across tenants — avoids thundering-herd on shared DB pool.
+        await runForTenant(slug, db);
       }
     } catch (err) {
       logger.error('data-export-schedule-cron top-level error', {
@@ -205,7 +285,7 @@ export function startDataExportScheduleCron(
     }
   }
 
-  // Run once immediately on startup, then every CRON_INTERVAL_MS.
-  tick();
-  return setInterval(tick, CRON_INTERVAL_MS);
+  // Run once immediately on startup (fire-and-forget), then every CRON_INTERVAL_MS.
+  void tick();
+  return setInterval(() => { void tick(); }, CRON_INTERVAL_MS);
 }

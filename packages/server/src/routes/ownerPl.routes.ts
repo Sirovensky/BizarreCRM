@@ -168,10 +168,11 @@ function defaultDateRange(): { from: string; to: string } {
 // SQLite strftime bucket format by rollup
 // ---------------------------------------------------------------------------
 
+const ROLLUP_FMTS = { day: '%Y-%m-%d', week: '%Y-W%W', month: '%Y-%m' } as const;
+
 function rollupFmt(rollup: Rollup): string {
-  if (rollup === 'day') return '%Y-%m-%d';
-  if (rollup === 'week') return '%Y-W%W';
-  return '%Y-%m';
+  if (!(rollup in ROLLUP_FMTS)) throw new AppError('Invalid rollup', 400);
+  return ROLLUP_FMTS[rollup as keyof typeof ROLLUP_FMTS];
 }
 
 // ---------------------------------------------------------------------------

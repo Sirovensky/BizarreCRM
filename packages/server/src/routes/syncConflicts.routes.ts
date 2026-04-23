@@ -164,9 +164,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const adb = req.asyncDb;
-    const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
-      ?? req.socket.remoteAddress
-      ?? 'unknown';
+    const ip = req.socket.remoteAddress ?? 'unknown';
 
     // Rate-limit: 60 reports per user per minute to prevent log flooding
     const rateResult = consumeWindowRate(

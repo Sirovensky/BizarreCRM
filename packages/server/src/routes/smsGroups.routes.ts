@@ -203,6 +203,7 @@ router.post(
 router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const id = validateId(req.params.id);
 
@@ -407,6 +408,7 @@ router.delete(
 router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
     const userId = req.user!.id;

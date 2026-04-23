@@ -980,12 +980,18 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   // Generate tracking token for public ticket lookup
   const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
 
+  // Validate priority enum (migration 135)
+  const PRIORITY_VALUES = ['low', 'normal', 'high', 'critical'] as const;
+  const priority: string = PRIORITY_VALUES.includes(body.priority as typeof PRIORITY_VALUES[number])
+    ? (body.priority as string)
+    : 'normal';
+
   // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
   const ticketResult = await adb.run(`
     INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                          source, referral_source, labels, due_on, created_by, tracking_token,
-                         is_layaway, layaway_expires, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         is_layaway, layaway_expires, priority, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
     body.customer_id,
@@ -1001,6 +1007,7 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     trackingToken,
     body.is_layaway ? 1 : 0,
     body.layaway_expires ?? null,
+    priority,
     now(),
     now(),
   );
@@ -1008,14 +1015,12 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   const ticketId = Number(ticketResult.lastInsertRowid);
   const ticketCreatedAt = now();
 
-  // SCAN-464: Assign SLA policy based on priority level.
+  // SCAN-464: Assign SLA policy based on priority level (migration 135: priority column).
   // Fail-open: SLA assignment failure must never abort ticket creation.
-  // TODO: wire priority_level when a priority column lands on the tickets table.
-  //       For now we derive it from body.priority (if present) or default 'normal'.
   try {
     await computeSlaForTicket(adb, {
       ticket_id: ticketId,
-      priority_level: (body.priority as string | undefined) || 'normal',
+      priority_level: priority,
       created_at: ticketCreatedAt,
     });
   } catch (slaErr) {
@@ -1788,10 +1793,17 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
     (req.body as Record<string, unknown>).customer_id = customerId;
   }
 
+  const PATCH_PRIORITY_VALUES = ['low', 'normal', 'high', 'critical'] as const;
+  if (req.body.priority !== undefined &&
+      !PATCH_PRIORITY_VALUES.includes(req.body.priority as typeof PATCH_PRIORITY_VALUES[number])) {
+    throw new AppError('priority must be one of: low, normal, high, critical', 400);
+  }
+
   const allowedFields = [
     'customer_id', 'assigned_to', 'discount', 'discount_reason',
     'source', 'referral_source', 'labels', 'due_on', 'signature',
     'is_layaway', 'layaway_expires', // ENR-POS1
+    'priority', // migration 135
   ];
   const updates: string[] = [];
   const params: any[] = [];
@@ -1823,15 +1835,14 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
     await recalcTicketTotalsAsync(adb, ticketId);
   }
 
-  // SCAN-464: Re-assign SLA when priority is being changed.
-  // TODO: wire to priority_level column when it lands on the tickets table.
-  //       req.body.priority is accepted here for forward-compatibility;
-  //       it is not in allowedFields so it does not affect the UPDATE above.
+  // SCAN-464 (migration 135): Re-assign SLA when priority changes.
+  // priority is now persisted in the DB; read it back from body or fall back to existing row.
   if (req.body.priority !== undefined) {
+    const effectivePriority: string = (req.body.priority as string) || (existing.priority as string) || 'normal';
     try {
       await computeSlaForTicket(adb, {
         ticket_id: ticketId,
-        priority_level: (req.body.priority as string) || 'normal',
+        priority_level: effectivePriority,
         created_at: existing.created_at as string,
       });
     } catch (slaErr) {
