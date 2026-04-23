@@ -46,6 +46,28 @@ const COUNTER_FILENAME = '.file_count';
 /** Default ceiling if store_config is missing a row (should never happen post-migration 085). */
 const DEFAULT_FILE_COUNT_QUOTA = 100_000;
 
+// SCAN-549: per-tenant in-memory mutex to prevent TOCTOU race in adjustFileCounter.
+// Two concurrent uploads that both read counter=99 would both write 100 without this.
+const _counterLocks = new Map<string, Promise<void>>();
+
+function withCounterLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = _counterLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((resolve) => { release = resolve; });
+  _counterLocks.set(key, prev.then(() => next));
+  return prev.then(async () => {
+    try {
+      return await fn();
+    } finally {
+      release();
+      // Prune the map entry once this is the tail promise — avoids unbounded growth.
+      if (_counterLocks.get(key) === prev.then(() => next)) {
+        _counterLocks.delete(key);
+      }
+    }
+  });
+}
+
 interface RowConfig {
   value: string;
 }
@@ -155,26 +177,28 @@ function countExistingFiles(dir: string): number {
 }
 
 /** Atomically bump the counter by `delta` (may be negative on rollback). */
-function adjustFileCounter(tenantDir: string, delta: number): void {
-  try {
-    if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
-    const counterPath = path.join(tenantDir, COUNTER_FILENAME);
-    const current = readFileCounter(tenantDir);
-    const next = Math.max(0, current + delta);
-    // DA-2: tmp+rename instead of direct writeFileSync. A power failure or
-    // native abort mid-write would otherwise leave a 0-byte counter file and
-    // permanently desync the upload quota. rename is atomic on POSIX and
-    // near-atomic on Windows NTFS.
-    const tmpPath = counterPath + '.tmp.' + process.pid + '.' + Date.now();
-    fs.writeFileSync(tmpPath, String(next), 'utf8');
-    fs.renameSync(tmpPath, counterPath);
-  } catch (err) {
-    logger.error('Failed to adjust file counter', {
-      tenantDir,
-      delta,
-      error: err instanceof Error ? err.message : 'unknown',
-    });
-  }
+async function adjustFileCounter(tenantDir: string, delta: number): Promise<void> {
+  return withCounterLock(tenantDir, async () => {
+    try {
+      if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
+      const counterPath = path.join(tenantDir, COUNTER_FILENAME);
+      const current = readFileCounter(tenantDir);
+      const nextCount = Math.max(0, current + delta);
+      // DA-2: tmp+rename instead of direct writeFileSync. A power failure or
+      // native abort mid-write would otherwise leave a 0-byte counter file and
+      // permanently desync the upload quota. rename is atomic on POSIX and
+      // near-atomic on Windows NTFS.
+      const tmpPath = counterPath + '.tmp.' + process.pid + '.' + Date.now();
+      fs.writeFileSync(tmpPath, String(nextCount), 'utf8');
+      fs.renameSync(tmpPath, counterPath);
+    } catch (err) {
+      logger.error('Failed to adjust file counter', {
+        tenantDir,
+        delta,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
+  });
 }
 
 /** Pull the tenant's file-count quota out of store_config. */
@@ -296,7 +320,7 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
     }
 
     // Everything passed — bump the counter and hand off to the route handler.
-    adjustFileCounter(tenantDir, files.length);
+    await adjustFileCounter(tenantDir, files.length);
     next();
   };
 }
@@ -307,7 +331,7 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
  * failure inside the route handler). Keeping the helper here so there is
  * exactly one place that writes the counter file.
  */
-export function releaseFileCount(req: Request, count: number): void {
+export function releaseFileCount(req: Request, count: number): Promise<void> {
   const tenantDir = resolveTenantDir(req);
-  adjustFileCounter(tenantDir, -Math.abs(count));
+  return adjustFileCounter(tenantDir, -Math.abs(count));
 }

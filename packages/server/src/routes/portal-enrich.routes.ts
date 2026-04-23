@@ -297,6 +297,7 @@ router.get(
   portalAuth,
   requireTicketScopeMatches,
   asyncHandler(async (req: PortalRequest, res: Response) => {
+    guardPortalRate(req, PORTAL_READ_CATEGORY, portalIdentityKey(req), PORTAL_READ_MAX, PORTAL_READ_WINDOW_MS);
     const ticketId = parseInt(qs(req.params.id), 10);
     const adb = req.asyncDb;
 

@@ -224,7 +224,7 @@ async function getStoreConfig(adb: AsyncDb): Promise<Record<string, string>> {
   return config;
 }
 
-async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<string, any> | null> {
+async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'ticket' | 'full' = 'ticket'): Promise<Record<string, any> | null> {
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.due_on,
            t.subtotal, t.discount, t.total_tax, t.total, t.invoice_id,
@@ -325,10 +325,20 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<s
   // Find invoice
   let invoice: AnyRow | undefined;
   if (ticket.invoice_id) {
-    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE id = ?', ticket.invoice_id);
+    invoice = await adb.get<AnyRow>(
+      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+              amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
+         FROM invoices WHERE id = ?`,
+      ticket.invoice_id,
+    );
   }
   if (!invoice) {
-    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE ticket_id = ? LIMIT 1', ticket.id);
+    invoice = await adb.get<AnyRow>(
+      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+              amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
+         FROM invoices WHERE ticket_id = ? LIMIT 1`,
+      ticket.id,
+    );
   }
 
   let invoiceData = null;
@@ -369,8 +379,14 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<s
       name: d.device_name,
       type: d.device_type,
       service: d.service_name,
-      imei: d.imei,
-      serial: d.serial,
+      // SEC-SCAN-547: full IMEI/serial only for staff (full-scope) sessions;
+      // ticket-scoped (last-4-phone) sessions receive masked suffixes only.
+      ...(portalScope === 'full'
+        ? { imei: d.imei, serial: d.serial }
+        : {
+            imei_last_4: d.imei ? String(d.imei).slice(-4) : null,
+            serial_last_4: d.serial ? String(d.serial).slice(-4) : null,
+          }),
       status: d.status_name,
       price: d.price,
       total: d.total,
@@ -484,8 +500,8 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const csrfToken = generateCsrfToken();
   issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
 
-  // Return token + ticket summary
-  const detail = await getTicketDetail(adb, ticket.id);
+  // Return token + ticket summary (ticket-scoped session — mask hardware IDs)
+  const detail = await getTicketDetail(adb, ticket.id, 'ticket');
 
   res.json({ success: true, data: { token, csrf_token: csrfToken, ticket: detail } });
 }));
@@ -1095,7 +1111,7 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
     return;
   }
 
-  const detail = await getTicketDetail(adb, ticketId);
+  const detail = await getTicketDetail(adb, ticketId, req.portalScope ?? 'ticket');
   res.json({ success: true, data: detail });
 }));
 

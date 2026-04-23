@@ -154,8 +154,8 @@ async function fetchEligibleRecipients(
 ): Promise<RecipientRow[]> {
   const baseSelect = `
     SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
-           COALESCE(c.sms_opt_in,1) AS sms_opt_in,
-           COALESCE(c.email_opt_in,1) AS email_opt_in
+           COALESCE(c.sms_opt_in,0) AS sms_opt_in,
+           COALESCE(c.email_opt_in,0) AS email_opt_in
       FROM customers c`;
   const filterByChannel = (rows: RecipientRow[]): RecipientRow[] => {
     return rows.filter((r) => {
@@ -597,9 +597,9 @@ router.post(
            JOIN customer_segment_members m ON m.customer_id = c.id
           WHERE m.segment_id = ?
             AND (
-              (? = 'sms'   AND COALESCE(c.sms_opt_in,1) = 1) OR
-              (? = 'email' AND COALESCE(c.email_opt_in,1) = 1) OR
-              (? = 'both'  AND (COALESCE(c.sms_opt_in,1) = 1 OR COALESCE(c.email_opt_in,1) = 1))
+              (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1) OR
+              (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
+              (? = 'both'  AND (COALESCE(c.sms_opt_in,0) = 1 OR COALESCE(c.email_opt_in,0) = 1))
             )`,
         campaign.segment_id,
         campaign.channel,
@@ -614,9 +614,9 @@ router.post(
         `SELECT COUNT(*) AS total
            FROM customers c
           WHERE (
-            (? = 'sms'   AND COALESCE(c.sms_opt_in,1) = 1) OR
-            (? = 'email' AND COALESCE(c.email_opt_in,1) = 1) OR
-            (? = 'both'  AND (COALESCE(c.sms_opt_in,1) = 1 OR COALESCE(c.email_opt_in,1) = 1))
+            (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1) OR
+            (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
+            (? = 'both'  AND (COALESCE(c.sms_opt_in,0) = 1 OR COALESCE(c.email_opt_in,0) = 1))
           )`,
         campaign.channel,
         campaign.channel,
@@ -833,8 +833,8 @@ router.post(
     // total - paid on the fly — faster and matches the invoice route logic.
     const unpaid = await adb.all<RecipientRow>(
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
-              COALESCE(c.sms_opt_in,1) AS sms_opt_in,
-              COALESCE(c.email_opt_in,1) AS email_opt_in
+              COALESCE(c.sms_opt_in,0) AS sms_opt_in,
+              COALESCE(c.email_opt_in,0) AS email_opt_in
          FROM customers c
          JOIN invoices i ON i.customer_id = c.id
         WHERE COALESCE(i.amount_due,0) > 0
