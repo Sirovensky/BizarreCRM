@@ -38,13 +38,19 @@ public struct InvoiceDetailView: View {
             if case let .loaded(inv) = vm.state {
                 let balanceCents = Int(((inv.amountDue ?? 0) * 100).rounded())
                 InvoicePaymentSheet(
-                    vm: InvoicePaymentViewModel(api: api, invoiceId: inv.id, balanceCents: balanceCents)
+                    vm: InvoicePaymentViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        balanceCents: balanceCents,
+                        customerId: inv.customerId
+                    )
                 ) { _ in Task { await vm.load() } }
             }
         }
         .sheet(isPresented: $showRefundSheet) {
             if case let .loaded(inv) = vm.state {
                 let paidCents = Int(((inv.amountPaid ?? 0) * 100).rounded())
+                let custId = inv.customerId ?? 0
                 let lineItems = (inv.lineItems ?? []).map { item in
                     RefundLineItem(
                         id: item.id,
@@ -53,7 +59,13 @@ public struct InvoiceDetailView: View {
                     )
                 }
                 InvoiceRefundSheet(
-                    vm: InvoiceRefundViewModel(api: api, invoiceId: inv.id, totalPaidCents: paidCents, lineItems: lineItems)
+                    vm: InvoiceRefundViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        customerId: custId,
+                        totalPaidCents: paidCents,
+                        lineItems: lineItems
+                    )
                 ) { _ in Task { await vm.load() } }
             }
         }

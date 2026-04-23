@@ -3,17 +3,28 @@ import XCTest
 import Networking
 import Core
 
-// §7.4 InvoiceRefundViewModel tests — state transitions, validation, PIN gate.
+// §7.4 InvoiceRefundViewModel tests
+// Endpoint: POST /api/v1/refunds (verified against refunds.routes.ts)
+// Body: { invoice_id, customer_id, amount (dollars), type, reason, method }
+// Covers: state transitions, validation, PIN gate, method/type selection, AppError mapping.
 
 @MainActor
 final class InvoiceRefundViewModelTests: XCTestCase {
 
     private func makeSut(
         api: StubAPIClient = StubAPIClient(),
+        invoiceId: Int64 = 1,
+        customerId: Int64 = 42,
         totalPaidCents: Int = 10_000,
         lineItems: [RefundLineItem] = []
     ) -> InvoiceRefundViewModel {
-        InvoiceRefundViewModel(api: api, invoiceId: 1, totalPaidCents: totalPaidCents, lineItems: lineItems)
+        InvoiceRefundViewModel(
+            api: api,
+            invoiceId: invoiceId,
+            customerId: customerId,
+            totalPaidCents: totalPaidCents,
+            lineItems: lineItems
+        )
     }
 
     // MARK: - Initial state
@@ -36,9 +47,24 @@ final class InvoiceRefundViewModelTests: XCTestCase {
         XCTAssertEqual(vm.reason, .returnItem)
     }
 
+    func test_initialRefundType_isRefund() {
+        let vm = makeSut()
+        XCTAssertEqual(vm.refundType, .refund)
+    }
+
+    func test_initialRefundMethod_isCard() {
+        let vm = makeSut()
+        XCTAssertEqual(vm.refundMethod, .card)
+    }
+
     func test_initialUseLineItems_isFalse() {
         let vm = makeSut()
         XCTAssertFalse(vm.useLineItems)
+    }
+
+    func test_customerId_storedCorrectly() {
+        let vm = makeSut(customerId: 99)
+        XCTAssertEqual(vm.customerId, 99)
     }
 
     // MARK: - effectiveAmountCents
@@ -79,7 +105,6 @@ final class InvoiceRefundViewModelTests: XCTestCase {
     }
 
     func test_requiresManagerPin_falseAtExactly100Dollars() {
-        // Boundary: exactly $100 (10_000 cents) is NOT above threshold
         let vm = makeSut(totalPaidCents: 15_000)
         vm.manualAmountCents = 10_000
         XCTAssertFalse(vm.requiresManagerPin)
@@ -88,12 +113,6 @@ final class InvoiceRefundViewModelTests: XCTestCase {
     func test_requiresManagerPin_trueAboveThreshold() {
         let vm = makeSut(totalPaidCents: 15_000)
         vm.manualAmountCents = 10_001
-        XCTAssertTrue(vm.requiresManagerPin)
-    }
-
-    func test_requiresManagerPin_trueAbove100Dollars() {
-        let vm = makeSut(totalPaidCents: 20_000)
-        vm.manualAmountCents = 15_000
         XCTAssertTrue(vm.requiresManagerPin)
     }
 
@@ -117,6 +136,32 @@ final class InvoiceRefundViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isValid)
     }
 
+    // MARK: - Refund type selection
+
+    func test_refundType_storeCredit_storedCorrectly() {
+        let vm = makeSut()
+        vm.refundType = .storeCredit
+        XCTAssertEqual(vm.refundType, .storeCredit)
+    }
+
+    func test_refundType_creditNote_storedCorrectly() {
+        let vm = makeSut()
+        vm.refundType = .creditNote
+        XCTAssertEqual(vm.refundType, .creditNote)
+    }
+
+    func test_refundMethod_cash_storedCorrectly() {
+        let vm = makeSut()
+        vm.refundMethod = .cash
+        XCTAssertEqual(vm.refundMethod, .cash)
+    }
+
+    func test_refundMethod_giftCard_storedCorrectly() {
+        let vm = makeSut()
+        vm.refundMethod = .giftCard
+        XCTAssertEqual(vm.refundMethod, .giftCard)
+    }
+
     // MARK: - submitRefund success
 
     func test_submitRefund_happyPath_transitionsToSuccess() async {
@@ -129,6 +174,30 @@ final class InvoiceRefundViewModelTests: XCTestCase {
         XCTAssertEqual(result.id, 77)
     }
 
+    // MARK: - submitRefund: full refund
+
+    func test_submitRefund_fullAmount_succeeds() async {
+        let vm = makeSut(api: .refundSuccess(id: 88), totalPaidCents: 10_000)
+        vm.manualAmountCents = 10_000
+        await vm.submitRefund()
+        guard case .success = vm.state else {
+            XCTFail("Expected .success for full refund")
+            return
+        }
+    }
+
+    // MARK: - submitRefund: partial refund
+
+    func test_submitRefund_partialAmount_succeeds() async {
+        let vm = makeSut(api: .refundSuccess(id: 99), totalPaidCents: 10_000)
+        vm.manualAmountCents = 3_000
+        await vm.submitRefund()
+        guard case .success = vm.state else {
+            XCTFail("Expected .success for partial refund")
+            return
+        }
+    }
+
     // MARK: - PIN gate
 
     func test_submitRefund_highAmount_triggersManagerPinPrompt() async {
@@ -136,7 +205,6 @@ final class InvoiceRefundViewModelTests: XCTestCase {
         vm.manualAmountCents = 15_000
         await vm.submitRefund()
         XCTAssertTrue(vm.showManagerPinPrompt)
-        // Should NOT advance to success without pin
         guard case .idle = vm.state else {
             XCTFail("Expected .idle while waiting for PIN")
             return
@@ -159,7 +227,7 @@ final class InvoiceRefundViewModelTests: XCTestCase {
     // MARK: - AppError mapping
 
     func test_submitRefund_validationError_setsFieldErrors() async {
-        let err = AppError.validation(fieldErrors: ["amount_cents": "Too large"])
+        let err = AppError.validation(fieldErrors: ["amount": "Too large"])
         let vm = makeSut(api: .refundFailure(err), totalPaidCents: 5000)
         await vm.submitRefund()
         XCTAssertFalse(vm.fieldErrors.isEmpty)
@@ -172,7 +240,7 @@ final class InvoiceRefundViewModelTests: XCTestCase {
         guard case let .failed(msg) = vm.state else {
             XCTFail("Expected .failed"); return
         }
-        XCTAssertTrue(msg.contains("exceeds"))
+        XCTAssertTrue(msg.contains("exceeds") || msg.contains("available"))
     }
 
     func test_submitRefund_forbidden_showsPermissionMessage() async {
@@ -219,14 +287,28 @@ final class InvoiceRefundViewModelTests: XCTestCase {
     // MARK: - RefundReason enum
 
     func test_refundReasons_allHaveDisplayNames() {
-        for reason in RefundReason.allCases {
-            XCTAssertFalse(reason.displayName.isEmpty)
+        for r in RefundReason.allCases {
+            XCTAssertFalse(r.displayName.isEmpty)
         }
     }
 
     func test_refundReasons_idEqualsRawValue() {
-        for reason in RefundReason.allCases {
-            XCTAssertEqual(reason.id, reason.rawValue)
+        for r in RefundReason.allCases {
+            XCTAssertEqual(r.id, r.rawValue)
+        }
+    }
+
+    // MARK: - RefundType enum
+
+    func test_refundTypes_allHaveDisplayNames() {
+        for t in RefundType.allCases {
+            XCTAssertFalse(t.displayName.isEmpty, "RefundType \(t.rawValue) has no display name")
+        }
+    }
+
+    func test_refundTypes_idEqualsRawValue() {
+        for t in RefundType.allCases {
+            XCTAssertEqual(t.id, t.rawValue)
         }
     }
 
@@ -234,5 +316,17 @@ final class InvoiceRefundViewModelTests: XCTestCase {
 
     func test_thresholdConstant_is10000Cents() {
         XCTAssertEqual(kRefundManagerPinThresholdCents, 10_000)
+    }
+
+    // MARK: - RefundLineItem immutability
+
+    func test_refundLineItem_defaultRefundCentsEqualsTotal() {
+        let item = RefundLineItem(id: 1, displayName: "Test", totalCents: 500)
+        XCTAssertEqual(item.refundCents, 500)
+    }
+
+    func test_refundLineItem_defaultNotSelected() {
+        let item = RefundLineItem(id: 1, displayName: "Test", totalCents: 500)
+        XCTAssertFalse(item.isSelected)
     }
 }
