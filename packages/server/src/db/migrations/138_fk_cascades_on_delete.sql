@@ -1,9 +1,16 @@
+-- @no-transaction
 -- Migration 138: FK ON DELETE cascade / SET NULL hardening
--- SCAN-508: checklist_instances.template_id   → ON DELETE SET NULL (column becomes nullable)
+-- SCAN-508: ops_checklist_instances.template_id → ON DELETE SET NULL (column becomes nullable)
 -- SCAN-509: tickets.sla_policy_id             → ON DELETE SET NULL via TRIGGER (safe alt, no table rebuild)
 -- SCAN-510: field_service_jobs.customer_id    → ON DELETE SET NULL
 -- SCAN-517: sync_conflicts.resolved_by_user_id→ ON DELETE SET NULL
 -- SCAN-518: pl_snapshots.generated_by_user_id → ON DELETE SET NULL
+--
+-- This migration uses `PRAGMA foreign_keys = OFF` + an explicit BEGIN /
+-- COMMIT block because PRAGMA foreign_keys cannot be toggled inside an
+-- active transaction. The @no-transaction directive tells migrate.ts to
+-- skip its outer transaction wrapper; the explicit BEGIN/COMMIT inside
+-- this file owns transactional boundaries.
 --
 -- SQLite cannot modify FK clauses via ALTER TABLE — table rebuild is required.
 -- EXCEPTION — tickets.sla_policy_id (SCAN-509): the tickets table is very large
