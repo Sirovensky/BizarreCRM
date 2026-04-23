@@ -198,4 +198,88 @@ final class ReportModelsTests: XCTestCase {
         let r = DrillThroughRecord(id: 1, label: "X", detail: nil, amountCents: nil)
         XCTAssertNil(r.amountDollars)
     }
+
+    // MARK: - RevenuePoint server shape decode
+
+    func test_revenuePoint_decodesServerPeriodShape() throws {
+        let json = """
+        {"period": "2024-03", "revenue": 1234.56, "invoices": 12, "unique_customers": 8}
+        """.data(using: .utf8)!
+        let pt = try decoder.decode(RevenuePoint.self, from: json)
+        XCTAssertEqual(pt.date, "2024-03")
+        XCTAssertEqual(pt.amountCents, 123456, "expected 1234.56 * 100 = 123456")
+        XCTAssertEqual(pt.saleCount, 12)
+    }
+
+    func test_revenuePoint_decodesLegacyShape() throws {
+        let json = """
+        {"id": 7, "date": "2024-01-15", "amount_cents": 9999, "sale_count": 3}
+        """.data(using: .utf8)!
+        let pt = try decoder.decode(RevenuePoint.self, from: json)
+        XCTAssertEqual(pt.id, 7)
+        XCTAssertEqual(pt.date, "2024-01-15")
+        XCTAssertEqual(pt.amountCents, 9999)
+    }
+
+    // MARK: - AvgTicketValue convenience init
+
+    func test_avgTicketValue_convenienceInit_trendPct() {
+        let v = AvgTicketValue(currentDollars: 75.0, previousDollars: 60.0)
+        let expected = (75.0 - 60.0) / 60.0 * 100.0
+        XCTAssertEqual(v.trendPct, expected, accuracy: 0.001)
+    }
+
+    func test_avgTicketValue_convenienceInit_zeroPrev_trendZero() {
+        let v = AvgTicketValue(currentDollars: 50.0, previousDollars: 0.0)
+        XCTAssertEqual(v.trendPct, 0.0, accuracy: 0.001)
+    }
+
+    // MARK: - EmployeePerf server shape
+
+    func test_employeePerf_decodesServerNameField() throws {
+        let json = """
+        {"id": 5, "name": "Jane Doe", "tickets_assigned": 10, "tickets_closed": 8,
+         "hours_worked": 40.0, "revenue_generated": 2000.0, "commission_earned": 50.0}
+        """.data(using: .utf8)!
+        let emp = try decoder.decode(EmployeePerf.self, from: json)
+        XCTAssertEqual(emp.employeeName, "Jane Doe")
+        XCTAssertEqual(emp.revenueCents, 200000)
+        XCTAssertEqual(emp.avgResolutionHours, 40.0, accuracy: 0.001)
+    }
+
+    // MARK: - ReportsRepositoryError
+
+    func test_reportsRepositoryError_description() {
+        let err = ReportsRepositoryError.endpointNotImplemented("/reports/csat")
+        XCTAssertTrue(err.errorDescription?.contains("/reports/csat") == true)
+        XCTAssertTrue(err.localizedDescription.contains("not yet implemented"))
+    }
+
+    // MARK: - SalesTotals decoding
+
+    func test_salesTotals_decodesWithNullChangePct() throws {
+        let json = """
+        {"total_revenue": 5000.0, "total_invoices": 20, "unique_customers": 10}
+        """.data(using: .utf8)!
+        let t = try decoder.decode(SalesTotals.self, from: json)
+        XCTAssertNil(t.revenueChangePct)
+        XCTAssertEqual(t.totalRevenue, 5000.0, accuracy: 0.001)
+    }
+
+    // MARK: - ExpensesReport computed
+
+    func test_expensesReport_marginPct() {
+        let r = ExpensesReport(totalDollars: 300.0, revenueDollars: 1000.0)
+        XCTAssertEqual(r.marginPct!, 70.0, accuracy: 0.001)
+    }
+
+    func test_expensesReport_nilMargin_whenZeroRevenue() {
+        let r = ExpensesReport(totalDollars: 100.0, revenueDollars: 0.0)
+        XCTAssertNil(r.marginPct)
+    }
+
+    func test_expenseDayPoint_netProfit() {
+        let pt = ExpenseDayPoint(date: "2024-01-01", revenue: 1000.0, cogs: 400.0)
+        XCTAssertEqual(pt.netProfit, 600.0, accuracy: 0.001)
+    }
 }
