@@ -14,6 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -168,7 +175,8 @@ fun TicketListScreen(
                     title = "Tickets",
                     actions = {
                         IconButton(onClick = { viewModel.loadTickets() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                            // a11y: "Refresh tickets" is more specific than generic "Refresh"
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh tickets")
                         }
                     },
                 )
@@ -180,7 +188,8 @@ fun TicketListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Ticket")
+                // a11y: spec §26 — "Create new ticket" (imperative, lowercase "new")
+                Icon(Icons.Default.Add, contentDescription = "Create new ticket")
             }
         },
     ) { padding ->
@@ -200,6 +209,16 @@ fun TicketListScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
+            // a11y: "Status filter" heading so TalkBack can navigate directly to this section
+            Text(
+                "Status filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
+
             // Filter chips + count pill in same row
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -213,22 +232,42 @@ fun TicketListScreen(
                     contentPadding = PaddingValues(end = 24.dp),
                 ) {
                     items(filters, key = { it }) { filter ->
+                        val isSelected = state.selectedFilter == filter
                         FilterChip(
-                            selected = state.selectedFilter == filter,
+                            selected = isSelected,
                             onClick = { viewModel.onFilterChanged(filter) },
                             label = { Text(filter) },
+                            // a11y: Role.Tab + selection state announcement; the chip's
+                            // selected param already flips the chip visually; the
+                            // semantics here make TalkBack say "<filter> filter, selected/not selected"
+                            modifier = Modifier.semantics {
+                                role = Role.Tab
+                                contentDescription = if (isSelected) {
+                                    "$filter filter, selected"
+                                } else {
+                                    "$filter filter, not selected"
+                                }
+                            },
                         )
                     }
                 }
                 if (!state.isLoading && state.tickets.isNotEmpty()) {
+                    val ticketCount = state.tickets.size
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.padding(start = 8.dp),
                     ) {
+                        // a11y: liveRegion=Polite so TalkBack announces when the count changes
+                        // after a filter switch, without interrupting the user mid-sentence.
                         Text(
-                            "${state.tickets.size}",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            "$ticketCount",
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .semantics {
+                                    liveRegion = LiveRegionMode.Polite
+                                    contentDescription = "$ticketCount tickets"
+                                },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -240,13 +279,30 @@ fun TicketListScreen(
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading tickets" on a single focus stop rather than reading
+                    // each shimmer box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading tickets"
+                        },
+                    ) {
+                        BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
+                    }
                 }
                 state.error != null -> {
-                    ErrorState(
-                        message = state.error ?: "Failed to load tickets",
-                        onRetry = { viewModel.loadTickets() },
-                    )
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
+                    // user is not left wondering why the list is empty after a network failure.
+                    Box(
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Assertive
+                        },
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Failed to load tickets",
+                            onRetry = { viewModel.loadTickets() },
+                        )
+                    }
                 }
                 state.tickets.isEmpty() -> {
                     @OptIn(ExperimentalMaterial3Api::class)
@@ -255,11 +311,17 @@ fun TicketListScreen(
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        EmptyState(
-                            icon = Icons.Default.ConfirmationNumber,
-                            title = "No tickets found",
-                            subtitle = if (state.searchQuery.isNotEmpty()) "Try a different search" else "Create a ticket to get started",
-                        )
+                        // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                        // into one TalkBack node so the empty state reads as a single announcement.
+                        Box(
+                            modifier = Modifier.semantics(mergeDescendants = true) {},
+                        ) {
+                            EmptyState(
+                                icon = Icons.Default.ConfirmationNumber,
+                                title = "No tickets found",
+                                subtitle = if (state.searchQuery.isNotEmpty()) "Try a different search" else "Create a ticket to get started",
+                            )
+                        }
                     }
                 }
                 else -> {
@@ -302,7 +364,27 @@ fun TicketListScreen(
  */
 @Composable
 private fun TicketListRow(ticket: TicketEntity, onClick: () -> Unit) {
+    // a11y: build the full announcement string once so it can be used in semantics.
+    // BrandListItem already applies mergeDescendants=true + Role.Button on its outer Row;
+    // we add contentDescription here so TalkBack announces a single coherent sentence
+    // instead of reading each child Text node individually.
+    val statusLabel = ticket.statusName?.ifBlank { null }
+    val deviceLabel = ticket.firstDeviceName?.ifBlank { null }
+    val a11yDesc = buildString {
+        append("Ticket ${ticket.orderId}")
+        ticket.customerName?.let { append(", $it") }
+        deviceLabel?.let { append(", $it") }
+        statusLabel?.let { append(", status: $it") }
+        append(", ${ticket.total.formatAsMoney()}")
+        append(". Tap to open.")
+    }
+
     BrandListItem(
+        // a11y: contentDescription overrides the merged child-text reading; 48dp floor
+        // ensures the row meets the Material 3 minimum touch target.
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { contentDescription = a11yDesc },
         headline = {
             Text(
                 ticket.orderId,
@@ -329,6 +411,9 @@ private fun TicketListRow(ticket: TicketEntity, onClick: () -> Unit) {
             }
         },
         trailing = {
+            // a11y: visual-only trailing column. The BrandListItem modifier-level
+            // contentDescription already announces group + status + total for TalkBack;
+            // these child composables are decorative within the merged row node.
             Column(horizontalAlignment = Alignment.End) {
                 val statusName = ticket.statusName ?: ""
                 if (statusName.isNotEmpty()) {
