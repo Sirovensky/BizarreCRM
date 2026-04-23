@@ -7,6 +7,7 @@ public struct CampaignListView: View {
     @State private var vm: CampaignListViewModel
     @State private var showingCreate = false
     @State private var selectedCampaignId: String? = nil
+    @State private var confirmDelete: Campaign? = nil
     private let api: APIClient
 
     public init(api: APIClient) {
@@ -23,6 +24,33 @@ public struct CampaignListView: View {
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             CampaignCreateView(api: api)
         }
+        .confirmationDialog(
+            "Delete \"\(confirmDelete?.name ?? "")\"?",
+            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let c = confirmDelete, let rowId = c.serverRowId {
+                    Task { await vm.delete(id: rowId) }
+                }
+                confirmDelete = nil
+            }
+            Button("Cancel", role: .cancel) { confirmDelete = nil }
+        }
+    }
+
+    // MARK: - Filter tabs
+
+    private var filterPicker: some View {
+        Picker("Filter", selection: $vm.filter) {
+            ForEach(CampaignListFilter.allCases, id: \.self) { f in
+                Text(f.displayName).tag(f)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.xs)
+        .accessibilityLabel("Campaign filter")
     }
 
     // MARK: - Layouts
@@ -31,15 +59,16 @@ public struct CampaignListView: View {
         NavigationStack {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                content
+                VStack(spacing: 0) {
+                    filterPicker
+                    content
+                }
             }
             .navigationTitle("Campaigns")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                newButton
-            }
+            .toolbar { newButton }
             .navigationDestination(for: String.self) { id in
                 CampaignDetailView(api: api, campaignId: id)
             }
@@ -50,7 +79,10 @@ public struct CampaignListView: View {
         NavigationSplitView {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                content
+                VStack(spacing: 0) {
+                    filterPicker
+                    content
+                }
             }
             .navigationTitle("Campaigns")
             .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
@@ -67,7 +99,7 @@ public struct CampaignListView: View {
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                emptyDetail(icon: "chart.bar.fill", message: "Campaign preview")
+                emptyDetail(icon: "chart.bar.fill", message: "Campaign analytics")
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -111,9 +143,28 @@ public struct CampaignListView: View {
                 #if canImport(UIKit)
                 .hoverEffect(.highlight)
                 #endif
-                .onAppear {
-                    if campaign.id == vm.campaigns.last?.id && vm.hasMore {
-                        Task { await vm.loadNextPage() }
+                .contextMenu {
+                    if let rowId = campaign.serverRowId {
+                        Button(role: .destructive) {
+                            confirmDelete = campaign
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .accessibilityLabel("Delete \(campaign.name)")
+                        Button {
+                            Task {
+                                let body = PatchCampaignServerRequest(
+                                    status: campaign.status == .active ? "paused" : "active"
+                                )
+                                _ = try? await api.patchCampaignServer(id: rowId, body)
+                                await vm.load()
+                            }
+                        } label: {
+                            Label(
+                                campaign.status == .active ? "Pause" : "Activate",
+                                systemImage: campaign.status == .active ? "pause.circle" : "play.circle"
+                            )
+                        }
                     }
                 }
             }
@@ -132,6 +183,7 @@ public struct CampaignListView: View {
         .listStyle(.inset)
         #endif
         .scrollContentBackground(.hidden)
+        .animation(.easeInOut(duration: 0.2), value: vm.filter)
     }
 
     private func errorView(_ msg: String) -> some View {
@@ -173,20 +225,36 @@ private struct CampaignRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: BrandSpacing.md) {
+            Image(systemName: campaign.type.systemImage)
+                .font(.system(size: 18))
+                .foregroundStyle(.bizarreOrange)
+                .frame(width: 32)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                 Text(campaign.name)
                     .font(.brandBodyLarge())
                     .foregroundStyle(.bizarreOnSurface)
                     .lineLimit(1)
-                Text(Self.relativeFormatter.localizedString(for: campaign.createdAt, relativeTo: Date()))
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: campaign.channel.systemImage)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(campaign.channel.displayName)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text("·")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text(Self.relativeFormatter.localizedString(for: campaign.createdAt, relativeTo: Date()))
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
             }
             Spacer(minLength: 0)
             CampaignStatusBadge(campaign.status)
         }
         .padding(.vertical, BrandSpacing.xs)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(campaign.name), \(campaign.status.displayName), created \(Self.relativeFormatter.localizedString(for: campaign.createdAt, relativeTo: Date()))")
+        .accessibilityLabel("\(campaign.name), \(campaign.channel.displayName), \(campaign.status.displayName), created \(Self.relativeFormatter.localizedString(for: campaign.createdAt, relativeTo: Date()))")
     }
 }
