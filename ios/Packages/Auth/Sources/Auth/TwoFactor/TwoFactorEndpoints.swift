@@ -4,8 +4,15 @@ import Core
 
 // MARK: - Request / Response shapes
 // All paths are under the router prefix /api/v1/auth/...
-// Real endpoints: /account/2fa/disable (P2FA3 in auth.routes.ts).
 // Stubbed endpoints: enroll, verify, status, recovery-codes, verify-recovery.
+//
+// NOTE: self-service /account/2fa/disable is intentionally NOT wired on iOS
+// per security policy directive 2026-04-23 — 2FA disable must never be
+// user-triggered. Legitimate recovery paths:
+//   - Backup-code flow (POST /auth/recover-with-backup-code) — atomic
+//     password + 2FA reset on server side; user re-enrolls on next login.
+//   - Super-admin force-disable (POST /tenants/:slug/users/:id/force-disable-2fa)
+//     — emergency tenant-admin override, Step-Up TOTP gated.
 
 // MARK: Enroll
 
@@ -37,17 +44,6 @@ public struct TwoFactorChallengeRequest: Encodable, Sendable {
 public struct TwoFactorChallengeResponse: Decodable, Sendable {
     public let accessToken: String
     public let refreshToken: String
-}
-
-// MARK: Disable
-
-public struct TwoFactorDisableRequest: Encodable, Sendable {
-    public let currentPassword: String
-    public let totpCode: String
-}
-
-public struct TwoFactorDisableResponse: Decodable, Sendable {
-    public let message: String?
 }
 
 // MARK: Regenerate recovery codes
@@ -110,15 +106,6 @@ public extension APIClient {
             "/api/v1/auth/2fa/challenge",
             body: TwoFactorChallengeRequest(challengeToken: challengeToken, code: code),
             as: TwoFactorChallengeResponse.self
-        )
-    }
-
-    /// POST /api/v1/auth/account/2fa/disable — disable 2FA (server endpoint exists: P2FA3).
-    func twoFactorDisable(currentPassword: String, totpCode: String) async throws -> TwoFactorDisableResponse {
-        try await post(
-            "/api/v1/auth/account/2fa/disable",
-            body: TwoFactorDisableRequest(currentPassword: currentPassword, totpCode: totpCode),
-            as: TwoFactorDisableResponse.self
         )
     }
 
