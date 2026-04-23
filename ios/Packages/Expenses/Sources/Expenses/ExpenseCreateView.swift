@@ -33,8 +33,6 @@ public final class ExpenseCreateViewModel {
     public private(set) var isOCRRunning: Bool = false
     /// Controls the camera receipt picker sheet.
     public var showingCameraReceiptPicker: Bool = false
-    /// Controls the photo library picker.
-    public var showingPhotoLibraryPicker: Bool = false
 
     @ObservationIgnored private let api: APIClient
 
@@ -76,7 +74,6 @@ public final class ExpenseCreateViewModel {
     /// OCR runs only on UIKit (iOS); on macOS the data load is a no-op.
     @MainActor
     public func handlePhotoLibraryItem(_ item: PhotosPickerItem?) async {
-        showingPhotoLibraryPicker = false
         guard let item else { return }
         isOCRRunning = true
         defer { isOCRRunning = false }
