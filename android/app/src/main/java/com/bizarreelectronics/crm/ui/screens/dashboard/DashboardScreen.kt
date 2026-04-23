@@ -15,8 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -291,9 +294,10 @@ fun DashboardScreen(
             // is required on this screen so always non-null.
             onClick = onNavigateToTickets,
         ) {
+            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
             Icon(
                 Icons.Default.ConfirmationNumber,
-                contentDescription = "Open tickets KPI",
+                contentDescription = null,
                 tint = openTicketsTint,
             )
         },
@@ -304,9 +308,10 @@ fun DashboardScreen(
             // Revenue tile has no detail screen on Android yet — inert tap.
             onClick = null,
         ) {
+            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
             Icon(
                 Icons.Default.AttachMoney,
-                contentDescription = "Revenue today KPI",
+                contentDescription = null,
                 tint = revenueTint,
             )
         },
@@ -316,9 +321,10 @@ fun DashboardScreen(
             iconTint = apptsTint,
             onClick = onNavigateToAppointments,
         ) {
+            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
             Icon(
                 Icons.Default.CalendarToday,
-                contentDescription = "Appointments today KPI",
+                contentDescription = null,
                 tint = apptsTint,
             )
         },
@@ -328,9 +334,10 @@ fun DashboardScreen(
             iconTint = lowStockTint,
             onClick = onNavigateToInventory,
         ) {
+            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
             Icon(
                 Icons.Default.Warning,
-                contentDescription = "Low stock items KPI",
+                contentDescription = null,
                 tint = lowStockTint,
             )
         },
@@ -503,24 +510,42 @@ fun DashboardScreen(
             }
         }
 
-        // KPI Cards — 2x2 grid
+        // KPI section heading — a11y: heading() so TalkBack announces "Today's KPIs, heading"
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                kpis.take(2).forEach { kpi ->
-                    KpiCardView(kpi, modifier = Modifier.weight(1f))
-                }
-            }
+            Text(
+                "Today's KPIs",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
         }
+
+        // KPI Cards — 2x2 grid.
+        // a11y: liveRegion=Polite on the outer Column so TalkBack announces updated
+        // KPI values after a sync completes without interrupting the user.
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                kpis.drop(2).forEach { kpi ->
-                    KpiCardView(kpi, modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    kpis.take(2).forEach { kpi ->
+                        KpiCardView(kpi, modifier = Modifier.weight(1f))
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    kpis.drop(2).forEach { kpi ->
+                        KpiCardView(kpi, modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -544,7 +569,12 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("My Queue", style = MaterialTheme.typography.titleMedium)
+                    // a11y: heading() so TalkBack announces "My Queue, heading" on focus
+                    Text(
+                        "My Queue",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     TextButton(onClick = onNavigateToTickets) {
                         Text("View All")
                     }
@@ -585,10 +615,13 @@ fun DashboardScreen(
         // Needs Attention
         if (state.needsAttention.isNotEmpty()) {
             item {
+                // a11y: heading() so TalkBack announces "Needs Attention, heading" on focus
                 Text(
                     "Needs Attention",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .semantics { heading() },
                 )
             }
             items(state.needsAttention, key = { "${it.type}:${it.message}" }) { item ->
@@ -633,7 +666,14 @@ private fun QueueTicketRow(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            // a11y: merge children so TalkBack reads the ticket as one unit; Role.Button
+            // signals it is actionable; contentDescription provides the full announcement.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Ticket ${ticket.orderId}, ${ticket.customerName}, status: ${ticket.statusName}. Tap to open."
+                role = Role.Button
+            }
             .clickable(onClick = onClick)
+            .defaultMinSize(minHeight = 48.dp)
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline,
@@ -745,9 +785,27 @@ private fun SectionErrorBanner(message: String, modifier: Modifier = Modifier) {
 // 20dp top padding so the icon breathes.
 @Composable
 fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
-    // §3.1 — clickable tile wrapper. Only applied when the KpiCard provides
+    // §3.1 / §26 — clickable tile wrapper. Only applied when the KpiCard provides
     // an onClick; inert tiles (e.g. Revenue Today) stay non-focusable so
     // TalkBack doesn't announce a button that does nothing.
+    //
+    // a11y: mergeDescendants collapses icon + value + label into one node so
+    // TalkBack reads the tile as a single announcement rather than three
+    // separate focus stops. contentDescription gives the full human-readable
+    // string. Role.Button is only added on clickable tiles — inert tiles get
+    // no role so TalkBack does not call them buttons.
+    val semanticsModifier = if (kpi.onClick != null) {
+        Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "${kpi.label}: ${kpi.value}. Tap to view list."
+            role = Role.Button
+        }
+    } else {
+        // a11y: inert tile — still merge so TalkBack reads value + label together,
+        // but no Role.Button since there is no action.
+        Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "${kpi.label}: ${kpi.value}."
+        }
+    }
     val clickModifier = if (kpi.onClick != null) {
         Modifier.clickable(onClick = kpi.onClick)
     } else {
@@ -755,6 +813,9 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
     }
     Card(
         modifier = modifier
+            // a11y: 48dp floor ensures the tile meets the Material 3 minimum touch target
+            .defaultMinSize(minHeight = 48.dp)
+            .then(semanticsModifier)
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline,
