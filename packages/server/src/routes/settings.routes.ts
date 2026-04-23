@@ -224,6 +224,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // for offline access and cross-device sync (localStorage wins for the current session)
   'wizard_completed',
   'theme',
+  // SCAN-469: Shared-device mode (PIN-based session swap + auto-logoff policy)
+  'shared_device_mode_enabled',
+  'shared_device_auto_logoff_minutes',
+  'shared_device_require_pin_on_switch',
 ]);
 
 // ==================== Generic Config (key-value) ====================

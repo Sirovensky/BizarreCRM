@@ -1320,3 +1320,8 @@ Verified working. Not TODOs.
 - [ ] SCAN-496. **[PARITY-WEAK] Scheduled reports management page missing — `reportApi.scheduledList/scheduleEmail/deleteScheduled` wired but no UI** — ios §15. Users can't manage email report schedules without iOS.
 - [ ] SCAN-497. **[PARITY-WEAK] Held carts (POS park/recall) missing — `posApi` has no `holdCart`/`listHeld`/`recallCart` endpoints** — ios §16. Web POS users can't park a transaction for another customer.
 - [ ] SCAN-498. **[PARITY-WEAK] Data export scheduling missing — `dataExportApi` has `status`/`downloadAll` only, no `schedule`/`listSchedules`** — ios §19.19. Web users can trigger one-time exports only, not recurring backups.
+
+### BACKEND SHIPPED 2026-04-23 — web UI + mobile consumers still pending
+**Wave 1** (commit bd7532c): SCAN-472, SCAN-475, SCAN-478, SCAN-479, SCAN-480, SCAN-481, SCAN-482, SCAN-484, SCAN-485, SCAN-486, SCAN-487, SCAN-488, SCAN-489, SCAN-497. Docs `docs/web-parity-backend-contracts-2026-04-23.md`. Migrations 120-124.
+**Wave 2** (pending commit): SCAN-464, SCAN-465, SCAN-468, SCAN-469, SCAN-470, SCAN-490, SCAN-494, SCAN-495, SCAN-498. Docs `docs/web-parity-backend-contracts-wave2-2026-04-23.md`. Migrations 125-129. Crons: data-export schedules hourly + SLA breach every 5 min. Public estimate-sign at `/public/api/v1/estimate-sign/:token` (HMAC single-use). SMS auto-responder matcher exported but not yet wired into inbound webhook. SLA `computeSlaForTicket` helper exported but not yet wired into ticket create/update.
+Do NOT flip `[x]` — web UI consumption still needed to fully close these items.

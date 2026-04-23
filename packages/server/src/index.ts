@@ -136,6 +136,20 @@ import activityRoutes from './routes/activity.routes.js';
 import notificationPrefsRoutes from './routes/notificationPrefs.routes.js';
 import heldCartsRoutes from './routes/heldCarts.routes.js';
 import { startRecurringInvoicesCron } from './services/recurringInvoicesCron.js';
+// Web-parity backend wave 2 (2026-04-23) — labels, shared-device, estimate e-sign,
+// data-export schedules, SMS auto-responders + groups, daily checklist, SLA tracking,
+// ticket signatures, expense receipt OCR.
+import ticketLabelsRoutes from './routes/ticketLabels.routes.js';
+import { authedRouter as estimateSignAuthedRouter, publicRouter as estimateSignPublicRouter } from './routes/estimateSign.routes.js';
+import dataExportSchedulesRoutes from './routes/dataExportSchedules.routes.js';
+import { startDataExportScheduleCron } from './services/dataExportScheduleCron.js';
+import smsAutoRespondersRoutes from './routes/smsAutoResponders.routes.js';
+import smsGroupsRoutes from './routes/smsGroups.routes.js';
+import checklistRoutes from './routes/checklist.routes.js';
+import slaRoutes from './routes/sla.routes.js';
+import { startSlaBreachCron } from './services/slaBreachCron.js';
+import ticketSignaturesRoutes from './routes/ticketSignatures.routes.js';
+import expenseReceiptsRoutes from './routes/expenseReceipts.routes.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
@@ -1592,6 +1606,19 @@ app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
 app.use('/api/v1/activity', authMiddleware, activityRoutes);
 app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
 app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
+// Web-parity backend wave 2 (2026-04-23).
+// Public estimate-sign endpoints sit OUTSIDE authMiddleware — token IS the credential
+// (HMAC-signed, single-use, TTL bounded). All other wave-2 routes are JWT-gated.
+app.use('/api/v1/ticket-labels', authMiddleware, ticketLabelsRoutes);
+app.use('/public/api/v1/estimate-sign', estimateSignPublicRouter);
+app.use('/api/v1/estimates/:id', authMiddleware, estimateSignAuthedRouter);
+app.use('/api/v1/data-export/schedules', authMiddleware, dataExportSchedulesRoutes);
+app.use('/api/v1/sms/auto-responders', authMiddleware, smsAutoRespondersRoutes);
+app.use('/api/v1/sms/groups', authMiddleware, smsGroupsRoutes);
+app.use('/api/v1/checklists', authMiddleware, checklistRoutes);
+app.use('/api/v1/sla', authMiddleware, slaRoutes);
+app.use('/api/v1/tickets/:ticketId/signatures', authMiddleware, ticketSignaturesRoutes);
+app.use('/api/v1/expenses/:expenseId/receipt', authMiddleware, expenseReceiptsRoutes);
 // Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
 // TODO(MEDIUM, §26): wire a daily cron that runs recalculateAllCustomerHealth()
 // + the birthday/churn dispatch helpers. For now these endpoints are invoked
@@ -1984,6 +2011,38 @@ server.listen(config.port, config.host, async () => {
     backgroundIntervals.push(recurringInvoicesTimer);
   } catch (err) {
     log.error('Failed to start recurring invoices cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // Data-export schedules cron (SCAN-498 / web-parity wave 2 2026-04-23).
+  // Runs hourly; advances due schedules atomically. Same push-handle pattern as above.
+  try {
+    const dataExportScheduleTimer = startDataExportScheduleCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    });
+    backgroundIntervals.push(dataExportScheduleTimer);
+  } catch (err) {
+    log.error('Failed to start data-export schedule cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // SLA breach cron (SCAN-464 / web-parity wave 2 2026-04-23).
+  // Runs every 5 min; flags tickets whose SLA due-at has passed.
+  try {
+    const slaBreachTimer = startSlaBreachCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<any>;
+    });
+    backgroundIntervals.push(slaBreachTimer);
+  } catch (err) {
+    log.error('Failed to start SLA breach cron', {
       error: err instanceof Error ? err.message : String(err),
     });
   }
