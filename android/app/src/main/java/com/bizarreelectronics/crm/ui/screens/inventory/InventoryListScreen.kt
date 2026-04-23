@@ -12,6 +12,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -194,7 +201,8 @@ fun InventoryListScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Inventory Item")
+                // a11y: §26 spec — "Add inventory item" (imperative, screen-specific)
+                Icon(Icons.Default.Add, contentDescription = "Add inventory item")
             }
         },
         topBar = {
@@ -202,10 +210,13 @@ fun InventoryListScreen(
                 title = "Inventory",
                 actions = {
                     IconButton(onClick = onScanClick) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Barcode")
+                        // a11y: barcode scan action — screen-specific label distinguishes
+                        // from other scan buttons elsewhere in the app
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode to find item")
                     }
                     IconButton(onClick = { viewModel.loadItems() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        // a11y: screen-specific label mirrors "Refresh tickets" / "Refresh expenses" pattern
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh inventory")
                     }
                 },
             )
@@ -217,11 +228,27 @@ fun InventoryListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
+            // a11y: contentDescription on the wrapper gives TalkBack a screen-specific label
+            // ("Search inventory") so it's distinguished from other search bars in the app.
+            // The underlying TextField inside SearchBar handles the EditText role automatically.
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
                 placeholder = "Search inventory...",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .semantics { contentDescription = "Search inventory" },
+            )
+
+            // a11y: "Type filter" heading so TalkBack heading-navigation (swipe with two fingers)
+            // can jump directly to the filter row; heading() marks it in the a11y tree.
+            Text(
+                "Type filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
             )
 
             LazyRow(
@@ -229,10 +256,21 @@ fun InventoryListScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(types, key = { it }) { type ->
+                    val isSelected = state.selectedType == type
                     FilterChip(
-                        selected = state.selectedType == type,
+                        selected = isSelected,
                         onClick = { viewModel.onTypeChanged(type) },
                         label = { Text(type) },
+                        // a11y: Role.Tab + selection state so TalkBack announces
+                        // "<type> tab, selected/not selected"
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$type tab, selected"
+                            } else {
+                                "$type tab, not selected"
+                            }
+                        },
                     )
                 }
             }
@@ -241,14 +279,30 @@ fun InventoryListScreen(
 
             when {
                 state.isLoading -> {
-                    // Skeleton rows: replaces bare spinner for list loading
-                    BrandSkeleton(
-                        rows = 6,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading inventory" on a single focus stop rather than each shimmer
+                    // box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading inventory"
+                        },
+                    ) {
+                        // Skeleton rows: replaces bare spinner for list loading
+                        BrandSkeleton(
+                            rows = 6,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
+                    // informs the user about the error rather than leaving them in silence.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Failed to load inventory.",
                             onRetry = { viewModel.loadItems() },
@@ -256,8 +310,12 @@ fun InventoryListScreen(
                     }
                 }
                 state.items.isEmpty() -> {
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the empty state reads as a single announcement.
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
                         contentAlignment = Alignment.Center,
                     ) {
                         EmptyState(
@@ -297,8 +355,26 @@ fun InventoryListScreen(
 private fun InventoryListRow(item: InventoryItemEntity, onClick: () -> Unit) {
     val isLowStock = item.inStock <= item.reorderLevel && item.reorderLevel > 0
 
+    // a11y: build the row announcement string. Prefix with "LOW STOCK" when applicable
+    // so that TalkBack users immediately know the stock status before the rest of the info.
+    // Format: "[LOW STOCK. ]ITEM_NAME[, SKU][, quantity X in stock], $PRICE[, CATEGORY]. Tap to open."
+    val rowA11yDesc = buildString {
+        if (isLowStock) append("LOW STOCK. ")
+        append(item.name.ifBlank { "Unnamed" })
+        if (!item.sku.isNullOrBlank()) append(", SKU ${item.sku}")
+        append(", quantity ${item.inStock} in stock")
+        append(", ${CurrencyFormatter.format(item.retailPrice)}")
+        if (!item.itemType.isNullOrBlank()) append(", ${item.itemType.replaceFirstChar { it.uppercase() }}")
+        append(". Tap to open.")
+    }
+
     BrandListItem(
         onClick = onClick,
+        // a11y: BrandListItem already applies semantics(mergeDescendants=true) + Role.Button
+        // when onClick != null (§26.1 in BrandListItem.kt). We only add the contentDescription
+        // here so TalkBack reads the full structured announcement rather than concatenating
+        // the individual Text composables inside the row.
+        modifier = Modifier.semantics { contentDescription = rowA11yDesc },
         headline = {
             Text(
                 item.name.ifBlank { "Unnamed" },
