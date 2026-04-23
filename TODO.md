@@ -10,143 +10,32 @@ type: project
 ## AUDIT CYCLE 2 — 2026-04-19 (deep-dive: reports/portal/print + WebSocket/Room/deep-links + Electron updater/windows)
 
 ### Web cycle 2 (packages/web) — 24 findings
-- [x] ~~AUDIT-WEB-026.~~ FIXED 2026-04-19 — see commit. **[SEC] Portal Bearer token double-transmitted** — `pages/portal/portalApi.ts:212-218` `verifySession(token)` sends token in both `Authorization: Bearer` header AND `{token}` body. Fix: header only.
-- [x] ~~AUDIT-WEB-027.~~ FIXED 2026-04-19 — see commit. **[SEC] enrichApi DELETE missing CSRF double-submit** — `pages/portal/components/enrichApi.ts:121-128` second Axios instance skips portal_csrf_token. Fix: mirror portalClient CSRF interceptor.
-- [x] ~~AUDIT-WEB-028.~~ FIXED 2026-04-19 — see commit. **[SEC] photo.path rendered as img src without URL validation** — `pages/portal/components/PhotoGallery.tsx:122` accepts `javascript:`/`data:` URIs. Fix: `/^https?:\/\//.test()` guard + placeholder fallback.
-- [x] ~~AUDIT-WEB-029.~~ FIXED 2026-04-19 — see commit. **[SEC] Open redirect in PayNowButton** — `pages/portal/components/PayNowButton.tsx:43` `window.location.href = url` no origin check. Fix: `new URL(url)` + origin allowlist before navigate.
-- [x] ~~AUDIT-WEB-030.~~ FIXED 2026-04-19 — see commit. **[SEC] Raw server error messages leaked to portal customers** — `pages/portal/PortalRegister.tsx:33,65` displays `err.response.data.message`. Fix: map HTTP status to user-friendly strings client-side.
-- [x] ~~AUDIT-WEB-031.~~ FIXED 2026-04-19 — see commit. **Portal PIN field missing inputmode=numeric** — mobile keyboard shows QWERTY. Fix: `inputMode="numeric"` + `pattern="[0-9]*"`.
-- [x] ~~AUDIT-WEB-032.~~ FIXED 2026-04-19 — see commit. **Currency symbol hardcoded `$` throughout portal/print** — EUR/GBP stores display wrong symbol. Fix: `Intl.NumberFormat` + `formatCurrency(value, currencyCode)` shared util.
-- [x] ~~AUDIT-WEB-033.~~ FIXED 2026-04-19 — see commit. **Date locale hardcoded `'en-US'` in portal** — ignores `usePortalI18n().locale`. Fix: pass locale from portal session/i18n hook.
-- [x] ~~AUDIT-WEB-034.~~ FIXED 2026-04-19 — see commit. **`revenue_change_pct` rendered without rounding** — `ReportsPage.tsx:209`. Fix: `toFixed(1)`.
-- [x] ~~AUDIT-WEB-035.~~ FIXED 2026-04-19 — see commit. **Insights CSV columns misaligned** — `ReportsPage.tsx:1218-1220` zips popularity+revenue arrays by index but backend sorts independently. Fix: Map<modelId, {popularity, revenue}>.
-- [x] ~~AUDIT-WEB-036.~~ FIXED 2026-04-19 — see commit. **CSV export re-fetches instead of using React Query cache** — `ReportsPage.tsx:1176-1263`. Fix: pass component-scope `data` to export handler; fallback to fresh fetch only if undefined.
-- [x] ~~AUDIT-WEB-037.~~ FIXED 2026-04-19 — see commit. **`fillMissingDates` defined but never called — dead code** — `ReportsPage.tsx:78-93`.
-- [x] ~~AUDIT-WEB-038.~~ FIXED 2026-04-19 — see commit. **SummaryCard/LoadingState/EmptyState/ErrorState duplicated inside ReportsPage** vs `components/ReportHelpers.tsx`. Fix: delete local, import from shared.
-- [x] ~~AUDIT-WEB-039.~~ FIXED 2026-04-19 — see commit. **maxClaims recalculated inside render loop — O(n²)** — `reports/components/WarrantyClaimsTab.tsx:69`. Fix: `useMemo`.
-- [x] ~~AUDIT-WEB-040.~~ FIXED 2026-04-19 — see commit. **Partner report year picker limited to 5 years** — `PartnerReportPage.tsx:40`. Fix: 10 years or derive from oldest transaction year.
-- [x] ~~AUDIT-WEB-041.~~ FIXED 2026-04-19 — see commit. **[SEC] Tax report jurisdiction input injected into URL without validation** — `TaxReportPage.tsx:56-63`. Fix: `encodeURIComponent` + alphanumeric-only regex pre-submit.
-- [x] ~~AUDIT-WEB-042.~~ FIXED 2026-04-19 — see commit. **DateRangePicker "From" missing `max` attribute** — `components/shared/DateRangePicker.tsx:228-237`. Fix: `max={value.to || todayISO}`.
-- [x] ~~AUDIT-WEB-043.~~ FIXED 2026-04-19 — see commit. **ConfirmDialog missing focus trap — WCAG 2.1.2 violation** — `components/shared/ConfirmDialog.tsx`. Fix: focus-trap-react or manual keydown cycle.
-- [x] ~~AUDIT-WEB-044.~~ FIXED 2026-04-19 — see commit. **KeyboardShortcutsPanel docs wrong for POS context** — `KeyboardShortcutsPanel.tsx:13-36` vs `usePosKeyboardShortcuts.ts`: F2/F3/F4/F6 rebound in POS mode but panel shows global defaults. Fix: context-aware panel showing active route's shortcut set.
-- [x] ~~AUDIT-WEB-045.~~ FIXED 2026-04-19 — see commit. **shortcutsPanelOpen state orphaned — never opened** — `AppShell.tsx:22` setter never called. Fix: bind `?` key with isTypingInField guard.
-- [x] ~~AUDIT-WEB-046.~~ FIXED 2026-04-19 — see commit. **[SEC] Recent searches in localStorage without sanitization / no TTL** — `CommandPalette.tsx` saveRecentSearch. PII risk on shared workstations. Fix: 2-char min-gate + sessionStorage + 10-entry cap + expiry.
-- [x] ~~AUDIT-WEB-047.~~ FIXED 2026-04-19 — see commit. **[SEC] React Query cache keys lack tenant ID — multi-tenant bleed risk** — global QueryClient in `main.tsx`. Between tenant switches stale Tenant A data served before background refetch. Fix: `['tenant', tenantId, ...]` key prefix + synchronous `queryClient.clear()` on login action.
-- [x] ~~AUDIT-WEB-048.~~ FIXED 2026-04-19 — see commit. **Reports page has inline DateRangePicker duplicate** — `ReportsPage.tsx:1289-1324` vs shared `DateRangePicker`. Fix: replace inline with shared.
-- [x] ~~AUDIT-WEB-049.~~ FIXED 2026-04-19 — see commit. **Kanban board fixed-width columns clip on narrow screens** — no `overflow-x: auto` container. Fix: wrap in `overflow-x-auto` + `min-w-max` inner.
 
 ### Android cycle 2 (android) — 20 findings
-- [x] ~~AUDIT-AND-019.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] Deep-link intent-filter disables App Link verification** — `AndroidManifest.xml:64` `android:autoVerify="false"` — any app can intercept `bizarrecrm://`. Fix: set `autoVerify="true"` + migrate to verified https App Links with `/.well-known/assetlinks.json`.
-- [x] ~~AUDIT-AND-020.~~ FIXED 2026-04-19 — see commit. **CAMERA permission declared but never used at runtime** — `AndroidManifest.xml:18`. Barcode scan is manual-entry only. Fix: remove `<uses-permission>` until actual CameraX code ships.
-- [x] ~~AUDIT-AND-021.~~ FIXED 2026-04-19 — see commit. **READ_MEDIA_IMAGES unnecessary on API 33+ with GetContent** — `AndroidManifest.xml:38`. Fix: add `android:maxSdkVersion="32"` or switch to PickVisualMedia.
-- [x] ~~AUDIT-AND-022.~~ FIXED 2026-04-19 — see commit. **SyncWorker.syncNow enqueues without uniqueness guarantee** — `sync/SyncWorker.kt:53-63` rapid callers produce concurrent runs. Fix: `enqueueUniqueWork("sync_now", ExistingWorkPolicy.KEEP, request)`.
-- [x] ~~AUDIT-AND-023.~~ FIXED 2026-04-19 — see commit. **TOCTOU race in SyncManager.syncAll isSyncing guard** — `sync/SyncManager.kt:102,108` StateFlow check-then-set not atomic. Fix: `AtomicBoolean.compareAndSet(false, true)` or Mutex.
-- [x] ~~AUDIT-AND-024.~~ FIXED 2026-04-19 — see commit. **WebSocketService coroutine scope never cancelled** — `service/WebSocketService.kt:22` dangling coroutines post-logout.
-- [x] ~~AUDIT-AND-025.~~ FIXED 2026-04-19 — see commit. **WebSocketEventHandler coroutine scope never cancelled** — `service/WebSocketEventHandler.kt:25` same pattern. Fix: both — expose `fun close()` that cancels SupervisorJob; wire into logout.
-- [x] ~~AUDIT-AND-026.~~ FIXED 2026-04-19 — see commit. **CustomerEntity has no DB indices — full table scan on search** — `data/local/entity/CustomerEntity.kt:8`. Fix: `indices = [Index("last_name"), Index("email"), Index("phone")]` + Room migration.
-- [x] ~~AUDIT-AND-027.~~ FIXED 2026-04-19 — see commit. **FCM PendingIntent requestCode diverges from notificationId** — `service/FcmService.kt:107,136` `get()` vs `getAndIncrement()` race. Fix: capture single `val id = getAndIncrement()` used for BOTH.
-- [x] ~~AUDIT-AND-028.~~ FIXED 2026-04-19 — see commit. **Wizard back IconButton 32dp touch target (below 48dp)** — `LoginScreen.kt:808,909,980,1084` WCAG 2.5.5 fail. Fix: remove `Modifier.size(32.dp)` (default = 48).
-- [x] ~~AUDIT-AND-029.~~ FIXED 2026-04-19 — see commit. **WaveDivider hardcodes brand color outside theme** — `components/WaveDivider.kt:57` `Color(0xFFBC398F)`. Fix: CompositionLocal with light/dark variants.
-- [x] ~~AUDIT-AND-030.~~ FIXED 2026-04-19 — see commit. **Dashboard FAB scrim hardcoded `Color.Black`** — `DashboardScreen.kt:539`. Fix: `MaterialTheme.colorScheme.scrim.copy(alpha=0.32f)`.
-- [x] ~~AUDIT-AND-031.~~ FIXED 2026-04-19 — see commit. **PlaintextToEncryptedMigrator stores migration flag in plain SharedPrefs** — `PlaintextToEncryptedMigrator.kt:94`. Fix: move flag to EncryptedSharedPrefs (same instance as credentials).
-- [x] ~~AUDIT-AND-032.~~ FIXED 2026-04-19 — see commit. **WebSocketService constructs new Gson per event** — `WebSocketService.kt:61,68`. Fix: Hilt-inject singleton Gson.
-- [x] ~~AUDIT-AND-033.~~ FIXED 2026-04-19 — see commit. **buildProbeTlsClient creates fresh OkHttpClient per probe** — `LoginScreen.kt:149` accumulates thread pools. Fix: create once in ViewModel + reuse + shutdown dispatcher.
-- [x] ~~AUDIT-AND-034.~~ FIXED 2026-04-19 — see commit. **RepairInProgressService returns START_STICKY** — silent auto-restart after force-stop with null Intent. Fix: `START_NOT_STICKY` (or handle null Intent).
-- [x] ~~AUDIT-AND-035.~~ FIXED 2026-04-19 — see commit. **appScope uses Dispatchers.Main for reconnect/sync observer** — `BizarreCrmApp.kt:39`. Fix: `Dispatchers.Default`.
-- [x] ~~AUDIT-AND-036.~~ FIXED 2026-04-19 — see commit. **43 off-theme semantic Color constants not adaptive** — SuccessGreen/WarningAmber/ErrorRed/InfoBlue etc. across 13 files. Fix: `ExtendedColors` data class + CompositionLocal with light/dark variants.
-- [x] ~~AUDIT-AND-037.~~ FIXED 2026-04-19 — see commit. **[P0] Wizard ViewModels do not back state with SavedStateHandle — process death destroys 5-step form state** — TicketCreateViewModel, CustomerCreateViewModel, etc. Fix: `SavedStateHandle.getStateFlow()` at each step boundary.
-- [x] ~~AUDIT-AND-038.~~ FIXED 2026-04-19 — see commit. **AnimatedContent has no contentKey — transitions skip on same-enum re-emission** — `LoginScreen.kt:608`. Fix: `contentKey = { it.ordinal }` or monotonic sequence in UiState.
 
 ### Management cycle 2 (packages/management) — 16 findings
-- [x] ~~AUDIT-MGT-016.~~ FIXED 2026-04-19 — see commit. **No single-instance lock — double-click opens duplicate window** — `main/index.ts` missing `app.requestSingleInstanceLock()`. Fix: require lock + `app.on('second-instance')` to focus existing window.
-- [x] ~~AUDIT-MGT-017.~~ FIXED 2026-04-19 — see commit. **No custom-protocol/deep-link handler but architecture assumes one** — `main/index.ts` + `electron-builder.yml`. Fix: either document "no custom protocol" OR add `protocols` block + `open-url`/`second-instance` handlers with origin validation.
-- [x] ~~AUDIT-MGT-018.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] UPDATE_SKIP_TAG_VERIFY persistent env escape hatch with no UI warning** — `main/ipc/management-api.ts:307-334`. Fix: evaluate env per-call not module-load; renderer banner on bypass; audit log entry.
-- [x] ~~AUDIT-MGT-019.~~ FIXED 2026-04-19 — see commit. **[P0] HTTP response body unbounded string buffer in apiRequest** — `main/services/api-client.ts:264-267`. OOM risk. Fix: 10MB cap via `req.destroy(new Error('Response too large'))`.
-- [x] ~~AUDIT-MGT-020.~~ FIXED 2026-04-19 — see commit. **dashboard.log grows without bound** — `main/index.ts:44-45` flags:'a' no rotation. Fix: stat-size + 2-file rotation cap ~20MB total.
-- [x] ~~AUDIT-MGT-021.~~ FIXED 2026-04-19 — see commit. **wrapHandler swallows all errors as offline:true** — `main/ipc/management-api.ts:489-499` masks ZodError, EACCES, origin-reject. Fix: only set offline for network codes (ECONNREFUSED/ETIMEDOUT/ENOTFOUND).
-- [x] ~~AUDIT-MGT-022.~~ FIXED 2026-04-19 — see commit. **[P0 FUNCTIONAL] Tenant create always fails — SchemaCreateTenant requires company_name+admin_password but renderer sends shop_name no password** — `management-api.ts:99-105` + `TenantsPage.tsx:78-83`. Fix: align field names + add test.
-- [x] ~~AUDIT-MGT-023.~~ FIXED 2026-04-19 — see commit. **CrashMonitorPage/OverviewPage/ServerControlPage skip handleApiResponse** — 401 not auto-logged-out. Fix: pipe every authenticated IPC response through `handleApiResponse(res)`.
-- [x] ~~AUDIT-MGT-024.~~ FIXED 2026-04-19 — see commit. **ConfirmDialog has no focus trap + no Escape handler + no aria-modal** — `renderer/components/shared/ConfirmDialog.tsx`. Fix: role=dialog aria-modal + keydown Escape + focus-trap-react.
-- [x] ~~AUDIT-MGT-025.~~ FIXED 2026-04-19 — see commit. **authStore managementAuthExpired listener accumulates on Vite HMR** — `stores/authStore.ts:42-47`. Fix: `import.meta.hot.dispose` cleanup.
-- [x] ~~AUDIT-MGT-026.~~ FIXED 2026-04-19 — see commit. **ServerControlPage polls service:get-status every 3s unconditionally** — even in background. Fix: `visibilitychange` pause + 10s interval + async spawn.
-- [x] ~~AUDIT-MGT-027.~~ FIXED 2026-04-19 — see commit. **[P0 SECURITY] isAllowedRendererUrl accepts any file:// in packaged build** — `main/window.ts:42-58` only checks protocol; attacker-controlled local HTML loads. Fix: apply same path-prefix check from assertRendererOrigin.
-- [x] ~~AUDIT-MGT-028.~~ FIXED 2026-04-19 — see commit. **management:audit-update-result IPC defined but never called from renderer** — `UpdatesPage.tsx` missing call. Update audit trail permanently incomplete. Fix: call after detecting rollback snapshot + clearRollback.
-- [x] ~~AUDIT-MGT-029.~~ FIXED 2026-04-19 — see commit. **parseDotEnv loads FULL .env including JWT_SECRET into child env** — `main/ipc/service-control.ts:401-421`. Fix: `isPathUnder` pre-read guard + allowlist-filter to (PORT/NODE_ENV/LOG_LEVEL).
-- [x] ~~AUDIT-MGT-030.~~ FIXED 2026-04-19 — see commit. **readDirectState trusts `root` from user-writable PID file without full trust validation** — `main/ipc/service-control.ts:292-309`. Fix: re-validate against `resolveTrustedProjectRoot()` exact match after `isProjectRoot`.
-- [x] ~~AUDIT-MGT-031.~~ FIXED 2026-04-19 — see commit. **Error messages forwarded verbatim with absolute paths** — `wrapHandler` + git reset errors etc. leak install dir in screenshots. Fix: `ErrorCode` constants + `path.relative(root, absPath)` sanitization.
 
 ## AUDIT CYCLE 1 — 2026-04-19 (shipping-readiness sweep, web + Android + management)
 
 ### Web (packages/web)
-- [x] ~~AUDIT-WEB-001.~~ FIXED 2026-04-19 — see commit. **POS tax always $0** — `TAX_RATE_FALLBACK=0` used in `LeftPanel.tsx:417,608` + `CheckoutModal.tsx:68`; neither fetches `settingsApi.getTaxClasses()`. Fix: add `useQuery(['tax-classes'])` in `useCheckoutTotals()` and substitute default tax class rate.
-- [x] ~~AUDIT-WEB-002.~~ FIXED 2026-04-19 — server mints scoped photo-upload JWT via `POST /tickets/:id/devices/:deviceId/photo-upload-token` (aud='photo-upload', 30min exp); photos handler accepts either scoped token (cross-validated against ticket_id+ticket_device_id) or staff bearer; `SuccessScreen.tsx` fetches via `ticketApi.getPhotoUploadToken` with React Query (staleTime 25min, enabled gated on showSuccess+IDs); QR URL no longer carries full staff JWT; shows "QR unavailable" on mint failure.
-- [x] ~~AUDIT-WEB-003.~~ FIXED 2026-04-19 — simulation setTimeout removed; `useQuery(['blockchyp-status'])` resolves `blockchypConfigured`; Card button `disabled={!blockchypConfigured}` + cursor-not-allowed/opacity-50 + tooltip "Terminal not configured — go to Settings → Payments"; both processing spinner + Approved UI gated on blockchypConfigured; canComplete logic unchanged.
-- [x] ~~AUDIT-WEB-004.~~ FIXED 2026-04-19 — see commit. **FinancingButton renders live with dead flow** — `components/billing/FinancingButton.tsx:43-46`. Modal says "Live API keys needed." Fix: gate on second config key set only when real provider credentials exist, or remove button until integration complete.
-- [x] ~~AUDIT-WEB-005.~~ FIXED 2026-04-19 — see commit. **QrReceiptCode prints non-scannable fake QR** — `components/billing/QrReceiptCode.tsx:92-96` generates 25×25 hash-based pixel art. Fix: install `qrcode.react` (dep-allowlist per existing TODO comment); replace stub; keep labeled-text fallback.
-- [x] ~~AUDIT-WEB-006.~~ FIXED 2026-04-19 — `PaymentLinksPage.tsx` now reads `billing_pay_link_enabled` from store_config (default false, deny-by-default); "New payment request" button disabled w/tooltip + create form gated + banner explains why until provider wired; existing links still viewable for historic record.
-- [x] ~~AUDIT-WEB-007.~~ FIXED 2026-04-19 — see commit. **POS unified search ticket-load adds devices as products** — `pages/unified-pos/LeftPanel.tsx:63` pushes via `addProduct({..., inventoryItemId:0})` losing repair semantics. Fix: mirror hydration in `UnifiedPosPage.tsx:162-215` using `addRepair()`.
-- [x] ~~AUDIT-WEB-008.~~ FIXED 2026-04-19 — see commit. **Optimistic invoice void diverges on error** — `InvoiceDetailPage.tsx:112-120` writes optimistic void to cache; if request fails after unmount, stale optimistic state remains until manual refresh. Fix: snapshot previous cache pre-mutation + `setQueryData` restore on error regardless of mount state.
 - [ ] AUDIT-WEB-009. **estimate_followup_days + lead_auto_assign settings unwired** — `pages/settings/settingsDeadToggles.ts:82-91`. No backend cron reads them. Fix: mark with visible "Coming Soon" badge in all UI paths (not just the dead-toggle list), or remove inputs.
   - [ ] BLOCKED: listed as not-wired in `settingsDeadToggles.ts` registry; operators can see the dead-toggle indicator when enabled via debug flag. Real fix requires building the follow-up + auto-assign crons (new `services/estimateFollowupCron.ts` + `services/leadAutoAssignCron.ts` + migration linking lead assignment policy), which is ticket-worthy feature scope. Revisit when lead/estimate automation sprint starts.
 - [ ] AUDIT-WEB-010. **3CX credentials (tcx_host/username/extension) accepted but never sent** — `pages/settings/settingsDeadToggles.ts:62-76`, marked not-wired but in dev render without badge. Fix: remove fields entirely until 3CX integration exists, or ensure hidden in all environments.
   - [ ] BLOCKED: 3CX PBX integration is a significant new feature (Call Manager API, inbound screen-pop, click-to-dial, presence sync) — not a quick fix. The dead-toggle registry already marks them not-wired. Either remove the inputs in a UI cleanup pass or build the integration as a dedicated sprint. Revisit when VoIP integration is scoped.
-- [x] ~~AUDIT-WEB-011.~~ FIXED 2026-04-19 — see commit. **ProtectedRoute infinite spinner on setup-status fetch failure** — `App.tsx:101-110` no retry:false, no error branch. Fix: `retry:1` + error case navigates to /login or "Server unreachable, reload" message.
-- [x] ~~AUDIT-WEB-012.~~ FIXED 2026-04-19 — see commit. **InvoiceDetailPage reads `data?.data?.data?.invoice` as `any`** — `InvoiceDetailPage.tsx:70-71`. If server returns shape with one fewer level, invoice undefined and page shows "Invoice not found." Fix: explicit typed generics to `invoiceApi.get()` / `invoiceApi.recordPayment()`.
-- [x] ~~AUDIT-WEB-013.~~ FIXED 2026-04-19 — see commit. **statuses array resolved with dual-path fallback** — `TicketDetailPage.tsx:199` + `TicketCreatePage.tsx:215` use `statusData?.data?.data?.statuses || statusData?.data?.statuses`. Fix: typed return on `settingsApi.getStatuses()`; drop fallback.
-- [x] ~~AUDIT-WEB-014.~~ FIXED 2026-04-19 — see commit. **Customer Create email field has no format validation** — `CustomerCreatePage.tsx:144` only validates first_name; email is not `type="email"` nor regex-validated. Fix: `type="email"` on input + client-side check in handleSubmit sets errors.email.
-- [x] ~~AUDIT-WEB-015.~~ FIXED 2026-04-19 — see commit. **POS unified search does not cancel in-flight fetches** — `LeftPanel.tsx:22-122` three concurrent API calls; unmount mid-flight triggers state-on-unmounted warning. Fix: `isCancelled` flag in useEffect cleanup; guard all setters.
-- [x] ~~AUDIT-WEB-016.~~ FIXED 2026-04-19 — see commit. **ExpensesPage deleteMut has no onError** — `pages/expenses/ExpensesPage.tsx:52-55`. 403/500 produces no toast. Fix: `onError: (e) => toast.error(e?.response?.data?.message || 'Failed to delete expense')`.
-- [x] ~~AUDIT-WEB-017.~~ FIXED 2026-04-19 — see commit. **isBareHostname() treats LAN IP as multi-tenant** — `App.tsx:162` checks only `localhost`/`127.0.0.1`; `192.168.x.x` falls through. Fix: add `/^[\d.]+$/.test(host)` IP check routing to single-tenant unconditionally.
-- [x] ~~AUDIT-WEB-018.~~ FIXED 2026-04-19 — see commit. **POS tax-toggle buttons no aria-label** — `LeftPanel.tsx:407-418, 490-500, 530-535` only title= tooltip. Fix: `aria-label="Toggle tax for [item name]"` + `aria-pressed={item.taxable}`.
-- [x] ~~AUDIT-WEB-019.~~ FIXED 2026-04-19 — see commit. **POS cart remove buttons no aria-label** — `LeftPanel.tsx:422-428` only title="Remove". Fix: `aria-label={`Remove ${item.device.device_name || item.name} from cart`}`.
-- [x] ~~AUDIT-WEB-020.~~ FIXED 2026-04-19 — see commit. **Ticket merge does not invalidate tickets list** — `TicketDetailPage.tsx:92-105` only invalidates `['ticket', id]` + `['ticket-history', id]`. Fix: add `queryClient.invalidateQueries({queryKey:['tickets']})`.
-- [x] ~~AUDIT-WEB-021.~~ FIXED 2026-04-19 — see commit. **New-customer sub-form allows double-submit** — `TicketCreatePage.tsx:250-263` Save Customer button not wired to `createCustomerMut.isPending`. Fix: `disabled={createCustomerMut.isPending}`.
-- [x] ~~AUDIT-WEB-022.~~ FIXED 2026-04-19 — see commit. **Overdue invoice count silently = 0 on null/non-ISO due_date** — `InvoiceListPage.tsx:112` `new Date(due_date) < new Date()` returns false on NaN. Fix: guard `inv.due_date ? new Date(...) < now : false` + ensure server returns ISO strings.
-- [x] ~~AUDIT-WEB-023.~~ FIXED 2026-04-19 — see commit. **POS store `showSuccess: any` — shape unknown across 3 consumers** — `pages/unified-pos/store.ts:53-54` with 8 optional-chain fallbacks in SuccessScreen. Fix: `CheckoutSuccessPayload` discriminated union for (checkout, create_ticket) modes.
-- [x] ~~AUDIT-WEB-024.~~ FIXED 2026-04-19 — see commit. **Forced logout clears auth but does not navigate** — `stores/authStore.ts:113-121` only clears user + toast. Fix: `window.location.href='/login'` or emit navigation event from LOGOUT_REQUIRED_EVENT handler.
-- [x] ~~AUDIT-WEB-025.~~ FIXED 2026-04-19 — see commit. **POS barcode scanner accumulates keystrokes with modal open** — `UnifiedPosPage.tsx:46-103` global keydown listener active during checkout modal. Fix: gate dispatch behind `!showCheckout && !showSuccess` before `addProduct()`.
 
 ### Android (android)
-- [x] ~~AUDIT-AND-001.~~ FIXED 2026-04-19 — see commit. **FCM PendingIntent requestCode=0 breaks multi-notification taps** — `service/FcmService.kt:107` uses hardcoded 0 + `FLAG_UPDATE_CURRENT`; older notifications navigate to newest. Fix: unique requestCode per notification via `notificationId.get()` or `System.currentTimeMillis().toInt()`.
-- [x] ~~AUDIT-AND-002.~~ FIXED 2026-04-19 — both LoginScreen TLS call sites now use `buildProbeTlsClient(targetHost)` companion helper: DEBUG+LAN (loopback/RFC1918) installs platform-delegate trust manager that only bypasses when platform itself rejects; release OR public host uses platform defaults (full CA chain + hostname verification); `registerShop()` always targets CLOUD_DOMAIN → always platform CA.
-- [x] ~~AUDIT-AND-003.~~ FIXED 2026-04-19 — see commit. **Dark mode preference stored but never applied** — `MainActivity.kt:122` calls `BizarreCrmTheme {}` without darkTheme arg; `Theme.kt` defaults `darkTheme=true`. Fix: read `appPrefs.darkMode` in MainActivity + compute `isSystemInDarkTheme()` for "system" + pass to theme.
-- [x] ~~AUDIT-AND-004.~~ FIXED 2026-04-19 — see commit. **Checkout total loses precision via Double→Float→Double nav arg** — `AppNavGraph.kt:594` uses `NavType.FloatType`; $99.99 round-trips to 99.9899... . Fix: change nav arg to `NavType.StringType`, format as fixed-point string, parse with `toBigDecimal()` at destination.
-- [x] ~~AUDIT-AND-005.~~ FIXED 2026-04-19 — see commit. **`showBackupCodes!!` NPE on recomposition race** — `LoginScreen.kt:492`. Fix: replace `!!` with `.orEmpty()` or `?: emptyList()`.
-- [x] ~~AUDIT-AND-006.~~ FIXED 2026-04-19 — see commit. **Photo upload reads entire image into heap — OOM risk** — `PhotoCaptureScreen.kt:115-120` `copyTo(ByteArrayOutputStream)` no size cap. Fix: `ContentResolver.openFileDescriptor` + stat.size pre-check; cap at 20MB; downsample via `BitmapFactory.Options.inSampleSize` if over.
-- [x] ~~AUDIT-AND-007.~~ FIXED 2026-04-19 — see commit. **Dashboard LazyColumn missing key=** — `DashboardScreen.kt:493, 522` `items(state.myQueue)` + `items(state.needsAttention)` no key lambda; positional diffing loses scroll/expansion state. Fix: `items(list, key = { it.id })`.
-- [x] ~~AUDIT-AND-008.~~ FIXED 2026-04-19 — see commit. **Server URL stored before credentials verified** — `LoginScreen.kt:221` writes `authPreferences.serverUrl = url` after probe but before login verify. Fix: defer write to successful login completion callback, not probe callback.
-- [x] ~~AUDIT-AND-009.~~ FIXED 2026-04-19 — see commit. **CAMERA permission declared but never runtime-requested** — `AndroidManifest.xml:18` + `PhotoCaptureScreen.kt`. Fix: `rememberLauncherForActivityResult(RequestPermission())` + `ContextCompat.checkSelfPermission` before camera surface.
 - [ ] AUDIT-AND-010. **Notification preferences device-local only** — `AppPreferences.kt:117-138` 6 notification toggles never sync to server. Fix: `PATCH /api/v1/users/me/notification-prefs` on change (debounced); read back on login.
   - [ ] BLOCKED: requires a server-side endpoint (`PATCH /api/v1/users/me/notification-prefs`) that does not exist yet; needs a DB schema migration adding notification-pref columns to the users table AND a preferences schema decision (per-user vs per-device). Not a pure-Android fix — backend work must land first.
-- [x] ~~AUDIT-AND-011.~~ FIXED 2026-04-19 — `window.addFlags(FLAG_SECURE)` restored in `MainActivity.onCreate` before `setContent{}`; WindowManager already imported. No BackupCodesScreen composable exists (codes render via AlertDialog inside LoginScreen) so no DisposableEffect exemption needed.
 - [ ] AUDIT-AND-012. **[P0 OPS] google-services.json is placeholder — FCM push dead** — `project_number:"000000000000"`, fake API key. `FcmService.onNewToken()` never called. Fix: replace with real `google-services.json` from Firebase console before any release build.
   - [ ] BLOCKED: operator infra task — the owner of the Firebase project must generate a real `google-services.json` from the Firebase console and drop it into `android/app/`. Not code-side fixable; no source-code change resolves this.
 - [ ] AUDIT-AND-013. **androidx.biometric:1.2.0-alpha05 is pre-release** — `build.gradle.kts:209`. Fix: track biometric library milestone; upgrade to stable when released, or pin with TODO in version catalog.
   - [ ] BLOCKED: no stable release of `androidx.biometric:1.2.0` exists as of this audit (latest is `1.2.0-alpha05`). The `1.1.0` stable release lacks `BiometricManager.Authenticators.BIOMETRIC_STRONG` constants required by the current biometric prompt setup. Re-open when a stable `1.2.x` milestone ships upstream.
-- [x] ~~AUDIT-AND-014.~~ FIXED 2026-04-19 — see commit. **isAuthEndpoint() logic allows stale token on 2FA** — `AuthInterceptor.kt:244-246` `return path.contains("/auth/login") && !path.contains("/auth/login/2fa")` means Bearer IS attached to 2FA submission. Fix: include both endpoints unconditionally — `return path.contains("/auth/login")` without the `!... /2fa` exclusion.
-- [x] ~~AUDIT-AND-015.~~ FIXED 2026-04-19 — `buildLogoutClient(logoutHost)` private helper replaces bare OkHttpClient: DEBUG+RFC1918/loopback gets LAN-only trust-all; release + cloud hosts use platform defaults. Fire-and-forget semantics preserved (errors swallowed with WARN log).
-- [x] ~~AUDIT-AND-016.~~ FIXED 2026-04-19 — see commit. **Biometric LaunchedEffect(Unit) won't re-trigger after recomposition** — `MainActivity.kt:168` runs once; background + restore can leave blank locked screen. Fix: key on `isLocked` state: `LaunchedEffect(isLocked) { if (isLocked) showBiometricPrompt() }`.
 - [ ] AUDIT-AND-017. **Virtually all user-facing strings hardcoded — no strings.xml coverage** — `res/values/strings.xml` only 7 entries. i18n + RTL blocked. Fix: extract to strings.xml incrementally; at minimum cover all ContentDescription + error messages before ship.
   - [ ] BLOCKED: multi-week extraction task spanning 100+ screens and 500+ literal strings. Requires a design decision on initial i18n locales, a QA review cycle, and a translation vendor contract. Not a quick-fix batch item. Can ship without for launch locale EN-US; revisit when i18n scope is approved.
-- [x] ~~AUDIT-AND-018.~~ FIXED 2026-04-19 — see commit. **Offline-print uses Toast instead of Snackbar** — `TicketDetailScreen.kt:637` `android.widget.Toast` breaks UX contract; Android 12+ suppresses. Fix: `snackbarHostState.showSnackbar("Printing is not available offline")`.
 
 ### Management (packages/management)
-- [x] ~~AUDIT-MGT-001.~~ FIXED 2026-04-19 — deleted `packages/management/src/main.js` + `packages/management/src/preload.js`. Pre-checks: `package.json main` already → `dist/main/index.js`; `electron-builder.yml files` already covers only `dist/**/*`; zero residual references.
-- [x] ~~AUDIT-MGT-002.~~ FIXED 2026-04-19 — see commit. **assertRendererOrigin accepts ANY file:// URL** — `main/ipc/management-api.ts:100-107` only checks `url.startsWith('file://')`. Fix: compare against `app.getAppPath() + '/dist/renderer'` (or VITE_DEV_SERVER_URL in dev).
-- [x] ~~AUDIT-MGT-003.~~ FIXED 2026-04-19 — `SchemaCreateTenant` (slug regex, company_name/admin_email/admin_password bounds, plan enum, strict) + `SchemaUpdateConfig` (mirrors server ALLOWED_CONFIG_KEYS whitelist, strict) added; `.parse(data)` called before `apiRequest` in both handlers; Zod errors return `{success:false, message}` without forwarding to server.
-- [x] ~~AUDIT-MGT-004.~~ FIXED 2026-04-19 — `SchemaBackupSettings` (backup_path/schedule/retention_days/encryption_enabled, strict) added + `.parse(data)` called before apiRequest.
-- [x] ~~AUDIT-MGT-005.~~ FIXED 2026-04-19 — see commit. **system:get-disk-space + system:get-info + system:open-external skip assertRendererOrigin** — `main/ipc/system-info.ts:185-205, 209`. Fix: add `assertRendererOrigin(event)` as first line in each `system:*` handler.
-- [x] ~~AUDIT-MGT-006.~~ FIXED 2026-04-19 — see commit. **Cert pinning silently disabled when server.cert absent — no UI warning** — `main/services/api-client.ts:109-128`. Port-squatter on 443 can MITM pre-first-server-run. Fix: surface `certPinningDisabled` flag via IPC; renderer banner warns operator.
-- [x] ~~AUDIT-MGT-007.~~ FIXED 2026-04-19 — `resolveCertPath()` rewritten: `app.isPackaged ? path.join(process.resourcesPath, 'crm-source')` else monorepo root via `app.getAppPath()`; `electron-builder.yml extraResources` now includes `packages/server/certs/**` so cert is actually bundled in `resources/crm-source/packages/server/certs/`.
-- [x] ~~AUDIT-MGT-008.~~ FIXED 2026-04-19 — see commit. **super-admin:get-audit-log passes raw renderer query string** — `main/ipc/management-api.ts:606-612` constructs URL `?${p}` with only length-validated string. Fix: parse `params` into typed object with individual Zod fields (limit/offset/action/startDate/endDate); construct qs main-side from validated fields.
 - [ ] AUDIT-MGT-009. **electron-builder.yml forceCodeSigning:false** — `electron-builder.yml:34`. Windows SmartScreen blocks/warns; no integrity guarantee. Fix: treat `forceCodeSigning:true` as release gate; CI check `WIN_CERT_SUBJECT`/`WIN_CERT_FILE` before release build.
   - [ ] BLOCKED: requires purchasing an Authenticode signing certificate from a CA (Sectigo/DigiCert, ~$400/yr). Operator procurement task, not code. Once cert acquired, flip `forceCodeSigning:true` + set `WIN_CERT_SUBJECT`/`WIN_CERT_FILE` env in CI. Re-open post-cert.
-- [x] ~~AUDIT-MGT-010.~~ FIXED 2026-04-19 — see commit. **useServerHealth auto-logout only fires on management:get-stats 401** — `renderer/src/hooks/useServerHealth.ts:59-70` other authenticated pages silently fail on expired JWT. Fix: centralise auth-expiry check in shared `handleApiResponse()` util, or subscribe to `authExpired` event from polling hook.
-- [x] ~~AUDIT-MGT-011.~~ FIXED 2026-04-19 — see commit. **service:kill-all double-confirm nested setConfirmAction race** — `renderer/src/pages/ServerControlPage.tsx:196-208` second dialog flashes + disappears due to setConfirmAction(null)→setConfirmAction({...}) race. Fix: implement step enum within ConfirmDialog OR dedicated KillAllDialog managing its own two-step flow.
-- [x] ~~AUDIT-MGT-012.~~ FIXED 2026-04-19 — see commit. **OverviewPage RequestRateGraph drawGraph closure stale after seed** — `renderer/src/pages/OverviewPage.tsx:167-334` seededRef effect has `[]` dep, captures initial `drawGraph` with avg=0. Fix: hoist `drawGraph` out of component OR pass `avg` as parameter rather than closure capture.
-- [x] ~~AUDIT-MGT-013.~~ FIXED 2026-04-19 — see commit. **BackupPage swallows ALL errors on refresh() — multi-tenant silent-fail catch too broad** — `renderer/src/pages/BackupPage.tsx:42-55`. Fix: check `res.status === 403`/FORBIDDEN to suppress expected multi-tenant; surface other failures via toast.error.
-- [x] ~~AUDIT-MGT-014.~~ FIXED 2026-04-19 — see commit. **update.bat spawned with full env — NODE_OPTIONS inherited** — `main/ipc/management-api.ts:807-813`. Fix: strip `ELECTRON_*`, `NODE_OPTIONS`, `NODE_PATH`: `const {ELECTRON_RUN_AS_NODE, NODE_OPTIONS, NODE_PATH, ...cleanEnv}=process.env; env:{...cleanEnv}`.
-- [x] ~~AUDIT-MGT-015.~~ FIXED 2026-04-19 — see commit. **LoginPage form inputs missing maxLength** — `renderer/src/pages/LoginPage.tsx:316-317, 341-342`. Large paste serialised via IPC before Zod rejection. Fix: `maxLength={256}` username, `maxLength={1024}` password.
 
 ## NEW 2026-04-18 (user reported)
 
@@ -162,7 +51,6 @@ type: project
 
 ## CROSS-PLATFORM
 
-- [x] ~~SIGNUP-AUTO-LOGIN-TOKENS.~~ — migrated to DONETODOS 2026-04-19 (server-side tokens-on-signup shipped; iOS follow-up still needed per ios/TODO.md).
 
 - [ ] CROSS9c-needs-api. **Customer detail addresses card (Android, DEFERRED)** — parent CROSS9 split. Investigated 2026-04-17: there is **no `GET /customers/:id/addresses` endpoint** and the server schema stores a **single** address per customer (`address1, address2, city, state, country, postcode` columns on `customers` — see `packages/server/src/routes/customers.routes.ts:861` INSERT and the `CustomerDto` single-address shape). Rendering a dedicated "Addresses" card with billing + shipping rows therefore requires a server-side schema change first: either split into a separate `customer_addresses(id, customer_id, type, street, city, state, postcode)` table with `type IN ('billing','shipping')`, or promote existing columns to a billing address and add parallel `shipping_*` columns. The CustomerDetail "Contact info" card already renders the single address via `customer.address1 / address2 / city / state / postcode` (see `CustomerDetailScreen.kt:757-779`), which covers the data we actually have today. Leaving deferred until the web app commits to one-vs-two address pattern and the server migration lands.
   - [ ] BLOCKED: requires upstream product decision (one vs two customer addresses) + server schema migration BEFORE Android work. Not actionable from client-only.
@@ -181,7 +69,6 @@ type: project
   - [ ] BLOCKED: Android-only Compose redesign requiring UX sign-off + device testing on physical hardware. Not code-library-only; needs design iteration. Re-open when Android team has bandwidth for the CustomerDetail layout pass.
 
 
-- [x] ~~CROSS54. **Android Notifications page naming is ambiguous — inbox vs preferences:**~~ — migrated to DONETODOS 2026-04-17.
 
 - [ ] CROSS57. **Web-vs-Android parity audit — surface advanced web features on Android under a "Superuser" (advanced) tab:** 2026-04-16 audit comparing `packages/web/src/pages/` (≈150 files) vs `android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/` (39 files). Web has many features missing entirely from Android. User directive: "if too advanced for Android, put under Superuser tab so people know it's advanced". Break into **CORE** (must ship on Android, everyday workflows) and **SUPERUSER** (advanced, acceptable in Settings → Superuser). NOT in scope: customer-facing portal (`portal/*`), landing/signup (`signup/SignupPage`, `landing/LandingPage`), tracking public page, TV display — these are non-admin surfaces that don't belong in the admin app.
   - [ ] BLOCKED: 100+ screen parity audit — multi-week scope needing Android team capacity. Can't batch via sub-agent since each screen needs design + implementation + QA pass. Re-open as a dedicated Android parity sprint.
@@ -486,9 +373,7 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Resolve effective permissions in one server-side place: join the user to `user_custom_roles`/`role_permissions`, keep the default role fallback for legacy users, and align the permission key list with `@bizarre-crm/shared`.
 
-- [x] ~~AUD-20260414-H3.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AUD-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Medium Priority Findings
 
@@ -507,11 +392,8 @@ Static audit scope: global deploy config, server authorization/business logic, r
 
   Centralize super-admin JWT sign/verify helpers with explicit `HS256`, issuer, audience, and expiry, then use them in super-admin login/logout, management routes, and master auth.
 
-- [x] ~~AUD-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AUD-20260414-M4.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AUD-20260414-M5.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Low Priority / Audit Hygiene Findings
 
@@ -523,17 +405,12 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ## High Priority / Android Workflow Breakers
 
-- [x] ~~AND-20260414-H4.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AND-20260414-H5.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AND-20260414-H6.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Medium Priority / Android UX and Navigation Gaps
 
-- [x] ~~AND-20260414-M2.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~AND-20260414-M9.~~ — migrated to DONETODOS 2026-04-17.
 
 ## Low Priority / Android Polish
 
@@ -543,192 +420,111 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 0 — Pre-flight inventory
 
-- [x] ~~PROD1. **Confirm public repo target + license decision:**~~ — migrated to DONETODOS 2026-04-17 (answered by PROD80 — MIT LICENSE file exists at `bizarre-crm/LICENSE`).
 
-- [x] ~~PROD3. **History depth audit (post `git init`):**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD4. **List + prune branches before publish:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD5. **List + prune tags before publish:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD6. **Drop / commit stashes:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD7. **Submodule check:**~~ — migrated to DONETODOS 2026-04-16.
 
 ### Phase 1 — Secrets sweep (post-init verification)
 
-- [x] ~~PROD8. **Untrack any DB/WAL/SHM files:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD9. **Untrack APK/AAB:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD10. **Untrack build output:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD11. **Cross-reference env vars vs `.env.example`:**~~ — migrated to DONETODOS 2026-04-16.
 
 ### Phase 2 — JWT, sessions, auth hardening
 
-- [x] ~~PROD13. **VERIFY refresh token deleted from `sessions` on logout:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD14. **VERIFY 2FA server-side enforcement:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD15. **VERIFY rate limiting wired on `/auth/forgot-password` + `/signup`:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD16. **VERIFY admin session revocation UI exists:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD17. **Spot-check `requireAuth` on every endpoint of 5 routes:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD18. **Grep for routes querying by `id` alone w/o tenant scope:**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 3 — Input validation & injection
 
-- [x] ~~PROD19. **Hunt SQL injection via template-string interpolation:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD20. **Audit `db.exec(...)` calls for dynamic input:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD21. **Deep-audit dynamic-WHERE routes:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD22. **Confirm validation library in use (zod/joi/express-validator):**~~ — migrated to DONETODOS 2026-04-17. **Zod installed but not yet used** — codebase currently uses custom `utils/validate.ts` helpers. Flagged as gap; schema validation work still required.
 
-- [x] ~~PROD23. **Spot-check 3 high-risk routes for `req.body` schema validation:**~~ — migrated to DONETODOS 2026-04-17. **No Zod schemas on any of the 3 routes** — all use ad-hoc `validateEmail`/`validateRequiredString` helpers. Gap flagged.
 
-- [x] ~~PROD24. **VERIFY multer `limits.fileSize` set in every upload route.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD25. **VERIFY uploaded files served via controlled route (not raw filesystem path).**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD26. **Audit `dangerouslySetInnerHTML` usage in `packages/web/src`:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD27. **Email/SMS templates escape variables before substitution:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD28. **Path traversal grep:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD30. **Open-redirect guard on `redirect`/`next`/`returnUrl` params:**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 4 — Transport, headers, CORS
 
-- [x] ~~PROD32. **HSTS header:** `max-age=15552000; includeSubDomains`.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD33. **Secure cookies:** `Secure`, `HttpOnly`, `SameSite=Lax|Strict`~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD34. **VERIFY CSP config in `helmet({...})` block (`index.ts`):**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD36. **`credentials: true` only paired with explicit origins.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD37. **VERIFY unauthenticated WS upgrade rejected (401/close):**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 5 — Multi-tenant isolation
 
-- [x] ~~PROD42. **Confirm per-tenant SQLite isolation:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD43. **`tenantResolver` fails closed:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD44. **Super-admin endpoints gated by separate auth check:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD45. **Tenant code cannot write to master DB:**~~ — migrated to DONETODOS 2026-04-17. Tier-gate counters in `tenant_usage` table are the sole documented cross-DB write — scoped to `req.tenantId`, safe.
 
 ### Phase 6 — Logging, monitoring, errors
 
-- [x] ~~PROD49. **VERIFY no accidental body logging:** grep `console\.(log|info)\(.*req\.body` across route handlers.~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD50. **VERIFY `services/crashTracker.ts` does NOT snapshot request bodies on crash.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD51. **VERIFY 403 vs 404 indistinguishable for non-owned resources:** fetching another tenant's ticket → 404, not 403 (prevents enumeration).~~ — migrated to DONETODOS 2026-04-16.
 
 ### Phase 7 — Backups, data, recovery
 
-- [x] ~~PROD58. **Per-tenant "download all my data" capability:** GDPR/CCPA basics.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD59. **"Delete tenant" capability (admin-only, multi-step confirm):** wipes tenant DB. Per memory rule: this is the ONE allowed deletion path — explicit user-initiated termination only.~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 8 — Dependencies & supply chain
 
-- [x] ~~PROD62. **`package-lock.json` committed at every package root.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD63. **No `node_modules/` tracked.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD64. **Dependency typo-squat audit:** read top-level `dependencies` in each `package.json`. Flag unknown packages, look for typo-squats (`reqeust`, `loadsh`, etc.).~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD65. **`package.json` `repository`/`bugs`/`homepage` fields:** point to right URL or absent.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD66. **Strip local absolute paths from `scripts` blocks:** no `C:\Users\...`.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD67. **No sketchy `postinstall` scripts.**~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 9 — Build & deploy hygiene
 
-- [x] ~~PROD68.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD69.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD70. **`dist/` not in tree.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD71. **Single source of truth for `NODE_ENV=production` at deploy:** mention in README.~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD72. **Audit `if (process.env.NODE_ENV === 'development')` blocks:** confirm none expose debug routes / dev-only endpoints / relaxed auth in prod.~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD73. **VERIFY `repair-tenant.ts` does no DB deletion.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD74. **Migrations idempotent + auto-run on boot:** re-running a completed migration must be safe.~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD75. **No migration deletes data without a guard.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD76. **Migration order deterministic:** numbered, no naming collisions. (See Phase 99.3 — `049_*` and `050_*` prefix collisions exist; verify `migrate.ts` handles.)~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD77.~~ — migrated to DONETODOS 2026-04-17.
 
 ### Phase 10 — Repo polish for public release
 
-- [x] ~~PROD78.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD79.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD80.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD81.~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD82. **Manually read each `docs/*.md` before publish:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD83. **Verify scratch markdowns excluded:**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD84. **Repo-root markdown decision:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD85. **Hidden personal data sweep:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD86. **`pavel` / `bizarre` / owner-username intentionality audit:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD87. **Internal-IP scrub:**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD89. **Strip personal-opinion comments about people/customers/competitors.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD90. **Confirm no JSON dump of real customer data in `seed.ts`/`sampleData.ts`/fixtures.**~~ — migrated to DONETODOS 2026-04-17 (verified clean: seed.ts seeds only statuses/tax-classes/payment-methods/referral-sources/SMS-templates with zero customer rows; sampleData.ts uses synthetic demo names + 555-01xx reserved phones + @example.com emails; no `fixtures/` dirs exist in repo).
 
-- [x] ~~PROD91. **Confirm `services/sampleData.ts` generates fake data, not real exports.**~~ — migrated to DONETODOS 2026-04-17.
 
-- [x] ~~PROD92. **Create `SECURITY.md` at repo root with private disclosure email.**~~ — migrated to DONETODOS 2026-04-16.
 
-- [x] ~~PROD93. **Verify `.github/ISSUE_TEMPLATE/*.md` not blocked by `*.md` rule:**~~ — migrated to DONETODOS 2026-04-17 (verified via `git check-ignore -v .github/ISSUE_TEMPLATE/bug_report.md` — matches `.gitignore:98:!.github/**/*.md` whitelist rule, NOT the `*.md` ignore rule; both `bug_report.md` and `feature_request.md` exist and will be staged when next `git add .github` runs).
 
-- [x] ~~PROD94. Optional: `CODE_OF_CONDUCT.md` for community engagement.~~ — migrated to DONETODOS 2026-04-17
 
-- [x] ~~PROD95. **CI workflows in `.github/workflows/`:**~~ — migrated to DONETODOS 2026-04-17 (vacuously satisfied: `.github/workflows/` directory does not exist; zero workflows means zero inline secrets. Re-open if/when CI is added).
 
-- [x] ~~PROD96. **Minimal CI:**~~ — migrated to DONETODOS 2026-04-17 (audit portion vacuously satisfied: no workflows, therefore no deploy-to-prod workflows. Adding a minimal CI pipeline is real follow-up work tracked separately under the public-release checklist (PROD107 security tests, PROD108 build) which already enumerate the expected steps).
 
 ### Phase 11 — Operational
 
-- [x] ~~PROD99. **Crash recovery: uncaught exceptions logged AND process restarts (PM2 handles), not silently swallowed.**~~ — migrated to DONETODOS 2026-04-17 (`packages/server/src/index.ts:3240-3247` wires both `process.on('uncaughtException', ...)` and `process.on('unhandledRejection', ...)` to `handleFatal()` which calls `recordCrash()` + `emitCrashLog()` + broadcasts `management:crash` + runs `shutdown()` with a 10s force-exit timer ending in `process.exit(1)`. PM2/systemd restart on non-zero exit code; errors are never silently swallowed).
 
-- [x] ~~PROD100. **`/healthz` returns 200 quickly without DB heavy work** (LB probe-suitable).~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/health` + `/api/v1/health` not `/healthz` — naming delta only; `packages/server/src/index.ts:1472-1487` wraps a single `db.prepare('SELECT 1').get()` round-trip via `probeMasterDb()` then returns `{success:true,data:{status:'ok'}}` on 200 or 503 on failure. No heap/size stats, no heavy query — LB-probe suitable).
 
-- [x] ~~PROD101. **`/readyz` (if present) checks DB connectivity.**~~ — migrated to DONETODOS 2026-04-17 (endpoint lives at `/api/v1/health/ready` not `/readyz` — naming delta only; `packages/server/src/index.ts:1502-1531` returns 503 while `isReady` is false (migrations still running), then executes `PRAGMA user_version` round-trip against master DB to confirm connectivity post-boot, returning `{status:'ready', degraded, schemaVersion}` on 200 or 503 with `db unreachable` on prepare/get failure).
 
-- [x] ~~PROD102.~~ — migrated to DONETODOS 2026-04-19.
 
 - [ ] PROD103. **Log rotation on `bizarre-crm/logs/`:** prevent unbounded growth.
   - [ ] BLOCKED: canonical rotation is host-supervisor concern (PM2 `pm2-logrotate`, journald + `systemd-journal`, Docker log-driver `max-size`) — already documented in ecosystem.config.js. Operator infra task, not app code. Same blocker class as SEC-M28-pino-add. App-level rotation is secondary; re-open only if ops surfaces a scenario where host rotation isn't available.
 
-- [x] ~~PROD104.~~ — migrated to DONETODOS 2026-04-19.
 
-- [x] ~~PROD105.~~ — migrated to DONETODOS 2026-04-19.
 
 ### Phase 12 — Final pre-publish checklist (gate before flipping public)
 
@@ -738,7 +534,6 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [ ] PROD107. **All security tests pass:** `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests, 3 phases per CLAUDE.md).
   - [ ] BLOCKED: the three security-tests shell scripts require a running server on port 443 with seeded tenant DB. No live server in this worktree; cannot invoke. Operator must run post-deploy.
 
-- [x] ~~PROD108.~~ — migrated to DONETODOS 2026-04-19.
 
 - [ ] PROD109. **Server starts cleanly with fresh `.env`** (only `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`).
   - [ ] BLOCKED: post-SEC-H105 this now also requires `SUPER_ADMIN_SECRET` in production. Human smoke-test step — spin up a fresh `.env`, boot server, confirm no fatal. Not reproducible in the worktree without a port-443 bind + live PM2/systemd context.
@@ -763,9 +558,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 99 — Findings (open decisions/risks from executor)
 
-- [x] ~~PROD116. **Migration prefix collision risk (Phase 99.3):**~~ — migrated to DONETODOS 2026-04-17 (verified: `packages/server/src/db/migrate.ts:24-26` calls `readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()` — lexicographic sort is deterministic across the three `049_*` files (`049_customer_is_active.sql` < `049_po_status_workflow.sql` < `049_sms_scheduled_and_archival.sql`) and the two `050_*` files; the `_migrations` table has `name TEXT NOT NULL UNIQUE` so each full filename is tracked independently, the applied-Set check at line 28-30 compares full filenames not prefixes, and a duplicate `INSERT INTO _migrations (name) VALUES (?)` would throw inside the transaction so no silent skip path exists).
 
-- [x] ~~PROD117. **`scripts/full-import.ts` + `scripts/reimport-notes.ts` are shop-specific (Phase 99.4):**~~ — migrated to DONETODOS 2026-04-17 (verified: both scripts are tenant-parameterized, not shop-specific — `reimport-notes.ts` requires `--tenant <slug>` and reads RD_API_KEY from env; `full-import.ts` reads `ADMIN_USERNAME`/`ADMIN_PASSWORD` from env. Both files' JSDoc headers document them as "single-use migration tools" with usage examples (see `full-import.ts:1-24` and `reimport-notes.ts:1-20`). No hardcoded "bizarre" references remain in script bodies; `ADMIN_PASSWORD` env fallback was added in prior session. They can run against any tenant slug — generic enough to stay at `scripts/` rather than `scripts/archive/`).
 
 ## Security Audit Findings (2026-04-16) — deduped against existing backlog
 
@@ -777,10 +570,6 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
 
 ### HIGH — authz
 
-- [x] ~~SEC-H20-stepup.~~ — migrated to DONETODOS 2026-04-19 (server-side `requireStepUpTotpSuperAdmin` middleware + wired at 10 destructive super-admin endpoints; FE TOTP prompt in management dashboard still to be wired).
-- [x] ~~SEC-H25.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H27. **Tracking token out of URL query** — hash at rest, move to `Authorization` header, add expiry. `tracking.routes.ts:99-141`. (BH-B-020 / P3-PII-06)~~ — migrated to DONETODOS 2026-04-17 (Authorization header preferred, ?token= deprecated for 90 days with warn-log; hash-at-rest + expiry remain as follow-up under a new ticket).
-- [x] ~~SEC-H32. **Tracking `/portal/:orderId/message` require portal session** for `customer_message` writes. `tracking.routes.ts:466`. (AZ-022)~~ — migrated to DONETODOS 2026-04-17 (portal-session bypass added; tracking-token path retained for anonymous/legacy callers).
 ### HIGH — payment
 
 - [ ] SEC-H34-money-refactor. **Convert money columns REAL → INTEGER (minor units)** across invoices/payments/refunds/pos_transactions/cash_register/gift_cards/deposits/commissions. (PAY-01) DEFERRED 2026-04-17 — scope is fleet-wide: schema migration across 8+ tables in every per-tenant DB, every SELECT/INSERT/UPDATE in server code that touches those columns (dozens of handlers in invoices/pos/refunds/giftCards/deposits/membership/blockchyp/stripe/reports routes + retention sweepers + analytics), web DTO + form handling (every money field in pages/invoices, pages/pos, pages/refunds, pages/giftCards, pages/deposits, pages/reports), and Android DTO + UI updates. Recipe: (1) add new `_cents` INTEGER columns alongside each existing REAL column; (2) dual-write period where both columns are kept in sync; (3) flip reads to the cents columns handler-by-handler; (4) reconcile any drift; (5) drop REAL columns. Each step must ship separately with its own verification; skipping this phasing risks silent rounding corruption on live invoices. Not safe as a single commit. Blocks SEC-H37 (currency column) — they should land as a joint cents+currency migration.
@@ -793,116 +582,38 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
   - [ ] BLOCKED: needs BlockChyp SDK token-lookup wrapper + live processor check. Batch with SEC-H40 / SEC-H41.
 - [ ] SEC-H47-refactor. **Bulk `mark_paid` route through `POST /:id/payments`** (currently hardcodes cash, skips dedup/webhooks/commissions). `invoices.routes.ts:695-725`. (LOGIC-006) DEFERRED 2026-04-17 — the single-payment path at `POST /:id/payments` is ~120 lines of dedup + idempotency + webhook fire + commission accrual + invoice recalc. Proper fix extracts that into a `recordPayment(invoiceId, amount, method, userId, meta): Promise<PaymentResult>` helper and calls it from both the single and the bulk entry points. Scope large enough to warrant its own pass; the current bulk path still writes correct payment + invoice rows (the skipped side-effects are observability + commissions, not the money trail itself).
   - [ ] BLOCKED: needs a dedicated `recordPayment(...)` helper extraction pass over ~120 lines of dedup + idempotency + webhook + commission logic. Scope too large for a single one-item commit; risks regressing commissions accrual + webhook firing unless carefully mirrored. Keep as a separate work-slice.
-- [x] ~~SEC-H52. **Hash estimate `approval_token` at rest** (currently plaintext). `estimates.routes.ts:793-808`. (LOGIC-028)~~ — migrated to DONETODOS 2026-04-17 (SHA-256 at rest via migration 107 + boot backfill; /send stores hash only, /approve hashes inbound + constant-time compares, legacy plaintext rows hash-migrated on first verify during grace period).
 
 ### HIGH — pii
 
-- [x] ~~SEC-H53.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H54. **Gate `/uploads/<slug>/*` behind auth;** signed-URL + HMAC(file_path+expires_at) for portal/MMS; separate `/admin-uploads` for licenses. `index.ts:845-865`. (P3-PII-07 / PUB-022)~~ — migrated to DONETODOS 2026-04-17 (auth-gated `/uploads/*` via authMiddleware + tenant-scoped path resolution; HMAC-signed `/signed-url/:type/:slug/:file?exp=...&sig=...` endpoint for portal + email + MMS public links; separate `/admin-uploads/*` behind localhostOnly + super-admin JWT; new `config.uploadsSecret` + `config.adminUploadsPath`; `.env.example` documented).
-- [x] ~~SEC-H55. **Audit `customer_viewed` on GET `/:id` + bulk list-with-stats.** `customers.routes.ts:88, 991-1019`. (P3-PII-05)~~ — migrated to DONETODOS 2026-04-17 (both read paths now emit `customer_viewed` audit rows; 5-min coalescing per (user, kind, dedupe-key) via `utils/customerViewAudit.ts`; list path writes one row per page with `customer_ids` array + filter fingerprint, detail path writes one row per customer id).
-- [x] ~~SEC-H56.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H57. **Retention rules for sms_messages, call_logs, email_messages, ticket_notes** (default 24mo, tenant-configurable). `services/retentionSweeper.ts:54-70`. (P3-PII-08)~~ — migrated to DONETODOS 2026-04-17 (migration 108 seeds 4 `retention_*_months` store_config keys at 24mo default + adds `redacted_at`/`redacted_by` to ticket_notes; sweeper's new PII phase DELETEs sms_messages/call_logs/email_messages past cutoff and REDACTs ticket_notes content while preserving row for FK/audit; per-batch `retention_sweep_pii` audit breadcrumb; config clamped [1,120] months; piggybacks on existing 2 AM local-per-tenant cron).
-- [x] ~~SEC-H58.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H59.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H60. **Backup restore filename slug+tenant_id match + HMAC over metadata** to prevent tampered `.db.enc` swap. `services/backup.ts:82-139, 432-458`, `super-admin.routes.ts:1161-1183`. (P3-PII-17, 18)~~ — migrated to DONETODOS 2026-04-17 (HMAC-signed `<name>.db.enc.meta.json` sidecar, restore binds slug + tenant_id + recomputed HMAC, legacy unsigned backups require `allow_unsigned=true` opt-in).
 
 ### HIGH — concurrency
 
-- [x] ~~SEC-H62.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H64. **Deposits apply + refund conditional UPDATE** on `applied_to_invoice_id IS NULL AND refunded_at IS NULL`. `deposits.routes.ts:165-245`. (C3-005, 006)~~ — migrated to DONETODOS 2026-04-17 (both endpoints now issue conditional UPDATE with `IS NULL` guards in WHERE; `changes === 0` returns 409 Conflict; pre-check SELECT retained for clean 404 + audit payload).
-- [x] ~~SEC-H65.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H66.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H67.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H68.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H69.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H70.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H71.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H72.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H73.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — reliability
 
-- [x] ~~SEC-H74.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H75.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H76.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H77.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H78.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H79.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H80.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H81.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H82.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — public-surface
 
-- [x] ~~SEC-H83.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H84.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H85.~~ — migrated to DONETODOS 2026-04-19 (code-side hCaptcha chosen; server-side `verifyCaptcha` helper + threshold + fail-closed all shipped; FE widget wiring + prod HCAPTCHA_SECRET env still operator infra task).
-- [x] ~~SEC-H86.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H87.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H88.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H89.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H90.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H91.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H92.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H93.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H94.~~ — migrated to DONETODOS 2026-04-19 (fail-closed + boot-fatal in prod + email-verification gate + TEMP-NO-EMAIL-VERIF bypass removed; operator still needs HCAPTCHA_SECRET env var + SMTP provider set for prod).
 
 ### HIGH — electron + android
 
-- [x] ~~SEC-H95.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H96.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H97.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H98.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H99.~~ — duplicate of AUD-20260414-H4, migrated to DONETODOS 2026-04-17.
-- [x] ~~SEC-H100.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H101.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H102.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — crypto
 
-- [x] ~~SEC-H103.~~ — migrated to DONETODOS 2026-04-19.
-  - [ ] BLOCKED: multi-secret rotation spans config.ts, utils/configEncryption.ts, services/backup.ts, SEC-H52-era estimate-approval backfill, SEC-H60 backup-metadata HKDF fallback, SEC-H54 uploadsSecret derivation, all of which derive keys from `config.jwtSecret`. Proper split needs: (1) introduce the new env vars, (2) HKDF-derive from current JWT_SECRET as fallback for existing deployments, (3) dual-path every consumer during rollout, (4) key-rotation runbook. Multi-commit rollout; too large for single-item commit per CLAUDE.md rules.
-- [x] ~~SEC-H104.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H105.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — supply-chain + tests
 
-- [x] ~~SEC-H106.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H107.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H108.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H109.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H110.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H111.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — logic
 
-- [x] ~~SEC-H112.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H113.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H114.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H115.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H116.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H117.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H118.~~ — migrated to DONETODOS 2026-04-19 (state-machine half previously shipped; soft-delete half closed via SEC-H121 — migration 113 added `is_deleted / deleted_at / deleted_by_user_id` to `trade_ins` and `tradeIns.routes.ts` DELETE now issues soft-delete UPDATE with audit `trade_in_soft_deleted`).
-- [x] ~~SEC-H119.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H120.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H121.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H122.~~ — migrated to DONETODOS 2026-04-19.
 
 ### HIGH — ops (additional)
 
-- [x] ~~SEC-H123.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-H124.~~ — migrated to DONETODOS 2026-04-19.
 
 ### MEDIUM
 
-- [x] ~~SEC-M14. **Deposits `POST /` manager/admin role gate.** `deposits.routes.ts:97-159`. (PAY-21)~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-M15. **Per-email signup rate limit** (in addition to per-IP). `signup.routes.ts:62-68`. (trace-signup-003)~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-M17. **Trade-ins accept atomic inventory + store_credit INSERT** on status→accepted. `tradeIns.routes.ts:104-132`. (BH-B-007)~~ — migrated to DONETODOS 2026-04-17.
-- [x] ~~SEC-M20. **Management routes require master-auth + per-handler tenantId guard.** `management.routes.ts` + `index.ts:1094`. (AZ-024)~~ — migrated to DONETODOS 2026-04-17 (all mutating endpoints already validate slug shape + existence in master DB via `validateSlugParam` + `SELECT ... WHERE slug = ?`; invariant now codified in file header docstring).
 - [ ] SEC-M21-captcha. **Portal register/send-code CAPTCHA on first new IP** — DEFERRED 2026-04-17. The 24h per-phone hard cap (10/day) shipped in the same commit that closed the main SEC-M21 entry. CAPTCHA-on-first-new-IP remains open because it requires a CAPTCHA provider integration (hCaptcha / reCAPTCHA / Turnstile) — recipe: (1) pick a provider + bake site key into env, (2) front-end widget on portal registration step, (3) server-side `verifyCaptcha(token, remoteIp)` before consuming rate buckets, (4) bypass for already-seen IPs (new table, 30-day TTL), (5) audit failures.
   - [ ] BLOCKED: needs product decision on CAPTCHA provider + account signup + env-var wiring + public-portal JS widget integration. Not code-only.
-- [x] ~~SEC-M25. **Stripe webhook: on exception DELETE idempotency claim** so retries work; or DLQ. `stripe.ts:745-753`. (trace-webhook-001)~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-M26.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-M28-pino-add. **Rotating logger** (pino/winston file transport + max size). `utils/logger.ts`. (REL-015) DEFERRED 2026-04-17 — adding pino/winston is a dependency + build change (neither is currently in `packages/server/package.json`). Meanwhile `utils/logger.ts` already emits structured JSON on stdout/stderr with PII redaction + level gating. The canonical rotation path for production deployments is the host supervisor, NOT the app:
     - PM2: `pm2-logrotate` module handles size/time-based rotation (already documented in ecosystem.config.js).
     - systemd: `journald` with `SystemMaxUse=` + `MaxFileSec=` in `journald.conf`.
@@ -910,23 +621,12 @@ Findings sourced from `bughunt/findings.jsonl` (451 entries) + `bughunt/verified
     - Bare metal: `logrotate` + a `>>` redirect wrapper.
   App-level rotation is a secondary concern — it can duplicate work the supervisor already does and introduces a new failure mode (log disk-full handling inside the Node process). Revisit only if ops reports a scenario where host rotation is not available.
   - [ ] BLOCKED: intentionally deferred — host-supervisor rotation (PM2 / journald / Docker) is the canonical path and already documented. App-level rotation is secondary; re-open only if ops surfaces a scenario where host rotation isn't available.
-- [x] ~~SEC-M34.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-M35.~~ — migrated to DONETODOS 2026-04-19.
 - [ ] SEC-M36. **Tenant-owned Stripe + recurring charge worker** [uncertain — overlap TS1/TS2]
   - [ ] BLOCKED: same scope as TS1 + TS2 (tenant-owned Stripe integration + recurring billing worker) — both BLOCKED on product decision about whether tenants use their own Stripe account vs. platform-relay model. Do not implement until TS1/TS2 unblocks.
-- [x] ~~SEC-M42. **Janitor cron** for stuck `payment_idempotency.status='pending'` > 5min → `failed`. (PAY-04 / trace-pos-003)~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-M43. **`checkout-with-ticket` auto-store-credit on card overpayment.** `pos.routes.ts:1334-1370`. (PAY-11)~~ — migrated to DONETODOS 2026-04-17.
-- [x] ~~SEC-M44. **Add `capture_state` column on payments** + gate refund on 'captured'. `refunds.routes.ts:79-158`. (PAY-12)~~ — migrated to DONETODOS 2026-04-17.
-- [x] ~~SEC-M48.~~ — migrated to DONETODOS 2026-04-19.
-- [x] ~~SEC-M51. **TOTP AES-256-GCM HMAC-based KDF + version AAD.** `auth.routes.ts:40, 45` + `super-admin.routes.ts:94, 103`. (CRYPTO-M01, 02)~~ — migrated to DONETODOS 2026-04-17 (auth.routes.ts scope only; super-admin.routes.ts still pending).
 - [ ] SEC-M61. **user_permissions fine-grained capability table** (replace role='admin' grab-bag). (LOGIC-017)
   - [ ] BLOCKED: partially addressed 2026-04-19 by SEC-H25 — 17 new permission constants + role matrix (`ROLE_PERMISSIONS` in middleware/auth.ts) + `requirePermission` gates on 72 mutating handlers. Remaining for full SEC-M61: schema migration for `user_permissions` table (user_id, permission, granted_at, granted_by), UI for admin to toggle per-user overrides, and `hasPermission()` check that consults both role matrix AND user overrides. Defer as a follow-up — the role matrix is the authoritative path today and covers the common case; per-user overrides can be added incrementally without a schema break.
 ### LOW
 
-- [x] ~~SEC-L2. **Portal phone lookup full-normalized equality** instead of SQL LIKE suffix. `portal.routes.ts:443-464, 539-565`. (P3-AUTH-23)~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-L8. **Node engines tighten `>=22.11.0 <23`** + `engine-strict=true`.~~ — migrated to DONETODOS 2026-04-16.
-- [x] ~~SEC-L18. **Per-tenant failure circuit on cron handlers.** `index.ts:1524-1761`. (REL-029)~~ — migrated to DONETODOS 2026-04-17.
-- [x] ~~SEC-L24. **`/api/v1/info` auth-gate in multi-tenant** (leaks LAN IP — **verified live** Tailscale 100.x). `index.ts:868-878`. (PUB-020 / LIVE-08)~~ — migrated to DONETODOS 2026-04-16.
 ### Uncertain overlaps — verify before starting (human review)
 
 - AZ-019 (SMS inbound-webhook forge) — verified.jsonl rejected as CRITICAL (drivers fail-closed). Latent: `getSmsProvider` not tenant-scoped. Possibly overlap AUD-M22/23/24 in DONETODOS.md.
@@ -1008,3 +708,615 @@ Verified working. Not TODOs.
 
 - [ ] **STOCKTAKE-ANDROID-PARITY-001. Android stocktake missing.**
   Surfaced from `ios/ActionPlan.md §60` / §89. Server has `/api/v1/stocktake` (`stocktake.routes.ts`) and web has `pages/inventory/StocktakePage.tsx`. Android only references stocktake in a dashboard widget placeholder. Full Android parity: sessions list, per-session count UI, barcode-scan loop, variance resolution, adjust on commit. Follows same cursor-based pagination contract the other list surfaces use.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 1: routes security + perf, web pages, DB schema, build/infra)
+
+### Server routes — security/authz (12 findings)
+- [ ] SCAN-001. **[SEC] admin backup settings accepts raw body with no allowlist** — `packages/server/src/routes/admin.routes.ts:503` passes entire `req.body` to `updateBackupSettings`. Fix: allowlist accepted fields (backup_enabled, backup_path, backup_schedule) before write.
+- [ ] SCAN-002. **[SEC] admin /drives/browse has no rate-limit — fs enumeration** — `packages/server/src/routes/admin.routes.ts:275` rapid calls walk filesystem. Fix: `checkWindowRate` IP/session keyed.
+- [ ] SCAN-003. **[SEC] sms PATCH /conversations/:phone/flag|pin|archive no format/ownership check** — `packages/server/src/routes/sms.routes.ts:334` any auth user flags other tenants phones. Fix: E.164 validate + scope to tenants sms_messages.
+- [ ] SCAN-004. **[SEC] sms POST /templates unbounded name/content length** — `packages/server/src/routes/sms.routes.ts:850` no cap → DB bloat. Fix: name ≤200, content ≤1600.
+- [ ] SCAN-005. **[SEC] sms POST /preview-template unchecked template_id + unbounded render output** — `packages/server/src/routes/sms.routes.ts:878` large `vars` → MB response. Fix: validate template_id positive int + cap output bytes.
+- [ ] SCAN-006. **billing rate limiter increments on success** — `packages/server/src/routes/billing.routes.ts:22` `recordWindowFailure` unconditional → legit users throttled after 10 requests. Fix: only increment on abuse/failure.
+- [ ] SCAN-007. **[SEC] voice GET /calls/:id/recording redirects to provider URL** — `packages/server/src/routes/voice.routes.ts:257` exposes provider-signed URL via browser history/referrer. Fix: proxy download server-side + restrict inbound recordings to admin/manager.
+- [ ] SCAN-008. **voice dev callback derived from `getLanIp()` at runtime** — `packages/server/src/routes/voice.routes.ts:119` unreliable behind NAT. Fix: require explicit `WEBHOOK_BASE_URL` env + `req.get(host)` dev fallback.
+- [ ] SCAN-009. **[SEC] blockchyp POST /adjust-tip no role gate + unvalidated transaction_id** — `packages/server/src/routes/blockchyp.routes.ts:526` technician can adjust tips. Fix: gate to admin/manager (match process-payment) + validate transaction_id format.
+- [ ] SCAN-010. **[SEC] super-admin TOTP key uses raw SHA-256 not HKDF** — `packages/server/src/routes/super-admin.routes.ts:107` inconsistent with tenant v3 HKDF pattern. Fix: migrate `deriveKey()` to `hkdfSync` with explicit salt+info.
+- [ ] SCAN-011. **super-admin /security-alerts params not validated** — `packages/server/src/routes/super-admin.routes.ts:1360` `severity` no allowlist, `acknowledged=abc` silently 0. Fix: enum guard + reject non-0/1.
+- [ ] SCAN-012. **auth POST /switch-user bcrypt scan over all users — O(N) + timing channel** — `packages/server/src/routes/auth.routes.ts:1344` sequential `bcrypt.compareSync` loop. Fix: require username alongside PIN, single bcrypt.compare.
+
+### Server routes — perf / N+1 / authz (12 findings)
+- [ ] SCAN-013. **N+1 inventory POST /bulk-action — 2× SELECT+UPDATE per id, no cap** — `packages/server/src/routes/inventory.routes.ts:248-276`. Fix: cap item_ids 500 + single UPDATE WHERE id IN.
+- [ ] SCAN-014. **N+1 customers POST /bulk-tag — SELECT+UPDATE per id (up to 500)** — `packages/server/src/routes/customers.routes.ts:623-644`. Fix: batch WHERE id IN fetch, then `adb.transaction()` batched writes.
+- [ ] SCAN-015. **N+1 customers POST /bulk-sms — SELECT+INSERT+sendSms+UPDATE sequential per row** — `packages/server/src/routes/customers.routes.ts:761-830`. Fix: pre-fetch all rows; loop only does I/O writes.
+- [ ] SCAN-016. **invoices POST /bulk-action mark_paid missing transaction — split payment+invoice writes** — `packages/server/src/routes/invoices.routes.ts:831-938` crash mid-way → orphan payment row. Fix: `adb.transaction()` wrap.
+- [ ] SCAN-017. **customers POST /merge runs ~14 sequential writes with no transaction** — `packages/server/src/routes/customers.routes.ts:483-574` partial state on fail. Fix: collect `TxQuery[]` + `adb.transaction()`.
+- [ ] SCAN-018. **inventory GET / correlated subquery N+1 (supplier_catalog × 2 per row)** — `packages/server/src/routes/inventory.routes.ts:94-104` pagesize=250 → 500 subqueries. Fix: LEFT JOIN pre-aggregated supplier_catalog.
+- [ ] SCAN-019. **tickets GET / latest-SMS subquery — no index on sms_messages(from_number|to_number)** — `packages/server/src/routes/tickets.routes.ts:711-720`. Fix: `CREATE INDEX idx_sms_messages_from_number ON sms_messages(from_number)` + same for to_number.
+- [ ] SCAN-020. **reports GET /dashboard uses DATE(created_at) — defeats index** — `packages/server/src/routes/reports.routes.ts:109-121`. Fix: range `>= ? AND < ?` to permit index seek.
+- [ ] SCAN-021. **[SEC] reports GET /dashboard missing `requireAdminOrManager` — any user reads KPIs/revenue** — `packages/server/src/routes/reports.routes.ts:50-65`. Fix: gate at top of handler.
+- [ ] SCAN-022. **N+1 pos POST /transaction item loop — SELECT inventory+tax+kit per item (×500)** — `packages/server/src/routes/pos.routes.ts:369-461`. Fix: batch-fetch via WHERE id IN maps.
+- [ ] SCAN-023. **N+1 invoices POST / line-item tax_class lookup — per-row SELECT tax_classes** — `packages/server/src/routes/invoices.routes.ts:308-322`. Fix: collect distinct ids + single WHERE IN batch.
+- [ ] SCAN-024. **[SEC] reports GET /employees missing `requireAdminOrManager` — discloses hours_worked + commission_earned** — `packages/server/src/routes/reports.routes.ts:779-828`. Fix: add role gate to match /sales, /dashboard-kpis.
+
+### Web pages — bugs / types / a11y (12 findings)
+- [ ] SCAN-025. **AutoReorderPage deleteMut missing onError** — `packages/web/src/pages/inventory/AutoReorderPage.tsx:91` silent 403/500. Fix: add `onError` toast.
+- [ ] SCAN-026. **BinLocationsPage deleteMut missing onError** — `packages/web/src/pages/inventory/BinLocationsPage.tsx:101`. Fix: add `onError` toast.
+- [ ] SCAN-027. **SettingsPage import-cancel mutations (cancelMutRd/cancelMutRs/cancelMutMra) missing onError** — `packages/web/src/pages/settings/SettingsPage.tsx:2581`. Fix: add `onError` toasts to each.
+- [ ] SCAN-028. **dead export `getIndexedTabIds`** — `packages/web/src/pages/settings/settingsSearchIndex.ts:121` not imported anywhere. Fix: remove export (or make module-private).
+- [ ] SCAN-029. **InventoryDetailPage `item: any`, `movements: any[]` — shape drift risk** — `packages/web/src/pages/inventory/InventoryDetailPage.tsx:48`. Fix: define `InventoryItem` interface.
+- [ ] SCAN-030. **InvoiceDetailPage payMutation `d: any`** — `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:79`. Fix: `RecordPaymentPayload` interface.
+- [ ] SCAN-031. **TicketDetailPage totals use `(d: any)`/`(p: any)` inside reduce — silent NaN on field rename** — `packages/web/src/pages/tickets/TicketDetailPage.tsx:379`. Fix: type `TicketPart` cost_price+quantity.
+- [ ] SCAN-032. **TicketListPage view-toggle icons (List/Kanban/Calendar) lack `aria-label` + `aria-pressed`** — `packages/web/src/pages/tickets/TicketListPage.tsx:1117`. Fix: add both.
+- [ ] SCAN-033. **InventoryListPage CSV preview `key={i}` causes stale DOM reuse on reorder** — `packages/web/src/pages/inventory/InventoryListPage.tsx:847`. Fix: content-derived key.
+- [ ] SCAN-034. **CustomerListPage CSV preview `key={i}` — same** — `packages/web/src/pages/customers/CustomerListPage.tsx:815`. Fix: content-derived key.
+- [ ] SCAN-035. **TicketListPage calendar cells `key={i}` — wrong animated state on month nav** — `packages/web/src/pages/tickets/TicketListPage.tsx:1301`. Fix: date-ISO key.
+- [ ] SCAN-036. **CustomerDetailPage comm list fallback `key={msg.id || i}` corrupts reconciliation on insert** — `packages/web/src/pages/customers/CustomerDetailPage.tsx:1654`. Fix: require stable id or composite key.
+
+### DB / migrations / seed (11 findings)
+- [ ] SCAN-037. **membership_tiers.monthly_price REAL — post SEC-H34, storing money in float** — `packages/server/src/db/migrations/068_membership_system.sql:6`. Fix: new migration renames to `monthly_price_cents INTEGER`.
+- [ ] SCAN-038. **membership_tiers.slug missing UNIQUE** — `packages/server/src/db/migrations/068_membership_system.sql:5` — duplicate slugs possible via name collision. Fix: `CREATE UNIQUE INDEX idx_membership_tiers_slug ON membership_tiers(slug)`.
+- [ ] SCAN-039. **subscription_payments.amount REAL (money in float)** — `packages/server/src/db/migrations/068_membership_system.sql:46`. Fix: `amount_cents INTEGER`.
+- [ ] SCAN-040. **cash_drawer_shifts.opened_by_user_id/closed_by_user_id lack FK + no cleanup in 098 trigger** — `packages/server/src/db/migrations/093_pos_enrichment.sql:28`. Fix: add `REFERENCES users(id)` + add NULL-on-delete trigger path.
+- [ ] SCAN-041. **installment_plans + installment_schedule declared with zero FK REFERENCES** — `packages/server/src/db/migrations/095_billing_enrichment.sql:45-72` + not covered by 097 cleanup trigger. Fix: rebuild with FKs + extend `trg_customer_del_enrichment_cleanup`/`trg_invoice_del_enrichment_cleanup`.
+- [ ] SCAN-042. **store_credits missing ON DELETE CASCADE on customer_id + absent from 097 trigger** — `packages/server/src/db/migrations/026_refunds_credits.sql:18-23` — GDPR erase leaves orphan balance. Fix: add `DELETE FROM store_credits WHERE customer_id = OLD.id` to trigger.
+- [ ] SCAN-043. **rma_items.inventory_item_id no ON DELETE policy + absent from 097 inventory trigger** — `packages/server/src/db/migrations/027_rma.sql:19`. Fix: add cleanup step to `trg_inventory_del_enrichment_cleanup`.
+- [ ] SCAN-044. **loaner_history.loaner_device_id no ON DELETE policy + no 097/098 cascade** — `packages/server/src/db/migrations/001_initial.sql:501`. Fix: new trigger on loaner_devices hard-delete.
+- [ ] SCAN-045. **customers.driving_license / id_number / id_type / license_image — orphan plaintext gov-ID PII columns, never read/written by any route** — `packages/server/src/db/migrations/001_initial.sql:97-100`. Fix: drop columns in new migration (after confirming import flows dont use them) or encrypt-at-rest.
+- [ ] SCAN-046. **workstations DDL lives in `seedDatabase()` not a numbered migration — test/clone fixtures miss the table** — `packages/server/src/db/seed.ts:68-78`; `pos.routes.ts:2235` throws on missing table. Fix: move `CREATE TABLE workstations` to new `099_workstations.sql`, keep only `INSERT OR IGNORE` in seed.
+- [ ] SCAN-047. **payment_links.invoice_id + customer_id declared without REFERENCES** — `packages/server/src/db/migrations/095_billing_enrichment.sql:24` — FK enforced only in app code. Fix: rebuild with explicit `REFERENCES`.
+
+### Build / infra / middleware (11 findings)
+- [ ] SCAN-048. **@types/cheerio ghost dep — cheerio ^1.2.0 ships own types** — `packages/server/package.json:46`. Fix: remove `@types/cheerio` from devDependencies.
+- [ ] SCAN-049. **[SEC] CSP connect-src includes bare `ws:` and `wss:` (any host)** — `packages/server/src/index.ts:906`. Fix: restrict to tenant base domain + wildcard subdomain.
+- [ ] SCAN-050. **HSTS disabled unless NODE_ENV === 'production' (bare NODE_ENV=staging silently drops HSTS)** — `packages/server/src/index.ts:874`. Fix: treat any non-dev/test env as prod, or assert NODE_ENV at startup.
+- [ ] SCAN-051. **Electron management sourceMap:true ships .js.map into production bundle** — `packages/management/tsconfig.node.json:15` leaks TS paths. Fix: `sourceMap: false` for prod build (or exclude `.map` from packager glob).
+- [ ] SCAN-052. **[SEC] `/api/v1/catalog/bulk-import` registers 10MB JSON parser before auth middleware — unauth caller forces 10MB alloc at parse** — `packages/server/src/index.ts:1166-1168`. Fix: `app.post('/api/v1/catalog/bulk-import', authMiddleware, express.json({limit:10mb}))`.
+- [ ] SCAN-053. **[SEC] global rate-limiter skips entire `/auth/*` subtree — sub-routes without own limit unprotected** — `packages/server/src/index.ts:1125-1128`. Fix: narrow bypass to specific public endpoints (e.g. /auth/login) + audit each /auth/* for its own limit.
+- [ ] SCAN-054. **[SEC] NO_ORIGIN_ALLOWED_PATHS includes `/api/v1/auth/` prefix — verify-totp + change-password accept no-origin POSTs** — `packages/server/src/index.ts:971-983`. Fix: remove the blanket `/auth/` prefix, keep only actual public endpoints.
+- [ ] SCAN-055. **tsconfig.base.json missing strict flags — noUnusedLocals, noUnusedParameters, noImplicitReturns, noUncheckedIndexedAccess** — all packages inherit lax base. Fix: enable in `tsconfig.base.json` compilerOptions (expect lint fixups).
+- [ ] SCAN-056. **No global SameSite/`__Host-` cookie enforcement — relies on per-handler choice + content-type CSRF guard** — `packages/server/src/index.ts:1111` cookie-parser default. Fix: enforce SameSite=Strict + Secure for session cookies, or add guard middleware.
+- [ ] SCAN-057. **[STALE-DEP report-only] react-router-dom ^7.1.0 — 7.4+ includes nested-route path-traversal fix** — `packages/web/package.json:29`.
+- [ ] SCAN-058. **[STALE-DEP report-only] dompurify ^3.3.4 — 3.4.0+ closes sanitizer bypass edge cases** — `packages/web/package.json:22`.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 2: leads/portal/refunds/estimates + campaigns/membership/gift/auto + web shared + server services + web remaining pages)
+
+### Server routes — leads/portal/refunds/estimates/loaners/tradeIns/dunning (12 findings)
+- [ ] SCAN-059. **[SEC] leads GET /pipeline missing tenant filter (`WHERE is_deleted=0` only)** — `packages/server/src/routes/leads.routes.ts:106`. Fix: verify per-request DB isolation covers this; add explicit `tenant_id = ?` if shared DB.
+- [ ] SCAN-060. **leads GET /pipeline + GET / no rate-limit on fan-out** — `packages/server/src/routes/leads.routes.ts:106,165`. Fix: per-user/IP limit.
+- [ ] SCAN-061. **tradeIns GET /:id + PATCH /:id + DELETE /:id pass raw string id to SQL** — `packages/server/src/routes/tradeIns.routes.ts:73,139,317`. Fix: `parseInt + Number.isInteger` guard at handler top.
+- [ ] SCAN-062. **[SEC] loaners POST / / PUT /:id / DELETE /:id no role/permission gate — cashier can add/delete loaner hardware** — `packages/server/src/routes/loaners.routes.ts:67,80,162`. Fix: `requirePermission('inventory.adjust')`.
+- [ ] SCAN-063. **loaners GET /:id missing integer validation on params.id** — `packages/server/src/routes/loaners.routes.ts:52`. Fix: parseInt + positive-int guard.
+- [ ] SCAN-064. **estimates GET /:id + PUT /:id missing integer validation on id** — `packages/server/src/routes/estimates.routes.ts:481,519`. Fix: Number.isInteger + >0 guard.
+- [ ] SCAN-065. **estimates POST /bulk-convert element-level integer validation missing** — `packages/server/src/routes/estimates.routes.ts:308,370`. Fix: coerce+validate each id before query.
+- [ ] SCAN-066. **[SEC] dunning GET /sequences unprotected — exposes collection strategy to any auth user** — `packages/server/src/routes/dunning.routes.ts:49`. Fix: `requireAdmin`.
+- [ ] SCAN-067. **[SEC] dunning GET /invoices/aging unprotected — cashier reads full AR aging** — `packages/server/src/routes/dunning.routes.ts:153`. Fix: `requirePermission('invoices.view')` or `requireAdmin`.
+- [ ] SCAN-068. **[SEC] refunds GET /credits/:customerId unprotected — any user reads any customer's balance + 50-row history** — `packages/server/src/routes/refunds.routes.ts:354`. Fix: add permission guard.
+
+### Server routes — campaigns/paymentLinks/giftCards/membership/automations/deposits/rma/snippets (12 findings)
+- [ ] SCAN-069. **[SEC] snippets PUT /:id no auth check — any user overwrites any snippet** — `packages/server/src/routes/snippets.routes.ts:70`. Fix: role check + enforce `created_by === req.user.id` for non-admin.
+- [ ] SCAN-070. **[SEC] snippets DELETE /:id no permission guard** — `packages/server/src/routes/snippets.routes.ts:113`. Fix: role check.
+- [ ] SCAN-071. **snippets PUT /:id missing typeof string guard on shortcode/title/content — TypeError on non-string** — `packages/server/src/routes/snippets.routes.ts:81`. Fix: typeof guards matching POST handler.
+- [ ] SCAN-072. **snippets PUT /:id empty-string shortcode bypasses uniqueness check** — `packages/server/src/routes/snippets.routes.ts:86`. Fix: reject empty-string shortcode with 400.
+- [ ] SCAN-073. **automations POST / trigger_type/action_type unconstrained strings** — `packages/server/src/routes/automations.routes.ts:67`. Fix: enum allowlist.
+- [ ] SCAN-074. **automations PUT /:id trigger_config/action_config no size cap** — `packages/server/src/routes/automations.routes.ts:112`. Fix: `validateJsonPayload(..., 16_384)` matching campaigns.
+- [ ] SCAN-075. **membership PUT /tiers/:id no validation on name/monthly_price/discount_pct/sort_order/is_active** — `packages/server/src/routes/membership.routes.ts:85`. Fix: length + `validatePositiveAmount` + integer checks.
+- [ ] SCAN-076. **[SEC] membership POST /subscribe records status='success' without processor confirmation** — `packages/server/src/routes/membership.routes.ts:195` zero-payment subscription possible. Fix: require valid provider token + record payment only after successful charge response.
+- [ ] SCAN-077. **rma GET /:id missing integer validation on params.id** — `packages/server/src/routes/rma.routes.ts:96`. Fix: parseInt + isFinite.
+- [ ] SCAN-078. **campaigns POST /:id/run-now no idempotency — double-tap double-dispatches mass SMS/email** — `packages/server/src/routes/campaigns.routes.ts:639`. Fix: `last_run_at` cooldown (60s) or idempotency key.
+- [ ] SCAN-079. **[SEC] deposits GET / + GET /:id no permission guard — cashier lists all deposits + amounts** — `packages/server/src/routes/deposits.routes.ts:56`. Fix: `requirePermission('deposits.view')` or manager-or-admin.
+- [ ] SCAN-080. **[SEC] giftCards GET /:id no permission guard — enumerate code + balance + tx history** — `packages/server/src/routes/giftCards.routes.ts:409`. Fix: `requirePermission('gift_cards.view')`.
+
+### Web components / stores / hooks / utils (12 findings)
+- [ ] SCAN-081. **[SEC] UpgradeModal open redirect from `res.data?.data?.url` unvalidated** — `packages/web/src/components/shared/UpgradeModal.tsx:50`. Fix: same-origin or Stripe-domain allowlist before `window.location.href`.
+- [ ] SCAN-082. **UpgradeModal type-unsafe error cast hides shape** — `packages/web/src/components/shared/UpgradeModal.tsx:63`. Fix: `extractApiError(e)` from utils/apiError.ts.
+- [ ] SCAN-083. **UpgradeModal missing role=dialog / aria-modal / aria-labelledby** — `packages/web/src/components/shared/UpgradeModal.tsx:62`. Fix: add dialog ARIA.
+- [ ] SCAN-084. **PinModal missing role=dialog + aria-modal + aria-labelledby** — `packages/web/src/components/shared/PinModal.tsx:76`. Fix: add dialog ARIA.
+- [ ] SCAN-085. **PrintPreviewModal missing role=dialog + aria-modal + focus trap** — `packages/web/src/components/shared/PrintPreviewModal.tsx:69`. Fix: dialog ARIA + ConfirmDialog focus-trap pattern.
+- [ ] SCAN-086. **QuickSmsModal labels not linked to inputs (missing htmlFor/id)** — `packages/web/src/components/shared/QuickSmsModal.tsx:98`. Fix: add matching id/htmlFor.
+- [ ] SCAN-087. **QuickSmsModal missing role=dialog + aria-modal + aria-labelledby** — `packages/web/src/components/shared/QuickSmsModal.tsx:76`. Fix: dialog ARIA.
+- [ ] SCAN-088. **AppShell `as any` on configData** — `packages/web/src/components/layout/AppShell.tsx:52,56`. Fix: type useQuery with config response shape.
+- [ ] SCAN-089. **[SEC] authStore writes JWT access token to localStorage (XSS pivot)** — `packages/web/src/stores/authStore.ts:54`. Fix: in-memory only; rely on httpOnly refresh cookie for persistence.
+- [ ] SCAN-090. **InstallmentPlanWizard acceptance text input lacks id/aria-label/htmlFor** — `packages/web/src/components/billing/InstallmentPlanWizard.tsx:170`. Fix: add id + label.
+- [ ] SCAN-091. **usePosKeyboardShortcuts re-adds keydown listener on every render (handlers unstable ref)** — `packages/web/src/hooks/usePosKeyboardShortcuts.ts:64`. Fix: accept individual handler props or document memo requirement.
+- [ ] SCAN-092. **Duplicate formatCurrency util — portal version vs utils/format** — `packages/web/src/utils/formatCurrency.ts:12`. Fix: consolidate to one implementation.
+
+### Server services (8 findings)
+- [ ] SCAN-093. **[SEC] repairShoprImport SSRF via user-controlled `subdomain` interpolated into URL** — `packages/server/src/services/repairShoprImport.ts:102-104`. Fix: regex validate `^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$` + `assertPublicUrl`.
+- [ ] SCAN-094. **myRepairApp import unbounded response body buffering on bulk endpoints** — `packages/server/src/services/myRepairAppImport.ts:164-176,183-218,225-236`. Fix: Content-Length pre-check + 50MB cap matching catalogScraper.ts:403-421.
+- [ ] SCAN-095. **repairShoprImport fetchAllPages unbounded json() buffering** — `packages/server/src/services/repairShoprImport.ts:159-185`. Fix: cap + stream-read pattern.
+- [ ] SCAN-096. **[SEC] myRepairApp MraApiClient accepts optional `baseUrl` override — SSRF** — `packages/server/src/services/myRepairAppImport.ts:1249-1263`. Fix: hardcode domain or `assertPublicUrl`.
+- [ ] SCAN-097. **backup.ts PowerShell error log includes full resolved dir path** — `packages/server/src/services/backup.ts:505-509,525`. Fix: redact to `path.basename(dir)` in error context.
+- [ ] SCAN-098. **repairShoprImport uses console.log bypassing structured logger** — `packages/server/src/services/repairShoprImport.ts:1039,1085`. Fix: `log.info()` via createLogger.
+- [ ] SCAN-099. **repairDeskImport fetchAllPages unbounded json() buffering** — `packages/server/src/services/repairDeskImport.ts:388-399`. Fix: Content-Length cap + stream pattern.
+- [ ] SCAN-100. **[SEC] email.ts smtp_from fallback accepted without EMAIL_FROM_RE validation — CRLF header injection possible** — `packages/server/src/services/email.ts:60-68`. Fix: apply same regex guard before using smtp_from.
+
+### Web remaining pages — communications/marketing/billing/super-admin/dashboard/leads/portal (12 findings)
+- [ ] SCAN-101. **CommunicationPage markReadMutation missing onError** — `packages/web/src/pages/communications/CommunicationPage.tsx:971`. Fix: onError toast.
+- [ ] SCAN-102. **CampaignsPage updateStatus missing onError** — `packages/web/src/pages/marketing/CampaignsPage.tsx:122`. Fix: onError toast.
+- [ ] SCAN-103. **DunningPage toggleMutation missing onError** — `packages/web/src/pages/billing/DunningPage.tsx:84`. Fix: onError toast.
+- [ ] SCAN-104. **[SEC] super-admin TenantsListPage writes SA JWT to localStorage** — `packages/web/src/pages/super-admin/TenantsListPage.tsx:67`. Fix: in-memory or sessionStorage.
+- [ ] SCAN-105. **CommunicationPage customerTickets typed any[]** — `packages/web/src/pages/communications/CommunicationPage.tsx:1006`. Fix: `TicketSummary` interface.
+- [ ] SCAN-106. **DashboardPage MissingPartsCard queueSummary prop typed any** — `packages/web/src/pages/dashboard/DashboardPage.tsx:189`. Fix: `QueueSummary` interface.
+- [ ] SCAN-107. **CommunicationPage outbound sms payload typed any** — `packages/web/src/pages/communications/CommunicationPage.tsx:1172`. Fix: explicit `{to,message,send_at?}` type.
+- [ ] SCAN-108. **LeadListPage convertMut onError uses console.error (prod log leak)** — `packages/web/src/pages/leads/LeadListPage.tsx:291`. Fix: remove console.error, keep toast.
+- [ ] SCAN-109. **StatusTimeline li key uses `${event.at}-${index}` — unstable on reorder** — `packages/web/src/pages/portal/components/StatusTimeline.tsx:78`. Fix: derive from stable id/hash.
+- [ ] SCAN-110. **LeadDetailPage activity-feed key includes array idx** — `packages/web/src/pages/leads/LeadDetailPage.tsx:565`. Fix: `${item.type}-${item.id}`.
+- [ ] SCAN-111. **DunningPage mutationFn parses steps JSON — unformatted error to toast** — `packages/web/src/pages/billing/DunningPage.tsx:67`. Fix: validate JSON before mutate in dedicated validator.
+- [ ] SCAN-112. **CommunicationPage createMut + linkExisting missing onError** — `packages/web/src/pages/communications/CommunicationPage.tsx:682,697`. Fix: onError toasts.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 3: remaining routes + Electron management + public pages + tests)
+
+### Server routes — crm/bench/deviceTemplates/employees/expenses/customFields (12 findings)
+- [ ] SCAN-113. **[SEC] crm GET /crm/reviews no role gate — technician reads all customer reviews + PII** — `packages/server/src/routes/crm.routes.ts:826`. Fix: `requireManagerOrAdmin`.
+- [ ] SCAN-114. **[SEC] crm PATCH /crm/reviews/:id no role gate — any user replies + toggles public_posted** — `packages/server/src/routes/crm.routes.ts:884`. Fix: `requireManagerOrAdmin`.
+- [ ] SCAN-115. **crm refreshSegmentMembership DELETE + N INSERTs not in transaction — empty segment on crash** — `packages/server/src/routes/crm.routes.ts:784`. Fix: `adb.transaction()` wrap DELETE + INSERTs + count UPDATE.
+- [ ] SCAN-116. **[SEC] bench GET /timer/by-ticket/:ticketId no tenant/ownership check — labor rates + notes leak** — `packages/server/src/routes/bench.routes.ts:534`. Fix: join tickets + enforce tenant_id or role.
+- [ ] SCAN-117. **[SEC] bench GET /defects/stats + /defects/by-item/:id no role gate** — `packages/server/src/routes/bench.routes.ts:1057`. Fix: manager/admin gate.
+- [ ] SCAN-118. **[SEC] deviceTemplates POST /:id/apply-to-ticket/:ticketId no role gate (peers are admin-only)** — `packages/server/src/routes/deviceTemplates.routes.ts:382`. Fix: admin check matching sibling handlers.
+- [ ] SCAN-119. **N+1 enrichTemplate — adb.get per part in serial loop** — `packages/server/src/routes/deviceTemplates.routes.ts:108`. Fix: batch SELECT WHERE id IN.
+- [ ] SCAN-120. **[SEC] employees GET / no role gate — any user enumerates username/email/role/permissions of all employees** — `packages/server/src/routes/employees.routes.ts:171`. Fix: manager/admin gate or minimal public shape.
+- [ ] SCAN-121. **[SEC] employees GET /performance/all no role gate — revenue + repair times per employee leak** — `packages/server/src/routes/employees.routes.ts:191`. Fix: admin/manager gate.
+- [ ] SCAN-122. **expenses PUT /:id no ownership/role check (DELETE has it)** — `packages/server/src/routes/expenses.routes.ts:111`. Fix: `admin OR existing.user_id === req.user.id`.
+- [ ] SCAN-123. **[SEC] crm GET /customers/:id/subscriptions uses SELECT * exposing card_token** — `packages/server/src/routes/crm.routes.ts:456`. Fix: explicit column list, omit card_token.
+- [ ] SCAN-124. **customFields GET /values/:entityType/:entityId missing VALID_ENTITY_TYPES whitelist on read (PUT has it)** — `packages/server/src/routes/customFields.routes.ts:120`. Fix: add allowlist guard.
+
+### Server routes — import/inbox/inventoryEnrich/management/notifications/posEnrich (12 findings)
+- [ ] SCAN-125. **[SEC] import /repairshopr SSRF via unvalidated subdomain** — `packages/server/src/routes/import.routes.ts:593`. Fix: regex `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` before string interp.
+- [ ] SCAN-126. **import /repairdesk/nuclear role check ordered after confirm parse — leaks error sequence** — `packages/server/src/routes/import.routes.ts:473`. Fix: move role check to handler top.
+- [ ] SCAN-127. **import rate-limit TOCTOU — two concurrent starts pass check simultaneously** — `packages/server/src/routes/import.routes.ts:248`. Fix: record rate-limit row inside same tx as lock claim.
+- [ ] SCAN-128. **[SEC] inbox PATCH /conversation/:phone/assign no ownership/role check — any user reassigns any conversation** — `packages/server/src/routes/inbox.routes.ts:221`. Fix: admin/manager or current-assignee check.
+- [ ] SCAN-129. **[SEC] inbox /retry-queue/:id/retry + /cancel no role check — cashier retries/cancels any SMS** — `packages/server/src/routes/inbox.routes.ts:647`. Fix: `requireAdmin` or manager-or-admin.
+- [ ] SCAN-130. **[SEC] notifications POST /send-receipt IDOR — any auth user mails any invoice to any email** — `packages/server/src/routes/notifications.routes.ts:181`. Fix: ownership/tenant scope + email format validation.
+- [ ] SCAN-131. **notifications PUT /focus-policies no JSON size cap — multi-MB blob stored** — `packages/server/src/routes/notifications.routes.ts:148`. Fix: `Buffer.byteLength(json) > 32KB` guard matching preferences.
+- [ ] SCAN-132. **[SEC] inventoryEnrich POST /assign-bin/:id IDOR + no role gate** — `packages/server/src/routes/inventoryEnrich.routes.ts:305`. Fix: verify inventory_items.id exists + manager/admin role.
+- [ ] SCAN-133. **inventoryEnrich PUT /serials/:serialId — no `changes` check, SELECT then res.json undefined on missing id** — `packages/server/src/routes/inventoryEnrich.routes.ts:569`. Fix: check update changes > 0 or 404; drop redundant SELECT.
+- [ ] SCAN-134. **[SEC] posEnrich manager PIN verify — bcrypt.compareSync in .find() loop — timing oracle on manager count** — `packages/server/src/routes/posEnrich.routes.ts:597`. Fix: constant-time accumulation, no short-circuit.
+- [ ] SCAN-135. **import GET /history in-memory JSON parse on unbounded error_log column** — `packages/server/src/routes/import.routes.ts:439`. Fix: SQL substr cap or limit error_log entries at write time.
+- [ ] SCAN-136. **management POST /reenable-route accepts arbitrary-length string route** — `packages/server/src/routes/management.routes.ts:449`. Fix: max-200 + pattern `^/[a-zA-Z0-9/_:-]+$`.
+
+### Server routes — settings/roles/team/teamChat/stocktake/tracking/tv/settingsExport (12 findings)
+- [ ] SCAN-137. **[SEC] settings PUT /store writes tcx_password + smtp_pass cleartext to store_config (bypasses ENCRYPTED_CONFIG_KEYS of PUT /config)** — `packages/server/src/routes/settings.routes.ts:479`. Fix: encrypt matching keys + emit audit log for sensitive keys.
+- [ ] SCAN-138. **settings PUT /statuses/:id missing integer validation on params.id** — `packages/server/src/routes/settings.routes.ts:552`. Fix: `parseId(...)` guard.
+- [ ] SCAN-139. **settings DELETE /statuses/:id missing integer validation on id** — `packages/server/src/routes/settings.routes.ts:588`. Fix: same parseId guard.
+- [ ] SCAN-140. **[SEC] settingsExport GET /history missing adminOnly — any user reads settings audit log** — `packages/server/src/routes/settingsExport.routes.ts:401`. Fix: add `adminOnly` middleware.
+- [ ] SCAN-141. **[SEC] roles GET /:id/permissions no requireAdmin — any user reads role permission matrix** — `packages/server/src/routes/roles.routes.ts:220`. Fix: `requireAdmin(req)`.
+- [ ] SCAN-142. **[SEC] roles PUT /users/:userId/role writes user_custom_roles but never syncs users.role — authMiddleware reads stale role** — `packages/server/src/routes/roles.routes.ts:282`. Fix: when custom role maps to built-in, sync `users.role`.
+- [ ] SCAN-143. **[SEC] team GET /shifts accepts `user_id` filter with no ownership guard — enumerate any employees schedule** — `packages/server/src/routes/team.routes.ts:83`. Fix: non-admin/manager restricted to own user_id.
+- [ ] SCAN-144. **team GET /payroll/export.csv gross wrong (no rate multiplication) + username not CSV-sanitized** — `packages/server/src/routes/team.routes.ts:808`. Fix: wrap username in sanitize(); fix gross formula or document commission-only.
+- [ ] SCAN-145. **[SEC] teamChat GET + POST /channels/:id/messages no membership check — any user reads/posts private direct channels** — `packages/server/src/routes/teamChat.routes.ts:167`. Fix: membership lookup or participant-match for direct channels.
+- [ ] SCAN-146. **[SEC] stocktake POST / no role gate — cashier opens session + locks expected_qty snapshot** — `packages/server/src/routes/stocktake.routes.ts:87`. Fix: `requireAdminOrManager`.
+- [ ] SCAN-147. **tracking GET /:orderId `recordWindowFailure` unconditional — legit customers throttled on valid reads** — `packages/server/src/routes/tracking.routes.ts:181`. Fix: only on failed token match.
+- [ ] SCAN-148. **[SEC] tv GET /board exposes customer_last_name on public TV feed + no rate-limit on unauth path** — `packages/server/src/routes/tv.routes.ts:186`. Fix: strip last_name in shapeTicket output; add per-IP rate-limit.
+
+### Electron management package (10 findings)
+- [ ] SCAN-149. **[SEC-P0] service:* IPC handlers (get-status/start/stop/restart/emergency-stop/set-auto-start/disable/kill-all) all skip assertRendererOrigin** — `packages/management/src/main/ipc/service-control.ts:596`. Fix: add `assertRendererOrigin(event)` as first line of each.
+- [ ] SCAN-150. **[SEC] system:open-log-file missing assertRendererOrigin — opens shell/cmd.exe** — `packages/management/src/main/ipc/system-info.ts:237`. Fix: add guard + accept event arg.
+- [ ] SCAN-151. **service:set-auto-start no runtime typeof check on boolean arg** — `packages/management/src/main/ipc/service-control.ts:697`. Fix: `typeof enabled !== 'boolean'` reject.
+- [ ] SCAN-152. **[SEC] admin:list-logs returns absolute filesystem paths to renderer — install-dir leak** — `packages/management/src/main/ipc/management-api.ts:1855`. Fix: omit path or replace with `exists:boolean`.
+- [ ] SCAN-153. **[SEC] super-admin:2fa-verify returns raw JWT token in IPC response — renderer exfil risk** — `packages/management/src/main/ipc/management-api.ts:944`. Fix: strip token field before return.
+- [ ] SCAN-154. **management:perform-update inherits COMSPEC env in spawned cmd.exe — resolution hijack risk** — `packages/management/src/main/ipc/management-api.ts:1478`. Fix: strip COMSPEC; use explicit cmd.exe path from SystemRoot.
+- [ ] SCAN-155. **[SEC] SchemaBrowseDrive accepts any 4096-char Windows-root path — enumerate System32, user dirs** — `packages/management/src/main/ipc/management-api.ts:85`. Fix: restrict to data-dir prefix + block known sensitive paths.
+- [ ] SCAN-156. **tryPowershellDiskSpace uses execSync(string) — shell-interpreted; SystemRoot hijack risk** — `packages/management/src/main/ipc/system-info.ts:158`. Fix: spawnSync with `shell:false` + arg array.
+- [ ] SCAN-157. **renderer main.tsx uses innerHTML for fallback error page + CSP style-src 'unsafe-inline'** — `packages/management/src/renderer/src/main.tsx:78`. Fix: DOM construction (createElement+textContent) + drop style-src unsafe-inline.
+- [ ] SCAN-158. **[SEC] Electron pinned 39.8.7 — no longer in support window (Electron supports newest 3 majors)** — `packages/management/package.json:37`. Fix: bump to supported stable + re-run flip-fuses afterPack.
+
+### Web public pages + WS + teamChat + tests (12 findings)
+- [ ] SCAN-159. **LandingPage nav missing aria-label + hamburger missing aria-label/aria-expanded** — `packages/web/src/pages/landing/LandingPage.tsx:243,259`. Fix: add aria attributes.
+- [ ] SCAN-160. **LandingPage no title/meta description/OG tags — crawlers see empty head** — `packages/web/src/pages/landing/LandingPage.tsx:1`. Fix: react-helmet-async in page.
+- [ ] SCAN-161. **SignupPage no title/meta description** — `packages/web/src/pages/signup/SignupPage.tsx:258`. Fix: react-helmet-async.
+- [ ] SCAN-162. **teamChat POST /channels/:id/messages no per-user rate-limit — message flood DoS** — `packages/server/src/routes/teamChat.routes.ts:192`. Fix: `consumeWindowRate` 60/min/user, 429 on breach.
+- [ ] SCAN-163. **PrintPage diagnostic note stripped with `replace(/<[^>]*>/g,'')` — malformed `<img src=x onerror=...>` slips** — `packages/web/src/pages/print/PrintPage.tsx:620`. Fix: replace with `sanitizePrintText()` already defined line 52.
+- [ ] SCAN-164. **EstimateDetailPage versions array typed any[]** — `packages/web/src/pages/estimates/EstimateDetailPage.tsx:44,377`. Fix: `VersionRow` interface.
+- [ ] SCAN-165. **CatalogPage query result + job list cast to any[]** — `packages/web/src/pages/catalog/CatalogPage.tsx:75-86,383`. Fix: `CatalogItem` + `SyncJob` interfaces.
+- [ ] SCAN-166. **PhotoCapturePage catch(e:any) — use unknown** — `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:75`. Fix: `catch(e:unknown)` + AxiosError narrow.
+- [ ] SCAN-167. **LandingPage bare `<button>` elements missing `type="button"` — latent submit risk** — `packages/web/src/pages/landing/LandingPage.tsx:254,257,263,266,287,349,446`. Fix: add `type="button"`.
+- [ ] SCAN-168. **teamChat GET /channels no tenant_id column on channels — channel scoping assumed not enforced** — `packages/server/src/routes/teamChat.routes.ts:77`. Fix: add tenant_id column + `WHERE tenant_id=?` or assert isolated-DB model.
+- [ ] SCAN-169. **TeamChatPage polls `?limit=200` every 5s regardless of activity + drops history on busy channels** — `packages/web/src/pages/team/TeamChatPage.tsx:68`. Fix: use `?after=<lastId>` incremental polling.
+- [ ] SCAN-170. **SubscriptionsListPage useQuery missing onError — generic "Failed to load"** — `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:98`. Fix: onError toast with message.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 4: shared utils + middleware + WebSocket + deep web pos/auth + tests/docs)
+
+### Server utils (12 findings)
+- [ ] SCAN-171. **[SEC] csrf safeEquals leaks token length — early-return on `bufA.length !== bufB.length`** — `packages/server/src/utils/csrf.ts:48-51`. Fix: pad both buffers to fixed 64 bytes before `timingSafeEqual`.
+- [ ] SCAN-172. **logger PII masking gated on NODE_ENV==='production' — staging/unset env leaks** — `packages/server/src/utils/logger.ts:88-91`. Fix: default-on masking gated on `nodeEnv !== 'development'`.
+- [ ] SCAN-173. **logger redactMetaValue recurses only 1 level deep — nested `{error:{details:{to:...}}}` slips** — `packages/server/src/utils/logger.ts:59-68`. Fix: recurse with max-depth cap.
+- [ ] SCAN-174. **logger formatOutput JSON.stringify not wrapped — BigInt/toJSON throw/circular refs throw out of log calls** — `packages/server/src/utils/logger.ts:101-103`. Fix: try/catch with fallback serializer.
+- [ ] SCAN-175. **[SEC] configEncryption derives key via HMAC-SHA256 not HKDF — weak KDF with no salt/cost** — `packages/server/src/utils/configEncryption.ts:26`. Fix: `crypto.hkdfSync` with info + salt.
+- [ ] SCAN-176. **duplicate MAX_PAGE_SIZE — constants.ts=1000 vs pagination.ts=100 — routes importing wrong one bypass SEC-H120** — `packages/server/src/utils/constants.ts:8`. Fix: single source of truth.
+- [ ] SCAN-177. **validateEnum does NOT lowercase trimmed value (comment claims it does) — case mismatch bugs** — `packages/server/src/utils/validate.ts:192-207`. Fix: `.toLowerCase()` before allowed.includes.
+- [ ] SCAN-178. **rateLimiter check-then-act race — checkLockoutRate + recordLockoutFailure not atomic, concurrent pass both** — `packages/server/src/utils/rateLimiter.ts:88-106,122-132`. Fix: `checkAndRecordLockout` in single tx.
+- [ ] SCAN-179. **masterAudit logSecurityAlert JSON.stringify(details) unguarded — console warning lost on circular/BigInt** — `packages/server/src/utils/masterAudit.ts:137`. Fix: try/catch + safe fallback.
+- [ ] SCAN-180. **[SEC] signedUploads canonicalString pipe-delimits type|slug|file|exp without escaping — `|` in file forges signatures** — `packages/server/src/utils/signedUploads.ts:33-35`. Fix: percent-encode components or length-prefixed form.
+- [ ] SCAN-181. **validateId parseInt truncates "42abc" → 42 silently — regex guard missing** — `packages/server/src/utils/validate.ts:326-331`. Fix: `/^-?\d+$/` guard like validateQuantity.
+- [ ] SCAN-182. **N+1 in calculateActiveRepairTime — db.prepare().get() inside .reverse().find() loop** — `packages/server/src/utils/repair-time.ts:86-91`. Fix: preload ticket_statuses into Map or JOIN in initial query.
+
+### Server middleware (12 findings)
+- [ ] SCAN-183. **[SEC] auth token-type check only rejects defined-non-access — tokens missing `type` claim pass** — `packages/server/src/middleware/auth.ts:82`. Fix: require `payload.type === 'access'` explicitly.
+- [ ] SCAN-184. **[SEC] auth parses permissions JSON without boolean-value validation — corrupt `permissions: {admin.full:true}` grants anything** — `packages/server/src/middleware/auth.ts:174-176,213,232`. Fix: validate value typeof boolean, discard non-boolean.
+- [ ] SCAN-185. **auth `.catch()` swallows all DB errors as 401 — DB outage indistinguishable from auth fail, masks availability** — `packages/server/src/middleware/auth.ts:183`. Fix: 503 on infra errors + log.
+- [ ] SCAN-186. **[SEC] errorHandler spreads AppError `extra` into top-level JSON — sensitive fields leak** — `packages/server/src/middleware/errorHandler.ts:73`. Fix: namespace under `details` key + allowlist.
+- [ ] SCAN-187. **tenantResolver calls next() without req.db on master DB failure — downstream crash** — `packages/server/src/middleware/tenantResolver.ts:428-431`. Fix: 503 JSON response.
+- [ ] SCAN-188. **[SEC] tenantResolver builds asyncDb path directly (joins tenantDataDir + slug+'.db') bypassing getTenantDb traversal checks** — `packages/server/src/middleware/tenantResolver.ts:488`. Fix: use validated resolver path.
+- [ ] SCAN-189. **[SEC] fileUploadValidator route allowedMimes compares client-declared MIME not magic-byte-detected** — `packages/server/src/middleware/fileUploadValidator.ts:251`. Fix: compare against detected type returned by `validateFileMagicBytes`.
+- [ ] SCAN-190. **fileUploadValidator counter race — readFileCounter + adjustFileCounter read-then-write not atomic; concurrent uploads under-count quota** — `packages/server/src/middleware/fileUploadValidator.ts:111-136,158`. Fix: per-tenant mutex or exclusive file lock.
+- [ ] SCAN-191. **crashResiliency uses module-level `currentRequestRoute` — interleaved requests misattribute crash routes** — `packages/server/src/middleware/crashResiliency.ts:17,34`. Fix: AsyncLocalStorage or res.locals.
+- [ ] SCAN-192. **requestLogger SENSITIVE_HEADER_NAMES declared + `void` suppressed — never applied to log meta** — `packages/server/src/middleware/requestLogger.ts:141-142`. Fix: apply redaction or remove dead set.
+- [ ] SCAN-193. **tenantResolver dev-mode DEV_TENANT_SLUG not regex-validated before query** — `packages/server/src/middleware/tenantResolver.ts:325`. Fix: regex guard matching normal slug rules.
+- [ ] SCAN-194. **[SEC] stepUpTotp audit log IP from req.ip (XFF-spoofable) — audit trails unreliable** — `packages/server/src/middleware/stepUpTotp.ts:154,289`. Fix: req.socket.remoteAddress or validate XFF against trusted proxy allowlist.
+
+### Server WebSocket + startup (7 findings)
+- [ ] SCAN-195. **[SEC] WS TOCTOU — client registered in `clients` map before async isTenantOriginAllowed() resolves** — `packages/server/src/ws/server.ts:450-465,467-473`. Fix: await origin check before send/register.
+- [ ] SCAN-196. **WS heartbeat terminate path never decrements wsConnsByIp/wsConnsByTenant — counter bloat blocks reconnects** — `packages/server/src/ws/server.ts:582-607`. Fix: explicit decrement or shared close-cleanup helper.
+- [ ] SCAN-197. **WS broadcast() no per-event throttle — high-frequency event saturates event loop** — `packages/server/src/ws/server.ts:634-668`. Fix: per-event-type throttle/debounce or frames-per-second cap.
+- [ ] SCAN-198. **shutdown() server.close() doesn't terminate open WS — 10s forced exit(1) looks like crash** — `packages/server/src/index.ts:3429`. Fix: iterate allClients + ws.terminate() before server.close().
+- [ ] SCAN-199. **[SEC] no per-IP new-connection-rate limit on WS pre-auth — rapid connect/close storm** — `packages/server/src/ws/server.ts:98-99`. Fix: 10/10s per IP.
+- [ ] SCAN-200. **WS close-handler re-reads req.socket.remoteAddress — may differ from connect-time key under reuse** — `packages/server/src/ws/server.ts:272-302,545`. Fix: store ws._clientIp on socket object.
+- [ ] SCAN-201. **[SEC] WS role from JWT payload not re-validated — downgraded admins continue receiving unredacted PII until token expiry** — `packages/server/src/ws/server.ts:417-418`. Fix: re-fetch role from DB at auth time OR short-lived WS auth tokens with re-auth.
+
+### Web deep pos/auth/pos/setup/gift-cards (11 findings)
+- [ ] SCAN-202. **LoginPage two concurrent setupStatus() calls on mount — overlapping race on step/autoChecking state** — `packages/web/src/pages/auth/LoginPage.tsx:92,118`. Fix: consolidate into single effect with shared cancelled flag.
+- [ ] SCAN-203. **ResetPasswordPage setTimeout(navigate,3000) not cleared on unmount** — `packages/web/src/pages/auth/ResetPasswordPage.tsx:68`. Fix: store id + clearTimeout in cleanup.
+- [ ] SCAN-204. **UnifiedPosPage scanFlash setTimeout(1200) inside keydown listener no cleanup on unmount** — `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:125`. Fix: ref + clear in effect cleanup.
+- [ ] SCAN-205. **UnifiedPosPage usePosKeyboardShortcuts no modal-open guard — F5 during checkout re-opens modal** — `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:163`. Fix: bail when showCheckout/showSuccess true.
+- [ ] SCAN-206. **[SEC/UX] RepairsTab collects device passcode in `type="text"` (unmasked) — shared-display leak** — `packages/web/src/pages/unified-pos/RepairsTab.tsx:748`. Fix: type=password + autoComplete=off + show/hide toggle.
+- [ ] SCAN-207. **[SEC] setup StepEmailSmtp smtp_pass lacks autoComplete — browsers autofill saved login passwords into SMTP secret field** — `packages/web/src/pages/setup/steps/StepEmailSmtp.tsx:15`. Fix: `autoComplete="new-password"` on sensitive inputs.
+- [ ] SCAN-208. **[SEC] setup StepSmsProvider all sensitive API-secret inputs lack autoComplete** — `packages/web/src/pages/setup/steps/StepSmsProvider.tsx:34`. Fix: autoComplete=off in field() helper when sensitive=true.
+- [ ] SCAN-209. **CashRegisterPage history typed any[] — render branches silently wrong on shape drift** — `packages/web/src/pages/pos/CashRegisterPage.tsx:22`. Fix: `RegisterEntry` interface.
+- [ ] SCAN-210. **GiftCardDetailPage show/hide code toggle button icon-only, no aria-label** — `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:210`. Fix: aria-label toggle string.
+- [ ] SCAN-211. **GiftCardsListPage modal close button icon-only, no aria-label** — `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:139`. Fix: aria-label="Close".
+- [ ] SCAN-212. **CustomerSelector remove-customer button uses title but no aria-label** — `packages/web/src/pages/unified-pos/CustomerSelector.tsx:171`. Fix: aria-label="Remove customer".
+
+### Tests / docs / startup / portal i18n (12 findings)
+- [ ] SCAN-213. **[SEC] full-import script hard-coded fallback password 'admin123' (env-optional)** — `packages/server/src/scripts/full-import.ts:33`. Fix: drop fallback; throw if `ADMIN_PASSWORD` unset.
+- [ ] SCAN-214. **[SEC] tenant-provisioning hard-codes bcrypt('1234') PIN for every new tenant admin — startup guard only checks single-tenant** — `packages/server/src/services/tenant-provisioning.ts:336`. Fix: require PIN at provisioning or force change on first login.
+- [ ] SCAN-215. **startup blocks on sync syncCostPricesFromCatalog — row-by-row fuzzy match during boot** — `packages/server/src/index.ts:539`. Fix: move post-listen async (setImmediate or after readyPromise).
+- [ ] SCAN-216. **TLS cert path hard-coded relative + no hot-reload — renewal requires restart** — `packages/server/src/index.ts:557-566`. Fix: SIGHUP handler + `httpsServer.setSecureContext(freshOpts)`.
+- [ ] SCAN-217. **[SEC] /api/v1/tv mounted with no auth, gated only on DB toggle — misprovisioned default exposes PII** — `packages/server/src/index.ts:1617-1622`. Fix: shared secret or IP-allowlist + add security test.
+- [ ] SCAN-218. **CLAUDE.md stale: "24 migrations (001-024)" — current count ~122** — `C:/Users/Owner/Downloads/MY OWN CRM/CLAUDE.md:69`. Fix: update count to highest migration.
+- [ ] SCAN-219. **[SEC] /api/v1/health/ready leaks schemaVersion to unauth caller — aids fingerprinting** — `packages/server/src/index.ts:1765-1772`. Fix: remove from unauth response or move to /health/internal.
+- [ ] SCAN-220. **PortalLogin + PortalRegister inline error divs lack role="alert" / aria-live — SR misses errors** — `packages/web/src/pages/portal/PortalLogin.tsx:122` + PortalRegister:119. Fix: add role=alert.
+- [ ] SCAN-221. **Portal i18n only EN/ES + hardcoded English error strings slip through (mapRegisterError + catch literals)** — `packages/web/src/pages/portal/i18n.ts:15-153`. Fix: move errors through t() with dict keys in both locales.
+- [ ] SCAN-222. **management endpoints skip global rate-limiter (explicit bypass) — localhost SSRF enumerates crashes/disabled-routes unlimited** — `packages/server/src/routes/management.routes.ts:365-445` + `index.ts:1133`. Fix: lightweight rate-limit even on loopback.
+- [ ] SCAN-223. **zero security-tests coverage on /api/v1/tv, /api/v1/signup, /portal/api/v2, /api/v1/public/payment-links** — all three phases. Fix: add cases (TV toggle-off empty, toggle-on no PII, signup rate-limit, portal-enrich session-required, payment link expiry/reuse).
+- [ ] SCAN-224. **[SEC] scripts/clear-imported-data.sh interpolates $ENTITY into inline node -e string + `batch` IDs concatenated into `DELETE ... IN (${batch})`** — `scripts/clear-imported-data.sh:57-121`. Fix: node process.argv + prepared statements.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 5: bundle + api types + 2FA/reset + upload/restore/template + class-level + build scripts)
+
+### Web api types / bundle / cache (12 findings)
+- [ ] SCAN-225. **customerApi.list params type omits sort_by/sort_order — callers use `as any`** — `packages/web/src/api/endpoints.ts:103` + CustomerListPage.tsx:169. Fix: add both to params type.
+- [ ] SCAN-226. **customerApi.list response untyped — consumers implicit any on `.data.data`** — `packages/web/src/api/endpoints.ts:104`. Fix: `api.get<{...}>` explicit generic.
+- [ ] SCAN-227. **ticketApi.list response untyped — same pattern** — `packages/web/src/api/endpoints.ts:154`. Fix: typed generic.
+- [ ] SCAN-228. **invoiceApi.list response untyped — same pattern** — `packages/web/src/api/endpoints.ts:242`. Fix: typed generic.
+- [ ] SCAN-229. **UpdateUserInput.role typed bare string (CreateUserInput uses literal union)** — `packages/web/src/api/types.ts:240`. Fix: `'admin'|'manager'|'technician'|'cashier'`.
+- [ ] SCAN-230. **CheckoutWithTicketInput product_items + misc_items typed `unknown[]`** — `packages/web/src/api/types.ts:335-336`. Fix: `PosLineItem[]`.
+- [ ] SCAN-231. **RepairPricingTab useQuery casts catalogApi.searchDevices result `as any[]`** — `packages/web/src/pages/settings/RepairPricingTab.tsx:323`. Fix: type via CatalogDevice[].
+- [ ] SCAN-232. **DepositCollectModal useMutation onSuccess missing invalidateQueries — invoices/ticket totals stale** — `packages/web/src/pages/billing/DepositCollectModal.tsx:42`. Fix: invalidate `['invoices']` + `['tickets', ticketId]`.
+- [ ] SCAN-233. **QuickSmsModal multiple `any` types (templates/tpl/onError/grouped)** — `packages/web/src/components/shared/QuickSmsModal.tsx:29,42,59,69`. Fix: `SmsTemplate` read-model.
+- [ ] SCAN-234. **CustomerListPage `as any` on customerApi.list call — cascade of SCAN-225** — `packages/web/src/pages/customers/CustomerListPage.tsx:169`. Fix: remove cast after fixing endpoints.ts:103.
+- [ ] SCAN-235. **CatalogPage jobsData `as any[]`** — `packages/web/src/pages/catalog/CatalogPage.tsx:75`. Fix: type catalogApi.getJobs response.
+- [ ] SCAN-236. **TicketWizard popularDevices `as any[]` via catalogApi.searchDevices** — `packages/web/src/pages/tickets/TicketWizard.tsx:327`. Fix: CatalogDevice interface propagated.
+
+### 2FA/TOTP/password-reset (7 findings)
+- [ ] SCAN-237. **[SEC] TOTP code reuse within 30s window — no `afterTimeStep` guard, same 6 digits valid twice** — `packages/server/src/routes/auth.routes.ts:922,1394,1790`. Fix: persist `totp_last_used_step` on users; pass `afterTimeStep` to `verifySync`.
+- [ ] SCAN-238. **[SEC] POST /reset-password no rate-limit — token brute-force allowed** — `packages/server/src/routes/auth.routes.ts:1648`. Fix: `checkWindowRate(db, 'reset_password', ip, 5, 900_000)` + 429.
+- [ ] SCAN-239. **[SEC] POST /forgot-password IP-only rate-limit — distributed attacker floods victim inbox + invalidates in-flight tokens** — `packages/server/src/routes/auth.routes.ts:1532`. Fix: per-user (per-email) limit (2/hour) after user lookup.
+- [ ] SCAN-240. **[SEC] TOTP setup response returns plaintext base32 `secret` + `manualEntry` — captured by any logging proxy** — `packages/server/src/routes/auth.routes.ts:856`. Fix: strip from JSON; require client to parse secret from QR URI.
+- [ ] SCAN-241. **POST /reset-password distinct error messages leak format vs DB-miss** — `packages/server/src/routes/auth.routes.ts:1650,1670`. Fix: single message regardless of failure mode.
+- [ ] SCAN-242. **/account/2fa/disable audit row reveals which factor failed (`bad_password` vs `bad_totp`)** — `packages/server/src/routes/auth.routes.ts:1797`. Fix: audit 'bad_credentials'; keep factor detail only in non-tenant monitoring.
+- [ ] SCAN-243. **[SEC] /login/2fa-setup enrolls new TOTP device on challenge token alone — no password re-confirmation** — `packages/server/src/routes/auth.routes.ts:833`. Fix: require password at setup endpoint OR authMiddleware + current_password.
+
+### Photo upload / backup-restore / template injection (7 findings)
+- [ ] SCAN-244. **[SEC] uploaded photos retain EXIF GPS — customer/device location leak** — `packages/server/src/routes/tickets.routes.ts:57-68`. Fix: `sharp().rotate().withMetadata(false)` or `exifr` strip before final write.
+- [ ] SCAN-245. **photo-upload scoped-token concurrent batches bypass file-count quota** — `packages/server/src/routes/tickets.routes.ts:2264` + fileUploadValidator. Fix: reserve slot atomically pre-multer or per-tenant mutex.
+- [ ] SCAN-246. **PhotoCapturePage soft 0/20 counter advisory only — rapid Add-more queues >20, server silently drops excess** — `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:29-52`. Fix: hard-enforce `photos.length + valid.length <= 20` + surface error.
+- [ ] SCAN-247. **SMS body never length-capped after `{customer_name}` substitution — long name inflates multi-part carrier charges** — `packages/server/src/services/notifications.ts:428-433`. Fix: hard-truncate to `MAX_SMS_CHARS` (~306) after substitution.
+- [ ] SCAN-248. **[SEC] email template fallback path uses SMS body as HTML — raw customer name rendered unescaped** — `packages/server/src/services/notifications.ts:506-511`. Fix: `escapeHtml(body)` before passing as `html:` when email_body absent.
+- [ ] SCAN-249. **[SEC] signedUploads URL valid for full 1h TTL with no revoke-on-use — replay to re-download receipt images** — `packages/server/src/utils/signedUploads.ts:57`. Fix: nonce table marking signature consumed OR reduce TTL to ≤300s for receipt/MMS.
+- [ ] SCAN-250. **[SEC] restoreBackup fires on single POST — no service-layer confirmation/time-lock — CSRF-triggered DB wipe** — `packages/server/src/services/backup.ts:803-924`. Fix: require `confirm=true` + two-step token (60s TTL) + UI countdown.
+
+### Class-level sweeps across routes (10 findings)
+- [ ] SCAN-251. **SELECT * on `marketing_campaigns` leaks internal columns** — `packages/server/src/routes/campaigns.routes.ts:354`. Fix: enumerate frontend-needed columns.
+- [ ] SCAN-252. **automations params.id uses bare `Number()` — `Number('')===0` matches unintended rows** — `packages/server/src/routes/automations.routes.ts:108`. Fix: `Number.isInteger + >0` guard.
+- [ ] SCAN-253. **voice list LIMIT/OFFSET without COUNT(*) total — client can't page last** — `packages/server/src/routes/voice.routes.ts:202`. Fix: parallel SELECT COUNT(*) + return total/total_pages.
+- [ ] SCAN-254. **estimate_versions JSON.parse(version.data) with no try/catch — corrupt row crashes handler** — `packages/server/src/routes/estimates.routes.ts:678`. Fix: try/catch → 422.
+- [ ] SCAN-255. **membership.subscription.benefits JSON.parse crashes status page on corrupt row** — `packages/server/src/routes/membership.routes.ts:133`. Fix: try/catch → `[]`.
+- [ ] SCAN-256. **automations UPDATE uses `datetime('now')` (SQLite UTC) — inconsistent with JS `toISOString()` elsewhere** — `packages/server/src/routes/automations.routes.ts:117`. Fix: parameterized ISO timestamp.
+- [ ] SCAN-257. **blockchyp audit() outside transaction block — split failure mode** — `packages/server/src/routes/blockchyp.routes.ts:344-393,399`. Fix: inside tx OR explicit best-effort try/catch + documented.
+- [ ] SCAN-258. **deposits GET returns raw DB row (created_at/updated_at/soft-delete)** — `packages/server/src/routes/deposits.routes.ts:91`. Fix: explicit destructure of API-contract fields.
+- [ ] SCAN-259. **customFields SELECT uses raw req.params.id — no integer parse/validate** — `packages/server/src/routes/customFields.routes.ts:81`. Fix: parseInt + Number.isInteger + >0.
+- [ ] SCAN-260. **[SEC] automations SELECT * returns trigger_config + action_config (may contain webhook_secret / api_key)** — `packages/server/src/routes/automations.routes.ts:44`. Fix: redact secret fields in response mapping.
+
+### Build / CI / infra / CSS (9 findings)
+- [ ] SCAN-261. **[SEC] .github/workflows/ci.yml pins actions by mutable tag (@v4) not SHA — tag force-push supply-chain risk** — `.github/workflows/ci.yml:16`. Fix: pin to commit SHA per GitHub Actions hardening guide.
+- [ ] SCAN-262. **[SEC] .github/workflows/ios-a11y.yml same mutable-tag pinning** — `.github/workflows/ios-a11y.yml:36,56`. Fix: SHA pin.
+- [ ] SCAN-263. **[SEC] scripts/stress-test.sh uses `eval "$CURL ... $args '$url'"` — shell-meta in ENDPOINTS/PAYLOADS executes** — `scripts/stress-test.sh:98`. Fix: array-based invocation `"${curl_cmd[@]}"`.
+- [ ] SCAN-264. **[SEC] CommunicationPage inline-style status_color not through `safeColor()` — CSS injection** — `packages/web/src/pages/communications/CommunicationPage.tsx:1452,1575`. Fix: wrap with safeColor() (pattern already in TicketSidebar).
+- [ ] SCAN-265. **[SEC] DashboardPage status_color interpolated into style prop without safeColor** — `packages/web/src/pages/dashboard/DashboardPage.tsx:970,1994`. Fix: import + wrap safeColor.
+- [ ] SCAN-266. **[SEC] ios/scripts/fetch-fonts.sh downloads `google/fonts/main` branch (unpinned) at build-time** — `ios/scripts/fetch-fonts.sh:45,66,78`. Fix: pin by commit SHA + sha256sum verify.
+- [ ] SCAN-267. **[SEC] Dockerfile `npm ci` without `--ignore-scripts` — postinstall runs as root pre-`USER node`** — `packages/server/Dockerfile:15`. Fix: `--ignore-scripts` on all `npm ci` calls; run needed scripts explicitly.
+- [ ] SCAN-268. **[SEC] setup.bat uses `call npm install` (mutable) — postinstall hooks from attacker-modified lockfile execute on dev machines** — `setup.bat:66`. Fix: `npm ci --ignore-scripts`.
+- [ ] SCAN-269. **No `npm-shrinkwrap.json` — production Docker + setup.bat rely solely on mutable package-lock.json** — repo root. Fix: `npm shrinkwrap` for server package + commit.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 6: cache invalidation 2nd pass + regex DoS + TZ + form edges + PWA + inventory deep + CSS/SVG)
+
+### React Query cache invalidation + error boundaries (8 findings)
+- [ ] SCAN-270. **CheckoutModal posApi.checkoutWithTicket success — no invalidate for invoices/tickets/inventory** — `packages/web/src/pages/unified-pos/CheckoutModal.tsx:345`. Fix: invalidate all three in the try block after setShowSuccess.
+- [ ] SCAN-271. **TicketPayments convertInvoiceMut onSuccess only invalidates ticket, not invoices list** — `packages/web/src/pages/tickets/TicketPayments.tsx:57`. Fix: `invalidateQueries({queryKey:['invoices']})` in onSuccess.
+- [ ] SCAN-272. **InvoiceDetailPage payMutation onSuccess doesn't invalidate `['ticket', invoice.ticket_id]`** — `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:78`. Fix: add ticket invalidation when ticket_id present.
+- [ ] SCAN-273. **EstimateDetailPage convertMut onSuccess doesn't invalidate `['tickets']` list** — `packages/web/src/pages/estimates/EstimateDetailPage.tsx:69`. Fix: add invalidation for tickets list.
+- [ ] SCAN-274. **ErrorBoundary doesn't report to any service — only console.error + reload clears signal** — `packages/web/src/components/ErrorBoundary.tsx:28`. Fix: Sentry (or similar) capture in componentDidCatch with componentStack.
+- [ ] SCAN-275. **No per-feature ErrorBoundary around POS checkout tree — crash during live payment hides invoice status from cashier** — `packages/web/src/App.tsx:362`. Fix: wrap CheckoutModal or UnifiedPosPage in dedicated boundary with recovery UI.
+- [ ] SCAN-276. **TicketDetailPage scheduleTicketDelete optimistic setQueriesData but no previousData snapshot — undo can't restore on invalidation failure** — `packages/web/src/pages/tickets/TicketDetailPage.tsx:316`. Fix: snapshot via `getQueriesData` pre-write; restore via `setQueriesData(snapshot)` in onUndo before invalidate.
+- [ ] SCAN-277. **LeadPipelinePage drag-stage updateMut no optimistic onMutate + rollback — card jitters on slow network** — `packages/web/src/pages/leads/LeadPipelinePage.tsx:200`. Fix: onMutate snapshot + optimistic move + rollback in onError.
+
+### Regex DoS / time-zone / log spam (11 findings)
+- [ ] SCAN-278. **Membership renewal cron console.log inside per-subscription loop — N lines/run/tenant** — `packages/server/src/index.ts:2041`. Fix: single post-loop `log.info` with count.
+- [ ] SCAN-279. **PaymentJanitor sweep console.log inside forEachDb per-tenant callback** — `packages/server/src/index.ts:2085`. Fix: accumulate totals + single summary log.
+- [ ] SCAN-280. **Hourly session-cleanup cron console.log per-tenant** — `packages/server/src/index.ts:2212`. Fix: buffer + one summary log.
+- [ ] SCAN-281. **Appointment-reminder cron console.log per-appointment — burst spam when batch due** — `packages/server/src/index.ts:2592`. Fix: count + single summary.
+- [ ] SCAN-282. **Scheduled-SMS cron console.log per-message dispatched** — `packages/server/src/index.ts:2664`. Fix: aggregate sent/failed counts; log once.
+- [ ] SCAN-283. **Invoice-reminder cron console.log per-invoice** — `packages/server/src/index.ts:2941`. Fix: counter + single log.info.
+- [ ] SCAN-284. **Membership renewal newEnd derived from `new Date()` not stored `current_period_end` — drifts seconds per renewal; inconsistent with `datetime('now')` trigger** — `packages/server/src/index.ts:2028`. Fix: anchor to `new Date(sub.current_period_end)` or use SQL `datetime('now','+1 month')`.
+- [ ] SCAN-285. **EmployeeListPage getWeekRange uses `.setHours(0,0,0,0)` — DST spring-forward off by 1h** — `packages/web/src/pages/employees/EmployeeListPage.tsx:83`. Fix: `toLocaleDateString('en-CA')` or UTC-anchored.
+- [ ] SCAN-286. **CalendarPage startOfWeek uses `.setHours(0,0,0,0)` — same DST issue** — `packages/web/src/pages/leads/CalendarPage.tsx:71`. Fix: UTC-anchored YYYY-MM-DD.
+- [ ] SCAN-287. **metricsCollector `toISOString().replace('T',' ')` then rollup uses `SUBSTR(timestamp,1,13)` — non-UTC tz diverges** — `packages/server/src/services/metricsCollector.ts:87,118`. Fix: consistent ISO-8601 UTC + align SQL cutoff.
+- [ ] SCAN-288. **catalog.routes.ts `/\s+/` split on device query param matches CR/LF/FF/VT — alters SQL LIKE chain with multi-line input** — `packages/server/src/routes/catalog.routes.ts:497`. Fix: `/[ \t]+/` + reject vertical whitespace.
+
+### Form validation / focus mgmt / a11y (11 findings)
+- [ ] SCAN-289. **SignupPage email regex too loose (`/\S+@\S+\.\S+/` accepts a@b.c)** — `packages/web/src/pages/signup/SignupPage.tsx:189`. Fix: `/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/` matching CustomerCreatePage.
+- [ ] SCAN-290. **TicketCreatePage security_code input lacks autocomplete="off" — browser offers to save device PIN** — `packages/web/src/pages/tickets/TicketCreatePage.tsx:538-545`. Fix: pass autoComplete="off" through TextInput.
+- [ ] SCAN-291. **TicketCreatePage repair price number input lacks min="0"** — `packages/web/src/pages/tickets/TicketCreatePage.tsx:538-545`. Fix: min="0" attribute.
+- [ ] SCAN-292. **DepositCollectModal amount input lacks min="0.01" — native spinner allows negative** — `packages/web/src/pages/billing/DepositCollectModal.tsx:78-84`. Fix: min="0.01".
+- [ ] SCAN-293. **PaymentLinksPage amount input lacks min — negative payment link can be submitted** — `packages/web/src/pages/billing/PaymentLinksPage.tsx:187-194`. Fix: min="0.01".
+- [ ] SCAN-294. **CustomerCreatePage first_name input lacks maxLength — silent DB truncation risk** — `packages/web/src/pages/customers/CustomerCreatePage.tsx:213-221`. Fix: maxLength={100} matching DB column.
+- [ ] SCAN-295. **CustomerCreatePage: focus not moved to first invalid field after validation fails** — `packages/web/src/pages/customers/CustomerCreatePage.tsx:140-154`. Fix: ref + .focus() on first error field.
+- [ ] SCAN-296. **CampaignsPage create form: name input no maxLength** — `packages/web/src/pages/marketing/CampaignsPage.tsx:339-344`. Fix: maxLength={200}.
+- [ ] SCAN-297. **CampaignsPage template_body textarea no maxLength — unlimited SMS body** — `packages/web/src/pages/marketing/CampaignsPage.tsx:405-411`. Fix: maxLength={1600}.
+- [ ] SCAN-298. **PortalRegister PIN input paste bypasses digit-only stripping with confusing empty-field state** — `packages/web/src/pages/portal/PortalRegister.tsx:185-193`. Fix: onPaste handler that sanitises then setPin with feedback.
+- [ ] SCAN-299. **InventoryCreatePage retail_price accepts 3+ decimal places via direct typing — parseFloat stores extras to DB** — `packages/web/src/pages/inventory/InventoryCreatePage.tsx:143`. Fix: `^\d+(\.\d{1,2})?$` regex in handleSubmit or step-forced input.
+
+### PWA / manifest / shared types / robots (8 findings)
+- [ ] SCAN-300. **manifest.json name/short_name/description/colors hard-coded single-tenant — every tenant gets wrong branding in PWA install** — `packages/web/public/manifest.json:2`. Fix: dynamic `/api/manifest.json` from store settings or per-tenant Vite build.
+- [ ] SCAN-301. **manifest.json start_url="/" + no `scope` — installed PWA covers /super-admin routes** — `packages/web/public/manifest.json:5`. Fix: `scope:"/app/"` + `start_url:"/app/"`.
+- [ ] SCAN-302. **index.html SW-cleanup script unregisters + deletes all caches, but /public/sw.js still served — perpetual install/unregister loop** — `packages/web/index.html:43`. Fix: remove sw.js + script after all clients migrated, or stop serving sw.js.
+- [ ] SCAN-303. **cleanup sw.js not versioned + no `updateViaCache` — future real SW re-enablement will stale-pin** — `packages/web/public/sw.js:1`. Fix: any replacement must use `updateViaCache:'none'` + versioned cache name.
+- [ ] SCAN-304. **shared Customer interface missing is_active/last_ticket_date/health_score — fields returned by server, untyped at web consumer** — `packages/shared/src/types/customer.ts:1`. Fix: add optional fields matching server response.
+- [ ] SCAN-305. **LEAD_STATUSES duplicated in LeadListPage instead of import from `@bizarre-crm/shared`** — `packages/web/src/pages/leads/LeadListPage.tsx:16`. Fix: import + derive display locally.
+- [ ] SCAN-306. **ESTIMATE_STATUSES duplicated in EstimateListPage — same drift risk** — `packages/web/src/pages/estimates/EstimateListPage.tsx:15`. Fix: import from shared.
+- [ ] SCAN-307. **[SEC] no robots.txt — portal login + super-admin + app routes indexed by crawlers, leaks tenant slugs** — `packages/web/public/` missing file. Fix: add `robots.txt` with `User-agent: * Disallow: /`.
+
+### Inventory serials/kits/stocktake + feature flags + SVG (11 findings)
+- [ ] SCAN-308. **inventoryEnrich auto-reorder `is_enabled` defaults to 1 when field omitted — silent auto-enable** — `packages/server/src/routes/inventoryEnrich.routes.ts:418`. Fix: `req.body?.is_enabled === true ? 1 : 0` or require explicit.
+- [ ] SCAN-309. **migration 091 serials UNIQUE is (inventory_item_id, serial_number) — duplicate serial across items silently accepted** — `packages/server/src/db/migrations/091_inventory_enrichment.sql:91`. Fix: add global UNIQUE(serial_number) or cross-item lookup at route.
+- [ ] SCAN-310. **inventory kit item quantity silently coerces 0/negative → 1 via `Math.max(1, parseInt||1)`** — `packages/server/src/routes/inventory.routes.ts:718-719`. Fix: validateIntegerQuantity reject 0/neg.
+- [ ] SCAN-311. **inventory kit deletion uses two separate adb.run() outside transaction — partial failure orphans kit row** — `packages/server/src/routes/inventory.routes.ts:786-787`. Fix: `adb.transaction([...])` wrap.
+- [ ] SCAN-312. **stocktake counted_qty capped at 100k via validateIntegerQuantity — blocks legitimate large warehouse counts** — `packages/server/src/routes/stocktake.routes.ts:190`. Fix: raise/remove cap for stocktake path or document.
+- [ ] SCAN-313. **supplier-returns quantity accepted beyond in_stock — drives in_stock negative on process** — `packages/server/src/routes/inventoryEnrich.routes.ts:1052-1054`. Fix: guard `in_stock >= quantity` before insert.
+- [ ] SCAN-314. **GET /settings/config full table scan every request (hot path for every authed page load)** — `packages/server/src/routes/settings.routes.ts:305-320`. Fix: 5s per-tenant in-process cache invalidated on PUT.
+- [ ] SCAN-315. **[SEC] GET /config returns operational integration metadata (terminal name, webhook URLs, 10dlc status) to any authed user — not admin-gated** — `packages/server/src/routes/settings.routes.ts:307`. Fix: admin gate OR non-admin allowlist.
+- [ ] SCAN-316. **[SEC] CatalogPage `<img src={item.image_url}>` unsanitised — supplier catalog `javascript:` URL renders** — `packages/web/src/pages/catalog/CatalogPage.tsx:439`. Fix: `isSafeLogoUrl` guard (already exists in PrintPage).
+- [ ] SCAN-317. **[SEC] PortalLogin public page `<img src={storeLogo}>` unsanitised — tenant-poisoned logo on unauth page** — `packages/web/src/pages/portal/PortalLogin.tsx:83`. Fix: `isSafeLogoUrl` check before render.
+- [ ] SCAN-318. **inventoryEnrich ZPL label `^FD${sku}^FS` without escaping `^`/`~` in SKU — premature format termination** — `packages/server/src/routes/inventoryEnrich.routes.ts:1253-1259`. Fix: `.replace(/[\^~]/g,' ')` on sku (matches displayName path).
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 7: webhooks + CSP/headers + streaming/backup + tx retry/session + JWT/bounce)
+
+### Webhooks inbound + outbound (8 findings)
+- [ ] SCAN-319. **[SEC] outbound webhook accepts plain `http://` scheme — signed payload + HMAC cleartext over network** — `packages/server/src/services/webhooks.ts:149`. Fix: reject http:; require https:.
+- [ ] SCAN-320. **[SEC] webhook signing secret stored plaintext in store_config — INSERT OR IGNORE raw; not via setConfigValue** — `packages/server/src/services/webhooks.ts:248`. Fix: route through encryptConfigValue.
+- [ ] SCAN-321. **[SEC] `webhook_secret` absent from `ENCRYPTED_CONFIG_KEYS` allowlist** — `packages/server/src/utils/configEncryption.ts:31`. Fix: add key to set.
+- [ ] SCAN-322. **[SEC] outbound webhook payload `data` field has no per-event allowlist — raw row may include token/card_token** — `packages/server/src/services/webhooks.ts:462`. Fix: project through explicit safe-field list per `WebhookEvent`.
+- [ ] SCAN-323. **Bandwidth inbound webhook falls through with `console.warn` when no auth header — sms.routes accepts 200** — `packages/server/src/providers/sms/bandwidth.ts:117`. Fix: enforce Basic-auth in URL at settings-save validator.
+- [ ] SCAN-324. **voice webhook verifyWebhookSignature optional — provider missing method silently unauth** — `packages/server/src/routes/voice.routes.ts:309`. Fix: require method in SmsProvider interface; default-deny.
+- [ ] SCAN-325. **Telnyx verify logs missing-rawBody as `console.warn` only — misconfig silently drops all traffic** — `packages/server/src/providers/sms/telnyx.ts:86`. Fix: `logger.error` + startup assertion that rawBody middleware mounted.
+- [ ] SCAN-326. **Outbound webhook retry re-uses stale timestamp in signature — dead-letter loops past receiver window** — `packages/server/src/services/webhooks.ts:479,543`. Fix: regenerate timestamp + re-sign on retry; add `X-Retry-Attempt` header.
+
+### CSP / headers / iframe / SRI (10 findings)
+- [ ] SCAN-327. **[SEC] CSP `scriptSrcAttr:'self'` allows same-origin inline event handlers — should be `'none'`** — `packages/server/src/index.ts:903`. Fix: `scriptSrcAttr:["'none'"]`.
+- [ ] SCAN-328. **[SEC] CSP `imgSrc` includes bare `https:` wildcard — tracking-pixel exfil** — `packages/server/src/index.ts:905`. Fix: explicit CDN allowlist.
+- [ ] SCAN-329. **helmet `crossOriginEmbedderPolicy:false` — COEP header entirely omitted + COOP not set** — `packages/server/src/index.ts:914`. Fix: explicit `crossOriginOpenerPolicy:{policy:'same-origin'}` + COEP `unsafe-none` (signalled intent, not omitted).
+- [ ] SCAN-330. **hCaptcha script injected dynamically without SRI integrity hash** — `packages/web/src/pages/signup/SignupPage.tsx:170`. Fix: pin SRI hash or self-host proxy.
+- [ ] SCAN-331. **`js.hcaptcha.com` absent from server `script-src` allowlist — hCaptcha blocked in browsers honoring CSP** — `packages/server/src/index.ts:902`. Fix: add `https://js.hcaptcha.com`.
+- [ ] SCAN-332. **public tracking-widget.html has no CSP meta + no Referrer-Policy + static served — inline `onclick=` × many** — `packages/web/public/tracking-widget.html` (whole file). Fix: CSP meta tag OR serve through Express (helmet applies); convert onclick= to addEventListener.
+- [ ] SCAN-333. **tracking-widget.html multiple inline `onclick=` attributes violate `script-src-attr`** — `packages/web/public/tracking-widget.html:239`. Fix: addEventListener in existing IIFE.
+- [ ] SCAN-334. **reports `/tax-report.pdf` + `/partner-report.pdf` HTML has inline `onclick="window.print()"` — blocked by admin `script-src-attr:'none'`** — `packages/server/src/routes/reports.routes.ts:2786,2881`. Fix: external handler / `<script>` with addEventListener.
+- [ ] SCAN-335. **crm wallet-pass HTML fallback returns text/html with no per-response CSP override** — `packages/server/src/routes/crm.routes.ts:307`. Fix: audit `renderWalletPassHtml` inline scripts; add nonce or endpoint-specific CSP.
+
+### Streaming / backup / export (10 findings)
+- [ ] SCAN-336. **dataExport materializes entire table `SELECT *` before streaming — OOM on large tenants** — `packages/server/src/routes/dataExport.routes.ts:287`. Fix: `db.prepare().iterate()` row-by-row.
+- [ ] SCAN-337. **dataExport starts writing bytes without `res.on('close')` abort listener — client-disconnect doesn't stop loop** — `packages/server/src/routes/dataExport.routes.ts:274`. Fix: abort flag + check each table iteration.
+- [ ] SCAN-338. **backup download no X-Content-SHA256 integrity header** — `packages/server/src/routes/admin.routes.ts:379`. Fix: compute SHA-256 pre-stream; emit as header.
+- [ ] SCAN-339. **backup download no `Accept-Ranges:none` — Range requests bypass audit byte count** — `packages/server/src/routes/admin.routes.ts:378`. Fix: set header reject Range with 416.
+- [ ] SCAN-340. **backup encryptFile reads entire plaintext DB into memory — 2× peak heap** — `packages/server/src/services/backup.ts:302`. Fix: stream pipeline (createReadStream → cipher → output).
+- [ ] SCAN-341. **customer GDPR export unbounded `SELECT * FROM tickets WHERE customer_id=?` + notes + devices — one allocation** — `packages/server/src/routes/customers.routes.ts:1752,1765`. Fix: hard LIMIT 10k or paginate.
+- [ ] SCAN-342. **dataExport stream has no per-chunk auth re-verify — JWT expiry mid-stream keeps delivering data** — `packages/server/src/routes/dataExport.routes.ts:214`. Fix: max stream duration OR re-check token per table iteration.
+- [ ] SCAN-343. **tenantExport `GET /download/:signedToken` unauth public — no rate-limit on token lookup (timing oracle)** — `packages/server/src/routes/tenantExport.routes.ts:159`. Fix: per-IP rate-limit 10 req/min.
+- [ ] SCAN-344. **dataExport audit log fires after `res.end()` outside try/catch — catch branch still runs audit with under-reported rowCounts** — `packages/server/src/routes/dataExport.routes.ts:337`. Fix: move into `finally`.
+- [ ] SCAN-345. **repairDeskImport no back-pressure — fetchAllPages allocates all 500k records before per-page tx commits** — `packages/server/src/services/repairDeskImport.ts:647,800,1194`. Fix: max in-flight page count + flush/GC per page.
+
+### DB tx retry / session / step-up (8 findings)
+- [ ] SCAN-346. **sync better-sqlite3 `req.db` on event-loop thread — busy_timeout 5s blocks all requests under contention** — `packages/server/src/db/connection.ts:1`. Fix: migrate rate-limiter + audit writes to asyncDb worker pool.
+- [ ] SCAN-347. **sessions table has no `ip_address` column — no source-IP audit per session; anomaly detection impossible** — `packages/server/src/routes/auth.routes.ts:258,331`. Fix: migration adds ip_address TEXT + populate from req.ip in pruneAndInsertSession.
+- [ ] SCAN-348. **logout deletes session row + clears cookie but refresh JWT body-path (mobile) still valid vs sessionId check — mitigation fragile if issueTokens changes** — `packages/server/src/routes/auth.routes.ts:1309,1142`. Fix: also revoke refresh token DB-side (blocklist jti) independent of sessions.
+- [ ] SCAN-349. **no `/auth/logout-all` endpoint — user can't revoke all sessions after compromise (except via password change)** — `packages/server/src/routes/auth.routes.ts:1309`. Fix: add `POST /auth/logout-all` + `DELETE FROM sessions WHERE user_id=?` + admin variant.
+- [ ] SCAN-350. **step-up TOTP not session-bound single-use — code replayable within same 30s window to different protected endpoint in same session** — `packages/server/src/middleware/stepUpTotp.ts:140`. Fix: record consumed code keyed `(session_id, code, totp_window_epoch)` in short-lived set.
+- [ ] SCAN-351. **credential stuffing gap: per-username limit only fires when same username retried — spray across usernames each hitting <5 tries evades account lockout** — `packages/server/src/routes/auth.routes.ts:607,422`. Fix: cross-IP per-account failure counter keyed solely on tenantSlug:username.
+- [ ] SCAN-352. **db-worker no exp-backoff retry on SQLITE_BUSY beyond 5s busy_timeout — 8 workers writing rate_limits stall entire pool + return 503** — `packages/server/src/db/db-worker.mjs:39`. Fix: 3-attempt exp backoff (50/100/200ms jitter) wrapping SQLITE_BUSY in worker execute().
+- [ ] SCAN-353. **[SEC] sync main-thread busy_timeout 5s blocks Node.js event loop on contention (synchronous audit + rate-limiter writes)** — `packages/server/src/db/tenant-pool.ts:51`. Fix: move all sync req.db writes to asyncDb worker path.
+
+### JWT claims / email suppression / portal auth (8 findings)
+- [ ] SCAN-354. **automations `executeSendEmail` doesn't gate on `customers.email_opt_in` — unsubscribed customers still receive automation mail** — `packages/server/src/services/automations.ts:255-263`. Fix: gate on `email_opt_in !== 0`.
+- [ ] SCAN-355. **notifications auto-email dispatch doesn't check `email_opt_in` (SMS path does check `sms_opt_in`)** — `packages/server/src/services/notifications.ts:488`. Fix: query + gate before sendEmail.
+- [ ] SCAN-356. **dunningScheduler sends to customer.email with no email_opt_in check — unsubscribes keep receiving dunning** — `packages/server/src/services/dunningScheduler.ts:673`. Fix: `AND c.email_opt_in != 0` in customer query or route gate.
+- [ ] SCAN-357. **`sendEmail` has no suppression-list lookup + no `email_suppressions` table exists — hard-bounces resent forever, IP/domain reputation risk** — `packages/server/src/services/email.ts:138`. Fix: create table (address, reason, ts); query in sendEmail; return false on match.
+- [ ] SCAN-358. **no SES/SendGrid bounce/complaint webhook endpoint registered — bounces + spam complaints never received** — repo-wide. Fix: `/api/v1/email/webhook` with shared-secret/SNS-sig verify; write to email_suppressions.
+- [ ] SCAN-359. **[SEC] device-trust token signed with same `audience: 'bizarre-crm-api'` as access token — type-check guard is only line of defense** — `packages/server/src/routes/auth.routes.ts:982-985`. Fix: sign with `audience:'device-trust'` + verify explicitly.
+- [ ] SCAN-360. **access token payload doesn't set explicit `type:'access'` — middleware accepts any token missing `type` field** — `packages/server/src/routes/auth.routes.ts:346-349`. Fix: add `type:'access'` at sign; middleware strict-positive assert.
+- [ ] SCAN-361. **[SEC] portal session token returned in JSON body only (no httpOnly cookie) — stored in JS-accessible storage, XSS-exfiltrable** — `packages/server/src/routes/portal.routes.ts:105-107,490,628`. Fix: issue as httpOnly + SameSite=Strict cookie (mirror admin refreshToken).
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 8: reports CSV/PDF + admin + utils 2nd pass + a11y + dead code)
+
+### Reports CSV/PDF / export / formula injection (7 findings)
+- [ ] SCAN-362. **[SEC] toCsv formula injection — values starting with `=`/`+`/`-`/`@`/`\t`/`\r` emitted raw** — `packages/server/src/routes/reports.routes.ts:1683`. Fix: prepend `'` for formula-trigger chars before comma/quote check.
+- [ ] SCAN-363. **[SEC] team payroll CSV `username` field unquoted + unsanitized — only name fields wrapped via sanitize()** — `packages/server/src/routes/team.routes.ts:885`. Fix: wrap username in sanitize() + formula-escape.
+- [ ] SCAN-364. **[SEC] payroll sanitize() strips quotes/CR/LF but does NOT neutralize formula-trigger start chars** — `packages/server/src/routes/team.routes.ts:877`. Fix: after replace, if trimmed starts with `=|+|-|@|\t|\r` prepend `'`.
+- [ ] SCAN-365. **CSV Content-Disposition filename uses raw `reportType` + `from`/`to` — CRLF injection if double-decode bypass** — `packages/server/src/routes/reports.routes.ts:1799`. Fix: strip `\r\n` + encodeURIComponent; RFC 5987 `filename*=UTF-8''...`.
+- [ ] SCAN-366. **tax report totals (totalTax/totalRevenue) computed client-side only — MitM/extension row-mutation silently drifts tax-remittance summary** — `packages/web/src/pages/reports/ReportsPage.tsx:807`. Fix: server returns `total_tax_collected` + `total_taxable_revenue` aggregates; render those.
+- [ ] SCAN-367. **CSV Content-Type missing charset — UTF-8 BOM mismatch renders garbled in proxies/mail clients** — `packages/server/src/routes/reports.routes.ts:1798`. Fix: `text/csv; charset=utf-8`.
+- [ ] SCAN-368. **/tax-report.pdf + /partner-report.pdf HTML fallback no Content-Disposition + no `X-Content-Type-Options:nosniff` — phishing-shareable URL** — `packages/server/src/routes/reports.routes.ts:2789,2884`. Fix: add inline disposition + nosniff, or auth-gate.
+
+### Admin console / impersonate / 2FA / device-trust (6 findings)
+- [ ] SCAN-369. **[SEC P0] `GET /admin` backup panel served without `localhostOnly` — remote brute-force exposed** — `packages/server/src/index.ts:1637`. Fix: wrap with `localhostOnly` (pattern matches `/super-admin` at line 1413).
+- [ ] SCAN-370. **[SEC P0] super-admin `POST /tenants/:slug/impersonate` missing `requireStepUpTotpSuperAdmin` — stolen 30-min JWT impersonates any tenant without 2nd factor** — `packages/server/src/routes/super-admin.routes.ts:2074`. Fix: add guard matching sibling destructive endpoints.
+- [ ] SCAN-371. **ImpersonationBanner exit flow calls clearImpersonationSession + logout() — wipes wrong auth; super-admin token remains but UI lost** — `packages/web/src/components/ImpersonationBanner.tsx:63`. Fix: navigate to /super-admin without logout(); keep SA session intact.
+- [ ] SCAN-372. **[SEC] impersonation audit rows attribute to victim user not operator — superAdminId in JWT but never propagated to audit()** — `packages/server/src/routes/super-admin.routes.ts:2113`. Fix: pass impersonated+superAdminId through req.user to audit utility.
+- [ ] SCAN-373. **2fa-setup pending enrolment discarded on tab close — user re-enters unverified state indefinitely (no DB pending flag)** — `packages/web/src/pages/auth/LoginPage.tsx:589` + `super-admin.routes.ts:343`. Fix: server-side `pending_totp_since` column blocking login until confirmed or timeout.
+- [ ] SCAN-374. **deviceTrust cookie `Secure` gated on `nodeEnv==='production'` — staging/dev-over-HTTPS issues cookie without Secure; 90-day 2FA bypass on plain HTTP if browser permits** — `packages/server/src/routes/auth.routes.ts:989`. Fix: Secure:true whenever `useHttps`, not only in production.
+
+### Server utils 2nd pass / cross-file patterns (12 findings)
+- [ ] SCAN-375. **N+1 catalog import: outer for-of up to 5k items × inner for-of compat devices — up to 50k+ sequential DB round-trips** — `packages/server/src/routes/catalog.routes.ts:316,379`. Fix: batch `WHERE source=? AND external_id IN (...)` + bulk insert in tx.
+- [ ] SCAN-376. **N+1 campaigns send: for-of over recipients × INSERT campaign_sends per row (×6 variants for SMS/email)** — `packages/server/src/routes/campaigns.routes.ts:216,233,246,253,262,278,301,308,323`. Fix: accumulate + single `adb.transaction([])` bulk INSERT.
+- [ ] SCAN-377. **auth JSON.parse(currentBackupCodes) no try/catch — corrupt row → unhandledRejection → process.exit(1)** — `packages/server/src/routes/auth.routes.ts:1049`. Fix: try/catch + 500 or asyncHandler wrap.
+- [ ] SCAN-378. **idempotency middleware JSON.parse(existing.response_body) no try/catch — truncated body crashes pipeline** — `packages/server/src/middleware/idempotency.ts:172`. Fix: try/catch + fall back to stored status + empty body.
+- [ ] SCAN-379. **invoices.routes bare setInterval not registered with shutdown/trackInterval — holds event loop open on SIGTERM (pattern spans 8 files: signup×3, import, management, super-admin, tenantTermination)** — `packages/server/src/routes/invoices.routes.ts:474`. Fix: store handle + register via trackInterval/clearInterval in shutdown hook.
+- [ ] SCAN-380. **employees autoClockout setTimeout fire-and-forget — 5min callback may run post-shutdown on torn-down pool** — `packages/server/src/routes/employees.routes.ts:624`. Fix: store handle + clearTimeout in shutdown.
+- [ ] SCAN-381. **settings PUT /config + PUT /store for-of with await adb.run per key — one DB write per body key serially** — `packages/server/src/routes/settings.routes.ts:424,483`. Fix: accumulate + `adb.transaction([])` batch.
+- [ ] SCAN-382. **auth middleware `.catch(() => {})` swallows session last_active UPDATE failure — persistent DB error silently leaves stale timestamps** — `packages/server/src/middleware/auth.ts:154`. Fix: `.catch((e) => logger.warn('session touch failed', {error: e.message}))`.
+- [ ] SCAN-383. **auth JSON.parse(user.permissions) no try/catch × 3 sites — corrupt row throws sync during login → unhandled → restart** — `packages/server/src/routes/auth.routes.ts:399,1284,1439`. Fix: try/catch + null default.
+- [ ] SCAN-384. **tickets setTimeout async fire-and-forget captures db + req.tenantSlug — runs against closed DB on shutdown** — `packages/server/src/routes/tickets.routes.ts:1989`. Fix: store handle + register shutdown clear + guard callback.
+- [ ] SCAN-385. **catalog `req.body.source as CatalogSource` no typeof guard — non-string body silently passes (pattern spans 7+ sites: portal/pos/tracking/voice)** — `packages/server/src/routes/catalog.routes.ts:224,580`. Fix: typeof-string guard before enum check.
+- [ ] SCAN-386. **settings credentials `as Record<string,string>` — non-object body leaks branch via error message (aids provider-type enum)** — `packages/server/src/routes/settings.routes.ts:1556`. Fix: `typeof credentials === 'object' && !Array.isArray` guard + AppError 400.
+
+### Web a11y deep sweep (11 findings)
+- [ ] SCAN-387. **AppShell missing skip-link before `<main>` landmark — keyboard users tab through entire nav on every page** — `packages/web/src/components/layout/AppShell.tsx:94,149`. Fix: add `<a href="#main-content">` + `id="main-content"`.
+- [ ] SCAN-388. **No `aria-live` region for react-hot-toast notifications — screen readers never announce toasts** — `packages/web/src/components/layout/AppShell.tsx:107`. Fix: aria-live polite container + Toaster config.
+- [ ] SCAN-389. **Loading spinners (PageLoader/LoadingScreen/Header) lack `role="status"` + `aria-live` + `aria-label`** — `packages/web/src/components/layout/AppShell.tsx:108` + `App.tsx:110,176` + `Header.tsx:328`. Fix: add role + aria-label.
+- [ ] SCAN-390. **KanbanBoard drag-and-drop no keyboard alternative (no onKeyDown/role=button/aria-grabbed)** — `packages/web/src/pages/tickets/KanbanBoard.tsx:82`. Fix: @dnd-kit/core keyboard sensors or Enter/Space column-picker.
+- [ ] SCAN-391. **KanbanBoard status dot is color-only indicator — no sr-only text for colorblind users** — `packages/web/src/pages/tickets/KanbanBoard.tsx:294`. Fix: `<span className="sr-only">{status.name}</span>` or title.
+- [ ] SCAN-392. **DataTable `<table>` no caption or aria-label — all tables unlabelled for AT** — `packages/web/src/components/shared/DataTable.tsx:152`. Fix: optional caption prop + sr-only caption.
+- [ ] SCAN-393. **InstallmentPlanWizard schedule table no caption/aria-label** — `packages/web/src/components/billing/InstallmentPlanWizard.tsx:141`. Fix: sr-only caption.
+- [ ] SCAN-394. **BusyHoursHeatmap chart no text fallback + only mouse tooltip — inaccessible without pointer** — `packages/web/src/components/reports/BusyHoursHeatmap.tsx:50`. Fix: sr-only `<table>` inside `<details><summary>`.
+- [ ] SCAN-395. **KeyboardShortcutsPanel modal missing role=dialog + aria-modal + aria-labelledby** — `packages/web/src/components/shared/KeyboardShortcutsPanel.tsx:104`. Fix: dialog ARIA.
+- [ ] SCAN-396. **LeadDetailPage lost-reason radio group lacks `<fieldset>` + `<legend>`** — `packages/web/src/pages/leads/LeadDetailPage.tsx:103`. Fix: wrap in fieldset with sr-only legend.
+- [ ] SCAN-397. **Skeleton animate-pulse no `prefers-reduced-motion` guard + no aria-busy/role=status — vestibular-disorder users get no opt-out** — `packages/web/src/components/shared/Skeleton.tsx:9`. Fix: `motion-safe:animate-pulse` + aria-busy + role=status.
+
+### Dead code / stale TODOs / duplicates (11 findings)
+- [ ] SCAN-398. **auth.routes imports `cleanupExpiredEntries` from rateLimiter but never calls it** — `packages/server/src/routes/auth.routes.ts:13`. Fix: remove unused import; schedule cleanup in index.ts if needed.
+- [ ] SCAN-399. **utils/format.ts 4 dead exports (formatDate/formatDateTime/formatCurrency/getStoreLocale); only generateOrderId imported** — `packages/server/src/utils/format.ts:17`. Fix: remove exports or delete; scheduledReports imports from here instead of duplicating.
+- [ ] SCAN-400. **scheduledReports duplicates formatCurrency (missing NaN/invalid-currency guards the canonical has)** — `packages/server/src/services/scheduledReports.ts:161`. Fix: delete local copy + import from utils/format.
+- [ ] SCAN-401. **utils/constants.ts entirely unused — every export redefined inline in routes or duplicated in pagination.ts** — `packages/server/src/utils/constants.ts:7`. Fix: delete or consolidate + wire route imports.
+- [ ] SCAN-402. **commissions.ts `calcCommissionCents` exported but only called internally** — `packages/server/src/utils/commissions.ts:74`. Fix: remove export keyword (internal helper).
+- [ ] SCAN-403. **rateLimiter.recordWindowFailure marked `@deprecated` but still called in 6 route files (auth×5, billing, invoices, giftCards, estimates, admin)** — `packages/server/src/utils/rateLimiter.ts:43`. Fix: replace with `recordWindowAttempt` (alias at line 76); drop deprecated export.
+- [ ] SCAN-404. **RepairPricingTab 46-line commented-out stream-of-thought block (lines 425-470) above real impl** — `packages/web/src/pages/settings/RepairPricingTab.tsx:425`. Fix: delete comment block.
+- [ ] SCAN-405. **settingsDeadToggles 4 dead exports (getAllDeadToggles/findMetadataOnlyDeadKeys/findOrphanDeadKeys/setHideDeadToggles)** — `packages/web/src/pages/settings/settingsDeadToggles.ts:132`. Fix: remove export or wire dev-tools panel.
+- [ ] SCAN-406. **[SEC] fileValidation TODO ClamAV stub returns `{clean:true, scanner:'stub-clamav-pending'}` even when `CLAMAV_HOST` env set — every upload silently passes** — `packages/server/src/utils/fileValidation.ts:210-226`. Fix: implement clamscan OR fatal startup error when CLAMAV_HOST set but unimplemented.
+- [ ] SCAN-407. **reports.routes TODO: startReportEmailer implemented but never called from index.ts — daily summary-email cron wired to nothing** — `packages/server/src/routes/reports.routes.ts:1850`. Fix: import + invoke in index.ts post-listen + delete TODO.
+- [ ] SCAN-408. **CustomerPayPage `console.debug` guarded by `import.meta.env?.DEV` optional chain may defeat Vite tree-shake — call can ship in prod bundle** — `packages/web/src/pages/billing/CustomerPayPage.tsx:65`. Fix: use `import.meta.env.DEV` (no optional chain) so static analysis strips reliably.
+
+## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 9: Docker hardening + compression leaks + socket/DB leaks + signup/WS/audit cluster + stubs/dep-confusion)
+
+### Docker + Node pins + CDN SRI (11 findings)
+- [ ] SCAN-409. **Dockerfile missing HEALTHCHECK — only compose defines it; standalone runs (k8s/ECS) have no liveness probe** — `packages/server/Dockerfile:1`. Fix: add `HEALTHCHECK --interval=30s --timeout=10s ...` before final CMD.
+- [ ] SCAN-410. **Dockerfile no `tini` / `--init` — Node as PID 1 doesn't reap zombies + signal forwarding broken** — `packages/server/Dockerfile:93`. Fix: `apk add tini` + `ENTRYPOINT ["/sbin/tini","--"]`.
+- [ ] SCAN-411. **[SEC] No `.dockerignore` at repo root — full context (`.env`, `.git`, certs/, node_modules) sent to daemon, risks embedding secrets in layers** — repo root. Fix: create .dockerignore with `.env*`, `.git`, node_modules, certs/*.key, data, uploads.
+- [ ] SCAN-412. **[SEC] Dockerfile copies `packages/server/certs/` including `server.key` into image — private key baked into layer** — `packages/server/Dockerfile:71`. Fix: mount certs as runtime secret/volume OR .dockerignore `*.key`.
+- [ ] SCAN-413. **docker-compose.yml service missing `read_only:true` + `security_opt:["no-new-privileges:true"]` + seccomp** — `docker-compose.yml:1`. Fix: add all three + tmpfs mounts for /tmp /run.
+- [ ] SCAN-414. **Google Fonts stylesheet loaded without SRI integrity — CDN-compromise → CSS injection/data exfil** — `packages/web/index.html:18`. Fix: self-host fonts OR pin SRI hash + crossorigin=anonymous.
+- [ ] SCAN-415. **CSP lacks `worker-src 'none'` + `child-src 'none'` — Cloudflare Insights script could register SW or spawn frames** — `packages/server/src/index.ts:904`. Fix: add both directives.
+- [ ] SCAN-416. **packages/shared engines.node `>=22.0.0` no upper bound — diverges from root `<25` + allows 22.0–22.10 (unfixed CVEs)** — `packages/shared/package.json:17`. Fix: align to `">=22.11.0 <25"`.
+- [ ] SCAN-417. **packages/web engines.node misalignment (22.0.0 vs 22.11.0 root)** — `packages/web/package.json:8`. Fix: `">=22.11.0 <25"`.
+- [ ] SCAN-418. **packages/management engines.node misalignment** — `packages/management/package.json:10`. Fix: `">=22.11.0 <25"`.
+- [ ] SCAN-419. **Dockerfile floating tag `node:22-alpine` — non-reproducible, silent patch rolls** — `packages/server/Dockerfile:46`. Fix: pin exact version or digest (e.g., `node:22.11.0-alpine3.21`).
+
+### Compression leaks / prototype pollution / input bloat (7 findings)
+- [ ] SCAN-420. **[SEC] global `compression()` middleware applies gzip to `/auth/*` responses — BREACH-class secret recovery via response-length oracle** — `packages/server/src/index.ts:852`. Fix: filter exclude `/auth/` OR `Content-Encoding: identity` + `Cache-Control: no-store` on auth responses.
+- [ ] SCAN-421. **[SEC] /auth/login/2fa-setup response (secret + manualEntry + challengeToken + QR) compressed — amplifies BREACH on TOTP seed** — `packages/server/src/routes/auth.routes.ts:856`. Fix: exclude route from compression + `Cache-Control: no-store`.
+- [ ] SCAN-422. **[SEC] /auth/login/2fa-verify response with backupCodes compressed — one-time codes leak via response-size oracle** — `packages/server/src/routes/auth.routes.ts:999`. Fix: `Content-Encoding: identity` before res.json.
+- [ ] SCAN-423. **settings PUT /store no per-value length cap (bulk PATCH does) — admin writes multi-MB `receipt_header` blob** — `packages/server/src/routes/settings.routes.ts:483`. Fix: `if (strVal.length > 65_536) continue;` matching bulk path.
+- [ ] SCAN-424. **settings PUT /store allowlist array (O(n) includes) + `tcx_password` may be stored cleartext if not in ENCRYPTED_CONFIG_KEYS** — `packages/server/src/routes/settings.routes.ts:483`. Fix: Set for allowlist + verify tcx_password in encryption set.
+- [ ] SCAN-425. **inbox PATCH /config accepts `Record<string, unknown>` + `String(value)` without typeof guard — proto-pollution adjacent footgun** — `packages/server/src/routes/inbox.routes.ts:948`. Fix: guard typeof string|number|boolean only.
+- [ ] SCAN-426. **[SEC] /auth/refresh response (`accessToken, user`) compressed — HTTP/2 chosen-plaintext attacker distinguishes token prefix bytes** — `packages/server/src/routes/auth.routes.ts:1293`. Fix: exclude from compression OR `Cache-Control: no-store` before res.json.
+
+### Socket/stream cleanup + DB pool + WAL + health (12 findings)
+- [ ] SCAN-427. **httpRedirectServer no keepAliveTimeout/headersTimeout/requestTimeout — slow-loris exposed** — `packages/server/src/index.ts:638`. Fix: set short values (10s/15s) since it only 301s.
+- [ ] SCAN-428. **no scheduled `PRAGMA wal_checkpoint(PASSIVE|TRUNCATE)` cron — low-write tenants bloat .db-wal indefinitely** — `packages/server/src/db/db-worker.mjs:42` + `connection.ts:22`. Fix: hourly `trackInterval` across master + forEachDb tenant.
+- [ ] SCAN-429. **no scheduled `PRAGMA optimize` / ANALYZE — query planner stats go stale as data grows** — `packages/server/src/db/connection.ts:22`. Fix: daily `trackInterval` + forEachDb.
+- [ ] SCAN-430. **db-worker.mjs prepares statements per-task — no statement cache, repeated compile** — `packages/server/src/db/db-worker.mjs:107`. Fix: per-connection `Map<sql, Statement>` closure cache.
+- [ ] SCAN-431. **tenant-pool health-check creates new `SELECT 1` prepared stmt every 30s — GC churn** — `packages/server/src/db/tenant-pool.ts:127`. Fix: prepare once per PoolEntry at open.
+- [ ] SCAN-432. **voice recording `fs.createReadStream().pipe(res)` no error handler + no `req.on('close', src.destroy)` — FD leak on error/abort** — `packages/server/src/routes/voice.routes.ts:253`. Fix: stream.on('error',...) + req.on('close',...).
+- [ ] SCAN-433. **tenantExport (authed) pipe `stream.pipe(res)` no req.on('close') abort guard** — `packages/server/src/routes/tenantExport.routes.ts:220`. Fix: add req.on('close',()=>stream.destroy()).
+- [ ] SCAN-434. **tenantExport public download pipe no req.on('close') abort guard** — `packages/server/src/routes/tenantExport.routes.ts:333`. Fix: same.
+- [ ] SCAN-435. **WS isTenantOriginAllowed calls getTenantDb but never releaseTenantDb — permanent refcount inflation prevents LRU eviction** — `packages/server/src/ws/server.ts:225`. Fix: finally release.
+- [ ] SCAN-436. **db-worker 4 case branches all re-prepare — no (dbPath, sql) 2-level cache** — `packages/server/src/db/db-worker.mjs:107-116`. Fix: nested Map cache.
+- [ ] SCAN-437. **tenant-pool MAX_POOL_SIZE flat cap, no idle-timeout eviction — stale entries hold WAL + 16MiB page cache per tenant** — `packages/server/src/db/tenant-pool.ts:19`. Fix: idle-evict sweep when lastUsed > 30min + refcount==0.
+- [ ] SCAN-438. **admin backup download pipe has .on('error') but no req.on('close',stream.destroy) abort guard — FD leak on client cancel** — `packages/server/src/routes/admin.routes.ts:390`. Fix: add req.on('close',...).
+
+### Signup + WS lifecycle + audit retention + cluster (11 findings)
+- [ ] SCAN-439. **[SEC] signup counters (signupEmailCounters/slugCheckCounters/pendingSignups) are in-process Maps — multi-worker deploy allows N× quota bypass via worker round-robin** — `packages/server/src/routes/signup.routes.ts:38`. Fix: back all via SQLite `checkWindowRate`/`recordWindowAttempt`.
+- [ ] SCAN-440. **signup route pre-flight isSlugAvailable redundant + misleading — provisionTenant already does same check; losing request of concurrent pair still consumes quota/captcha** — `packages/server/src/routes/signup.routes.ts:527`. Fix: remove route-level check + rely on UNIQUE constraint.
+- [ ] SCAN-441. **WS heartbeat dead-socket branch deletes from allClients but never removes from `clients` Map + never decrements counters** — `packages/server/src/ws/server.ts:583-591`. Fix: replicate full close-handler teardown in heartbeat.
+- [ ] SCAN-442. **WS wsConnsByIp/wsConnsByTenant module-level Maps — per-IP/per-tenant cap multiplies by worker count under clustering** — `packages/server/src/ws/server.ts:138-139`. Fix: DB-backed rate-limiter or document single-process requirement.
+- [ ] SCAN-443. **worker pool shutdownWorkerPool calls pool.destroy() without draining — queued tasks dropped silently on SIGTERM** — `packages/server/src/db/worker-pool.ts:161` + `index.ts:3452`. Fix: await queueSize==0 with bounded wait before destroy.
+- [ ] SCAN-444. **masterDb module singleton + multi-process each calls setMasterDb → concurrent writes to master DB from N processes → SQLITE_BUSY/LOCKED at load** — `packages/server/src/utils/masterAudit.ts:1`. Fix: document single-process master OR IPC-queue writes.
+- [ ] SCAN-445. **audit_logs has only flat idx_audit_logs_created — range queries degrade linearly with 730-day retention** — `packages/server/src/db/migrations/022_audit_logs.sql:9-11`. Fix: composite `(created_at, event)` covering index + expression column for `strftime('%Y-%m', created_at)`.
+- [ ] SCAN-446. **deleteTenant no cooldown — admin loop create→delete→re-signup exhausts slug namespace via pending_deletion accumulation** — `packages/server/src/services/tenant-provisioning.ts:470`. Fix: per-tenant 24h rate-limit + cap pending_deletion rows per admin email.
+- [ ] SCAN-447. **audit_logs retention sweep keyed on per-tenant timezone hourly tick — fires at 2AM local but may miss if restart lands at 01:59→03:01** — `packages/server/src/index.ts:2250-2252`. Fix: UTC anchor + validate AUDIT_LOG_RETENTION_DAYS at startup.
+- [ ] SCAN-448. **[SEC] pendingSignups stores `adminPassword` plaintext in memory up to 1h — heap dump / --inspect exposes** — `packages/server/src/routes/signup.routes.ts:582-592`. Fix: store bcrypt hash in Map; pass to provisionTenant with skip-hash flag.
+- [ ] SCAN-449. **RESERVED_SLUGS static compile-time Set — operators can't add reserved words without deploy (e.g. `billing`, `dashboard` claims by attacker before new route ships)** — `packages/server/src/services/tenant-provisioning.ts:17-21`. Fix: load from platform_config table at isSlugAvailable time.
+
+### Virus stub / TODO defaults / dep-confusion (11 findings)
+- [ ] SCAN-450. **[SEC] fileValidation second stub path (CLAMAV_HOST set but integration absent) also returns `{clean:true, scanner:'stub-clamav-pending'}` — operator believes ClamAV active but default-pass** — `packages/server/src/utils/fileValidation.ts:231`. Fix: return `{clean:false}` when CLAMAV_HOST set but unwired.
+- [ ] SCAN-451. **SMS setSmsProvider exported unguarded — any route/service import can swap provider to ConsoleProvider at runtime, bypassing prod telephony** — `packages/server/src/providers/sms/index.ts:311`. Fix: gate NODE_ENV !== 'production' or move to test-harness module.
+- [ ] SCAN-452. **SMS getProviderForDb uses `{strict:false}` — per-tenant misconfig silently falls back to ConsoleProvider (simulated:true)** — `packages/server/src/providers/sms/index.ts:346`. Fix: propagate fail as 503 + tenant-level health flag + ERROR log.
+- [ ] SCAN-453. **[SEC] voice hangup endpoint not wired — returns 501 but billing leg stays open (active billing-leak)** — `packages/server/src/routes/voice.routes.ts:275`. Fix: implement per-provider hangup OR block route entirely until wired.
+- [ ] SCAN-454. **tickets notes type='email' stored + responds 200 without dispatching email — caller + customer believe comm was sent** — `packages/server/src/routes/tickets.routes.ts:2063`. Fix: wire outbound send OR respond 202 `{emailDispatched:false}`.
+- [ ] SCAN-455. **tenant-provisioning archiveDueTenants never called from any cron — cancelled tenant DBs accumulate on disk indefinitely** — `packages/server/src/services/tenant-provisioning.ts:464`. Fix: register hourly trackInterval in index.ts.
+- [ ] SCAN-456. **recalculateAllCustomerHealth + birthday/churn dispatch helpers never scheduled — all health-score + lifecycle triggers skipped** — `packages/server/src/index.ts:1571`. Fix: daily cron post-listen.
+- [ ] SCAN-457. **[SEC] `.npmrc` has no scope→registry mapping for `@bizarre-crm` — attacker registers scope on public npm → dep-confusion on any install without workspace lockfile** — `.npmrc:1`. Fix: add `@bizarre-crm:registry=https://registry.npmjs.org` (or private registry URL).
+- [ ] SCAN-458. **[SEC] tenant-provisioning TEMP-NO-EMAIL-VERIF permanently bypasses email verification + forces password_set=1 + setup_completed='true' on every new tenant — no feature flag** — `packages/server/src/services/tenant-provisioning.ts:332`. Fix: gate behind feature flag / env var.
+- [ ] SCAN-459. **[SEC] scanFileForViruses default-pass with no boot warning when CLAMAV_HOST unset — prod deploy silently approves all uploads** — `packages/server/src/utils/fileValidation.ts:204-207`. Fix: boot-time warning when unset + optional REQUIRE_VIRUS_SCAN policy flag to block.
+- [ ] SCAN-460. **SMS kill-switch result carries `success:true` for suppression — audit/billing callsites that check result.success increment counters for suppressed sends** — `packages/server/src/providers/sms/index.ts:375-378`. Fix: define `SmsKillSwitchResult` with success:false OR add `suppressed:true` field to type.
+
+## PARITY AUDIT — 2026-04-23 (web feature gaps vs android/ActionPlan.md + ios/ActionPlan.md)
+
+### Android parity gaps (17 findings — features present on Android, missing or weak on web)
+- [ ] SCAN-461. **[PARITY] Stocktake endpoint wrappers missing from `packages/web/src/api/endpoints.ts`** — android §60/§6.6. `StocktakePage.tsx` exists but no `stocktakeApi`; page cannot call `GET /stocktake` / `POST /stocktake` / `POST /stocktake/:id/items` through typed client.
+- [ ] SCAN-462. **[PARITY] Multi-location management page + location-switcher missing on web** — android §63 / ios §60. No `locationsApi` + no page under `packages/web/src/pages/locations/`. Multi-location shops can't switch active location or manage per-location settings.
+- [ ] SCAN-463. **[PARITY] Employee Detail page missing — only `EmployeeListPage.tsx` exists** — android §14.2. `employeeApi.get(id)` wired but no `EmployeeDetailPage.tsx`. Certifications, commission rates, performance history unreachable from web.
+- [ ] SCAN-464. **[PARITY] Ticket SLA tracking (badge, breach timer, config) missing from `packages/web/src/pages/tickets/`** — android §4.19/§4.22. Web technicians can't see SLA breach risk Android shows inline.
+- [ ] SCAN-465. **[PARITY] Ticket signature/waiver capture missing** — android §4.14. No waiver/signature page in web tickets + no `POST /tickets/:id/signatures` wrapper in endpoints (only `blockchypApi.captureSignature` for POS). Repair authorization signatures cannot be collected from web.
+- [ ] SCAN-466. **[PARITY] Field service / dispatch page missing** — android §59 / ios §57. No dispatch page under `packages/web/src/pages/field-service/`, no `dispatchApi`, no consumer for `POST /dispatch/optimize`. Job routing + technician dispatch are mobile-only.
+- [ ] SCAN-467. **[PARITY] Owner P&L / financial dashboard page missing** — android §62 / ios §59. Individual report endpoints exist (profitHero, cashTrapped, inventoryTurnover, dayOfWeekProfit) but no unified owner-facing P&L + forecast + budget-vs-actual page.
+- [ ] SCAN-468. **[PARITY] Open-shop / daily operational checklist page missing** — android §3.15. No checklist page + no endpoint consumer for morning/closing workflow. Staff opening from desktop has no structured checklist.
+- [ ] SCAN-469. **[PARITY] Shared-Device Mode settings missing (PIN-based session swap + auto-logoff policy)** — android §2.14. No settings page in `packages/web/src/pages/settings/`. Shared web terminals can't configure employee-swap behavior.
+- [ ] SCAN-470. **[PARITY] Ticket labels CRUD / management page missing** — android §4.21. Labels referenced in ticket detail but no label management in settings + no labels CRUD API in endpoints. Web users can't create/rename/delete triage labels.
+- [ ] SCAN-471. **[PARITY] Appointment self-booking admin configuration page missing** — android §58.3. Public booking portal served but admin config UI for booking rules / deposit requirements / service availability absent from settings.
+- [ ] SCAN-472. **[PARITY] Notification per-event matrix (per-user, per-event, per-channel toggle) missing** — android §73. `NotificationTemplatesTab.tsx` covers template content only; no matrix UI for ~20 event types × push/in-app/email/SMS.
+- [ ] SCAN-473. **[PARITY] Sync conflict-resolution UI missing** — android §20.3. No page under `packages/web/src/pages/` + no consumer for `POST /sync/conflicts/resolve`. Concurrent Android+web edits with conflicts have no web resolution surface.
+- [ ] SCAN-474. **[PARITY] Team Chat: `teamChatApi` absent from `packages/web/src/api/endpoints.ts`** — android §14.5 / §47. `TeamChatPage.tsx` exists but no typed client for `GET /team-chat` / `POST /team-chat/messages`; likely hand-rolls axios or non-functional.
+- [ ] SCAN-475. **[PARITY] Shift schedule API methods (POST /team/shifts, time-off CRUD, shift-swap) missing from typed client** — android §14.6. `ShiftSchedulePage.tsx` exists but `employeeApi` only exposes list/get/clockIn/clockOut/hours/commissions. Schedule page can't persist shift data through typed API.
+- [ ] SCAN-476. **[PARITY] Training mode on web is cosmetic banner only (`TrainingModeBanner.tsx` scoped to unified-pos) — no separate-DB / orange-accent / no-send-guards isolation** — android §53. Web doesn't provide the isolated safe environment Android does.
+- [ ] SCAN-477. **[PARITY] Appointments calendar views (Agenda/Day/Week/Month) missing for main appointments domain** — android §10.1. `CalendarPage.tsx` is leads-scoped only; no calendar for `GET /appointments`.
+
+### iOS parity gaps (21 findings — features present on iOS, missing or weak on web)
+- [ ] SCAN-478. **[PARITY] Recurring invoices — no endpoints in web `invoiceApi` + no dedicated page** — ios §7.8. Expected `packages/web/src/pages/invoices/RecurringInvoicesPage.tsx`. Subscription-style billing can't be scheduled from web.
+- [ ] SCAN-479. **[PARITY] Installment payment plans UI missing — no `InstallmentPlansPage.tsx`** — ios §7.9. `InstallmentPlanWizard.tsx` component exists but no list/management page. High-ticket staged payments can't be tracked.
+- [ ] SCAN-480. **[PARITY] Mileage expense entry + endpoint wrapper missing** — ios §11.8. `POST /expenses/mileage` server-side; no web wrapper + no UI. Field techs can't log deductible mileage.
+- [ ] SCAN-481. **[PARITY] Per-diem expense claims UI + endpoint wrapper missing** — ios §11.9. `POST /expenses/perdiem` server-side; no web wrapper.
+- [ ] SCAN-482. **[PARITY] Expense approve/deny workflow missing from web `expenseApi` + `ExpensesPage.tsx`** — ios §11.4. Only CRUD wired. Managers must use iOS to approve submitted expenses.
+- [ ] SCAN-483. **[PARITY] Bench workflow page missing — `benchApi` fully wired (timer/QC/sign-off/defect) but no page renders it** — ios §4 bench subsection. Expected `packages/web/src/pages/bench/BenchPage.tsx`. Bench techs at desktop have no timer/QC surface.
+- [ ] SCAN-484. **[PARITY] Timesheet drill-down/edit page missing — only `EmployeeListPage.tsx`** — ios §14.3. Payroll review requires editing clock entries inaccessible on web. Expected `packages/web/src/pages/employees/TimesheetPage.tsx`.
+- [ ] SCAN-485. **[PARITY] Time-off request submit/approve/deny flow missing — no endpoints + no page** — ios §14.9. Expected `packages/web/src/pages/employees/TimeOffPage.tsx`.
+- [ ] SCAN-486. **[PARITY] Inventory variants (color/size multi-SKU) CRUD + UI missing from `inventoryApi`** — ios §6.10. Multi-SKU products can't be created/managed from web.
+- [ ] SCAN-487. **[PARITY] Inventory bundles (kit assembly) CRUD + UI missing** — ios §6.11. `BundleEditorSheet` equivalent absent. Bundled repair kits + accessory packs can't be assembled/priced.
+- [ ] SCAN-488. **[PARITY] Recent activity feed page + `activityApi` wrapper missing** — ios §3.6. Real-time shop-wide action stream from `GET /activity` absent. Managers lose visibility off-mobile.
+- [ ] SCAN-489. **[PARITY] Credit notes list/detail page missing — `invoiceApi.createCreditNote` wired but no view/apply/void UI** — ios §7.10. Expected `packages/web/src/pages/invoices/CreditNotesPage.tsx`. Accountants can't audit outstanding credits.
+- [ ] SCAN-490. **[PARITY] Expense receipt OCR missing — no image-upload trigger on `ExpensesPage.tsx`** — ios §11.3. Desktop users manually type every field iOS auto-extracts via `ReceiptOCRService`.
+- [ ] SCAN-491. **[PARITY-WEAK] Dashboard BI widgets exist in `reportApi` (profitHero/busyHoursHeatmap/churn/demandForecast/overstaffing) but `DashboardPage.tsx` may not render them as first-class cards** — ios §3.2. Insights possibly only in /reports drill-through not primary dashboard.
+- [ ] SCAN-492. **[PARITY-WEAK] Needs-attention snooze/dismiss actions missing — alert list shown but no per-item snooze/dismiss in endpoints** — ios §3.3. Web users see alerts but can't act without navigating to each record.
+- [ ] SCAN-493. **[PARITY-WEAK] QC sign-off button + checklist modal missing from web ticket detail — `benchApi.qc.signOff` only on bench API path** — ios §4.7. Sign-off must be triggered from a bench page that doesn't exist on web.
+- [ ] SCAN-494. **[PARITY-WEAK] Estimate e-sign public shareable URL missing — `estimatesApi` has no `signUrl` method** — ios §8. Staff can't copy + send signing link to customers from estimates page.
+- [ ] SCAN-495. **[PARITY-WEAK] SMS group messaging + auto-responders missing — `smsApi` covers conversations + templates only, no `createAutoResponder` / `listAutoResponders` / group-thread endpoints** — ios §12. Bulk + auto-response workflows are mobile-only.
+- [ ] SCAN-496. **[PARITY-WEAK] Scheduled reports management page missing — `reportApi.scheduledList/scheduleEmail/deleteScheduled` wired but no UI** — ios §15. Users can't manage email report schedules without iOS.
+- [ ] SCAN-497. **[PARITY-WEAK] Held carts (POS park/recall) missing — `posApi` has no `holdCart`/`listHeld`/`recallCart` endpoints** — ios §16. Web POS users can't park a transaction for another customer.
+- [ ] SCAN-498. **[PARITY-WEAK] Data export scheduling missing — `dataExportApi` has `status`/`downloadAll` only, no `schedule`/`listSchedules`** — ios §19.19. Web users can trigger one-time exports only, not recurring backups.

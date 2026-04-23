@@ -124,6 +124,18 @@ import inboxRoutes from './routes/inbox.routes.js';
 // Inventory (48) via device_model_templates.
 import deviceTemplateRoutes from './routes/deviceTemplates.routes.js';
 import benchRoutes from './routes/bench.routes.js';
+// Web-parity backend (2026-04-23) — mobile apps already consume these or will.
+// Each route file handles its own role/permission gates + rate limits internally.
+import shiftsScheduleRoutes from './routes/shiftsSchedule.routes.js';
+import timeOffRoutes from './routes/timeOff.routes.js';
+import timesheetRoutes from './routes/timesheet.routes.js';
+import { variantsRouter as inventoryVariantsRoutes, bundlesRouter as inventoryBundlesRoutes } from './routes/inventoryVariants.routes.js';
+import recurringInvoicesRoutes from './routes/recurringInvoices.routes.js';
+import creditNotesRoutes from './routes/creditNotes.routes.js';
+import activityRoutes from './routes/activity.routes.js';
+import notificationPrefsRoutes from './routes/notificationPrefs.routes.js';
+import heldCartsRoutes from './routes/heldCarts.routes.js';
+import { startRecurringInvoicesCron } from './services/recurringInvoicesCron.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
@@ -1567,6 +1579,19 @@ app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)
 app.use('/api/v1/device-templates', authMiddleware, deviceTemplateRoutes);
 app.use('/api/v1/bench', authMiddleware, benchRoutes);
+// Web-parity backend (2026-04-23) — mobile apps (android + iOS) already plan/consume these.
+// See android/ActionPlan.md + ios/ActionPlan.md for request/response contracts.
+// Role/permission gates + rate limits are applied inside each router file.
+app.use('/api/v1/schedule', authMiddleware, shiftsScheduleRoutes);
+app.use('/api/v1/time-off', authMiddleware, timeOffRoutes);
+app.use('/api/v1/timesheet', authMiddleware, timesheetRoutes);
+app.use('/api/v1/inventory-variants', authMiddleware, inventoryVariantsRoutes);
+app.use('/api/v1/inventory-bundles', authMiddleware, inventoryBundlesRoutes);
+app.use('/api/v1/recurring-invoices', authMiddleware, recurringInvoicesRoutes);
+app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
+app.use('/api/v1/activity', authMiddleware, activityRoutes);
+app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
+app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
 // Audit 49 — CRM + marketing (health score, LTV, segments, campaigns, wallet pass)
 // TODO(MEDIUM, §26): wire a daily cron that runs recalculateAllCustomerHealth()
 // + the birthday/churn dispatch helpers. For now these endpoints are invoked
@@ -1943,6 +1968,25 @@ server.listen(config.port, config.host, async () => {
   // BlockChyp SDK yet, but the timeout at least lets the cron progress to
   // the next tenant; any orphaned in-flight charges continue in the
   // background and log-record themselves the same as any other async call.
+  // Recurring invoices cron (SCAN-478 / web-parity 2026-04-23).
+  // Runs every 15 min; creates invoices from active `invoice_templates` whose
+  // next_run_at <= now(). startRecurringInvoicesCron owns its internal setInterval
+  // and returns the handle, so push directly into backgroundIntervals for graceful
+  // shutdown (same contract as trackInterval's tracked handles).
+  try {
+    const recurringInvoicesTimer = startRecurringInvoicesCron(() => {
+      const entries: Array<{ slug: string; db: any }> = [];
+      forEachDb((slug, db) => {
+        if (slug && db) entries.push({ slug, db });
+      });
+      return entries as unknown as Iterable<import('./services/recurringInvoicesCron.js').TenantDbEntry>;
+    });
+    backgroundIntervals.push(recurringInvoicesTimer);
+  } catch (err) {
+    log.error('Failed to start recurring invoices cron', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   const MEMBERSHIP_MAX_PER_RUN = 100;
   const MEMBERSHIP_PER_TENANT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
   trackInterval(async () => {
