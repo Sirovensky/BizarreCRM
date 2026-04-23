@@ -84,13 +84,13 @@ object ClipboardUtil {
      * by the 2FA verify screen to offer a one-tap paste when the user has
      * copied the code from their authenticator / SMS app.
      *
-     * Delegates to [extractOtpDigits] with a 6..6 range, preserving the
-     * original narrow contract of this function.
+     * Delegates to [OtpParser.extractOtpDigits] with a 6..6 range, preserving
+     * the original narrow contract of this function.
      */
     fun detectOtp(context: Context): String? {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val raw = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-        return extractOtpDigits(raw, 6..6)
+        return OtpParser.extractOtpDigits(raw, 6..6)
     }
 
     /**
@@ -111,19 +111,39 @@ object ClipboardUtil {
     fun detectOtpFromClipboard(context: Context, digits: IntRange = 4..8): String? {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val raw = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-        return extractOtpDigits(raw, digits)
+        return OtpParser.extractOtpDigits(raw, digits)
     }
 
+    private const val DEFAULT_SECRET_TTL_MS = 30_000L
+}
+
+/**
+ * §2.4 (L303) — Pure OTP-digit extraction helper with no Android framework
+ * dependencies. Extracted from [ClipboardUtil] so that unit tests can load this
+ * object without triggering the `Handler(Looper.getMainLooper())` initialiser
+ * that [ClipboardUtil] uses.
+ *
+ * All functions are stateless pure transformers — no logging, no I/O, no side
+ * effects. Safe to call from any thread.
+ */
+object OtpParser {
+
     /**
-     * Pure helper that extracts the longest qualifying digit run from [text].
+     * Finds the longest consecutive run of digits in [text] whose length falls
+     * within [range] (default 4..8, i.e. 4-digit to 8-digit OTPs).
      *
-     * Exposed at object scope so unit tests can drive it directly without
-     * needing a real Android ClipboardManager. The function is a pure string
-     * transformer — no logging, no I/O, no side effects.
+     * Leading/trailing whitespace and newlines in [text] are stripped before
+     * scanning so that typical clipboard content like " 123456\n" is handled
+     * correctly.
      *
-     * @param text  raw clipboard text, may be null or blank
-     * @param range acceptable digit-run length (inclusive on both ends)
-     * @return the longest qualifying digit run, or null if none found
+     * Returns `null` when:
+     * - [text] is null or blank,
+     * - no digit run with length inside [range] exists.
+     *
+     * Ties (equal-length runs) are broken by first occurrence.
+     *
+     * @param text  the raw string to search, e.g. clipboard text
+     * @param range acceptable digit-run length, inclusive on both ends
      */
     fun extractOtpDigits(text: String?, range: IntRange = 4..8): String? {
         if (text.isNullOrEmpty()) return null
@@ -136,6 +156,5 @@ object ClipboardUtil {
             .maxByOrNull { it.length }
     }
 
-    private const val DEFAULT_SECRET_TTL_MS = 30_000L
     private val DIGIT_RUN_REGEX = Regex("\\d+")
 }
