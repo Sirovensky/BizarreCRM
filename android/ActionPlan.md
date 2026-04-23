@@ -42,10 +42,10 @@ in-progress and lags the audit.
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
 | 7 | Invoices | ~30% | List (status tabs), detail w/ payments DONE. Missing: create, refund, send, dunning, pagination. |
 | 8 | Estimates | ~15% | List + detail header DONE. Missing: send, approve, e-sign, versioning, create. |
-| 9 | Leads | ~25% | List, detail, create DONE. Missing: Kanban pipeline, conversions, lost-reason. |
+| 9 | Leads | ~35% | List, detail, create DONE. **Read-only Kanban view + List/Kanban toggle (commit 5bec1e4 — `ui/screens/leads/LeadKanbanBoard.kt` horizontal-scroll stage columns; drag-drop deferred).** Missing: conversions, lost-reason, drag-drop stage change. |
 | 10 | Appointments | ~20% | Day-list + create DONE. Missing: week/month/agenda, RRULE recurrence, scheduling engine. |
 | 11 | Expenses | ~25% | List w/ summary + filter, create DONE. Missing: receipt OCR, approval, pie chart, PhotoPicker. |
-| 12 | SMS | ~30% | Thread list, WebSocket realtime, compose-new DONE. Missing: filters, attachments, templates, voice calls, bulk. |
+| 12 | SMS | ~40% | Thread list, WebSocket realtime, compose-new DONE. **Template picker sheet in thread compose with `{{placeholder}}` interpolation (commit 33a2608 — `GET /sms/templates` + `SmsTemplatePickerSheet` ModalBottomSheet).** Missing: filters, attachments, voice calls, bulk. |
 | 13 | Notifications | ~65% | List + **group-by-day sticky headers (NEW)** + FCM token + deep-link whitelist + 12 granular channels + POST_NOTIFICATIONS prompt + **quiet hours UI (NEW)** DONE. Missing: rich push, in-app toast, launcher badge. |
 | 14 | Employees & Timeclock | ~45% | List, clock in/out, **detail screen (NEW)** DONE. Missing: real-time presence, permissions matrix, edit/reset-PIN/deactivate (server endpoints pending). |
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
@@ -59,7 +59,7 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~16% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + **BrandListItem mergeDescendants/Role.Button (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
+| 26 | Accessibility | ~22% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + BrandListItem mergeDescendants/Role.Button + **DashboardScreen sweep (commit 881b404 — KPI tiles mergeDescendants + Role.Button + contentDescription; section headers heading(); decorative icons nulled; liveRegion Polite on KPI grid; 48dp minHeight).** Missing: per-screen sweep across other feature modules, fontScale, a11y framework tests. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~72% | SQLCipher + EncryptedSharedPrefs + cert pinning + Network Security Config + FLAG_SECURE (partial) + setRecentsScreenshotEnabled + RedactingHttpLogger + ClipboardUtil sensitive-clear + OTP detect + SessionRevoked banner + Biometric STRONG + 401 remote sign-out + ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints, Blur-on-recents, Timber RedactorTree. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
