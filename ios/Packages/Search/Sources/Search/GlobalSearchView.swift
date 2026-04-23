@@ -8,24 +8,38 @@ import Sync
 import UIKit
 #endif
 
+// MARK: - ViewModel
+
 @MainActor
 @Observable
 public final class GlobalSearchViewModel {
+
+    // MARK: - Observable state
+
+    public private(set) var mergedRows: [SearchResultMerger.MergedRow] = []
+    /// Kept for backward compatibility — callers that need the raw server response.
     public private(set) var results: GlobalSearchResults?
     public private(set) var localHits: [SearchHit] = []
+    public private(set) var scopeCounts: ScopeCounts = .zero
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?
     public var query: String = ""
     public var selectedFilter: EntityFilter = .all
 
+    // MARK: - Private
+
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let ftsStore: FTSIndexStore?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+
+    // MARK: - Init
 
     public init(api: APIClient, ftsStore: FTSIndexStore? = nil) {
         self.api = api
         self.ftsStore = ftsStore
     }
+
+    // MARK: - Public API
 
     public func onChange(_ new: String) {
         query = new
@@ -33,11 +47,14 @@ public final class GlobalSearchViewModel {
         if new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             results = nil
             localHits = []
+            mergedRows = []
+            scopeCounts = .zero
             errorMessage = nil
             isLoading = false
             return
         }
         searchTask = Task { @MainActor in
+            // 300ms debounce — cancellable on each keystroke.
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
             await fetchLocal()
@@ -51,11 +68,17 @@ public final class GlobalSearchViewModel {
         await fetchRemote()
     }
 
+    // MARK: - Private fetch
+
     private func fetchLocal() async {
         guard let store = ftsStore else { return }
         let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
-        let hits = (try? await store.search(query: query, entity: filter, limit: 20)) ?? []
+        async let hitsResult = store.search(query: query, entity: filter, limit: 50)
+        async let countsResult = store.scopeCounts(query: query)
+        let (hits, counts) = (try? await (hitsResult, countsResult)) ?? ([], .zero)
         localHits = hits
+        scopeCounts = counts
+        updateMergedRows()
     }
 
     private func fetchRemote() async {
@@ -63,27 +86,47 @@ public final class GlobalSearchViewModel {
         defer { isLoading = false }
         errorMessage = nil
         do {
-            results = try await api.globalSearch(query)
+            let remote = try await api.globalSearch(query)
+            results = remote
+            // Merge scope counts with remote results.
+            scopeCounts = scopeCounts.merged(with: remote)
+            updateMergedRows()
         } catch {
             AppLog.ui.error("Search failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
             results = nil
+            updateMergedRows()
         }
+    }
+
+    private func updateMergedRows() {
+        mergedRows = SearchResultMerger.merge(
+            localHits: localHits,
+            remote: results,
+            filter: selectedFilter
+        )
     }
 }
 
+// MARK: - GlobalSearchView
+
 public struct GlobalSearchView: View {
+
     @State private var vm: GlobalSearchViewModel
     @State private var queryText: String = ""
     @State private var showingFilters: Bool = false
     @State private var showingSaved: Bool = false
     @State private var filters: SearchFilters = SearchFilters()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let recentStore: RecentSearchStore?
     private let savedStore: SavedSearchStore?
     private let ftsStore: FTSIndexStore?
 
     @State private var recentQueries: [String] = []
+
+    // MARK: - Init
 
     public init(
         api: APIClient,
@@ -97,7 +140,19 @@ public struct GlobalSearchView: View {
         self.savedStore = savedStore
     }
 
+    // MARK: - Body
+
     public var body: some View {
+        if horizontalSizeClass == .regular {
+            ipadLayout
+        } else {
+            iphoneLayout
+        }
+    }
+
+    // MARK: - iPhone layout
+
+    private var iphoneLayout: some View {
         NavigationStack {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -118,64 +173,177 @@ public struct GlobalSearchView: View {
                     if !queryText.isEmpty { await recentStore?.add(queryText) }
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    HStack(spacing: BrandSpacing.md) {
-                        if savedStore != nil {
-                            Button {
-                                showingSaved = true
-                            } label: {
-                                Image(systemName: "bookmark")
-                            }
-                            .accessibilityLabel("Saved searches")
-                        }
-                        Button {
-                            showingFilters = true
-                        } label: {
-                            Image(systemName: filters.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                                .foregroundStyle(filters.isDefault ? .bizarreOnSurface : .bizarreOrange)
-                        }
-                        .accessibilityLabel(filters.isDefault ? "Filters" : "Filters active")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingFilters) {
-                SearchFiltersSheet(filters: $filters) { applied in
-                    vm.selectedFilter = applied.entity
-                    Task { await vm.submit() }
-                }
-            }
-            .sheet(isPresented: $showingSaved) {
-                if let savedStore, let ftsStore {
-                    SavedSearchListView(store: savedStore, ftsStore: ftsStore)
-                }
-            }
+            .toolbar { toolbarItems }
+            .sheet(isPresented: $showingFilters) { filtersSheet }
+            .sheet(isPresented: $showingSaved) { savedSheet }
             .task { await loadRecent() }
         }
     }
 
-    // MARK: - Entity filter chips
+    // MARK: - iPad layout
+
+    private var ipadLayout: some View {
+        NavigationSplitView {
+            // Left column: filter chips + recent searches
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 0) {
+                    entityFilterChipList
+                        .padding(BrandSpacing.base)
+                    if !recentQueries.isEmpty && queryText.isEmpty {
+                        Divider().padding(.horizontal, BrandSpacing.base)
+                        RecentSearchesView(
+                            queries: recentQueries,
+                            onSelect: { q in
+                                queryText = q
+                                vm.onChange(q)
+                            },
+                            onDelete: { q in
+                                Task {
+                                    await recentStore?.remove(q)
+                                    await loadRecent()
+                                }
+                            }
+                        )
+                        .padding(.top, BrandSpacing.sm)
+                    }
+                    Spacer()
+                }
+            }
+            .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)
+        } detail: {
+            NavigationStack {
+                ZStack {
+                    Color.bizarreSurfaceBase.ignoresSafeArea()
+                    content
+                }
+                .navigationTitle("Search")
+                .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
+                .onChange(of: queryText) { _, new in vm.onChange(new) }
+                .onSubmit(of: .search) {
+                    Task {
+                        await vm.submit()
+                        if !queryText.isEmpty { await recentStore?.add(queryText) }
+                    }
+                }
+                .toolbar { toolbarItems }
+                .sheet(isPresented: $showingFilters) { filtersSheet }
+                .sheet(isPresented: $showingSaved) { savedSheet }
+            }
+        }
+        .task { await loadRecent() }
+    }
+
+    // MARK: - Entity filter chip bar (horizontal scroll — iPhone)
 
     private var entityFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrandSpacing.xs) {
                 ForEach(EntityFilter.allCases, id: \.self) { filter in
-                    Button {
-                        vm.selectedFilter = filter
-                        if !queryText.isEmpty { Task { await vm.submit() } }
-                    } label: {
-                        Label(filter.displayName, systemImage: filter.systemImage)
-                            .font(.brandLabelLarge())
-                            .padding(.horizontal, BrandSpacing.md)
-                            .padding(.vertical, BrandSpacing.xs)
-                            .brandGlass(vm.selectedFilter == filter ? .identity : .regular, interactive: true)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(filter.displayName)
-                    .accessibilityAddTraits(vm.selectedFilter == filter ? .isSelected : [])
+                    filterChipButton(filter)
                 }
             }
             .padding(.vertical, BrandSpacing.xs)
+        }
+    }
+
+    // MARK: - Entity filter chip list (vertical — iPad sidebar)
+
+    private var entityFilterChipList: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Text("Scope")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.bottom, BrandSpacing.xxs)
+            ForEach(EntityFilter.allCases, id: \.self) { filter in
+                filterChipButton(filter)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func filterChipButton(_ filter: EntityFilter) -> some View {
+        Button {
+            withAnimation(reduceMotion ? .none : BrandMotion.snappy) {
+                vm.selectedFilter = filter
+            }
+            if !queryText.isEmpty { Task { await vm.submit() } }
+        } label: {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: filter.systemImage)
+                    .frame(width: 20)
+                Text(filter.displayName)
+                Spacer(minLength: 0)
+                let count = vm.scopeCounts.count(for: filter)
+                if count > 0 {
+                    Text("\(min(count, 99))")
+                        .font(.brandLabelSmall().monospacedDigit())
+                        .foregroundStyle(vm.selectedFilter == filter ? .white : .bizarreOrange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(vm.selectedFilter == filter
+                                      ? Color.bizarreOrange
+                                      : Color.bizarreOrange.opacity(0.15))
+                        )
+                }
+            }
+            .font(.brandLabelLarge())
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .brandGlass(vm.selectedFilter == filter ? .identity : .regular, interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(filter.displayName)
+        .accessibilityValue(
+            vm.scopeCounts.count(for: filter) > 0
+                ? "\(vm.scopeCounts.count(for: filter)) results"
+                : "no results"
+        )
+        .accessibilityAddTraits(vm.selectedFilter == filter ? .isSelected : [])
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            HStack(spacing: BrandSpacing.md) {
+                if savedStore != nil {
+                    Button {
+                        showingSaved = true
+                    } label: {
+                        Image(systemName: "bookmark")
+                    }
+                    .accessibilityLabel("Saved searches")
+                }
+                Button {
+                    showingFilters = true
+                } label: {
+                    Image(systemName: filters.isDefault
+                          ? "line.3.horizontal.decrease.circle"
+                          : "line.3.horizontal.decrease.circle.fill")
+                        .foregroundStyle(filters.isDefault ? .bizarreOnSurface : .bizarreOrange)
+                }
+                .accessibilityLabel(filters.isDefault ? "Filters" : "Filters active")
+            }
+        }
+    }
+
+    // MARK: - Sheets
+
+    private var filtersSheet: some View {
+        SearchFiltersSheet(filters: $filters) { applied in
+            vm.selectedFilter = applied.entity
+            Task { await vm.submit() }
+        }
+    }
+
+    @ViewBuilder
+    private var savedSheet: some View {
+        if let savedStore, let ftsStore {
+            SavedSearchListView(store: savedStore, ftsStore: ftsStore)
         }
     }
 
@@ -187,18 +355,14 @@ public struct GlobalSearchView: View {
             offlinePlaceholder
         } else if queryText.isEmpty {
             emptyStateWithRecent
-        } else if vm.isLoading && vm.localHits.isEmpty {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let err = vm.errorMessage, vm.localHits.isEmpty {
+        } else if vm.isLoading && vm.mergedRows.isEmpty {
+            skeletonView
+        } else if let err = vm.errorMessage, vm.mergedRows.isEmpty {
             errorView(err)
-        } else if let results = vm.results {
-            if results.isEmpty && vm.localHits.isEmpty {
-                noResultsView
-            } else {
-                resultList(results: results)
-            }
-        } else if !vm.localHits.isEmpty {
-            localHitList
+        } else if !vm.mergedRows.isEmpty {
+            mergedResultList
+        } else if !vm.isLoading {
+            noResultsView
         }
     }
 
@@ -230,13 +394,13 @@ public struct GlobalSearchView: View {
                 if !recentQueries.isEmpty {
                     RecentSearchesView(
                         queries: recentQueries,
-                        onSelect: { query in
-                            queryText = query
-                            vm.onChange(query)
+                        onSelect: { q in
+                            queryText = q
+                            vm.onChange(q)
                         },
-                        onDelete: { query in
+                        onDelete: { q in
                             Task {
-                                await recentStore?.remove(query)
+                                await recentStore?.remove(q)
                                 await loadRecent()
                             }
                         }
@@ -247,7 +411,7 @@ public struct GlobalSearchView: View {
                         .font(.system(size: 48))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .accessibilityHidden(true)
-                    Text("Search across tickets, customers, inventory, and invoices.")
+                    Text("Try a phone number, ticket ID, SKU, IMEI, or name.")
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .multilineTextAlignment(.center)
@@ -264,8 +428,13 @@ public struct GlobalSearchView: View {
             Image(systemName: "magnifyingglass.circle")
                 .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
-            Text("No results for \"\(queryText)\"")
+            Text("No matches for \"\(queryText)\"")
                 .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            Text("Try different spelling, scope to All, or search by phone.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -285,15 +454,13 @@ public struct GlobalSearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Local hits (FTS fast lane)
+    // MARK: - Skeleton loader
 
-    private var localHitList: some View {
+    private var skeletonView: some View {
         List {
-            Section("Local results") {
-                ForEach(vm.localHits) { hit in
-                    SearchHitRow(hit: hit)
-                        .listRowBackground(Color.bizarreSurface1)
-                }
+            ForEach(0..<5, id: \.self) { _ in
+                SkeletonRow()
+                    .listRowBackground(Color.bizarreSurface1)
             }
         }
         #if os(iOS)
@@ -302,52 +469,19 @@ public struct GlobalSearchView: View {
         .listStyle(.plain)
         #endif
         .scrollContentBackground(.hidden)
+        .disabled(true)
     }
 
-    // MARK: - Remote results
+    // MARK: - Merged result list
 
-    private func resultList(results: GlobalSearchResults) -> some View {
+    private var mergedResultList: some View {
         List {
-            // Show local hits first (fast lane)
-            if !vm.localHits.isEmpty {
-                Section("Local") {
-                    ForEach(vm.localHits) { hit in
-                        SearchHitRow(hit: hit)
-                            .listRowBackground(Color.bizarreSurface1)
-                    }
-                }
-            }
-            if !results.customers.isEmpty {
-                Section("Customers") {
-                    ForEach(results.customers) { row in
-                        ResultRow(row: row, icon: "person.fill")
-                            .listRowBackground(Color.bizarreSurface1)
-                    }
-                }
-            }
-            if !results.tickets.isEmpty {
-                Section("Tickets") {
-                    ForEach(results.tickets) { row in
-                        ResultRow(row: row, icon: "wrench.and.screwdriver.fill")
-                            .listRowBackground(Color.bizarreSurface1)
-                    }
-                }
-            }
-            if !results.inventory.isEmpty {
-                Section("Inventory") {
-                    ForEach(results.inventory) { row in
-                        ResultRow(row: row, icon: "shippingbox.fill")
-                            .listRowBackground(Color.bizarreSurface1)
-                    }
-                }
-            }
-            if !results.invoices.isEmpty {
-                Section("Invoices") {
-                    ForEach(results.invoices) { row in
-                        ResultRow(row: row, icon: "doc.text.fill")
-                            .listRowBackground(Color.bizarreSurface1)
-                    }
-                }
+            ForEach(vm.mergedRows) { row in
+                MergedResultRow(row: row, query: queryText)
+                    .listRowBackground(Color.bizarreSurface1)
+                    #if os(iOS)
+                    .hoverEffect(.highlight)
+                    #endif
             }
         }
         #if os(iOS)
@@ -363,77 +497,137 @@ public struct GlobalSearchView: View {
     private func loadRecent() async {
         recentQueries = await recentStore?.all ?? []
     }
+}
 
-    // MARK: - Result row
+// MARK: - MergedResultRow
 
-    private struct ResultRow: View {
-        let row: GlobalSearchResults.Row
-        let icon: String
-        @State private var copied: Bool = false
+private struct MergedResultRow: View {
+    let row: SearchResultMerger.MergedRow
+    let query: String
+    @State private var copied: Bool = false
 
-        var body: some View {
-            HStack(spacing: BrandSpacing.md) {
-                Image(systemName: icon)
-                    .foregroundStyle(.bizarreOrange)
-                    .frame(width: 28)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.display ?? "—")
-                        .font(.brandBodyLarge())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .lineLimit(1)
-                    if let sub = row.subtitle, !sub.isEmpty {
-                        Text(sub)
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer()
-                if copied {
-                    Label("Copied", systemImage: "checkmark.circle.fill")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.bizarreSuccess)
-                        .transition(.opacity)
-                        .accessibilityLabel("Copied")
-                }
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            entityIcon
+                .frame(width: 28)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(TermHighlighter.highlight(text: row.title, query: query))
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+                subtitleContent
+                entityBadge
             }
-            .padding(.vertical, BrandSpacing.xxs)
-            .contentShape(Rectangle())
-            .contextMenu {
+            Spacer()
+            copiedIndicator
+        }
+        .padding(.vertical, BrandSpacing.xxs)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                copy(row.entityId)
+            } label: {
+                Label("Copy ID \(row.entityId)", systemImage: "number.square")
+            }
+            if !row.title.isEmpty {
                 Button {
-                    copy(String(row.id))
+                    copy(row.title)
                 } label: {
-                    Label("Copy ID #\(row.id)", systemImage: "number.square")
-                }
-                if let display = row.display, !display.isEmpty {
-                    Button {
-                        copy(display)
-                    } label: {
-                        Label("Copy name", systemImage: "doc.on.doc")
-                    }
+                    Label("Copy name", systemImage: "doc.on.doc")
                 }
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(Self.a11y(for: row))
-            .accessibilityHint("Double-tap and hold to open the actions menu.")
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(a11yLabel)
+        .accessibilityHint("Double-tap and hold to open the actions menu.")
+    }
 
-        private func copy(_ value: String) {
-            #if canImport(UIKit)
-            UIPasteboard.general.string = value
-            #endif
-            withAnimation(BrandMotion.snappy) { copied = true }
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                withAnimation(BrandMotion.snappy) { copied = false }
+    @ViewBuilder
+    private var subtitleContent: some View {
+        if let snippet = row.snippet, !snippet.isEmpty {
+            // FTS5 snippet with <b>…</b> markers → AttributedString
+            Text(TermHighlighter.attributed(snippet: snippet))
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .lineLimit(2)
+        } else if let sub = row.subtitle, !sub.isEmpty {
+            Text(TermHighlighter.highlight(text: sub, query: query))
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .lineLimit(1)
+        }
+    }
+
+    private var entityBadge: some View {
+        Text(row.entity.capitalized)
+            .font(.brandLabelSmall())
+            .foregroundStyle(.bizarreOrange)
+    }
+
+    private var entityIcon: some View {
+        let imageName: String
+        switch row.entity {
+        case "customers":    imageName = "person.fill"
+        case "tickets":      imageName = "wrench.and.screwdriver.fill"
+        case "inventory":    imageName = "shippingbox.fill"
+        case "invoices":     imageName = "doc.text.fill"
+        case "estimates":    imageName = "doc.badge.plus"
+        case "appointments": imageName = "calendar"
+        default:             imageName = "magnifyingglass"
+        }
+        return Image(systemName: imageName)
+            .foregroundStyle(.bizarreOrange)
+    }
+
+    @ViewBuilder
+    private var copiedIndicator: some View {
+        if copied {
+            Label("Copied", systemImage: "checkmark.circle.fill")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.bizarreSuccess)
+                .transition(.opacity)
+                .accessibilityLabel("Copied")
+        }
+    }
+
+    private var a11yLabel: String {
+        let sub = row.subtitle ?? row.snippet ?? ""
+        return sub.isEmpty ? row.title : "\(row.title). \(sub)"
+    }
+
+    private func copy(_ value: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = value
+        #endif
+        withAnimation(BrandMotion.snappy) { copied = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            withAnimation(BrandMotion.snappy) { copied = false }
+        }
+    }
+}
+
+// MARK: - SkeletonRow
+
+private struct SkeletonRow: View {
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.bizarreOnSurface.opacity(0.08))
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.bizarreOnSurface.opacity(0.08))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.bizarreOnSurface.opacity(0.05))
+                    .frame(maxWidth: 180)
+                    .frame(height: 12)
             }
         }
-
-        static func a11y(for row: GlobalSearchResults.Row) -> String {
-            let display = row.display ?? "Untitled"
-            let sub = row.subtitle ?? ""
-            return sub.isEmpty ? display : "\(display). \(sub)"
-        }
+        .padding(.vertical, BrandSpacing.xxs)
+        .accessibilityHidden(true)
     }
 }
