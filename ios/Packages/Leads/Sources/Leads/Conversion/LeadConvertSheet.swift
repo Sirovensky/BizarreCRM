@@ -10,11 +10,11 @@ import Core
 public struct LeadConvertSheet: View {
     @State private var vm: LeadConvertViewModel
     private let lead: LeadDetail
-    /// Called with (customerId, ticketId?) after successful conversion.
+    /// Called with (ticketId, customerId?) after successful conversion.
     private let onSuccess: (Int64, Int64?) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    public init(api: APIClient, lead: LeadDetail, onSuccess: @escaping (Int64, Int64?) -> Void) {
+    public init(api: APIClient, lead: LeadDetail, onSuccess: @escaping (_ ticketId: Int64, _ customerId: Int64?) -> Void) {
         self.lead = lead
         self.onSuccess = onSuccess
         _vm = State(wrappedValue: LeadConvertViewModel(api: api, leadId: lead.id))
@@ -59,8 +59,8 @@ public struct LeadConvertSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onChange(of: vm.state.isSuccess) { _, isSuccess in
-            if isSuccess, case .success(let cId, let tId) = vm.state {
-                onSuccess(cId, tId)
+            if isSuccess, case .success(let tId, let cId) = vm.state {
+                onSuccess(tId, cId)
                 dismiss()
             }
         }
