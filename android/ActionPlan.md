@@ -1726,8 +1726,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Schedule report** — `GET /reports/scheduled`; create schedule; auto-email.
 
 ### 15.2 Sales report
-- [ ] Revenue line chart (Vico `LineCartesianLayer`) + period compare.
-- [ ] Drill-through: tap chart point → sales of that day.
+- [x] Revenue line chart (Vico `LineCartesianLayer`) + period compare. (commit 10fa332 — `RevenueOverTimeLineChart` + `SalesByDayBarChart` + donut `CategoryBreakdownPieChart` in `ReportsCharts.kt`; Overview tab added to ReportsScreen)
+- [~] Drill-through: tap chart point → sales of that day. (commit 10fa332 — chart surfaces live; tap-to-drill pending)
 - [ ] Top-items table; top-customers table.
 - [ ] Gross / net / refunds / tax split.
 - [ ] Export CSV.
@@ -2311,8 +2311,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
 
 ### 24.1 Glance widgets
-- [ ] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
-- [ ] My Queue widget — shows 3 next tickets; tap → ticket detail.
+- [blocked: deps — `androidx.glance:glance-appwidget` absent from version catalog; classic `DashboardWidgetProvider` (RemoteViews) ships today. Unblock by adding `androidx.glance:glance-appwidget:1.1.0` to `gradle/libs.versions.toml` + `app/build.gradle.kts` (note: must be done under policy review — Glance adds ~200KB + another artifact).] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
+- [blocked: same — glance dep] My Queue widget — shows 3 next tickets; tap → ticket detail.
 - [ ] Unread SMS widget.
 - [ ] Clock-in/out toggle widget.
 - [ ] Low-stock widget.
@@ -2438,9 +2438,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 27. Internationalization & Per-App Language
 
 ### 27.1 Locale handling
-- [ ] Per-app language (Android 13+) via `LocaleManager.setApplicationLocales(LocaleList.forLanguageTags("es-MX"))`.
-- [ ] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply.
-- [ ] Settings → Language picker lists all translated locales plus "System default".
+- [x] Per-app language (Android 13+) via `LocaleManager.setApplicationLocales(LocaleList.forLanguageTags("es-MX"))`. (commit d3d546c — `util/LanguageManager.kt` with TIRAMISU-gated LocaleManager path)
+- [~] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply. (commit d3d546c — API 26-32 Configuration override + `Activity.recreate()`; `wrapContext()` helper ready; `MainActivity.attachBaseContext` wiring pending for full cold-start coverage)
+- [x] Settings → Language picker lists all translated locales plus "System default". (commit d3d546c — `ui/screens/settings/LanguageScreen.kt` radio list + Settings row with current-language subtitle; `locales_config.xml` declares en/es/fr)
 
 ### 27.2 Translations
 - [ ] Phase-1 languages: en-US, es-US, es-MX, fr-CA.
