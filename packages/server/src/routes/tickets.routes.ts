@@ -495,6 +495,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const fromDate = req.query.from_date as string || null;
   const toDate = req.query.to_date as string || null;
   const dateFilter = req.query.date_filter as string || 'all';
+  // SCAN-462 / migration 136: optional location filter (backwards-compat — omitting it returns all)
+  const locationIdParam = req.query.location_id as string || '';
+  const locationIdFilter = /^\d+$/.test(locationIdParam) ? parseInt(locationIdParam, 10) : null;
   const sortBy = (req.query.sort_by as string) || 'created_at';
   const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -574,6 +577,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   if (toDate) {
     conditions.push('t.created_at <= ?');
     params.push(toDate + ' 23:59:59');
+  }
+
+  // SCAN-462 / migration 136: location filter — no forced scoping, purely additive
+  if (locationIdFilter !== null) {
+    conditions.push('t.location_id = ?');
+    params.push(locationIdFilter);
   }
 
   // Keyword search: order_id, customer name, device names, notes content, history description
@@ -986,12 +995,27 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     ? (body.priority as string)
     : 'normal';
 
-  // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
+  // SCAN-462 / migration 136: resolve location_id — default to 1 (Main Store) when not provided.
+  // Validate that the supplied id references an existing, active location.
+  let ticketLocationId: number = 1;
+  if (body.location_id !== undefined && body.location_id !== null) {
+    if (!Number.isInteger(body.location_id) || (body.location_id as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const loc = await adb.get<AnyRow>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      body.location_id,
+    );
+    if (!loc) throw new AppError('location_id references an unknown or inactive location', 400);
+    ticketLocationId = body.location_id as number;
+  }
+
+  // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires; migration 136: location_id)
   const ticketResult = await adb.run(`
     INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                          source, referral_source, labels, due_on, created_by, tracking_token,
-                         is_layaway, layaway_expires, priority, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         is_layaway, layaway_expires, priority, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
     body.customer_id,
@@ -1008,6 +1032,7 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     body.is_layaway ? 1 : 0,
     body.layaway_expires ?? null,
     priority,
+    ticketLocationId,
     now(),
     now(),
   );
@@ -1799,11 +1824,24 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
     throw new AppError('priority must be one of: low, normal, high, critical', 400);
   }
 
+  // SCAN-462 / migration 136: validate location_id before entering the update loop
+  if (req.body.location_id !== undefined && req.body.location_id !== null) {
+    if (!Number.isInteger(req.body.location_id) || (req.body.location_id as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const patchLoc = await adb.get<AnyRow>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      req.body.location_id,
+    );
+    if (!patchLoc) throw new AppError('location_id references an unknown or inactive location', 400);
+  }
+
   const allowedFields = [
     'customer_id', 'assigned_to', 'discount', 'discount_reason',
     'source', 'referral_source', 'labels', 'due_on', 'signature',
     'is_layaway', 'layaway_expires', // ENR-POS1
     'priority', // migration 135
+    'location_id', // migration 136 (SCAN-462)
   ];
   const updates: string[] = [];
   const params: any[] = [];

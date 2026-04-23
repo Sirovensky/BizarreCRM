@@ -11,6 +11,7 @@
  */
 import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 
@@ -110,7 +111,7 @@ function nowIso(): string {
 // ---------------------------------------------------------------------------
 // GET /
 // ---------------------------------------------------------------------------
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { page = '1', pagesize = '20', status } = req.query as Record<string, string>;
   const p  = Math.max(1, parseInt(page, 10));
@@ -158,14 +159,14 @@ router.get('/', async (req, res) => {
       },
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // GET /:id
 // ---------------------------------------------------------------------------
-router.get('/:id', async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const id = validateId(req.params.id);
+  const id = validateId(String(req.params.id));
 
   const [template, runs] = await Promise.all([
     adb.get<Record<string, unknown>>(`
@@ -190,12 +191,12 @@ router.get('/:id', async (req, res) => {
   if (!template) throw new AppError('Template not found', 404);
 
   res.json({ success: true, data: { ...template, recent_runs: runs } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /  — create template
 // ---------------------------------------------------------------------------
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   requireAdmin(req);
 
   // Rate limit create by user id
@@ -273,12 +274,12 @@ router.post('/', async (req, res) => {
 
   const template = await adb.get<Record<string, unknown>>('SELECT * FROM invoice_templates WHERE id = ?', newId);
   res.status(201).json({ success: true, data: template });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // PATCH /:id — partial update (status, next_run_at, notes_template, line_items)
 // ---------------------------------------------------------------------------
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', asyncHandler(async (req, res) => {
   requireAdmin(req);
 
   const rlKey = String(req.user!.id);
@@ -289,7 +290,7 @@ router.patch('/:id', async (req, res) => {
   }
 
   const adb = req.asyncDb;
-  const id = validateId(req.params.id);
+  const id = validateId(String(req.params.id));
 
   const existing = await adb.get<Record<string, unknown>>('SELECT * FROM invoice_templates WHERE id = ?', id);
   if (!existing) throw new AppError('Template not found', 404);
@@ -309,6 +310,7 @@ router.patch('/:id', async (req, res) => {
 
   if (next_run_at !== undefined) {
     if (typeof next_run_at !== 'string') throw new AppError('next_run_at must be a string', 400);
+    if (isNaN(Date.parse(next_run_at))) throw new AppError('Invalid next_run_at format', 400);
     updates.push('next_run_at = ?');
     vals.push(next_run_at);
   }
@@ -344,15 +346,15 @@ router.patch('/:id', async (req, res) => {
 
   const updated = await adb.get<Record<string, unknown>>('SELECT * FROM invoice_templates WHERE id = ?', id);
   res.json({ success: true, data: updated });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /:id/pause
 // ---------------------------------------------------------------------------
-router.post('/:id/pause', async (req, res) => {
+router.post('/:id/pause', asyncHandler(async (req, res) => {
   requireAdmin(req);
   const adb = req.asyncDb;
-  const id = validateId(req.params.id);
+  const id = validateId(String(req.params.id));
 
   const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM invoice_templates WHERE id = ?', id);
   if (!existing) throw new AppError('Template not found', 404);
@@ -364,15 +366,15 @@ router.post('/:id/pause', async (req, res) => {
   audit(req.db, 'invoice_template.paused', req.user!.id, req.ip ?? '', { template_id: id });
 
   res.json({ success: true, data: { id, status: 'paused' } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /:id/resume
 // ---------------------------------------------------------------------------
-router.post('/:id/resume', async (req, res) => {
+router.post('/:id/resume', asyncHandler(async (req, res) => {
   requireAdmin(req);
   const adb = req.asyncDb;
-  const id = validateId(req.params.id);
+  const id = validateId(String(req.params.id));
 
   const existing = await adb.get<{ id: number; status: string; next_run_at: string }>('SELECT id, status, next_run_at FROM invoice_templates WHERE id = ?', id);
   if (!existing) throw new AppError('Template not found', 404);
@@ -392,15 +394,15 @@ router.post('/:id/resume', async (req, res) => {
   audit(req.db, 'invoice_template.resumed', req.user!.id, req.ip ?? '', { template_id: id, next_run_at: nextRun });
 
   res.json({ success: true, data: { id, status: 'active', next_run_at: nextRun } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /:id/cancel  — soft cancel (history preserved)
 // ---------------------------------------------------------------------------
-router.post('/:id/cancel', async (req, res) => {
+router.post('/:id/cancel', asyncHandler(async (req, res) => {
   requireAdmin(req);
   const adb = req.asyncDb;
-  const id = validateId(req.params.id);
+  const id = validateId(String(req.params.id));
 
   const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM invoice_templates WHERE id = ?', id);
   if (!existing) throw new AppError('Template not found', 404);
@@ -411,6 +413,6 @@ router.post('/:id/cancel', async (req, res) => {
   audit(req.db, 'invoice_template.canceled', req.user!.id, req.ip ?? '', { template_id: id });
 
   res.json({ success: true, data: { id, status: 'canceled' } });
-});
+}));
 
 export default router;

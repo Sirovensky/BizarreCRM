@@ -18,6 +18,41 @@ const logger = createLogger('activity');
 // Roles that may query other users' activity.
 const MANAGER_ROLES = new Set(['admin', 'manager', 'superadmin']);
 
+// ---------------------------------------------------------------------------
+// Metadata PII allowlist (SCAN-506)
+//
+// Only the listed keys are forwarded to callers for each entity_kind.
+// Everything else — including signer_name, signer_email, reason, and any
+// future free-form fields — is silently dropped before the response is sent.
+// Add new safe keys here when a new entity_kind or action writes metadata
+// that is genuinely non-sensitive and useful in the activity feed UI.
+// ---------------------------------------------------------------------------
+const SAFE_METADATA_KEYS: Record<string, string[]> = {
+  ticket:      ['from', 'to', 'status_id', 'label', 'action'],
+  invoice:     ['amount_cents', 'status', 'action'],
+  customer:    ['action'],
+  estimate:    ['order_id', 'action'],
+  payment:     ['amount_cents', 'method', 'action'],
+  part:        ['status', 'action'],
+  inventory:   ['action', 'quantity_delta'],
+  sms_group:   ['action'],
+  user:        ['action'],
+  // default: [] — all metadata dropped for unlisted entity_kinds
+};
+
+function scrubMetadata(
+  entityKind: string,
+  raw: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!raw) return null;
+  const allowed = SAFE_METADATA_KEYS[entityKind] ?? [];
+  const out: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in raw) out[key] = raw[key];
+  }
+  return out;
+}
+
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
@@ -143,16 +178,20 @@ async function listActivity(req: Request, res: Response, actorOverride: number |
   const pageEvents = hasMore ? events.slice(0, limit) : events;
   const nextCursor = hasMore ? String(pageEvents[pageEvents.length - 1].id) : null;
 
-  // Parse metadata_json inline — surface as object, never throw
+  // Parse metadata_json inline — surface as object, never throw.
+  // Scrub PII fields before returning: only SAFE_METADATA_KEYS keys are kept
+  // per entity_kind; everything else (signer_name, signer_email, reason, …)
+  // is dropped so managers cannot read cross-entity sensitive data (SCAN-506).
   const normalized = pageEvents.map((e) => {
-    let metadata: Record<string, unknown> | null = null;
+    let rawMetadata: Record<string, unknown> | null = null;
     if (e.metadata_json) {
       try {
-        metadata = JSON.parse(e.metadata_json);
+        rawMetadata = JSON.parse(e.metadata_json);
       } catch {
         logger.warn('activity: unparseable metadata_json', { id: e.id });
       }
     }
+    const metadata = scrubMetadata(e.entity_kind, rawMetadata);
     const { metadata_json: _dropped, ...rest } = e;
     void _dropped;
     return { ...rest, metadata };
