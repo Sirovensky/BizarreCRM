@@ -11,6 +11,8 @@ public final class ReceivingListViewModel {
     public private(set) var orders: [ReceivingOrder] = []
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?
+    /// nil = all statuses; "ordered" / "partial" etc.
+    public var statusFilter: String? = nil
 
     @ObservationIgnored private let api: APIClient
 
@@ -22,7 +24,7 @@ public final class ReceivingListViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            orders = try await api.listReceivingOrders()
+            orders = try await api.listReceivingOrders(status: statusFilter)
         } catch {
             AppLog.ui.error("ReceivingList load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -113,23 +115,32 @@ public final class ReceivingDetailViewModel {
         errorMessage = nil
         defer { isSubmitting = false }
 
-        let lines: [FinalizeReceivingRequest.FinalizedLine] = order.lineItems.map { line in
+        // Build items array using purchase_order_item id (not sku) as the server expects.
+        let items: [ReceiveLineRequest] = order.lineItems.compactMap { line in
             let qty = Int(receivedQty[line.id] ?? "") ?? line.receivedQty
-            return FinalizeReceivingRequest.FinalizedLine(
-                sku: line.sku, quantityReceived: qty)
+            // Only send lines where we're actually receiving something.
+            guard qty > line.receivedQty else { return nil }
+            return ReceiveLineRequest(
+                purchaseOrderItemId: line.id,
+                quantityReceived: qty - line.receivedQty  // delta, not total
+            )
         }
 
+        guard !items.isEmpty else {
+            errorMessage = "No quantities entered to receive."
+            return
+        }
+
+        let req = FinalizeReceivingRequest(items: items)
+
         do {
-            _ = try await api.finalizeReceiving(
-                id: orderId,
-                request: FinalizeReceivingRequest(lineItems: lines)
-            )
+            _ = try await api.finalizeReceiving(id: orderId, request: req)
             // Build reconciliation
             finalizeResult = order.lineItems.map { line in
                 let received = Int(receivedQty[line.id] ?? "") ?? line.receivedQty
                 return ReconciliationEntry(
-                    sku: line.sku,
-                    name: line.productName ?? line.sku,
+                    sku: line.sku ?? "",
+                    name: line.productName ?? line.sku ?? "Unknown",
                     orderedQty: line.orderedQty,
                     receivedQty: received
                 )
@@ -137,22 +148,22 @@ public final class ReceivingDetailViewModel {
             showReconciliation = true
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
-                // Enqueue offline — optimistic completion for receiving
-                let req = FinalizeReceivingRequest(lineItems: lines)
+                // Optimistic completion for offline path
+                finalizeResult = order.lineItems.map { line in
+                    let received = Int(receivedQty[line.id] ?? "") ?? line.receivedQty
+                    return ReconciliationEntry(
+                        sku: line.sku ?? "",
+                        name: line.productName ?? line.sku ?? "Unknown",
+                        orderedQty: line.orderedQty,
+                        receivedQty: received
+                    )
+                }
+                // Enqueue offline
                 if let payload = try? InventoryOfflineQueue.encode(req) {
                     await InventoryOfflineQueue.enqueue(
                         op: "receiving.finalize",
                         entityServerId: orderId,
                         payload: payload
-                    )
-                }
-                finalizeResult = order.lineItems.map { line in
-                    let received = Int(receivedQty[line.id] ?? "") ?? line.receivedQty
-                    return ReconciliationEntry(
-                        sku: line.sku,
-                        name: line.productName ?? line.sku,
-                        orderedQty: line.orderedQty,
-                        receivedQty: received
                     )
                 }
                 showReconciliation = true

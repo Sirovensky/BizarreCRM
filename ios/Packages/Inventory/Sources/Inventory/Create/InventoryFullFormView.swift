@@ -4,8 +4,9 @@ import DesignSystem
 import Core
 
 /// Shared create/edit form body. Extends the existing `InventoryFormView`
-/// with Picker-driven category, supplier selection, and a barcode-scan button
-/// that maps the result into the SKU field.
+/// with Picker-driven category, supplier selection, a barcode-scan button
+/// that maps the result into the SKU field, photo thumbnails, and a
+/// "Save & add another" secondary CTA (create mode only).
 ///
 /// The old `InventoryFormView` is kept for backwards compatibility with
 /// `InventoryEditView`. New create/edit surfaces use this view.
@@ -22,9 +23,15 @@ struct InventoryFullFormView: View {
     @Binding var inStock: String
     @Binding var reorderLevel: String
     @Binding var supplierId: String
+    /// Photos buffered locally until the item is created; up to 4 images.
+    @Binding var pendingPhotos: [Data]
     let isEdit: Bool
     let errorMessage: String?
     var onScanBarcode: (() -> Void)?
+    /// Called from the "Add photo" button — parent presents a picker sheet.
+    var onAddPhoto: (() -> Void)?
+    /// Called from "Save & add another" — only shown in create mode.
+    var onSaveAndAddAnother: (() -> Void)?
 
     @FocusState private var focus: Field?
 
@@ -47,6 +54,7 @@ struct InventoryFullFormView: View {
             classificationSection
             pricingSection
             stockSection
+            photosSection
             descriptionSection
             if let err = errorMessage {
                 Section {
@@ -55,6 +63,17 @@ struct InventoryFullFormView: View {
                         .foregroundStyle(.bizarreError)
                 }
                 .accessibilityLabel("Error: \(err)")
+            }
+            if !isEdit, let onAddAnother = onSaveAndAddAnother {
+                Section {
+                    Button("Save & add another") {
+                        onAddAnother()
+                    }
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("Save this item and immediately create another")
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -145,6 +164,62 @@ struct InventoryFullFormView: View {
         }
     }
 
+    // MARK: - Photos section (up to 4 images)
+
+    private var photosSection: some View {
+        Section("Photos") {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.sm) {
+                    ForEach(Array(pendingPhotos.enumerated()), id: \.offset) { idx, data in
+                        photoThumb(data: data, index: idx)
+                    }
+                    if pendingPhotos.count < 4, let onAdd = onAddPhoto {
+                        addPhotoButton(action: onAdd)
+                    }
+                }
+                .padding(.vertical, BrandSpacing.xs)
+            }
+        }
+    }
+
+    private func photoThumb(data: Data, index: Int) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityLabel("Photo \(index + 1)")
+            }
+            Button {
+                pendingPhotos.remove(at: index)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.white, .bizarreError)
+                    .padding(4)
+            }
+            .accessibilityLabel("Remove photo \(index + 1)")
+        }
+    }
+
+    private func addPhotoButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: "camera.badge.plus")
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOrange)
+                Text("Add")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .frame(width: 72, height: 72)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add photo for this item")
+    }
+
     private var descriptionSection: some View {
         Section("Description") {
             TextField("Description", text: $description, axis: .vertical)
@@ -185,6 +260,48 @@ struct CurrencyField: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label), dollars")
+    }
+}
+
+// MARK: - Image picker UIViewControllerRepresentable
+
+import PhotosUI
+
+/// Lightweight UIImagePickerController bridge until the Camera package is wired.
+struct InventoryImagePickerView: UIViewControllerRepresentable {
+    let onImage: (Data) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onImage: onImage)
+    }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onImage: (Data) -> Void
+        init(onImage: @escaping (Data) -> Void) { self.onImage = onImage }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage,
+               let data = image.jpegData(compressionQuality: 0.8) {
+                onImage(data)
+            }
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
     }
 }
 #endif

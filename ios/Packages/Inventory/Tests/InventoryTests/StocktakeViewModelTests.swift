@@ -53,7 +53,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
 
     func test_applyBarcode_knownSku_incrementsCount() {
         let vm = StocktakeScanViewModel(api: StocktakeStubAPIClient(), sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "PART-X", expectedQty: 10)
         ])
         vm._setSessionForTesting(session)
@@ -68,7 +68,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
 
     func test_applyBarcode_unknownSku_returnsFalse() {
         let vm = StocktakeScanViewModel(api: StocktakeStubAPIClient(), sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "PART-X", expectedQty: 10)
         ])
         vm._setSessionForTesting(session)
@@ -79,7 +79,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
 
     func test_discrepancies_empty_whenAllExact() {
         let vm = StocktakeScanViewModel(api: StocktakeStubAPIClient(), sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "A", expectedQty: 5)
         ])
         vm._setSessionForTesting(session)
@@ -89,7 +89,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
 
     func test_discrepancies_showsWhenActualDiffers() {
         let vm = StocktakeScanViewModel(api: StocktakeStubAPIClient(), sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "A", expectedQty: 5)
         ])
         vm._setSessionForTesting(session)
@@ -100,7 +100,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
 
     func test_summary_countsProgress() {
         let vm = StocktakeScanViewModel(api: StocktakeStubAPIClient(), sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "A", expectedQty: 5),
             StocktakeRow(id: 2, sku: "B", expectedQty: 3)
         ])
@@ -116,7 +116,7 @@ final class StocktakeScanViewModelTests: XCTestCase {
     func test_finalize_success_setsShowReview() async {
         let stub = StocktakeStubAPIClient(session: StocktakeSession(id: 1, status: "open"))
         let vm = StocktakeScanViewModel(api: stub, sessionId: 1)
-        let session = StocktakeSession(id: 1, status: "open", rows: [
+        let session = StocktakeSession(id: 1, status: "open", counts: [
             StocktakeRow(id: 1, sku: "A", expectedQty: 5)
         ])
         vm._setSessionForTesting(session)

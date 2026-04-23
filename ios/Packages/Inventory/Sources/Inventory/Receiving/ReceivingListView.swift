@@ -157,7 +157,7 @@ private struct ReceivingOrderRow: View {
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(order.supplierName ?? "PO #\(order.id)")
+                Text(order.supplierName ?? "PO \(order.orderId ?? "#\(order.id)")")
                     .font(.brandBodyLarge()).foregroundStyle(.bizarreOnSurface)
                 Text("\(order.lineItems.count) line\(order.lineItems.count == 1 ? "" : "s")")
                     .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
@@ -169,7 +169,7 @@ private struct ReceivingOrderRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(order.supplierName ?? "PO \(order.id)"), \(order.lineItems.count) lines, \(order.status)"
+            "\(order.supplierName ?? "PO \(order.orderId ?? String(order.id))"), \(order.lineItems.count) lines, \(order.status)"
         )
     }
 
@@ -184,9 +184,11 @@ private struct ReceivingOrderRow: View {
 
     private var statusColor: Color {
         switch order.status {
-        case "complete": return .bizarreSuccess
-        case "partial":  return .bizarreOrange
-        default:         return .bizarreOnSurfaceMuted
+        case "received":    return .bizarreSuccess
+        case "partial":     return .bizarreOrange
+        case "ordered":     return .bizarreOrange
+        case "cancelled":   return .bizarreError
+        default:            return .bizarreOnSurfaceMuted
         }
     }
 }

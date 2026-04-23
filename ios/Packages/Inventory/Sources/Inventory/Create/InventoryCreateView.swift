@@ -43,13 +43,16 @@ public final class InventoryCreateViewModel {
     public var category: String = "" { didSet { saveDraft() } }
     public var manufacturer: String = "" { didSet { saveDraft() } }
     public var description: String = "" { didSet { saveDraft() } }
-    /// Cost expressed in cents as a string — user types dollars.cents.
+    /// Cost expressed in dollars.cents as a string.
     public var costPriceCents: String = "" { didSet { saveDraft() } }
-    /// Retail expressed in cents as a string.
+    /// Retail expressed in dollars.cents as a string.
     public var retailPriceCents: String = "" { didSet { saveDraft() } }
     public var inStock: String = "" { didSet { saveDraft() } }
     public var reorderLevel: String = "" { didSet { saveDraft() } }
     public var supplierId: String = "" { didSet { saveDraft() } }
+
+    /// Photo data URLs waiting to be uploaded after the item is created.
+    public var pendingPhotos: [Data] = []
 
     public private(set) var isSubmitting: Bool = false
     public private(set) var errorMessage: String?
@@ -103,6 +106,26 @@ public final class InventoryCreateViewModel {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Reset all form fields so the user can immediately add another item.
+    public func resetForAddAnother() {
+        name = ""
+        sku = ""
+        upc = ""
+        category = ""
+        manufacturer = ""
+        description = ""
+        costPriceCents = ""
+        retailPriceCents = ""
+        inStock = ""
+        reorderLevel = ""
+        supplierId = ""
+        pendingPhotos = []
+        createdId = nil
+        queuedOffline = false
+        errorMessage = nil
+        clearDraft()
     }
 
     // MARK: Draft
@@ -211,8 +234,14 @@ public struct InventoryCreateView: View {
     @State private var vm: InventoryCreateViewModel
     @State private var pendingBanner: String?
     @State private var showingBarcodeScanner: Bool = false
+    @State private var showingPhotoPicker: Bool = false
+    /// True when "Save & add another" was tapped — resets form instead of dismissing.
+    @State private var saveAndAddAnother: Bool = false
+
+    private let api: APIClient
 
     public init(api: APIClient) {
+        self.api = api
         _vm = State(wrappedValue: InventoryCreateViewModel(api: api))
     }
 
@@ -230,16 +259,8 @@ public struct InventoryCreateView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(vm.isSubmitting ? "Saving…" : "Save") {
-                            Task {
-                                await vm.submit()
-                                if vm.queuedOffline {
-                                    pendingBanner = "Saved — will sync when online"
-                                    try? await Task.sleep(nanoseconds: 900_000_000)
-                                    dismiss()
-                                } else if vm.createdId != nil {
-                                    dismiss()
-                                }
-                            }
+                            saveAndAddAnother = false
+                            Task { await saveItem() }
                         }
                         .disabled(!vm.isValid || vm.isSubmitting)
                         .accessibilityLabel(vm.isSubmitting ? "Saving item" : "Save item")
@@ -259,6 +280,12 @@ public struct InventoryCreateView: View {
                 showingBarcodeScanner = false
             }
         }
+        .sheet(isPresented: $showingPhotoPicker) {
+            InventoryPhotoPickerSheet { data in
+                vm.pendingPhotos.append(data)
+                showingPhotoPicker = false
+            }
+        }
     }
 
     private var inventoryCreateForm: some View {
@@ -275,10 +302,40 @@ public struct InventoryCreateView: View {
             inStock: $vm.inStock,
             reorderLevel: $vm.reorderLevel,
             supplierId: $vm.supplierId,
+            pendingPhotos: $vm.pendingPhotos,
             isEdit: false,
             errorMessage: vm.errorMessage,
-            onScanBarcode: { showingBarcodeScanner = true }
+            onScanBarcode: { showingBarcodeScanner = true },
+            onAddPhoto: { showingPhotoPicker = true },
+            onSaveAndAddAnother: {
+                saveAndAddAnother = true
+                Task { await saveItem() }
+            }
         )
+    }
+
+    // MARK: - Save helper
+
+    private func saveItem() async {
+        await vm.submit()
+        if vm.queuedOffline {
+            pendingBanner = "Saved — will sync when online"
+            if saveAndAddAnother {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                vm.resetForAddAnother()
+                pendingBanner = nil
+            } else {
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                dismiss()
+            }
+        } else if vm.createdId != nil {
+            if saveAndAddAnother {
+                vm.resetForAddAnother()
+            } else {
+                dismiss()
+            }
+        }
+        // Errors stay visible in the form.
     }
 }
 
@@ -328,6 +385,32 @@ struct InventoryBarcodeScanSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .accessibilityLabel("Cancel barcode scan")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Photo picker sheet
+
+/// Lightweight photo picker sheet — presents UIImagePickerController.
+/// Phase 5 Camera package will replace this with an AVCaptureSession view.
+struct InventoryPhotoPickerSheet: View {
+    let onPhoto: (Data) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            InventoryImagePickerView { data in
+                onPhoto(data)
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .navigationTitle("Add photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityLabel("Cancel photo picker")
                 }
             }
         }
