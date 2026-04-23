@@ -329,7 +329,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
       }
     };
 
-    ws.on('message', (data) => {
+    ws.on('message', async (data) => {
       // SEC (WS3): Drop oversized frames before JSON.parse touches them.
       // @audit-fixed: Previously compared `raw.length` (JS character count) to
       // MAX_INBOUND_BYTES (16384). For a unicode-heavy payload, UTF-8 bytes can
@@ -442,27 +442,31 @@ export function setupWebSocket(wss: WebSocketServer): void {
           // Mark the key on the socket so the close handler can decrement correctly.
           ws._tenantCapKey = tenantKey;
 
-          // SEC (WS1 rerun §24): Now that we know the tenant, re-validate the
-          // Origin header against the tenant's store_config allowlist. This
-          // layers on TOP of the platform-level check in index.ts. Fire and
-          // forget the async check because we don't want to stall the rest of
-          // the handler — if it fails we terminate the socket afterwards.
-          (async () => {
-            const ok = await isTenantOriginAllowed(ws.tenantSlug ?? null, ws.origin ?? null);
-            if (!ok) {
-              log.warn('ws tenant origin rejected after auth', {
-                tenantSlug: ws.tenantSlug,
-                origin: ws.origin,
-                userId: ws.userId,
-              });
-              try {
-                ws.send(JSON.stringify({ type: 'auth', success: false, error: 'origin not allowed' }));
-                ws.close(1008, 'origin not allowed');
-              } catch {
-                /* already closed */
-              }
+          // SEC (SCAN-609): Re-validate Origin against the tenant's store_config
+          // allowlist BEFORE adding to clients map or sending success frame.
+          // Previously this was fire-and-forget (TOCTOU): the success frame was
+          // sent and the socket registered in `clients` before the async check
+          // completed, allowing the client to participate in broadcasts during
+          // the async gap even when the origin should be rejected.
+          const originOk = await isTenantOriginAllowed(ws.tenantSlug ?? null, ws.origin ?? null);
+          if (!originOk) {
+            log.warn('ws tenant origin rejected', {
+              tenantSlug: ws.tenantSlug,
+              origin: ws.origin,
+              userId: ws.userId,
+            });
+            // Decrement the tenant counter we incremented above since we are
+            // closing before completing registration.
+            wsConnsByTenant.set(tenantKey, tenantCount - 1);
+            ws._tenantCapKey = undefined;
+            try {
+              ws.send(JSON.stringify({ type: 'auth', success: false, reason: 'origin_not_allowed' }));
+              ws.close(1008, 'origin rejected');
+            } catch {
+              /* already closed */
             }
-          })();
+            return;
+          }
 
           const key = clientKey(ws.tenantSlug, payload.userId);
           if (!clients.has(key)) {

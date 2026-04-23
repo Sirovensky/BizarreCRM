@@ -2953,7 +2953,8 @@ server.listen(config.port, config.host, async () => {
         // - stall_followup_sent = 0 (not already sent)
         const staleTickets = tenantDb.prepare(`
           SELECT t.id, t.order_id, t.customer_id,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM tickets t
           LEFT JOIN customers c ON c.id = t.customer_id
           LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
@@ -2983,6 +2984,9 @@ server.listen(config.port, config.host, async () => {
         for (const ticket of staleTickets) {
           const phone = ticket.customer_phone || ticket.customer_phone2;
           if (!phone) continue;
+
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (ticket.sms_opt_in === 0 || ticket.sms_consent_transactional === 0) continue;
 
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
@@ -3037,7 +3041,8 @@ server.listen(config.port, config.host, async () => {
         // Find unpaid invoices older than N days that haven't had a recent reminder
         const overdueInvoices = tenantDb.prepare(`
           SELECT i.id, i.order_id, i.amount_due, i.customer_id, i.created_at,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM invoices i
           LEFT JOIN customers c ON c.id = i.customer_id
           WHERE i.status IN ('sent', 'partial', 'overdue')
@@ -3060,6 +3065,9 @@ server.listen(config.port, config.host, async () => {
         for (const inv of overdueInvoices) {
           const phone = inv.customer_phone || inv.customer_phone2;
           if (!phone) continue;
+
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (inv.sms_opt_in === 0 || inv.sms_consent_transactional === 0) continue;
 
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
@@ -3114,7 +3122,8 @@ server.listen(config.port, config.host, async () => {
         // Find estimates with status='sent' and sent_at older than N days, not yet followed up
         const estimates = tenantDb.prepare(`
           SELECT e.id, e.order_id, e.customer_id, e.sent_at, e.total,
-            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2
+            c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2,
+            c.sms_opt_in, c.sms_consent_transactional
           FROM estimates e
           LEFT JOIN customers c ON c.id = e.customer_id
           WHERE e.status = 'sent'
@@ -3136,6 +3145,9 @@ server.listen(config.port, config.host, async () => {
         for (const est of estimates) {
           const phone = est.customer_phone || est.customer_phone2;
           if (!phone) continue;
+
+          // TCPA: Skip customers who have not opted in or lack transactional consent
+          if (est.sms_opt_in === 0 || est.sms_consent_transactional === 0) continue;
 
           if (!isAutoSmsAllowed(tenantDb, phone)) {
             console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for estimate ${est.order_id}`);

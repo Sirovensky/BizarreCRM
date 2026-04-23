@@ -2167,12 +2167,14 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
 
   // Issue a short-lived access token in the same shape as regular tenant tokens.
   // No refresh token — session expires in 15 min and must be re-impersonated.
+  // SEC (SCAN-613): Explicit type:'access' so the authMiddleware strict check accepts it.
   const token = jwt.sign(
     {
       userId: targetUser.id,
       sessionId,
       role: targetUser.role,
       tenantSlug: slug,
+      type: 'access',
       impersonated: true,
       superAdminId,
       jti,

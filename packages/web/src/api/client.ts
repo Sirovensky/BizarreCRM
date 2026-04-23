@@ -84,7 +84,12 @@ function scheduleTokenRefresh() {
   const token = localStorage.getItem('accessToken');
   if (!token) return;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = token.split('.');
+    if (parts.length < 3) throw new Error('malformed');
+    if (parts[1].length > 4096) throw new Error('payload too large');
+    const decoded = atob(parts[1]);
+    if (decoded.length > 8192) throw new Error('decoded payload too large');
+    const payload = JSON.parse(decoded);
     const expiresIn = (payload.exp * 1000) - Date.now();
     const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
     refreshScheduled = true;
@@ -99,7 +104,12 @@ function scheduleTokenRefresh() {
       }
     }, refreshIn);
   } catch (err) {
-    // Invalid token format — can't decode, skip scheduling
+    // Invalid token format — clear the malformed token so it doesn't block
+    // every subsequent request. Only remove it if it hasn't been replaced by a
+    // concurrent refresh (compare against the value we tried to decode).
+    if (localStorage.getItem('accessToken') === token) {
+      localStorage.removeItem('accessToken');
+    }
     console.warn('Could not decode access token for refresh scheduling:', err);
   }
 }

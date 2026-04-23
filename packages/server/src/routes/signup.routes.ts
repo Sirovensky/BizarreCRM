@@ -369,8 +369,9 @@ async function issueSignupTokens(
   // SEC (A6/A10): Explicit HS256 + iss + aud, matching auth.routes.ts exactly.
   // SEC-L34: jti uniquely identifies the token for future per-token revocation.
   // SEC-H103: sign with dedicated per-purpose secret.
+  // SEC (SCAN-613): Explicit type:'access' so the auth middleware strict check applies.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' },
   );

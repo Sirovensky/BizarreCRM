@@ -761,7 +761,7 @@ router.post(
 
     for (const id of customer_ids) {
       const customer = await adb.get<AnyRow>(
-        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in FROM customers WHERE id = ? AND is_deleted = 0',
+        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in, sms_consent_marketing FROM customers WHERE id = ? AND is_deleted = 0',
         Number(id));
 
       if (!customer) {
@@ -776,10 +776,10 @@ router.post(
         continue;
       }
 
-      // ENR-SMS2: Validate SMS opt-in for bulk/broadcast messages
-      if (!customer.sms_opt_in) {
+      // ENR-SMS2: Validate SMS opt-in and marketing consent for bulk/broadcast messages
+      if (!customer.sms_opt_in || customer.sms_consent_marketing === 0) {
         results.skipped++;
-        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in not enabled' });
+        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in or marketing consent not enabled' });
         continue;
       }
 

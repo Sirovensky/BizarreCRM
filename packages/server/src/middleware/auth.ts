@@ -74,12 +74,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       tenantSlug?: string | null;
     };
 
-    // Reject refresh tokens used as access tokens
-    // @audit-fixed: Previously only rejected `type === 'refresh'` which still
-    // allows a refresh token signed with a different `type` marker to pass.
-    // Require an explicit `type === 'access'` marker AND a valid sessionId /
-    // userId shape to slip through — any unknown token type is rejected.
-    if (payload.type !== undefined && payload.type !== 'access') {
+    // SEC (SCAN-613): Strict positive assertion — only tokens whose payload
+    // carries type === 'access' are accepted.  Previously the guard was
+    // `type !== undefined && type !== 'access'`, which silently passed tokens
+    // where type was absent (legacy tokens, scoped tokens without the field).
+    // All issueTokens() call-sites now embed type:'access' so no grace period
+    // is needed; any token without the field is definitively not an access token.
+    if (payload.type !== 'access') {
       res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN_TYPE, 'Invalid token type', rid));
       return;
     }
