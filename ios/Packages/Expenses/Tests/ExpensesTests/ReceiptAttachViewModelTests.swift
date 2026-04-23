@@ -101,6 +101,4 @@ final class ReceiptAttachViewModelTests: XCTestCase {
     }
 }
 
-// MARK: - UploadState + Sendable conformance check
-
-extension ReceiptAttachViewModel.UploadState: @unchecked Sendable {}
+// UploadState already declares Sendable — no extension needed.

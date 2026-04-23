@@ -116,7 +116,10 @@ public struct ExpenseDetailView: View {
         } message: {
             Text("This action cannot be undone.")
         }
-        .alert("Delete failed", isPresented: .constant(vm.deleteError != nil)) {
+        .alert("Delete failed", isPresented: Binding(
+            get: { vm.deleteError != nil },
+            set: { _ in }
+        )) {
             Button("OK") { }
         } message: {
             Text(vm.deleteError ?? "")
