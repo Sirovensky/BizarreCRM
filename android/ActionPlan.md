@@ -248,13 +248,13 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
 - [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
-- [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; root-scaffold mount deferred)
+- [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 + a762605 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; mounted in root Scaffold when logged in)
 - [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
 - [x] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative. (commit 5ba8e58 — `ClockDrift.toAuditTimestamp()`)
 - [x] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile. (commit 5ba8e58 — `ClockDrift.recordPendingOp()` + `PendingOpTimestamps`)
 - [x] Client rate limit: token-bucket per endpoint category — read 60/min, write 20/min; excess queued with backoff. (commit 51a2995 + hardening b10f8ca — `util/RateLimiter.kt` + `RateLimitInterceptor.kt`; fail-fast when pause > timeout; jitter on wake)
 - [x] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal. (commit 51a2995 + hardening b10f8ca — `recordServerHint()`; interceptor synthesizes 429 instead of re-firing request when `acquire()` returns false)
-- [x] UI: silent unless sustained; show "Slow down" banner if queue > 10. (commit 51a2995 + 0e82441 — `ui/components/RateLimitBanner.kt` collects `RateLimiter.queueState`, tertiaryContainer surface + depth readout; root-scaffold mount deferred)
+- [x] UI: silent unless sustained; show "Slow down" banner if queue > 10. (commit 51a2995 + 0e82441 + a762605 — `ui/components/RateLimitBanner.kt` collects `RateLimiter.queueState`, tertiaryContainer surface + depth readout; mounted in root Scaffold when logged in)
 - [~] Debug drawer exposes current bucket state per endpoint. (commit 51a2995 — `StateFlow<Map<Category, BucketState>>` exposed; drawer UI pending)
 - [x] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead). (commit 51a2995 — `isExempt()` matches `/auth/*` and tag `sync-flush`)
 - [~] Auto-save drafts every 2s to Room for ticket-create, customer-create, SMS-compose; never lost on crash/background. (commit 9fb71216 — `data/local/draft/DraftStore.kt` + `DraftEntity` + `DraftDao` + MIGRATION_5_6; per-feature 2s debounce wiring pending)
@@ -352,7 +352,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.12 Error / empty states
 - [x] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
-- [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address.
+- [~] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address. (commit c04bcee — Android: `ui/components/AccountLockedModal.kt` + `TenantsApi.getSupportContact()` + `TenantSupportDto`; graceful 404 fallback to no-intent copy; no hardcoded email. Server endpoint `GET /tenants/me/support-contact` still pending.)
 - [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (commit 049b35e — LoginScreen catch UnknownHostException/ConnectException)
 - [x] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`). (commit 049b35e — 429 banner with 1s ticker + disabled Sign In button)
 - [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (commit 049b35e — NetworkMonitor.isOnline observed; offline banner + disabled Sign In button)
@@ -363,7 +363,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
 - [x] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`. (`util/ClipboardUtil.kt`: `copySensitive` auto-clear + `detectOtp` for paste).
 - [x] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level). (`data/remote/RedactingHttpLogger.kt` masks 14 sensitive JSON keys + form-urlencoded variants. Wired into HttpLoggingInterceptor.)
-- [ ] Challenge token expires silently after 10min → prompt restart login.
+- [x] Challenge token expires silently after 10min → prompt restart login. (commit c04bcee — LoginUiState `challengeTokenExpiresAtMs` + ticker; MM:SS countdown under Submit turns red < 60s; on expiry: snackbar "Sign-in timed out. Please start over." + reset to Credentials step preserving username)
 
 ### 2.14 Shared-device mode (counter / kiosk multi-staff)
 - [ ] Use case: counter tablet shared by 3 cashiers.
@@ -396,8 +396,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Threshold: inactive > 30d → force full re-auth including email. (commit b35d122)
 - [x] Activity signals: user touches (`Window.Callback.dispatchTouchEvent`), scroll, text entry. (commit b35d122 — `MainActivity.dispatchTouchEvent` → `sessionTimeout.onActivity()`)
 - [x] Activity exclusions: silent push, background sync don't count. (commit b35d122 — KDoc enforces onActivity is user-touch only)
-- [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (commit b35d122 + ab6f9169 — `ui/components/SessionTimeoutOverlay.kt` collects `SessionTimeout.state`, Dialog + "Still there?" + Stay/Sign out buttons; root-scaffold mount deferred)
-- [x] Countdown ring visible during warning. (commit b35d122 + ab6f9169 — `CircularProgressIndicator` ring with remaining-seconds overlay, ReduceMotion-aware)
+- [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (commit b35d122 + ab6f9169 + a762605 — `ui/components/SessionTimeoutOverlay.kt` Dialog collects `SessionTimeout.state`; mounted in root Scaffold when logged in; sign-out invokes `authPreferences.clear()`)
+- [x] Countdown ring visible during warning. (commit b35d122 + ab6f9169 + a762605 — `CircularProgressIndicator` ring with remaining-seconds overlay, ReduceMotion-aware, mounted in root)
 - [~] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout. (commit b35d122 — `requireReAuthNow(level)` hook exposed; composable wiring pending)
 - [x] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d. (commit b35d122 — `Config` data class + `require()`)
 - [x] Sovereignty: no server-side idle detection; purely device-local. (commit b35d122 — KDoc)
