@@ -1931,7 +1931,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         JSON.stringify({ ticket_id: ticketId, invoice_id: invoiceId, discount_amount: discount, discount_reason: ticketData?.discount_reason || null }),
       );
     } catch (err) {
-      console.error('[Audit] Failed to write audit log:', err);
+      logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -2161,7 +2161,7 @@ router.post('/return', async (req, res) => {
       JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
     );
   } catch (err) {
-    console.error('[Audit] Failed to write audit log:', err);
+    logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
   }
 
   const creditNote = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', creditNoteId);
@@ -2198,7 +2198,7 @@ router.post('/open-drawer', async (req, res) => {
       JSON.stringify({ reason: reason || 'Manual drawer open' }),
     );
   } catch (err) {
-    console.error('[Audit] Failed to write audit log:', err);
+    logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // @audit-fixed: drop noisy console.log on a hot endpoint — audit log already

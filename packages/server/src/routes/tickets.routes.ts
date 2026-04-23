@@ -755,7 +755,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       }
     } catch (e) {
       // SMS lookup is non-critical — silently skip if table/schema issue
-      console.error('SMS lookup for ticket list failed:', (e as Error).message);
+      logger.error('tickets_sms_lookup_failed', { error: e instanceof Error ? e.message : String(e) });
     }
   }
 

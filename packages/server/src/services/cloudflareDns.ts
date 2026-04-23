@@ -1,5 +1,8 @@
 import { config } from '../config.js';
 import { createBreaker } from '../utils/circuitBreaker.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('cloudflareDns');
 
 // SEC-H77: Circuit breaker for Cloudflare DNS API calls.
 const cloudflareBreaker = createBreaker('cloudflare');
@@ -175,7 +178,7 @@ export async function createTenantDnsRecord(slug: string): Promise<string> {
   // Idempotency check: if the record already exists, return its ID
   const existing = await findTenantDnsRecord(slug);
   if (existing) {
-    console.log(`[CloudflareDNS] Record already exists for ${slug} (id=${existing}), reusing`);
+    logger.info('cloudflare_dns_record_reused', { slug, id: existing });
     return existing;
   }
 
@@ -195,7 +198,7 @@ export async function createTenantDnsRecord(slug: string): Promise<string> {
     },
   );
 
-  console.log(`[CloudflareDNS] Created A record for ${name} → ${config.serverPublicIp} (id=${res.result.id}, proxied)`);
+  logger.info('cloudflare_dns_record_created', { name, ip: config.serverPublicIp, id: res.result.id });
   return res.result.id;
 }
 
@@ -213,13 +216,13 @@ export async function deleteTenantDnsRecord(recordId: string): Promise<void> {
       `/zones/${config.cloudflareZoneId}/dns_records/${encodeURIComponent(recordId)}`,
       { method: 'DELETE' },
     );
-    console.log(`[CloudflareDNS] Deleted record ${recordId}`);
+    logger.info('cloudflare_dns_record_deleted', { recordId });
   } catch (err: unknown) {
     // Cloudflare returns error code 81044 or similar when the record doesn't exist.
     // Treat "not found" as a successful deletion (idempotent).
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('81044') || msg.includes('not found') || msg.includes('HTTP 404')) {
-      console.log(`[CloudflareDNS] Record ${recordId} already gone, treating as success`);
+      logger.info('cloudflare_dns_record_already_gone', { recordId });
       return;
     }
     throw err;

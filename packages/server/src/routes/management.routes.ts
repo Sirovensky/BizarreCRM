@@ -623,7 +623,7 @@ router.post('/restart', (req: Request, res: Response) => {
   // Delay slightly so the response can be sent
   setTimeout(() => {
     execFile('pm2', ['restart', 'bizarre-crm'], (err) => {
-      if (err) console.error('[Management] PM2 restart failed:', err.message);
+      if (err) logger.error('pm2_restart_failed', { error: err.message });
     });
   }, 500);
 });
@@ -633,7 +633,7 @@ router.post('/stop', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Stopping server...' });
   setTimeout(() => {
     execFile('pm2', ['stop', 'bizarre-crm'], (err) => {
-      if (err) console.error('[Management] PM2 stop failed:', err.message);
+      if (err) logger.error('pm2_stop_failed', { error: err.message });
     });
   }, 500);
 });

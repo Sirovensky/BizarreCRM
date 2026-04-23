@@ -842,11 +842,10 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
     });
   } catch (err: unknown) {
     if (err instanceof AppError) throw err;
-    console.warn(
-      `[invoices] failed to reverse commissions on void for invoice ${req.params.id}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    logger.warn('invoices_reverse_commissions_failed', {
+      invoice_id: req.params.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   recordWindowFailure(db, 'invoice_void', String(userId), 60000);
@@ -1148,7 +1147,7 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
       );
     } catch (creditErr: unknown) {
       const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
-      console.warn(`[invoices] failed to record credit-note overflow store credit: ${msg}`);
+      logger.warn('invoices_credit_note_overflow_store_credit_failed', { error: msg });
     }
   }
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);

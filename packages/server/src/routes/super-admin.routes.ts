@@ -140,7 +140,7 @@ function auditLog(action: string, adminId: number | null, ip: string, details?: 
     masterDb.prepare(
       'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)'
     ).run(adminId, action, details ? JSON.stringify(details) : null, ip);
-  } catch (err) { console.error('[SuperAdmin Audit]', err); }
+  } catch (err) { logger.error('super_admin_audit_write_failed', { error: err instanceof Error ? err.message : String(err) }); }
 }
 
 // ─── Challenge Tokens (in-memory, short-lived) ──────────────────────
@@ -152,6 +152,18 @@ interface Challenge {
 }
 
 const challenges = new Map<string, Challenge>();
+const CHALLENGES_CAP = 1000;
+
+// SCAN-564: evict oldest entry (insertion-order) when the Map would exceed cap,
+// preventing unbounded heap growth under sustained unauthenticated challenge creation.
+function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
+  if (map.size >= cap && !map.has(key)) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey);
+  }
+  map.delete(key); // re-insert to bump to most-recent
+  map.set(key, value);
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -160,7 +172,7 @@ setInterval(() => {
 
 function createChallenge(adminId: number, pendingTotpSecret?: string): string {
   const token = crypto.randomBytes(32).toString('hex');
-  challenges.set(token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret });
+  addWithCap(challenges, token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret }, CHALLENGES_CAP);
   return token;
 }
 
@@ -292,6 +304,17 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: !!lockUntil });
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+  }
+
+  // SCAN-564: per-IP cap on challenge creation (10/15min) to limit how fast an
+  // attacker with a valid password can flood the challenges Map via this
+  // unauthenticated endpoint (adminId 0 is never a real record, so auth state
+  // of the caller is irrelevant — the cap must be IP-based).
+  const CHALLENGE_CREATE_MAX = 10;
+  const CHALLENGE_CREATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  if (!checkWindowRate(masterDb, 'super_admin_challenge', ip, CHALLENGE_CREATE_MAX, CHALLENGE_CREATE_WINDOW_MS)) {
+    auditLog('super_admin_challenge_rate_limited', admin.id, ip);
+    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
   }
 
   // Password OK — check if password setup needed
