@@ -47,6 +47,7 @@ const DUNNING_RUN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 // ---------------------------------------------------------------------------
 
 router.get('/sequences', asyncHandler(async (req: Request, res: Response) => {
+  requireAdmin(req);
   const rows = await req.asyncDb.all<Row>(
     `SELECT id, name, is_active, steps_json, created_at
        FROM dunning_sequences

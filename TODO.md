@@ -1492,3 +1492,19 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-637. **rma `received` transition status UPDATE + N stock increments NOT in transaction — mid-flight crash leaves RMA received but stock not restored** — `packages/server/src/routes/rma.routes.ts:255-268,230`. Fix: batch in `adb.transaction([TxQuery[]])`.
 - [ ] SCAN-638. **web ReportsPage useEffect risk of loop — openUpgradeModal not in deps + isReportTabLocked not memoized + eslint-disable suppresses exhaustive-deps warning** — `packages/web/src/pages/reports/ReportsPage.tsx:1144-1153`. Fix: `useCallback` isReportTabLocked + include openUpgradeModal in deps (or ref) + drop lint-disable.
 - [ ] SCAN-639. **portal embed-config uses dynamic `import('../utils/rateLimiter.js')` at request time — overhead + theoretical failure lets request pass without rate-limit** — `packages/server/src/routes/portal.routes.ts:1487`. Fix: use static top-of-file import (already exists at line 9).
+
+### Wave-16 scan findings (2026-04-23)
+- [ ] SCAN-640. **errorHandler middleware 2 console.error bypass structured logger** — `packages/server/src/middleware/errorHandler.ts:40,42`. Fix: logger.error.
+- [ ] SCAN-641. **tenantResolver 2 console.error in critical auth path** — `packages/server/src/middleware/tenantResolver.ts:429,491`. Fix: log.error.
+- [ ] SCAN-642. **tierGate 2 console.warn** — `packages/server/src/middleware/tierGate.ts:17,28`. Fix: createLogger + structured.
+- [ ] SCAN-643. **tickets feedback SMS detached setTimeout console.error** — `packages/server/src/routes/tickets.routes.ts:2132`. Fix: logger.error.
+- [ ] SCAN-644. **tickets notification import dynamic-chain console.error** — `packages/server/src/routes/tickets.routes.ts:2091`. Fix: logger.error.
+- [ ] SCAN-645. **auth.routes JSON.parse(backup_codes) no try/catch — corrupt column throws in loop, unhandled 500 leak** — `packages/server/src/routes/auth.routes.ts:1051`. Fix: try/catch → valid:false.
+- [ ] SCAN-646. **auth.routes JSON.parse(user.permissions) 3 bare sites (generateTokens, refresh, impersonate) — corrupt column throws during token gen** — `packages/server/src/routes/auth.routes.ts:401,1287,1443`. Fix: `safeParsePermissions(raw)` helper at all 3 sites.
+- [ ] SCAN-647. **campaigns `requireAdminOrServiceToken(req: any)` — type-check disabled on auth helper** — `packages/server/src/routes/campaigns.routes.ts:750`. Fix: `Request` type + augmented req.user.
+- [ ] SCAN-648. **settings req.body `Record<string,string>` cast without typeof guard — non-string values silently coerce via String()** — `packages/server/src/routes/settings.routes.ts:428,487,1830`. Fix: typeof-string guard before accept.
+- [ ] SCAN-649. **10 bare `setInterval(...)` across 7+ route files not using trackInterval — leak handles on shutdown/test** — admin×2, auth, signup×3, invoices, management, super-admin, import. Fix: `trackInterval` (extract to shared util if needed).
+- [ ] SCAN-650. **catalog req.body `as` cast + `q.trim()` without typeof string check — `q:42` → TypeError** — `packages/server/src/routes/catalog.routes.ts:580`. Fix: typeof guard.
+- [ ] SCAN-651. **metricsCollector 2 console.log startup + rollup** — `packages/server/src/services/metricsCollector.ts:144,307`. Fix: log.info.
+- [ ] SCAN-652. **tenantTermination module-scope `setInterval(...)` not via trackInterval** — `packages/server/src/services/tenantTermination.ts:76`. Fix: return handle from start() + register in index.ts.
+- [ ] SCAN-653. **posEnrich `JSON.parse(cartSerialized)` no try/catch (surrounding helper has one, this doesn't)** — `packages/server/src/routes/posEnrich.routes.ts:553`. Fix: use parseTrainingTxList helper OR wrap + AppError.

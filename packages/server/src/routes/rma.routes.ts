@@ -6,7 +6,7 @@ import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { validateEnum, validateTextLength, validatePaginationOffset } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router();
 
@@ -233,38 +233,55 @@ router.patch('/:id/status', requirePermission('inventory.edit'), asyncHandler(as
     const fromAliases: string[] = [fromStatus];
     if (fromStatus === 'declined') fromAliases.push('rejected');
     const placeholders = fromAliases.map(() => '?').join(',');
-    result = await adb.run(
-      `UPDATE rma_requests
-          SET status = ?,
-              tracking_number = COALESCE(?, tracking_number),
-              notes = COALESCE(?, notes),
-              updated_at = ?
-        WHERE id = ?
-          AND status IN (${placeholders})`,
-      nextStatus, trackingNumber, notes, now(), rmaId, ...fromAliases,
-    );
+
+    // SCAN-637 / S-RMA-1: The 'received' transition must restore stock atomically
+    // with the status change. Fetch items first (read-only), then commit the
+    // status UPDATE + all stock increments in a single transaction so a crash
+    // mid-flight cannot leave the RMA 'received' with stock still missing.
+    if (nextStatus === 'received') {
+      const rmaItems = await adb.all<{ inventory_item_id: number | null; quantity: number }>(
+        'SELECT inventory_item_id, quantity FROM rma_items WHERE rma_id = ? AND inventory_item_id IS NOT NULL',
+        rmaId,
+      );
+
+      const statusUpdate: TxQuery = {
+        sql: `UPDATE rma_requests
+                 SET status = ?,
+                     tracking_number = COALESCE(?, tracking_number),
+                     notes = COALESCE(?, notes),
+                     updated_at = ?
+               WHERE id = ?
+                 AND status IN (${placeholders})`,
+        params: [nextStatus, trackingNumber, notes, now(), rmaId, ...fromAliases],
+        expectChanges: true,
+        expectChangesError: 'RMA status changed concurrently. Refresh and retry.',
+      };
+
+      const stockUpdates: TxQuery[] = rmaItems
+        .filter(item => item.inventory_item_id !== null)
+        .map(item => ({
+          sql: "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+          params: [item.quantity, item.inventory_item_id as number],
+        }));
+
+      await adb.transaction([statusUpdate, ...stockUpdates]);
+      // Mark as handled — skip the redundant adb.run below.
+      result = { changes: 1, lastInsertRowid: 0 };
+    } else {
+      result = await adb.run(
+        `UPDATE rma_requests
+            SET status = ?,
+                tracking_number = COALESCE(?, tracking_number),
+                notes = COALESCE(?, notes),
+                updated_at = ?
+          WHERE id = ?
+            AND status IN (${placeholders})`,
+        nextStatus, trackingNumber, notes, now(), rmaId, ...fromAliases,
+      );
+    }
   }
   if (result.changes === 0) {
     throw new AppError('RMA status changed concurrently. Refresh and retry.', 409);
-  }
-
-  // S-RMA-1: When the supplier ships defective items back to us and we mark
-  // the RMA as 'received', credit stock back for each item that has a linked
-  // inventory_item_id. Without this, the stock deduction from the original
-  // fault/removal is never reversed and the item stays out-of-stock forever.
-  if (fromStatus !== nextStatus && nextStatus === 'received') {
-    const rmaItems = await adb.all<{ inventory_item_id: number | null; quantity: number }>(
-      'SELECT inventory_item_id, quantity FROM rma_items WHERE rma_id = ? AND inventory_item_id IS NOT NULL',
-      rmaId,
-    );
-    for (const item of rmaItems) {
-      if (!item.inventory_item_id) continue;
-      await adb.run(
-        "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
-        item.quantity,
-        item.inventory_item_id,
-      );
-    }
   }
 
   audit(req.db, 'rma_status_updated', req.user!.id, req.ip || 'unknown', {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -1133,11 +1133,11 @@ export function ReportsPage() {
   const planFeatures = usePlanStore((s) => s.features);
   const planHasFetched = usePlanStore((s) => s.hasFetched);
   const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
-  const isReportTabLocked = (tab: ReportTabConfig): boolean => {
+  const isReportTabLocked = useCallback((tab: ReportTabConfig): boolean => {
     if (!tab.proFeature) return false;
     if (!planHasFetched) return false; // don't lock while loading
     return !planFeatures[tab.proFeature];
-  };
+  }, [planFeatures, planHasFetched]);
 
   // Defense-in-depth: if user lands on a locked tab (e.g. via state restore or future
   // URL routing), kick them back to 'sales' and prompt for upgrade. Without this,
@@ -1149,8 +1149,7 @@ export function ReportsPage() {
       openUpgradeModal(currentTab.proFeature);
       setActiveTab('sales');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, planHasFetched, planFeatures]);
+  }, [activeTab, planHasFetched, planFeatures, isReportTabLocked, openUpgradeModal]);
 
   async function handleExport() {
     try {

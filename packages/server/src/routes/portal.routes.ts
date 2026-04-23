@@ -6,7 +6,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { sendSms, sendSmsTenant } from '../services/smsProvider.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowFailure, consumeWindowRate, clearRateLimit } from '../utils/rateLimiter.js';
 import {
   generateCsrfToken,
   issueCsrfCookie,
@@ -70,9 +70,9 @@ function NORMALIZED_DIGITS_EXPR(column: string): string {
 }
 
 /**
- * Wrap checkWindowRate + recordWindowFailure into a single call that both
- * gates the attempt AND records it on success. Returns true if the attempt
- * is allowed (in which case the caller should proceed), false if not.
+ * Atomic check-and-record helper. Delegates to consumeWindowRate so the
+ * check and increment happen inside a single SQLite transaction — fixes
+ * SCAN-630 non-atomic race that allowed maxAttempts+1 requests through.
  */
 function consumeRate(
   req: Request,
@@ -81,11 +81,7 @@ function consumeRate(
   maxAttempts: number,
   windowMs: number,
 ): boolean {
-  if (!checkWindowRate(req.db, category, key, maxAttempts, windowMs)) {
-    return false;
-  }
-  recordWindowFailure(req.db, category, key, windowMs);
-  return true;
+  return consumeWindowRate(req.db, category, key, maxAttempts, windowMs).allowed;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +128,9 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   // insert) is treated as 'never used' and passes through.
   const IDLE_LIMIT_MS = 4 * 60 * 60 * 1000;
   if (session.last_used_at) {
+    // SCAN-632: last_used_at is stored as datetime('now','utc') which always
+    // produces UTC text (e.g. "2024-01-02 15:30:00"). Replace space→'T' and
+    // append 'Z' so Date.parse treats it as UTC regardless of host timezone.
     const lastUsedMs = Date.parse(String(session.last_used_at).replace(' ', 'T') + 'Z');
     if (Number.isFinite(lastUsedMs) && Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
       // Evict the stale session so reuse of the token still fails on
@@ -143,7 +142,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   }
 
   // Update last_used_at
-  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now','utc') WHERE token = ?", token);
 
   req.portalCustomerId = session.customer_id;
   req.portalScope = session.scope as 'ticket' | 'full';
@@ -629,6 +628,10 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     return;
   }
 
+  // SCAN-631: clear PIN_VERIFY bucket on success so the customer can log in
+  // again within the same window without being blocked by their own attempts.
+  clearRateLimit(req.db, RL.PIN_VERIFY, foundCustomer.id.toString());
+
   // Create full-scope session
   const token = generateToken();
   const sessionId = crypto.randomUUID();
@@ -917,7 +920,7 @@ async function verifySessionHandler(req: PortalRequest, res: Response, token: st
     return;
   }
 
-  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now','utc') WHERE token = ?", token);
 
   const csrfToken = generateCsrfToken();
   issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
@@ -1484,7 +1487,7 @@ router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) =>
   const adb = _req.asyncDb;
   const ip = _req.ip || _req.socket?.remoteAddress || 'unknown';
 
-  const { consumeWindowRate } = await import('../utils/rateLimiter.js');
+  // SCAN-639: use static import (already at top of file) — no dynamic import needed.
   const result = consumeWindowRate(db, RL.EMBED_CONFIG, ip, 60, 5 * 60 * 1000);
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
