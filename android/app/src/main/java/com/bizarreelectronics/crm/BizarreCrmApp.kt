@@ -128,18 +128,13 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                     // the schedule, e.g. after a force-stop recovery).
                     SyncWorker.schedule(this@BizarreCrmApp)
 
-                    // Clipboard seal: clear the clipboard if it holds a
-                    // sensitive value that was auto-set by ClipboardUtil
-                    // .copySensitive(). ClipboardUtil does not expose a
-                    // "clearSensitiveIfPresent" discriminator — clearing
-                    // unconditionally here would drop a ticket number the
-                    // user copied intentionally. A selective clear requires a
-                    // per-copy sensitivity flag tracked by ClipboardUtil.
-                    // TODO: add ClipboardUtil.clearSensitiveIfPresent(context)
-                    //   once ClipboardUtil tracks a "last copy was sensitive"
-                    //   flag (another agent owns that file; do not edit).
-                    //   For now we leave the existing auto-clear TTL (30 s)
-                    //   in copySensitive() as the only seal mechanism.
+                    // §1.6 L239 — Clipboard seal: clear the clipboard if it
+                    // holds a value placed by ClipboardUtil.copySensitive().
+                    // Detection is marker-based (ClipDescription label / extras)
+                    // — never content-based — so user-copied text is never
+                    // touched. No-op when no sensitive clip is active.
+                    com.bizarreelectronics.crm.util.ClipboardUtil
+                        .clearSensitiveIfPresent(this@BizarreCrmApp)
 
                     // Draft persistence: no draft system exists yet.
                     // TODO: flush unsaved form drafts to DataStore here once

@@ -17,6 +17,18 @@ import android.os.PersistableBundle
  * Android 13+ shows the system "X copied to clipboard" toast automatically;
  * we suppress it on sensitive copies by marking the ClipDescription with
  * `android.content.extra.IS_SENSITIVE`.
+ *
+ * Detection strategy for [clearSensitiveIfPresent]:
+ * - All API levels: ClipData is created with [SENSITIVE_LABEL] as the
+ *   ClipDescription label — a marker that is invisible to users but readable
+ *   by us at background time.
+ * - API 24+: additionally stored as a boolean extra under [EXTRA_IS_SENSITIVE_COMPAT]
+ *   in the ClipDescription's PersistableBundle extras.
+ * - API 33+: additionally stored under the AOSP constant
+ *   `ClipDescription.EXTRA_IS_SENSITIVE` (also suppresses the system preview toast).
+ *
+ * [clearSensitiveIfPresent] checks the description marker only — it never
+ * reads or compares clipboard content. Safe to call from any lifecycle hook.
  */
 object ClipboardUtil {
 
@@ -33,39 +45,93 @@ object ClipboardUtil {
      * also suppresses the clipboard preview toast via the IS_SENSITIVE
      * extra.
      *
+     * The clip is tagged with [SENSITIVE_LABEL] (+ extras on API 24+/33+)
+     * so that [clearSensitiveIfPresent] can identify it by marker alone —
+     * without ever reading the clipboard content.
+     *
      * The handler-based clear is best-effort only: if the process is killed
-     * the clipboard will retain the value. A follow-up WorkManager worker
-     * can harden this once we see real OTP/backup-code copy traffic.
+     * the clipboard will retain the value. [clearSensitiveIfPresent] called
+     * from the app-background lifecycle hook adds a second seal for that case.
      */
     fun copySensitive(
         context: Context,
-        label: String,
+        @Suppress("UNUSED_PARAMETER") label: String,
         text: String,
         clearAfterMillis: Long = DEFAULT_SECRET_TTL_MS,
     ) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(label, text)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // Use SENSITIVE_LABEL as the ClipDescription label on ALL API levels
+        // so clearSensitiveIfPresent can detect our clip without reading content.
+        val clip = ClipData.newPlainText(SENSITIVE_LABEL, text)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             val extras = PersistableBundle().apply {
-                putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                putBoolean(EXTRA_IS_SENSITIVE_COMPAT, true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                }
             }
             clip.description.extras = extras
         }
         clipboard.setPrimaryClip(clip)
 
         handler.postDelayed({
-            // Only clear if our sentinel is still on the clipboard —
-            // otherwise the user has already pasted somewhere else and
-            // replaced it.
-            val current = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-            if (current == text) {
-                clearClipboard(clipboard)
-            }
+            // Clear only if our sensitive marker is still on the clipboard —
+            // avoids touching a clip the user replaced with their own copy.
+            clearSensitiveIfPresent(clipboard)
         }, clearAfterMillis)
+    }
+
+    /**
+     * §1.6 L239 — Clears the clipboard only if the current primary clip was
+     * placed there by [copySensitive] AND our sensitive marker is still present
+     * in the ClipDescription. Safe to call when no sensitive copy is active
+     * (no-op in that case). Called from the app-background lifecycle hook in
+     * [com.bizarreelectronics.crm.BizarreCrmApp].
+     *
+     * Detection is marker-based only — this function NEVER reads, inspects, or
+     * compares clipboard content. Only our explicit [SENSITIVE_LABEL] /
+     * [EXTRA_IS_SENSITIVE_COMPAT] tag is checked.
+     */
+    fun clearSensitiveIfPresent(context: Context) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clearSensitiveIfPresent(cm)
+    }
+
+    /**
+     * Returns true if [description] carries our sensitive marker.
+     *
+     * Exposed as a standalone pure function so unit tests can drive the
+     * detection logic without a real ClipboardManager. The Android-framework
+     * unpacking (label + extras) is delegated to the framework-free
+     * [SensitiveMarker.isSensitive] helper so plain-JVM tests can cover all
+     * branches without Robolectric.
+     *
+     * Detection precedence:
+     * 1. Label equals [SENSITIVE_LABEL] — works on all API levels.
+     * 2. PersistableBundle extra [EXTRA_IS_SENSITIVE_COMPAT] == true.
+     * 3. AOSP [ClipDescription.EXTRA_IS_SENSITIVE] == true (API 33+) — covers
+     *    clips set by a future version of this code that drops the label tag.
+     */
+    fun isSensitive(description: ClipDescription?): Boolean {
+        if (description == null) return false
+        val extras = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) description.extras else null
+        return SensitiveMarker.isSensitive(
+            label = description.label?.toString(),
+            compatExtra = extras?.getBoolean(EXTRA_IS_SENSITIVE_COMPAT, false) ?: false,
+            aospExtra = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) ?: false
+            else false,
+        )
     }
 
     fun clearClipboard(context: Context) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clearClipboard(clipboard)
+    }
+
+    private fun clearSensitiveIfPresent(clipboard: ClipboardManager) {
+        val clip = clipboard.primaryClip ?: return
+        if (!isSensitive(clip.description)) return
         clearClipboard(clipboard)
     }
 
@@ -115,6 +181,43 @@ object ClipboardUtil {
     }
 
     private const val DEFAULT_SECRET_TTL_MS = 30_000L
+
+    /** ClipDescription label applied to every sensitive copy. Used as marker by [isSensitive]. */
+    internal const val SENSITIVE_LABEL = "BizarreCRM:sensitive"
+
+    /**
+     * PersistableBundle boolean extra key stored on API 24+ to complement the
+     * label-based marker. Using a package-namespaced key avoids collisions with
+     * AOSP or other app keys.
+     */
+    internal const val EXTRA_IS_SENSITIVE_COMPAT =
+        "com.bizarreelectronics.crm.EXTRA_IS_SENSITIVE"
+}
+
+/**
+ * §1.6 L239 — Pure sensitive-clip detection logic with no Android framework
+ * dependencies. Extracted from [ClipboardUtil] so that unit tests can exercise
+ * all detection paths without Robolectric or a real [android.content.ClipDescription].
+ *
+ * All parameters are plain Kotlin types; the caller ([ClipboardUtil.isSensitive])
+ * is responsible for unpacking the Android framework objects.
+ */
+object SensitiveMarker {
+
+    /**
+     * Returns true when any of the three markers indicates a sensitive clip:
+     *
+     * 1. [label] == [ClipboardUtil.SENSITIVE_LABEL] — set on all API levels by
+     *    [ClipboardUtil.copySensitive].
+     * 2. [compatExtra] == true — our own `EXTRA_IS_SENSITIVE_COMPAT` boolean
+     *    stored on API 24+.
+     * 3. [aospExtra] == true — AOSP `ClipDescription.EXTRA_IS_SENSITIVE` on
+     *    API 33+.
+     *
+     * Never inspects the clipboard text — detection is purely by marker.
+     */
+    fun isSensitive(label: String?, compatExtra: Boolean, aospExtra: Boolean): Boolean =
+        label == ClipboardUtil.SENSITIVE_LABEL || compatExtra || aospExtra
 }
 
 /**
