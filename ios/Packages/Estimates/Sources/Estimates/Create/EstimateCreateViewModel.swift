@@ -48,11 +48,11 @@ public final class EstimateCreateViewModel {
 
     public var isValid: Bool {
         guard customerId != nil else { return false }
-        // All line items present must have a valid description + price
+        // All line items present must have a valid description, positive quantity, and non-negative price
         let allItemsValid = lineItems.allSatisfy { item in
             !item.description.trimmingCharacters(in: .whitespaces).isEmpty &&
-            Double(item.unitPrice) != nil &&
-            Int(item.quantity) != nil
+            (Double(item.unitPrice) != nil) &&
+            (Int(item.quantity).map { $0 > 0 } ?? false)
         }
         return allItemsValid
     }
