@@ -22,7 +22,9 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
@@ -75,6 +77,12 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var sessionTimeout: SessionTimeout
+
+    @Inject
+    lateinit var clockDrift: ClockDrift
+
+    @Inject
+    lateinit var rateLimiter: RateLimiter
 
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
@@ -203,6 +211,9 @@ class MainActivity : FragmentActivity() {
                         syncManager = syncManager,
                         deepLinkBus = deepLinkBus,
                         breadcrumbs = breadcrumbs,
+                        clockDrift = clockDrift,
+                        rateLimiter = rateLimiter,
+                        sessionTimeout = sessionTimeout,
                     )
                 }
             }

@@ -66,10 +66,16 @@ import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
+import com.bizarreelectronics.crm.ui.components.ClockDriftBanner
+import com.bizarreelectronics.crm.ui.components.RateLimitBanner
+import com.bizarreelectronics.crm.ui.components.SessionTimeoutOverlay
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
+import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import java.util.Locale
 import javax.inject.Inject
 
@@ -268,6 +274,9 @@ fun AppNavGraph(
     syncManager: SyncManager? = null,
     deepLinkBus: DeepLinkBus? = null,
     breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs? = null,
+    clockDrift: ClockDrift? = null,
+    rateLimiter: RateLimiter? = null,
+    sessionTimeout: SessionTimeout? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -499,6 +508,16 @@ fun AppNavGraph(
                 pendingSyncCount = pendingSyncCount,
                 isSyncing = isSyncing,
             )
+
+            // §1 L251 — clock-drift warning; only meaningful when logged in.
+            if (authPreferences?.isLoggedIn == true && clockDrift != null) {
+                ClockDriftBanner(clockDrift = clockDrift)
+            }
+
+            // §1 L257 — rate-limit slow-down banner; only meaningful when logged in.
+            if (authPreferences?.isLoggedIn == true && rateLimiter != null) {
+                RateLimitBanner(rateLimiter = rateLimiter)
+            }
 
             // §17.10 — global hardware-keyboard shortcuts. Wraps the NavHost
             // so the same key chord works on every screen. Only fires when a
@@ -1319,6 +1338,21 @@ fun AppNavGraph(
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
+        }
+
+        // §2.16 L399-L400 — session-timeout warning overlay. Renders as a Dialog
+        // (modal layer above all content) when the idle countdown enters the
+        // 60-second warning window. Placed outside the Column so it floats above
+        // banners + NavHost without affecting the layout flow. Only active when
+        // logged in; null-safe guard handles preview / test hosts that omit the dep.
+        if (authPreferences?.isLoggedIn == true && sessionTimeout != null) {
+            SessionTimeoutOverlay(
+                sessionTimeout = sessionTimeout,
+                onSignOut = {
+                    authPreferences.clear()
+                    // authCleared flow (above) will navigate to Screen.Login.
+                },
+            )
         }
     }
 }
