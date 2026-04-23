@@ -163,6 +163,8 @@ import { startReceiptOcrCron } from './services/receiptOcrCron.js';
 import { smsInboundWebhookHandler, smsStatusWebhookHandler } from './routes/sms.routes.js';
 import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
+import { startSmsProviderSweep } from './providers/sms/index.js';
+import { startStepUpTotpReaper } from './middleware/stepUpTotp.js';
 import adminRoutes from './routes/admin.routes.js';
 import billingRoutes, { webhookHandler as stripeWebhookHandler } from './routes/billing.routes.js';
 import { scheduleBackup } from './services/backup.js';
@@ -1951,6 +1953,12 @@ server.listen(config.port, config.host, async () => {
   console.log('[Features] SMS:', process.env.TCX_HOST ? 'configured' : 'not configured');
   console.log('[Features] Email:', process.env.SMTP_HOST ? 'configured' : 'not configured');
   console.log('[Features] BlockChyp:', 'via settings UI');
+
+  // SCAN-665: SMS provider cache sweeper (extracted from module scope in providers/sms/index.ts).
+  startSmsProviderSweep();
+
+  // SCAN-668: TOTP replay-prevention reaper (extracted from module scope in middleware/stepUpTotp.ts).
+  startStepUpTotpReaper();
 
   // Start backup scheduler
   // Tier: in single-tenant (self-hosted) mode, run the global per-shop backup cron.

@@ -13,6 +13,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { config } from '../config.js';
 import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('metricsCollector');
 import {
@@ -326,13 +327,11 @@ export function startMetricsCollector(): void {
   safeSample();
 
   // Then sample every 60 seconds
-  sampleTimer = setInterval(safeSample, 60_000);
-  sampleTimer.unref();
+  sampleTimer = trackInterval(safeSample, 60_000, { unref: true });
 
   // Hourly rollup + cleanup (run at startup too for any missed rollups)
   safeRollup();
-  rollupTimer = setInterval(safeRollup, 3600_000);
-  rollupTimer.unref();
+  rollupTimer = trackInterval(safeRollup, 3600_000, { unref: true });
 }
 
 export function stopMetricsCollector(): void {

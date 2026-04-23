@@ -15,6 +15,7 @@ import { VonageProvider } from './vonage.js';
 import { ENCRYPTED_CONFIG_KEYS, decryptConfigValue } from '../../utils/configEncryption.js';
 import { config } from '../../config.js';
 import { createLogger } from '../../utils/logger.js';
+import { trackInterval } from '../../utils/trackInterval.js';
 
 const logger = createLogger('sms:factory');
 
@@ -62,12 +63,16 @@ const TENANT_PROVIDER_TTL = 5 * 60 * 1000; // 5 minutes — re-read config if st
 const MAX_TENANT_PROVIDER_CACHE_ENTRIES = 1000;
 
 // Periodic cleanup of stale provider cache entries
-setInterval(() => {
-  const now = Date.now();
-  for (const [slug, cached] of tenantProviderCache) {
-    if (now - cached.loadedAt > TENANT_PROVIDER_TTL * 2) tenantProviderCache.delete(slug);
-  }
-}, 10 * 60 * 1000).unref();
+let providerSweepHandle: NodeJS.Timeout | null = null;
+export function startSmsProviderSweep(): void {
+  if (providerSweepHandle) return;
+  providerSweepHandle = trackInterval(() => {
+    const now = Date.now();
+    for (const [slug, cached] of tenantProviderCache) {
+      if (now - cached.loadedAt > TENANT_PROVIDER_TTL * 2) tenantProviderCache.delete(slug);
+    }
+  }, 10 * 60 * 1000);
+}
 
 // --- Helpers ---
 

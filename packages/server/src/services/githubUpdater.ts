@@ -25,6 +25,7 @@ import { fileURLToPath } from 'url';
 import { broadcast } from '../ws/server.js';
 import { createLogger } from '../utils/logger.js';
 import { createBreaker } from '../utils/circuitBreaker.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 // SEC-H77: Circuit breaker for GitHub remote fetch calls.
 // Uses a higher failure threshold (3) since git fetch is less frequent.
@@ -355,14 +356,13 @@ export async function performUpdate(): Promise<{ success: boolean; output: strin
 
 export function startUpdateChecker(): void {
   if (checkInterval) return;
-  checkInterval = setInterval(() => {
+  checkInterval = trackInterval(() => {
     checkForUpdates().catch((err) => {
       log.warn('periodic check failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     });
-  }, CHECK_INTERVAL);
-  checkInterval.unref(); // Don't keep process alive for update checks
+  }, CHECK_INTERVAL, { unref: true });
 }
 
 export function stopUpdateChecker(): void {

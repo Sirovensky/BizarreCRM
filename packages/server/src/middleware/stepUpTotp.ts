@@ -39,6 +39,7 @@ import { audit } from '../utils/audit.js';
 import { sendEmail } from '../services/email.js';
 import { createLogger } from '../utils/logger.js';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const log = createLogger('step-up-totp');
 
@@ -60,12 +61,16 @@ const consumedCodes = new Map<string, number>();
 const CONSUMED_TTL_MS = 90_000;
 
 // Periodic sweep: remove entries older than CONSUMED_TTL_MS.
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, ts] of consumedCodes) {
-    if (now - ts > CONSUMED_TTL_MS) consumedCodes.delete(k);
-  }
-}, 60_000).unref();
+let stepUpTotpReaperHandle: NodeJS.Timeout | null = null;
+export function startStepUpTotpReaper(): void {
+  if (stepUpTotpReaperHandle) return;
+  stepUpTotpReaperHandle = trackInterval(() => {
+    const now = Date.now();
+    for (const [k, ts] of consumedCodes) {
+      if (now - ts > CONSUMED_TTL_MS) consumedCodes.delete(k);
+    }
+  }, 60_000, { unref: true });
+}
 
 /**
  * Attempts to claim a TOTP code for `userId`.

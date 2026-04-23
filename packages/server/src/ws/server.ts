@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const log = createLogger('ws');
 
@@ -140,10 +141,10 @@ const wsConnsByTenant = new Map<string, number>();
 
 // SEC-H86: Periodic sweeper removes any zero-count entries that survived a
 // race between increment and a very-early-close (edge case, belt-and-suspenders).
-setInterval(() => {
+trackInterval(() => {
   for (const [k, v] of wsConnsByIp) if (v <= 0) wsConnsByIp.delete(k);
   for (const [k, v] of wsConnsByTenant) if (v <= 0) wsConnsByTenant.delete(k);
-}, 60_000).unref();
+}, 60_000, { unref: true });
 
 // SEC: Use composite key "tenantSlug:userId" to prevent cross-tenant userId collision.
 // In single-tenant mode, key is "null:userId".
@@ -583,7 +584,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   if (wsHeartbeatHandle) {
     clearInterval(wsHeartbeatHandle);
   }
-  wsHeartbeatHandle = setInterval(() => {
+  wsHeartbeatHandle = trackInterval(() => {
     allClients.forEach((ws) => {
       if (!ws.isAlive) {
         allClients.delete(ws);
@@ -603,12 +604,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
         });
       }
     });
-  }, 30000);
-  // @audit-fixed: .unref() so the heartbeat does not hold the process open
-  // during shutdown if stopWebSocketHeartbeat() is somehow skipped.
-  if (typeof wsHeartbeatHandle.unref === 'function') {
-    wsHeartbeatHandle.unref();
-  }
+  }, 30000, { unref: true });
 }
 
 // Broadcast to all authenticated clients, scoped to a tenant.

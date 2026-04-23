@@ -6,6 +6,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -636,7 +637,7 @@ function startAutoClockoutSweep(): void {
   // files are first imported. A 5-minute delay is plenty.
   const firstTickDelay = 5 * 60 * 1000;
   setTimeout(() => {
-    autoClockoutSweepTimer = setInterval(async () => {
+    autoClockoutSweepTimer = trackInterval(async () => {
       // SEC-H19: prior version only read config.dbPath which in
       // multi-tenant mode points at the master DB, not any tenant.
       // Every tenant's employee_clock_entries therefore stayed open
@@ -683,9 +684,6 @@ function startAutoClockoutSweep(): void {
         });
       }
     }, AUTO_CLOCKOUT_SWEEP_INTERVAL_MS);
-    if (typeof autoClockoutSweepTimer?.unref === 'function') {
-      autoClockoutSweepTimer.unref();
-    }
   }, firstTickDelay);
 }
 
