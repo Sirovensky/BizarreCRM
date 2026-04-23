@@ -57,6 +57,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
@@ -170,6 +171,9 @@ sealed class Screen(val route: String) {
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
+
+    // §2.6 — Security sub-screen (biometric unlock + Change PIN + Change Password + Lock now).
+    data object Security : Screen("settings/security")
 
     // CROSS38b-notif: Settings > Notifications preferences sub-page. Distinct
     // from `Notifications` (the notifications inbox list) per CROSS54.
@@ -1013,6 +1017,8 @@ fun AppNavGraph(
                     },
                     onEditProfile = { navController.navigate(Screen.Profile.route) },
                     onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                    // §2.6 — Security sub-screen (biometric + PIN + password + lock now).
+                    onSecurity = { navController.navigate(Screen.Security.route) },
                     // AUD-20260414-M5: entry into the Sync Issues diagnostic
                     // screen. The SettingsScreen gates the tile on
                     // count > 0 so this callback only fires when there is
@@ -1047,6 +1053,18 @@ fun AppNavGraph(
             composable(Screen.NotificationSettings.route) {
                 NotificationSettingsScreen(
                     onBack = { navController.popBackStack() },
+                )
+            }
+            // §2.6 — Security sub-screen: biometric unlock toggle + Change PIN
+            // + Change Password (stubbed) + Lock Now.
+            // PinPreferences is injected into SecurityViewModel via Hilt.
+            composable(Screen.Security.route) {
+                SecurityScreen(
+                    onBack = { navController.popBackStack() },
+                    onChangePin = { navController.navigate(Screen.PinSetup.route) },
+                    // Change-password screen not yet implemented — SecurityScreen
+                    // keeps the row disabled with "Coming soon" subtitle.
+                    onChangePassword = { /* TODO: navigate when endpoint exists */ },
                 )
             }
             // AUD-20260414-M5: Sync Issues screen — lists dead-letter

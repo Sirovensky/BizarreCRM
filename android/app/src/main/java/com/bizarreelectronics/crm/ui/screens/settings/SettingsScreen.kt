@@ -222,6 +222,9 @@ fun SettingsScreen(
     // is gated on deadLetterCount > 0 so callers never see it unless there
     // is actually something to retry.
     onSyncIssues: (() -> Unit)? = null,
+    // §2.6 — opens the dedicated Security sub-screen (biometric + PIN + password).
+    // Nullable so previews and any callers that don't need the row can omit it.
+    onSecurity: (() -> Unit)? = null,
     // §2.5 PIN — opens the PinSetupScreen. Row label flips between
     // "Set up PIN" / "Change PIN" based on PinPreferences.isPinSet.
     onPinSetup: (() -> Unit)? = null,
@@ -274,6 +277,18 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     title = "Notifications",
                     onClick = onNotificationSettings,
+                )
+            }
+
+            // §2.6 — Security sub-screen: biometric toggle + Change PIN + Change
+            // Password + Lock Now. Placed after Notifications so all
+            // security-adjacent settings are grouped at the top. Nullable so
+            // previews and callers that don't want the row can omit the wiring.
+            if (onSecurity != null) {
+                SettingsRow(
+                    icon = Icons.Default.Security,
+                    title = "Security",
+                    onClick = onSecurity,
                 )
             }
 
