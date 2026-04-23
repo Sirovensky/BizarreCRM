@@ -12,6 +12,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -143,7 +150,8 @@ fun InvoiceListScreen(
                     title = "Invoices",
                     actions = {
                         IconButton(onClick = { viewModel.loadInvoices() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                            // a11y: "Refresh invoices" is more specific than generic "Refresh"
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh invoices")
                         }
                     },
                 )
@@ -164,30 +172,87 @@ fun InvoiceListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
+            // a11y: "Status filter" heading so TalkBack can navigate directly to this section
+            Text(
+                "Status filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
+
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(statuses, key = { it }) { status ->
+                    val isSelected = state.selectedStatus == status
                     FilterChip(
-                        selected = state.selectedStatus == status,
+                        selected = isSelected,
                         onClick = { viewModel.onStatusChanged(status) },
                         label = { Text(status) },
+                        // a11y: Role.Tab + selection state announcement; the chip's
+                        // selected param already flips the chip visually; the
+                        // semantics here make TalkBack say "<status> filter, selected/not selected"
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$status filter, selected"
+                            } else {
+                                "$status filter, not selected"
+                            }
+                        },
                     )
                 }
+            }
+
+            // Invoice count pill — appears after the filter row when data is loaded
+            if (!state.isLoading && state.invoices.isNotEmpty()) {
+                val invoiceCount = state.invoices.size
+                val invoiceCountLabel = "$invoiceCount ${if (invoiceCount == 1) "invoice" else "invoices"}"
+                Text(
+                    invoiceCountLabel,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        // a11y: liveRegion=Polite so TalkBack announces the updated count
+                        // when a filter or search query changes the result set, without interrupting.
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = invoiceCountLabel
+                        },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 6,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading invoices" on a single focus stop rather than reading
+                    // each shimmer box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading invoices"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 6,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
+                    // user is not left wondering why the list is empty after a network failure.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Error loading invoices",
                             onRetry = { viewModel.loadInvoices() },
@@ -199,14 +264,18 @@ fun InvoiceListScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        EmptyState(
-                            icon = Icons.Default.Receipt,
-                            title = "No invoices found",
-                            subtitle = if (state.searchQuery.isNotEmpty() || state.selectedStatus != "All")
-                                "Try adjusting your search or filter"
-                            else
-                                "Invoices will appear here",
-                        )
+                        // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                        // into one TalkBack node so the empty state reads as a single announcement.
+                        Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                            EmptyState(
+                                icon = Icons.Default.Receipt,
+                                title = "No invoices found",
+                                subtitle = if (state.searchQuery.isNotEmpty() || state.selectedStatus != "All")
+                                    "Try adjusting your search or filter"
+                                else
+                                    "Invoices will appear here",
+                            )
+                        }
                     }
                 }
                 else -> {
@@ -242,8 +311,28 @@ fun InvoiceListScreen(
 
 @Composable
 private fun InvoiceListRow(invoice: InvoiceEntity, onClick: () -> Unit) {
+    // a11y: build the full announcement string once so it can be used in semantics.
+    // BrandCard(onClick) carries Material 3 Card Role.Button semantics; the inner
+    // BrandListItem also applies mergeDescendants=true + Role.Button on its Row.
+    // We add contentDescription on the BrandCard modifier so TalkBack announces a
+    // single coherent sentence instead of reading each child Text node individually.
+    val a11yDesc = buildString {
+        append("Invoice #${invoice.orderId.ifBlank { "?" }}")
+        invoice.customerName?.takeIf { it.isNotBlank() }?.let { append(" for $it") }
+        append(", ${invoice.total.formatAsMoney()}")
+        append(", ${invoice.status.ifBlank { "Unknown" }}")
+        val dateStr = DateFormatter.formatRelative(invoice.createdAt)
+        if (dateStr.isNotBlank()) append(", dated $dateStr")
+        append(". Tap to open.")
+    }
+
     BrandCard(
-        modifier = Modifier.fillMaxWidth(),
+        // a11y: contentDescription overrides merged child-text reading; 48dp floor
+        // ensures the row meets the Material 3 minimum touch target.
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { contentDescription = a11yDesc },
         onClick = onClick,
     ) {
         BrandListItem(
@@ -272,6 +361,10 @@ private fun InvoiceListRow(invoice: InvoiceEntity, onClick: () -> Unit) {
                 }
             },
             trailing = {
+                // a11y: visual-only trailing column. The BrandCard modifier-level
+                // contentDescription already announces invoice number + customer + amount
+                // + status for TalkBack; these child composables are decorative within
+                // the merged row node.
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         invoice.total.formatAsMoney(),
