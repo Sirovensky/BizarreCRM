@@ -63,6 +63,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
+import com.bizarreelectronics.crm.ui.screens.settings.ThemeScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
@@ -227,6 +228,9 @@ sealed class Screen(val route: String) {
 
     // §27 — Per-app language picker (ActionPlan §27).
     data object Language : Screen("settings/language")
+
+    // §1.4/§19/§30 — Theme picker: system/light/dark + Material You dynamic color.
+    data object Theme : Screen("settings/theme")
 
     // §2.8 — Password reset + backup-code recovery screens (pre-auth)
     data object ForgotPassword : Screen("auth/forgot-password")
@@ -1098,6 +1102,8 @@ fun AppNavGraph(
                     onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
                     // §27 — Language picker sub-screen.
                     onLanguage = { navController.navigate(Screen.Language.route) },
+                    // §1.4/§19/§30 — Theme picker sub-screen.
+                    onTheme = { navController.navigate(Screen.Theme.route) },
                     // §2.6 — Security sub-screen (biometric + PIN + password + lock now).
                     onSecurity = { navController.navigate(Screen.Security.route) },
                     // AUD-20260414-M5: entry into the Sync Issues diagnostic
@@ -1175,6 +1181,15 @@ fun AppNavGraph(
             // on older APIs LanguageScreen triggers recreate() explicitly.
             composable(Screen.Language.route) {
                 LanguageScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // §1.4/§19/§30 — Theme picker: system/light/dark + Material You.
+            // Changes are applied immediately via AppPreferences StateFlows;
+            // no activity recreate is needed.
+            composable(Screen.Theme.route) {
+                ThemeScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

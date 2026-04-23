@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,9 +47,20 @@ class AppPreferences @Inject constructor(
         get() = prefs.getInt("sync_interval_minutes", 15)
         set(value) = prefs.edit().putInt("sync_interval_minutes", value).apply()
 
+    // Backing StateFlows so Compose callers can observe theme changes without
+    // activity recreate. Both are initialised from the persisted pref values so
+    // there is no stale-read window between init and first emit.
+    private val _darkModeFlow = MutableStateFlow(
+        prefs.getString("dark_mode", "system") ?: "system",
+    )
+    val darkModeFlow: StateFlow<String> = _darkModeFlow.asStateFlow()
+
     var darkMode: String
         get() = prefs.getString("dark_mode", "system") ?: "system" // system, light, dark
-        set(value) = prefs.edit().putString("dark_mode", value).apply()
+        set(value) {
+            prefs.edit().putString("dark_mode", value).apply()
+            _darkModeFlow.value = value
+        }
 
     var lastFullSyncAt: String?
         get() = prefs.getString("last_full_sync", null)
@@ -205,9 +219,17 @@ class AppPreferences @Inject constructor(
      * DesignSystemTheme will use dynamicLightColorScheme / dynamicDarkColorScheme
      * derived from the user's wallpaper. Exposed via Settings > Appearance.
      */
+    private val _dynamicColorFlow = MutableStateFlow(
+        prefs.getBoolean("dynamic_color_enabled", false),
+    )
+    val dynamicColorFlow: StateFlow<Boolean> = _dynamicColorFlow.asStateFlow()
+
     var dynamicColorEnabled: Boolean
         get() = prefs.getBoolean("dynamic_color_enabled", false)
-        set(value) = prefs.edit().putBoolean("dynamic_color_enabled", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("dynamic_color_enabled", value).apply()
+            _dynamicColorFlow.value = value
+        }
 
     // --- §18.1 recent global-search queries ---------------------------------
     //

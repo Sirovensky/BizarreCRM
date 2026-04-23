@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -159,18 +160,18 @@ class MainActivity : FragmentActivity() {
         isLocked = shouldLock
 
         setContent {
-            // AUDIT-AND-003: resolve dark-mode preference and pass it into the
-            // theme so the stored setting ("dark" | "light" | "system") is
-            // actually honoured. Previously BizarreCrmTheme received no
-            // darkTheme argument and always defaulted to true (dark-only).
-            val darkMode = appPreferences.darkMode
+            // AUDIT-AND-003 / Wave-3: observe darkModeFlow and dynamicColorFlow
+            // as Compose State so the theme re-renders immediately when the user
+            // changes the setting on ThemeScreen — no activity recreate needed.
+            val darkMode by appPreferences.darkModeFlow.collectAsState()
+            val dynamicColor by appPreferences.dynamicColorFlow.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (darkMode) {
                 "dark"  -> true
                 "light" -> false
                 else    -> systemDark   // "system" follows OS setting
             }
-            BizarreCrmTheme(darkTheme = darkTheme) {
+            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
                 var locked by remember { mutableStateOf(isLocked) }
                 // AUDIT §2.5: PIN gate. Shown after biometric (or on devices
                 // without biometric) whenever the user has set a PIN and

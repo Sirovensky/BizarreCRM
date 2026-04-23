@@ -225,6 +225,9 @@ fun SettingsScreen(
     // §27 — opens the Language picker sub-screen.
     // Nullable so previews and callers that don't wire it can omit it.
     onLanguage: (() -> Unit)? = null,
+    // §1.4/§19/§30 — opens the Theme picker (system/light/dark + dynamic color).
+    // Nullable so previews and callers that don't wire it can omit it.
+    onTheme: (() -> Unit)? = null,
     // AUD-20260414-M5: navigate to the Sync Issues diagnostic screen. Tile
     // is gated on deadLetterCount > 0 so callers never see it unless there
     // is actually something to retry.
@@ -316,6 +319,24 @@ fun SettingsScreen(
                     title = "Language",
                     subtitle = currentLanguageDisplay,
                     onClick = onLanguage,
+                )
+            }
+
+            // §1.4/§19/§30 — Theme picker: system/light/dark + dynamic color.
+            // Subtitle shows the currently active mode so the user can see the
+            // selection without opening the screen.
+            if (onTheme != null) {
+                val currentDarkMode = viewModel.appPreferences.darkMode
+                val themeSubtitle = when (currentDarkMode) {
+                    "dark"  -> "Dark"
+                    "light" -> "Light"
+                    else    -> "System default"
+                }
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.DarkMode,
+                    title = "Theme",
+                    subtitle = themeSubtitle,
+                    onClick = onTheme,
                 )
             }
 
@@ -460,8 +481,9 @@ fun SettingsScreen(
                 }
             }
 
-            // Device preferences: biometric, haptic, dark mode.
-            // All three write straight through to SharedPreferences — no server round-trip.
+            // Device preferences: biometric, haptic, reduce motion.
+            // All write straight through to SharedPreferences — no server round-trip.
+            // Dark mode / dynamic color moved to Settings > Theme (ThemeScreen).
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -499,21 +521,6 @@ fun SettingsScreen(
                         subtitle = "Short vibration on save, scan, and errors",
                         checked = hapticEnabled,
                         onCheckedChange = { viewModel.setHapticEnabled(it) },
-                    )
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        thickness = 1.dp,
-                    )
-
-                    val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
-                    PreferenceRow(
-                        icon = Icons.Default.DarkMode,
-                        iconDescription = "Dark mode",
-                        title = "Dark mode",
-                        subtitle = "Use dark theme (default on)",
-                        checked = darkModeEnabled,
-                        onCheckedChange = { viewModel.setDarkModeEnabled(it) },
                     )
 
                     HorizontalDivider(
