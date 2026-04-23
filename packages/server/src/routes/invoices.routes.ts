@@ -21,8 +21,12 @@ import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { accruePaymentPoints } from '../services/notifications.js';
+import { recordCustomerInteraction } from '../services/customerHealthScore.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { createLogger } from '../utils/logger.js';
+import { logActivity } from '../utils/activityLog.js';
 
+const logger = createLogger('invoices');
 const router = Router();
 
 /**
@@ -196,7 +200,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /invoices/stats — KPIs and distribution data for overview
-router.get('/stats', async (req, res) => {
+router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
 
   const [kpis, statusDist, methodDist] = await Promise.all([
@@ -386,6 +390,15 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   const invoice = await getInvoiceDetail(adb, invoiceId as number);
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
+  // SCAN-522: fire-and-forget activity log
+  logActivity(adb, {
+    actor_user_id: req.user!.id,
+    entity_kind: 'invoice',
+    entity_id: invoiceId as number,
+    action: 'created',
+    metadata: { amount_cents: toCents(total), status: 'draft' },
+  }).catch(() => {});
+
   // ENR-A6: Fire webhook
   // SA10-1: use the already-computed local `orderId` instead of reading it
   // back off the `invoice` detail row (which was typed `any` via `adb.get<any>`).
@@ -560,11 +573,12 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   }
   recentPayments.set(dedupKey, Date.now());
 
-  await adb.run(`
+  const paymentResult = await adb.run(`
     INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, req.params.id, amount, method, method_detail || null,
     transaction_id || null, notes || null, payment_type, req.user!.id);
+  const paymentId = paymentResult.lastInsertRowid as number;
 
   const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?', req.params.id);
   const totalPaidRaw = totalPaidRow?.t || 0;
@@ -664,10 +678,9 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT') {
         // No-op: commission already recorded by a concurrent request.
       } else {
-        console.warn(
-          `[invoices] failed to write commission for payment on invoice ${req.params.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+        logger.warn(
+          `[invoices] failed to write commission for payment on invoice ${req.params.id}`,
+          { err },
         );
       }
     }
@@ -685,11 +698,15 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       paymentAmount: amount,
     });
   } catch (err: unknown) {
-    console.warn(
-      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+    logger.warn(
+      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}`,
+      { err },
     );
+  }
+
+  // SCAN-524: update customer last_interaction_at + lifetime_value_cents (fire-and-forget)
+  if (invoice.customer_id) {
+    recordCustomerInteraction(adb, invoice.customer_id, toCents(amount)).catch(() => {});
   }
 
   if (overpayment > 0 && invoice.customer_id) {
@@ -726,8 +743,7 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       );
     } catch (creditErr: unknown) {
       // Do not fail the payment flow if the credit insert fails — log and continue.
-      const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
-      console.warn(`[invoices] failed to record overpayment store credit: ${msg}`);
+      logger.warn(`[invoices] failed to record overpayment store credit`, { err: creditErr });
     }
   }
   const updated = await getInvoiceDetail(adb, req.params.id as string);
@@ -741,6 +757,15 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     amount,
     method,
   });
+
+  // SCAN-522: fire-and-forget activity log for payment
+  logActivity(adb, {
+    actor_user_id: req.user!.id,
+    entity_kind: 'payment',
+    entity_id: paymentId,
+    action: 'received',
+    metadata: { amount_cents: toCents(amount), method },
+  }).catch(() => {});
 
   res.status(201).json({ success: true, data: updated });
 });
@@ -1041,8 +1066,8 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-      amount_paid, amount_due, notes, credit_note_for, status, created_by)
-    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?)
+      amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id)
+    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?)
   `,
     orderId,
     original.customer_id,
@@ -1052,6 +1077,7 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
     `Credit note: ${reason.trim()}`,
     invoiceId,     // link to original
     req.user!.id,
+    original.location_id ?? 1,
   );
 
   const creditNoteId = cnResult.lastInsertRowid;

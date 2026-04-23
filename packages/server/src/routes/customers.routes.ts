@@ -24,6 +24,7 @@ import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { logActivity } from '../utils/activityLog.js';
 
 type AnyRow = Record<string, any>;
 
@@ -1011,6 +1012,14 @@ router.post(
 
     // Fire automations (async, non-blocking)
     runAutomations(db, 'customer_created', { customer: { ...(customer as any), phones, emails } });
+
+    // SCAN-522: fire-and-forget activity log
+    logActivity(adb, {
+      actor_user_id: req.user!.id,
+      entity_kind: 'customer',
+      entity_id: customerId,
+      action: 'created',
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,

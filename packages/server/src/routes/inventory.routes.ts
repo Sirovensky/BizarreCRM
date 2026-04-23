@@ -21,6 +21,7 @@ import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { logActivity } from '../utils/activityLog.js';
 
 const logger = createLogger('inventory');
 
@@ -1186,6 +1187,15 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   audit(req.db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type });
 
   const updated = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ?', req.params.id);
+
+  // SCAN-522: fire-and-forget activity log
+  logActivity(adb, {
+    actor_user_id: req.user!.id,
+    entity_kind: 'inventory',
+    entity_id: Number(req.params.id),
+    action: 'stock_adjusted',
+    metadata: { quantity_delta: parsedQty },
+  }).catch(() => {});
 
   // Check for low stock and broadcast appropriate event
   if (updated && updated.in_stock <= updated.reorder_level) {

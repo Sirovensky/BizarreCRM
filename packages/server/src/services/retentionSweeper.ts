@@ -153,7 +153,7 @@ const MAX_PII_MONTHS = 120; // 10 years — anything past this is almost certain
  * @param tenantSlug  - Tenant slug string (empty string for single-tenant installs).
  * @returns           Number of `ticket_photos` rows deleted from the database.
  */
-export function sweepClosedTicketPhotos(
+function sweepClosedTicketPhotos(
   db: Database,
   uploadsPath: string,
   tenantSlug: string,
