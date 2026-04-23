@@ -84,6 +84,26 @@ private struct ClockActionRequest: Encodable, Sendable {
     }
 }
 
+// MARK: - HoursResponse
+
+/// Response shape for `GET /api/v1/employees/:id/hours`.
+public struct HoursResponse: Decodable, Sendable {
+    /// Ordered clock entries (most recent first).
+    public let entries: [ClockEntry]
+    /// Total hours across the queried range, as reported by the server.
+    public let totalHours: Double
+
+    public init(entries: [ClockEntry], totalHours: Double) {
+        self.entries = entries
+        self.totalHours = totalHours
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case entries
+        case totalHours = "total_hours"
+    }
+}
+
 // MARK: - APIClient wrappers
 
 public extension APIClient {
@@ -119,5 +139,22 @@ public extension APIClient {
         } catch let APITransportError.httpStatus(code, _) where code == 404 {
             return nil
         }
+    }
+
+    /// GET `/api/v1/employees/:id/hours`
+    /// Returns all clock entries in the optional date range, plus a
+    /// server-computed total_hours sum. Auth: self or admin.
+    /// - Parameters:
+    ///   - fromDate: ISO-8601 date string lower bound (inclusive), e.g. "2026-04-14".
+    ///   - toDate:   ISO-8601 date string upper bound (inclusive). Server pads to 23:59:59.
+    func getHours(userId: Int64, fromDate: String? = nil, toDate: String? = nil) async throws -> HoursResponse {
+        var query: [URLQueryItem] = []
+        if let from = fromDate { query.append(URLQueryItem(name: "from_date", value: from)) }
+        if let to = toDate   { query.append(URLQueryItem(name: "to_date",   value: to)) }
+        return try await get(
+            "/api/v1/employees/\(userId)/hours",
+            query: query.isEmpty ? nil : query,
+            as: HoursResponse.self
+        )
     }
 }

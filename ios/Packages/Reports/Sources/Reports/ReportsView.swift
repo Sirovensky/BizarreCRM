@@ -283,18 +283,30 @@ public struct ReportsView: View {
 
     @ViewBuilder
     private var cardItems: some View {
-        RevenueChartCard(points: vm.revenue) { pt in
+        // §15.2 Revenue chart — line + bar via /reports/sales
+        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
             drillContext = .revenue(date: pt.date)
         }
 
+        // §15.9 Expenses chart — bar via /reports/dashboard-kpis
+        ExpensesChartCard(report: vm.expensesReport)
+
+        // §15.5 Inventory movement chart — bar via /reports/inventory
+        InventoryMovementCard(report: vm.inventoryReport)
+
+        // §15.3 Tickets by status
         TicketsByStatusCard(points: vm.ticketsByStatus)
 
+        // §15.2 Avg ticket value KPI
         AvgTicketValueCard(value: vm.avgTicketValue)
 
+        // §15.4 Employee performance
         TopEmployeesCard(employees: vm.employeePerf)
 
+        // §15.5 Inventory turnover (category table)
         InventoryTurnoverCard(rows: vm.inventoryTurnover)
 
+        // §15.7 CSAT + NPS
         CSATScoreCard(score: vm.csatScore) {
             showCSATDetail = true
         }
