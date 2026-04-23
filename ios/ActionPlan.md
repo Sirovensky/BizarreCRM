@@ -272,7 +272,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
 - [ ] **Paste-from-clipboard** auto-detect 6-digit string.
-- [x] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`. (TwoFactorSettingsView + TwoFactorSettingsViewModel, commit feat(ios phase-1 §2): 2FA enrollment + recovery codes + challenge flow)
+- [blocked: policy — 2FA self-service disable not allowed per user directive 2026-04-23. iOS shipped this UI previously; **it must be removed**. Code to rip: `ios/Packages/Auth/Sources/Auth/TwoFactor/TwoFactorSettingsView.swift` (Disable 2FA button + alert lines 41, 127-129), `TwoFactorRepository.disable()` (line 51), `TwoFactorEndpoints.twoFactorDisable()` (lines 116-121), related ViewModel state, `TwoFactorEnrollmentViewModelTests` `.disable` path (line 474). Legitimate recovery remains via backup-code flow (resets password + disables 2FA server-side) and super-admin force-disable for emergency tenant-admin override.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
@@ -2537,7 +2537,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
 - [x] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates. (`Settings/BiometricToggleRow.swift` in `SettingsView.swift` section "Security".)
 - [ ] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot.
-- [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), disable, regenerate backup codes, copy to Notes prompt.
+- [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), ~~disable,~~ regenerate backup codes, copy to Notes prompt. (Self-service disable blocked by policy 2026-04-23; recovery happens via backup-code flow + super-admin force-disable.)
 - [ ] **Active sessions** — list device + last-seen + location (IP); revoke.
 - [ ] **Trusted devices** — mark "this device is trusted" to skip 2FA.
 - [ ] **Login history** — recent 50 logins with outcome + IP + user-agent.

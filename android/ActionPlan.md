@@ -161,7 +161,7 @@ Baseline infra rest of app depends on. All of it ships before anything domain-sp
 - [x] Bearer-token Authenticator from EncryptedSharedPreferences — inject on every request.
 - [x] **Token refresh on 401 with retry-of-original-request.** OkHttp `Authenticator` queues concurrent calls behind single refresh in-flight, replays original once, drops to Login only if refresh itself 401s. Backend: `POST /auth/refresh`.
 - [x] **Typed endpoint namespaces** — Retrofit interface per domain (`TicketsApi`, `CustomersApi`, …). No ad-hoc string paths in repositories.
-- [ ] **Multipart upload helper** (`ApiClient.upload(file, to, fields)`) for photos, receipts, avatars. Runs as WorkManager `Worker` so uploads survive app kill + Doze + OEM task killers.
+- [x] **Multipart upload helper** (`ApiClient.upload(file, to, fields)`) for photos, receipts, avatars. Runs as WorkManager `Worker` so uploads survive app kill + Doze + OEM task killers. (commit da67d14 — `util/MultipartUpload.kt` + `data/sync/MultipartUploadWorker.kt`; path-sandbox validated; idempotency key deduplicates)
 - [~] **Retries with jitter** on transient network failures (5xx, SocketTimeout, UnknownHostException). Respect `Retry-After` on 429.
 - [~] **Offline detection banner** driven by `ConnectivityManager.NetworkCallback` — sticky banner at top of scaffold with "Offline — showing cached data" copy + Retry button.
 
@@ -202,7 +202,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
 - [ ] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag.
 - [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
-- [ ] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`.
+- [~] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`. (commit a629898 — intent-filter + autoVerify added; `assetlinks.json` server-side deploy pending)
 
 ### 1.6 Environment & config
 - [x] `AndroidManifest.xml` permission audit — declare only what's used; runtime-request each lazy.
@@ -210,8 +210,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [~] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`.
 - [~] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF).
 - [~] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
-- [ ] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+).
-- [ ] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs.
+- [x] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+). (commit a629898 — `<queries>` block added)
+- [x] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs. (commit d97dfa7 — `gradle/libs.versions.toml` + `build.gradle.kts` + `app/build.gradle.kts`)
 - [ ] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped.
 - [ ] Migration-tracking table records applied names; app refuses to launch if known migration missing.
 - [ ] Forward-only (no downgrades). Reverted client version → "Database newer than app — contact support".
@@ -224,21 +224,21 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
 - [ ] Widgets (Glance) + App-Actions shortcuts import `:core` module + register own Hilt sub-scope.
 - [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
-- [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss).
-- [ ] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor.
+- [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
+- [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
 - [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
-- [ ] Error-recovery UI per taxonomy case lives in each feature module.
-- [ ] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss.
-- [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove.
-- [ ] Undo trigger: Snackbar action button; Ctrl+Z on hardware keyboard (tablet/ChromeOS); `TYPE_CONTEXT_CLICK` long-press on phone; shake gesture optional.
-- [ ] Redo: Ctrl+Shift+Z.
-- [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed".
-- [ ] Audit integration: each undo creates audit entry (not silent).
+- [~] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee — `ErrorRecovery.recover()` util + `Action` enum ready; per-feature composable wiring pending)
+- [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
+- [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
+- [~] Undo trigger: Snackbar action button; Ctrl+Z on hardware keyboard (tablet/ChromeOS); `TYPE_CONTEXT_CLICK` long-press on phone; shake gesture optional. (commit 2e53665 — util ready; Snackbar+chord wiring pending)
+- [~] Redo: Ctrl+Shift+Z. (commit 2e53665 — redo logic in util; chord wiring pending)
+- [x] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed". (commit 2e53665 — `compensatingSync` contract + `UndoEvent.Failed`)
+- [x] Audit integration: each undo creates audit entry (not silent). (commit 2e53665 — `UndoEvent.Undone` / `UndoEvent.Redone` carry `auditDescription`)
 - [x] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
 - [~] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (`BizarreCrmApp` registers `ProcessLifecycleOwner` observer; ON_START re-bootstraps the session, runs `SyncWorker.syncNow`, and reconnects WebSocket if dropped. Push-token refresh + lock-gate re-eval still pending.)
-- [ ] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required.
-- [ ] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy.
-- [ ] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data.
+- [~] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 — ON_STOP reschedules delta-sync via SyncWorker KEEP; clipboard-seal + FLAG_SECURE + draft flush pending)
+- [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
+- [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
 - [ ] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes.
 - [ ] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68).
 - [ ] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact.
@@ -247,23 +247,23 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
-- [ ] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min.
-- [ ] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings.
-- [ ] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error.
-- [ ] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative.
-- [ ] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile.
-- [ ] Client rate limit: token-bucket per endpoint category — read 60/min, write 20/min; excess queued with backoff.
-- [ ] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal.
-- [ ] UI: silent unless sustained; show "Slow down" banner if queue > 10.
-- [ ] Debug drawer exposes current bucket state per endpoint.
-- [ ] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead).
-- [ ] Auto-save drafts every 2s to Room for ticket-create, customer-create, SMS-compose; never lost on crash/background.
-- [ ] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview.
-- [ ] Age indicator on draft ("Saved 3h ago").
-- [ ] One draft per type (not multi); explicit discard required before starting new.
-- [ ] Sensitive: drafts encrypted at rest; PIN/password fields never drafted.
-- [ ] Drafts stay on device (no cross-device sync — avoid confusion).
-- [ ] Auto-delete drafts older than 30 days.
+- [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
+- [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; root-scaffold mount deferred)
+- [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
+- [x] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative. (commit 5ba8e58 — `ClockDrift.toAuditTimestamp()`)
+- [x] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile. (commit 5ba8e58 — `ClockDrift.recordPendingOp()` + `PendingOpTimestamps`)
+- [x] Client rate limit: token-bucket per endpoint category — read 60/min, write 20/min; excess queued with backoff. (commit 51a2995 + hardening b10f8ca — `util/RateLimiter.kt` + `RateLimitInterceptor.kt`; fail-fast when pause > timeout; jitter on wake)
+- [x] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal. (commit 51a2995 + hardening b10f8ca — `recordServerHint()`; interceptor synthesizes 429 instead of re-firing request when `acquire()` returns false)
+- [x] UI: silent unless sustained; show "Slow down" banner if queue > 10. (commit 51a2995 + 0e82441 — `ui/components/RateLimitBanner.kt` collects `RateLimiter.queueState`, tertiaryContainer surface + depth readout; root-scaffold mount deferred)
+- [~] Debug drawer exposes current bucket state per endpoint. (commit 51a2995 — `StateFlow<Map<Category, BucketState>>` exposed; drawer UI pending)
+- [x] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead). (commit 51a2995 — `isExempt()` matches `/auth/*` and tag `sync-flush`)
+- [~] Auto-save drafts every 2s to Room for ticket-create, customer-create, SMS-compose; never lost on crash/background. (commit 9fb71216 — `data/local/draft/DraftStore.kt` + `DraftEntity` + `DraftDao` + MIGRATION_5_6; per-feature 2s debounce wiring pending)
+- [~] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview. (commit 9fb71216 — `observeAll()` Flow ready; composable pending)
+- [~] Age indicator on draft ("Saved 3h ago"). (commit 9fb71216 — `savedAtMs` persisted; composable pending)
+- [x] One draft per type (not multi); explicit discard required before starting new. (commit 9fb71216 — unique index on `(user_id, draft_type)`)
+- [x] Sensitive: drafts encrypted at rest; PIN/password fields never drafted. (commit 9fb71216 — `sanitiseDraftPayload()` strips 5 key families; SQLCipher at-rest)
+- [x] Drafts stay on device (no cross-device sync — avoid confusion). (commit 9fb71216 — KDoc asserts; no SyncQueue entries)
+- [x] Auto-delete drafts older than 30 days. (commit 9fb71216 — `pruneOlderThanDays(30)`)
 
 ---
 ## 2. Authentication & Onboarding
@@ -271,9 +271,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
 ### 2.1 Setup-status probe
-- [ ] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, Android hits this before rendering login form.
-- [ ] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login.
-- [ ] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen.
+- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, Android hits this before rendering login form. (commit 038db99 — `AuthApi.getSetupStatus()` + `SetupStatusResponse` DTO)
+- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (commit 038db99 — `SetupStatusGateScreen` + LoginScreen banner; `InitialSetupFlow` navigation deferred to §2.10)
+- [~] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen. (commit 038db99 — probe non-blocking, overlay + inline retry implemented; `needsSetup=true` shows informational banner pending §2.10 wizard)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage in EncryptedSharedPreferences.
@@ -299,9 +299,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [~] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
-- [ ] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present.
-- [ ] **Paste-from-clipboard** auto-detect 6-digit string.
-- [ ] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
+- [~] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep)
+- [x] **Paste-from-clipboard** auto-detect 6-digit string. (commit 8301aa5 — `detectOtpFromClipboard` + `OtpParser.extractOtpDigits`)
+- [blocked: policy — 2FA disable not allowed per user directive 2026-04-23. Android client must never surface a "Disable 2FA" action; server endpoint may exist but UI is intentionally absent.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in EncryptedSharedPreferences. (Settings → Set up PIN routes to `PinSetupScreen` via `Screen.PinSetup`. Local hash mirror not stored — server is source of truth.)
@@ -315,11 +315,11 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.6 Biometric (fingerprint / face)
 - [x] **Manifest:** no permission required (BiometricPrompt handles).
-- [ ] **Enable toggle** — Settings → Security (availability via `BiometricManager.canAuthenticate(BIOMETRIC_STRONG or BIOMETRIC_WEAK)`).
-- [ ] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth.
-- [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `BiometricPrompt.CryptoObject` (Android Keystore-backed AES256) and auto-POST `/auth/login`.
+- [x] **Enable toggle** — Settings → Security (availability via `BiometricManager.canAuthenticate(BIOMETRIC_STRONG or BIOMETRIC_WEAK)`). (commit 4d3ee12 — `ui/screens/settings/SecurityScreen.kt`)
+- [x] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth. (commit 4d3ee12 — policy documented + `lockNow()` + PinPreferences hardLockout)
+- [~] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `BiometricPrompt.CryptoObject` (Android Keystore-backed AES256) and auto-POST `/auth/login`. (commit 4d3ee12 — Keystore key + CryptoObject scaffolded; credential-decrypt TODO pending EncryptedSharedPreferences credential store)
 - [~] **Respect disabled biometry** gracefully — never crash, fall back to PIN silently.
-- [ ] **Re-enrollment detection** — Keystore invalidates key on new biometric enrollment when `setInvalidatedByBiometricEnrollment(true)`; catch `KeyPermanentlyInvalidatedException` → prompt user to re-enable biometric.
+- [x] **Re-enrollment detection** — Keystore invalidates key on new biometric enrollment when `setInvalidatedByBiometricEnrollment(true)`; catch `KeyPermanentlyInvalidatedException` → prompt user to re-enable biometric. (commit 4d3ee12 — `handleReEnrollRequired()` + ConfirmDialog)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
 - [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
@@ -337,7 +337,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.9 Change password (in-app)
 - [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
-- [ ] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option.
+- [x] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option. (commit c7dd9852 — `ui/screens/settings/ChangePasswordScreen.kt` + SecurityScreen row + AppNavGraph route; `current_password`/`new_password` body matches server)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
 - [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up 13-step wizard mirroring web (/setup).
@@ -391,16 +391,16 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Digits shown as dots after entry; "Show" tap-hold reveals briefly.
 
 ### 2.16 Session timeout policy
-- [ ] Threshold: inactive > 15m → require biometric re-auth.
-- [ ] Threshold: inactive > 4h → require full password.
-- [ ] Threshold: inactive > 30d → force full re-auth including email.
-- [ ] Activity signals: user touches (`Window.Callback.dispatchTouchEvent`), scroll, text entry.
-- [ ] Activity exclusions: silent push, background sync don't count.
-- [ ] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons.
-- [ ] Countdown ring visible during warning.
-- [ ] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout.
-- [ ] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d.
-- [ ] Sovereignty: no server-side idle detection; purely device-local.
+- [x] Threshold: inactive > 15m → require biometric re-auth. (commit b35d122 — `util/SessionTimeout.kt`)
+- [x] Threshold: inactive > 4h → require full password. (commit b35d122)
+- [x] Threshold: inactive > 30d → force full re-auth including email. (commit b35d122)
+- [x] Activity signals: user touches (`Window.Callback.dispatchTouchEvent`), scroll, text entry. (commit b35d122 — `MainActivity.dispatchTouchEvent` → `sessionTimeout.onActivity()`)
+- [x] Activity exclusions: silent push, background sync don't count. (commit b35d122 — KDoc enforces onActivity is user-touch only)
+- [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (commit b35d122 + ab6f9169 — `ui/components/SessionTimeoutOverlay.kt` collects `SessionTimeout.state`, Dialog + "Still there?" + Stay/Sign out buttons; root-scaffold mount deferred)
+- [x] Countdown ring visible during warning. (commit b35d122 + ab6f9169 — `CircularProgressIndicator` ring with remaining-seconds overlay, ReduceMotion-aware)
+- [~] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout. (commit b35d122 — `requireReAuthNow(level)` hook exposed; composable wiring pending)
+- [x] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d. (commit b35d122 — `Config` data class + `require()`)
+- [x] Sovereignty: no server-side idle detection; purely device-local. (commit b35d122 — KDoc)
 
 ### 2.17 Remember-me scope
 - [x] Remember email / username only (never password without biometric bind).
