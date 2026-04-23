@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
+import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateDto
 import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -51,6 +52,9 @@ data class SmsThreadUiState(
     val isFlagged: Boolean = false,
     val isPinned: Boolean = false,
     val actionMessage: String? = null,
+    /** Templates for the inline picker sheet. Fetched once per screen lifetime. */
+    val templates: List<SmsTemplateDto> = emptyList(),
+    val isLoadingTemplates: Boolean = false,
 )
 
 @HiltViewModel
@@ -138,6 +142,28 @@ class SmsThreadViewModel @Inject constructor(
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
+
+    /**
+     * Fetch templates from the server and cache them in state.
+     * Idempotent: no-ops if templates are already loaded or currently loading.
+     */
+    fun loadTemplates() {
+        if (_state.value.templates.isNotEmpty() || _state.value.isLoadingTemplates) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingTemplates = true)
+            try {
+                val response = smsApi.getTemplates()
+                val list = response.data?.templates ?: emptyList()
+                _state.value = _state.value.copy(
+                    templates = list,
+                    isLoadingTemplates = false,
+                )
+            } catch (_: Exception) {
+                // On failure leave templates empty so the sheet shows the empty state.
+                _state.value = _state.value.copy(isLoadingTemplates = false)
+            }
+        }
+    }
 }
 
 private fun SmsMessageEntity.toSmsMessageItem() = SmsMessageItem(
@@ -171,6 +197,7 @@ fun SmsThreadScreen(
     // would be wiped on rotation. rememberSaveable persists it across the
     // configuration change.
     var messageText by rememberSaveable { mutableStateOf("") }
+    var showTemplateSheet by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -196,6 +223,36 @@ fun SmsThreadScreen(
             messageText = body
             onTemplateConsumed?.invoke()
         }
+    }
+
+    // Build interpolation context from the current thread. Keys must match
+    // server-documented available_variables (customer_name, first_name, …).
+    val templateContext = remember(state.customer, phone) {
+        buildMap {
+            val customer = state.customer
+            if (customer != null) {
+                val firstName = customer.firstName?.trim() ?: ""
+                val lastName = customer.lastName?.trim() ?: ""
+                put("first_name", firstName)
+                put("last_name", lastName)
+                put("customer_name", listOf(firstName, lastName).filter { it.isNotEmpty() }.joinToString(" "))
+            }
+            put("customer_phone", phone)
+        }
+    }
+
+    // Show the inline template picker sheet.
+    if (showTemplateSheet) {
+        SmsTemplatePickerSheet(
+            templates = state.templates,
+            context = templateContext,
+            onTemplateSelected = { expandedBody ->
+                messageText = expandedBody
+                showTemplateSheet = false
+            },
+            onDismiss = { showTemplateSheet = false },
+            isLoading = state.isLoadingTemplates,
+        )
     }
 
     Scaffold(
@@ -263,6 +320,10 @@ fun SmsThreadScreen(
                 onSend = {
                     viewModel.sendMessage(messageText.trim())
                     messageText = ""
+                },
+                onTemplateClick = {
+                    viewModel.loadTemplates()
+                    showTemplateSheet = true
                 },
             )
         },
@@ -335,6 +396,7 @@ private fun ComposeBar(
     onMessageChange: (String) -> Unit,
     isSending: Boolean,
     onSend: () -> Unit,
+    onTemplateClick: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -369,6 +431,15 @@ private fun ComposeBar(
                         )
                     },
                 )
+
+                // Template picker icon — between text field and send button.
+                IconButton(onClick = onTemplateClick) {
+                    Icon(
+                        Icons.Default.ListAlt,
+                        contentDescription = "Insert template",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
                 IconButton(
                     onClick = {

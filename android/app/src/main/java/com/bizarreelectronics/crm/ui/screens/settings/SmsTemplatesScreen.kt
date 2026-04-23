@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
+import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateDto
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
@@ -68,8 +69,9 @@ class SmsTemplatesViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
             try {
                 val response = smsApi.getTemplates()
-                val data = response.data
-                val parsed = parseTemplates(data)
+                val parsed = (response.data?.templates ?: emptyList()).map { dto ->
+                    dto.toSmsTemplate()
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     templates = parsed,
@@ -83,28 +85,14 @@ class SmsTemplatesViewModel @Inject constructor(
             }
         }
     }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun parseTemplates(data: Map<String, Any>?): List<SmsTemplate> {
-        if (data == null) return emptyList()
-        val rawList = data["templates"] as? List<Map<String, Any>> ?: return emptyList()
-        return rawList.mapNotNull { raw ->
-            try {
-                SmsTemplate(
-                    id = (raw["id"] as? Number)?.toLong() ?: return@mapNotNull null,
-                    name = raw["name"] as? String ?: return@mapNotNull null,
-                    // Server column is `content`; support `body` too for forward compat.
-                    body = (raw["content"] as? String)
-                        ?: (raw["body"] as? String)
-                        ?: "",
-                    category = raw["category"] as? String,
-                )
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
 }
+
+private fun SmsTemplateDto.toSmsTemplate() = SmsTemplate(
+    id = id,
+    name = name,
+    body = body,
+    category = category,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
