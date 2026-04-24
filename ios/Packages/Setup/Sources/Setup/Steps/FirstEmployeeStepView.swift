@@ -266,7 +266,7 @@ public struct FirstEmployeeStepView: View {
 
     private var skipHint: some View {
         Text("Leave all fields blank to skip this step.")
-            .font(.brandBodySmall())
+            .font(.brandBodyMedium())
             .foregroundStyle(Color.bizarreOnSurfaceMuted.opacity(0.65))
     }
 

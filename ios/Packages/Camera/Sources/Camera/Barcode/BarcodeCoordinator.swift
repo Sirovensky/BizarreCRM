@@ -83,11 +83,16 @@ public final class BarcodeCoordinator: NSObject {
     public func barcodeStream() -> AsyncStream<Barcode> {
         AsyncStream { continuation in
             // Keep the Combine subscription alive for the lifetime of the stream.
-            let cancellable = barcodePublisher.sink { barcode in
+            // Wrap in a class box so the Sendable onTermination closure can hold it.
+            final class SubscriptionBox: @unchecked Sendable {
+                var cancellable: AnyCancellable?
+            }
+            let box = SubscriptionBox()
+            box.cancellable = barcodePublisher.sink { barcode in
                 continuation.yield(barcode)
             }
             continuation.onTermination = { @Sendable _ in
-                cancellable.cancel()
+                box.cancellable?.cancel()
             }
         }
     }

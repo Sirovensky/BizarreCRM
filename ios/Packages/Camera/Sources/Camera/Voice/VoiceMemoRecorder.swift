@@ -34,14 +34,17 @@ public actor VoiceMemoRecorder: NSObject {
 
     // MARK: - Constants
 
-    private static let defaultMaxDuration: TimeInterval = 120
-    private static let audioSettings: [String: Any] = [
-        AVFormatIDKey:               Int(kAudioFormatMPEG4AAC),
-        AVSampleRateKey:             22_050,
-        AVNumberOfChannelsKey:       1,
-        AVEncoderAudioQualityKey:    AVAudioQuality.medium.rawValue,
-        AVEncoderBitRateKey:         32_000,
-    ]
+    public static let defaultMaxDuration: TimeInterval = 120
+
+    private static func audioSettings() -> [String: Any] {
+        [
+            AVFormatIDKey:               Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey:             22_050,
+            AVNumberOfChannelsKey:       1,
+            AVEncoderAudioQualityKey:    AVAudioQuality.medium.rawValue,
+            AVEncoderBitRateKey:         32_000,
+        ]
+    }
 
     // MARK: - Authorization
 
@@ -94,7 +97,7 @@ public actor VoiceMemoRecorder: NSObject {
 
         let rec: AVAudioRecorder
         do {
-            rec = try AVAudioRecorder(url: url, settings: Self.audioSettings)
+            rec = try AVAudioRecorder(url: url, settings: Self.audioSettings())
         } catch {
             throw VoiceMemoError.setupFailed(error.localizedDescription)
         }

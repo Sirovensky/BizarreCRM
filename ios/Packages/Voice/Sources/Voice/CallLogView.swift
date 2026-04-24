@@ -84,16 +84,26 @@ public struct CallLogView: View {
     // MARK: - iPad filter sidebar
 
     private var filterSidebar: some View {
-        List(CallLogViewModel.DirectionFilter.allCases, id: \.self, selection: Binding(
-            get: { viewModel.directionFilter },
-            set: { viewModel.directionFilter = $0 }
-        )) { filter in
-            Label {
-                Text(filter.label)
-            } icon: {
-                Image(systemName: filterIcon(for: filter))
+        List {
+            ForEach(CallLogViewModel.DirectionFilter.allCases, id: \.self) { filter in
+                Button {
+                    viewModel.directionFilter = filter
+                } label: {
+                    HStack {
+                        Label {
+                            Text(filter.label)
+                        } icon: {
+                            Image(systemName: filterIcon(for: filter))
+                        }
+                        Spacer()
+                        if viewModel.directionFilter == filter {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .tag(filter)
         }
         .listStyle(.sidebar)
     }

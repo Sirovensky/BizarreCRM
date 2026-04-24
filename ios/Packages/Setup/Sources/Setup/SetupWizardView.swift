@@ -95,7 +95,7 @@ public struct SetupWizardView: View {
 
             SetupLivePreview(payload: vm.wizardPayload, currentStep: vm.currentStep)
                 .frame(minWidth: 280)
-                .brandGlass(.thin, in: Rectangle())
+                .brandGlass(.regular, in: Rectangle())
         }
         .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .padding(BrandSpacing.xl)

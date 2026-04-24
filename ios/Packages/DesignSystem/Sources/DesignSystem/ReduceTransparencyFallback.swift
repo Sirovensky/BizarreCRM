@@ -38,7 +38,7 @@ public struct ReduceTransparencyFallbackModifier<S: Shape>: ViewModifier {
         if reduceTransparency {
             content
                 .background(replacementColor, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
         } else {
             content
         }

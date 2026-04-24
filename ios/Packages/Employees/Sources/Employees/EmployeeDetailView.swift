@@ -56,7 +56,7 @@ public struct EmployeeDetailView: View {
         } message: {
             if let roleId = vm.pendingRoleId,
                let role = vm.availableRoles.first(where: { $0.id == roleId }) {
-                Text("Assign the role "\(role.name)" to \(vm.detail?.displayName ?? "this employee")?")
+                Text("Assign the role \"\(role.name)\" to \(vm.detail?.displayName ?? "this employee")?")
             }
         }
         .confirmationDialog(

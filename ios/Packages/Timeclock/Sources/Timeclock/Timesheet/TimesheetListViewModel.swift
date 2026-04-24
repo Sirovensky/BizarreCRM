@@ -58,7 +58,8 @@ public final class TimesheetListViewModel {
 
     public func load() async {
         loadState = .loading
-        let userId = filterUserId ?? (await userIdProvider())
+        let providedId = await userIdProvider()
+        let userId = filterUserId ?? providedId
         let resolvedUserId = userId > 0 ? userId : nil
         do {
             let result = try await api.listClockEntries(

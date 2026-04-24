@@ -11,6 +11,9 @@ import Foundation
 /// Server envelope: `{ success: Bool, data: T?, message: String? }`.
 /// All DTOs mirror the `held_carts` table columns the server returns.
 
+// File-private empty body (POST with no payload).
+private struct PosEmptyBody: Encodable, Sendable {}
+
 // MARK: - Held-cart DTOs
 
 /// Row returned by `GET /pos/held-carts` and `POST /pos/held-carts`.
@@ -182,7 +185,7 @@ public struct BlockChypPaymentResponse: Decodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case success, amount, status, replayed, tip
+        case success, amount, status, replayed
         case transactionId  = "transactionId"
         case transactionRef = "transactionRef"
         case cardType       = "cardType"
@@ -215,8 +218,7 @@ public extension APIClient {
     /// `POST /api/v1/pos/held-carts/:id/recall` — mark recalled + return cart_json.
     /// After calling this the caller restores the cart from the returned row's `cartJson`.
     func recallHeldCart(id: Int64) async throws -> PosHeldCartRow {
-        struct Empty: Encodable, Sendable {}
-        return try await post("/api/v1/pos/held-carts/\(id)/recall", body: Empty(), as: PosHeldCartRow.self)
+        try await post("/api/v1/pos/held-carts/\(id)/recall", body: PosEmptyBody(), as: PosHeldCartRow.self)
     }
 
     /// `DELETE /api/v1/pos/held-carts/:id` — soft-delete (discard) a held cart.

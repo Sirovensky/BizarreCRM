@@ -71,4 +71,101 @@ public extension APIClient {
     func needsAttention() async throws -> NeedsAttention {
         try await get("/api/v1/reports/needs-attention", as: NeedsAttention.self)
     }
+
+    // MARK: - §59 Financial Dashboard — owner-PL summary
+    //
+    // Route: GET /api/v1/owner-pl/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&rollup=day|week|month
+    // Grounded against packages/server/src/routes/ownerPl.routes.ts:534
+    // Envelope: { success: Bool, data: OwnerPLSummaryWire }
+    // Admin-only; server validates role + rate-limits.
+
+    func ownerPLSummary(from: String, to: String, rollup: String = "day") async throws -> OwnerPLSummaryWire {
+        let query = [
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to),
+            URLQueryItem(name: "rollup", value: rollup),
+        ]
+        return try await get("/api/v1/owner-pl/summary", query: query, as: OwnerPLSummaryWire.self)
+    }
+}
+
+// MARK: - Wire DTOs for GET /api/v1/owner-pl/summary
+//
+// Defined in Networking so Dashboard (and future modules) can decode
+// without a circular dependency. View-layer models (dollars, not cents)
+// live in Dashboard/Financial/FinancialDashboardModels.swift.
+
+public struct OwnerPLPeriodWire: Codable, Sendable {
+    public let from: String
+    public let to: String
+    public let days: Int
+}
+
+public struct OwnerPLRevenueCentsWire: Codable, Sendable {
+    public let grossCents: Int
+    public let netCents: Int
+    public let refundsCents: Int
+    public let discountsCents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case grossCents = "gross_cents"
+        case netCents = "net_cents"
+        case refundsCents = "refunds_cents"
+        case discountsCents = "discounts_cents"
+    }
+}
+
+public struct OwnerPLProfitWire: Codable, Sendable {
+    public let cents: Int
+    public let marginPct: Double
+
+    enum CodingKeys: String, CodingKey {
+        case cents
+        case marginPct = "margin_pct"
+    }
+}
+
+public struct OwnerPLARWire: Codable, Sendable {
+    public let outstandingCents: Int
+    public let overdueCents: Int
+    public let truncated: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case outstandingCents = "outstanding_cents"
+        case overdueCents = "overdue_cents"
+        case truncated
+    }
+}
+
+public struct OwnerPLTopCustomerWire: Codable, Sendable {
+    public let customerId: Int
+    public let name: String
+    public let revenueCents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case customerId = "customer_id"
+        case name
+        case revenueCents = "revenue_cents"
+    }
+}
+
+/// Full payload for GET /api/v1/owner-pl/summary — decoded from server JSON.
+/// Monetary values are integer cents (SEC-H34); callers convert to dollars.
+/// Codable (not just Decodable) so test spies can round-trip via JSONEncoder.
+public struct OwnerPLSummaryWire: Codable, Sendable {
+    public let period: OwnerPLPeriodWire
+    public let revenue: OwnerPLRevenueCentsWire
+    public let grossProfit: OwnerPLProfitWire
+    public let netProfit: OwnerPLProfitWire
+    public let ar: OwnerPLARWire
+    public let topCustomers: [OwnerPLTopCustomerWire]
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case revenue
+        case grossProfit = "gross_profit"
+        case netProfit = "net_profit"
+        case ar
+        case topCustomers = "top_customers"
+    }
 }

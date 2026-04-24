@@ -344,25 +344,10 @@ public struct EmployeeDetail: Decodable, Sendable, Identifiable {
 }
 
 // MARK: - Clock entry model (used in EmployeeDetail)
-
-public struct ClockEntry: Decodable, Sendable, Identifiable {
-    public let id: Int64
-    public let userId: Int64
-    public let clockIn: String
-    public let clockOut: String?
-    public let totalHours: Double?
-    public let locationId: Int64?
-    public let notes: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, notes
-        case userId      = "user_id"
-        case clockIn     = "clock_in"
-        case clockOut    = "clock_out"
-        case totalHours  = "total_hours"
-        case locationId  = "location_id"
-    }
-}
+// ClockEntry is defined canonically in Endpoints/TimeclockEndpoints.swift.
+// The wave-5 duplicate (with locationId/notes fields) was removed to fix
+// "invalid redeclaration of 'ClockEntry'". If EmployeeDetail ever needs
+// locationId/notes, add them to the canonical struct as Optional properties.
 
 // MARK: - Employee performance model
 

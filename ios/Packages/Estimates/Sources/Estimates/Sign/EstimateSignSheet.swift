@@ -67,7 +67,7 @@ public struct EstimateSignSheet: View {
 
             Divider()
 
-            Text("Generate a single-use link and share it with your customer. Once they sign, the estimate status updates to "signed".")
+            Text("Generate a single-use link and share it with your customer. Once they sign, the estimate status updates to \"signed\".")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .fixedSize(horizontal: false, vertical: true)

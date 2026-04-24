@@ -274,8 +274,7 @@ public extension APIClient {
     /// Idempotent: if data already loaded, returns `created: false`.
     /// Admin/manager/owner role required on the server.
     func loadSampleData() async throws -> SampleDataResult {
-        struct Empty: Encodable {}
-        return try await post("onboarding/sample-data", body: Empty(), as: SampleDataResult.self)
+        try await post("onboarding/sample-data", body: EmptyBody(), as: SampleDataResult.self)
     }
 
     /// DELETE /api/v1/onboarding/sample-data

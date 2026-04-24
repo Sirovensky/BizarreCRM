@@ -284,7 +284,7 @@ public struct EmployeeListView: View {
         var parts: [String] = []
         if let r = vm.filter.role { parts.append(r.capitalized) }
         if vm.filter.showInactive { parts.append("Including inactive") }
-        if !vm.filter.searchQuery.isEmpty { parts.append(""\(vm.filter.searchQuery)"") }
+        if !vm.filter.searchQuery.isEmpty { parts.append("\"\(vm.filter.searchQuery)\"") }
         return parts.isEmpty ? "Filtered" : parts.joined(separator: " · ")
     }
 
@@ -340,7 +340,7 @@ public struct EmployeeListView: View {
                 showFilters = true
             } label: {
                 Image(systemName: vm.filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                    .foregroundStyle(vm.filter.isDefault ? .primary : .bizarreOrange)
+                    .foregroundStyle(vm.filter.isDefault ? Color.primary : Color.bizarreOrange)
             }
             .accessibilityLabel(vm.filter.isDefault ? "Filter employees" : "Filters active")
             .keyboardShortcut("f", modifiers: [.command])

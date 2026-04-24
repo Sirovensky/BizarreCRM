@@ -20,8 +20,8 @@ public final class TimeOffRequestSheetViewModel {
     public var startDate: Date = Date()
     public var endDate: Date = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     public var reason: String = ""
-    public private(set) var isSaving: Bool = false
-    public private(set) var errorMessage: String?
+    public internal(set) var isSaving: Bool = false
+    public internal(set) var errorMessage: String?
 
     public var canSubmit: Bool { endDate >= startDate }
 

@@ -111,7 +111,7 @@ struct SetupLivePreview: View {
                 .foregroundStyle(Color.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
             Text("Updates as you fill in each step")
-                .font(.brandBodySmall())
+                .font(.brandBodyMedium())
                 .foregroundStyle(Color.bizarreOnSurfaceMuted)
         }
         .padding(.top, BrandSpacing.md)
@@ -150,14 +150,14 @@ struct SetupLivePreview: View {
                 .accessibilityHidden(true)
 
             Text(label)
-                .font(.brandBodySmall())
+                .font(.brandBodyMedium())
                 .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .lineLimit(1)
 
             if let value, !value.isEmpty {
                 Spacer(minLength: BrandSpacing.xxs)
                 Text(value)
-                    .font(.brandBodySmall())
+                    .font(.brandBodyMedium())
                     .foregroundStyle(Color.bizarreOnSurface)
                     .lineLimit(1)
                     .textSelection(.enabled)

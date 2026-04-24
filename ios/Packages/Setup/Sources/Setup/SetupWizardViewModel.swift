@@ -18,8 +18,8 @@ public final class SetupWizardViewModel {
 
     // MARK: Published state
 
-    public private(set) var currentStep: SetupStep = .welcome
-    public private(set) var completedSteps: Set<Int> = []
+    public internal(set) var currentStep: SetupStep = .welcome
+    public internal(set) var completedSteps: Set<Int> = []
     public private(set) var isSaving: Bool = false
     public private(set) var errorMessage: String? = nil
     public private(set) var isDismissed: Bool = false

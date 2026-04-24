@@ -144,7 +144,7 @@ public struct SampleDataOptInStepView: View {
                         .font(.brandTitleSmall())
                         .foregroundStyle(Color.bizarreOnSurface)
                     Text(subtitle)
-                        .font(.brandBodySmall())
+                        .font(.brandBodyMedium())
                         .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 }
 
@@ -190,7 +190,7 @@ public struct SampleDataOptInStepView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Demo data will be visible with a [Sample] tag")
-                    .font(.brandBodySmall())
+                    .font(.brandBodyMedium())
                     .foregroundStyle(Color.bizarreOnSurface)
                 Text("You can remove it any time from Settings → Onboarding")
                     .font(.brandLabelSmall())

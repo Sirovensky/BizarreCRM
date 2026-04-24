@@ -23,3 +23,22 @@ import Foundation
 // Implementation is in Endpoints/DashboardEndpoints.swift.
 // Nothing additional to declare here — the extension defined there
 // is already visible within the Networking module.
+
+// MARK: - §59 Financial Dashboard — owner-PL summary
+//
+// Route: GET /api/v1/owner-pl/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&rollup=day|week|month
+// Grounded against packages/server/src/routes/ownerPl.routes.ts:534
+// Envelope: { success: Bool, data: FinancialSummaryWire }
+//
+// NOTE: FinancialSummaryWire and FinancialQueryParams are declared in
+// ios/Packages/Dashboard/Sources/Dashboard/Financial/FinancialDashboardModels.swift.
+// They are NOT re-declared here (ownership rule: append-only, never re-declare).
+//
+// This extension is intentionally left as a stub comment block.
+// The concrete method body lives in DashboardEndpoints.swift below the existing
+// dashboardSummary() and needsAttention() methods to keep network logic co-located.
+// The Dashboard module imports Networking, so it can call api.ownerPLSummary(params:)
+// directly.  The method is added in Endpoints/DashboardEndpoints.swift (see below)
+// rather than here to avoid splitting the concrete call-site across two files.
+//
+// — ownerPLSummary(params:) is defined in Endpoints/DashboardEndpoints.swift

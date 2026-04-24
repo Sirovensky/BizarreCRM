@@ -30,7 +30,8 @@ public protocol PushRegistrationServiceProtocol: Sendable {
     /// Full flow: request permission → register with system → upload token to server.
     /// Safe to call multiple times (idempotent if already registered).
     /// Throws if the system permission request throws.
-    func registerIfAuthorized() async throws
+    @discardableResult
+    func registerIfAuthorized() async throws -> UNAuthorizationStatus
 
     /// Remove the stored token from Keychain and notify the server.
     /// Call on successful logout.

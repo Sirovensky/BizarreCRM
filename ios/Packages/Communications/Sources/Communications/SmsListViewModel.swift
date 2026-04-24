@@ -7,7 +7,7 @@ import Sync
 @MainActor
 @Observable
 public final class SmsListViewModel {
-    public private(set) var conversations: [SmsConversation] = []
+    public internal(set) var conversations: [SmsConversation] = []
     public private(set) var isLoading: Bool = false
     public private(set) var isRefreshing: Bool = false
     public private(set) var errorMessage: String?
