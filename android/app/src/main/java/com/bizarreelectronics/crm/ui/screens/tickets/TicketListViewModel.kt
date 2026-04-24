@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSort
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import javax.inject.Inject
 
 /**
@@ -60,6 +62,8 @@ data class TicketListUiState(
     val viewMode: TicketViewMode = TicketViewMode.List,
     /** Toast message to show once (consumed by UI). */
     val toastMessage: String? = null,
+    /** plan:L653 — Set of locally-pinned ticket IDs. Restored from AppPreferences on init. */
+    val pinnedTicketIds: Set<Long> = emptySet(),
 )
 
 @HiltViewModel
@@ -67,6 +71,7 @@ class TicketListViewModel @Inject constructor(
     private val ticketRepository: TicketRepository,
     private val authPreferences: AuthPreferences,
     private val settingsApi: SettingsApi,
+    private val ticketApi: TicketApi,
     private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
@@ -102,6 +107,7 @@ class TicketListViewModel @Inject constructor(
         _state.value = _state.value.copy(
             viewMode = persistedMode,
             savedView = persistedSavedView,
+            pinnedTicketIds = appPreferences.pinnedTicketIds,
         )
 
         collectTickets()
@@ -380,6 +386,47 @@ class TicketListViewModel @Inject constructor(
         filter == "Open" || filter == "In Progress" || filter == "Waiting" ->
             "status:open"
         else -> ""
+    }
+
+    // -----------------------------------------------------------------------
+    // Pinned tickets (L653)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Toggle the pinned state of [ticketId].
+     *
+     * 1. Optimistically flips local state + persists to [AppPreferences].
+     * 2. POSTs to the server; if the server returns HTTP 404 (endpoint not
+     *    deployed yet) the local-only state is kept silently.
+     */
+    fun togglePin(ticketId: Long) {
+        val current = _state.value.pinnedTicketIds
+        val willPin = ticketId !in current
+        val updated = if (willPin) current + ticketId else current - ticketId
+
+        // Optimistic local update
+        _state.value = _state.value.copy(pinnedTicketIds = updated)
+        if (willPin) {
+            appPreferences.addPinnedTicketId(ticketId)
+        } else {
+            appPreferences.removePinnedTicketId(ticketId)
+        }
+
+        // Server sync — 404 is treated as local-only
+        viewModelScope.launch {
+            try {
+                ticketApi.setPinned(ticketId, mapOf("pinned" to willPin))
+                Log.d(TAG, "Pin synced: ticketId=$ticketId pinned=$willPin")
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    Log.d(TAG, "Pin endpoint not found (404) — local-only for ticketId=$ticketId")
+                } else {
+                    Log.w(TAG, "Pin sync failed HTTP ${e.code()}: ticketId=$ticketId")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Pin sync failed: ticketId=$ticketId — ${e.message}")
+            }
+        }
     }
 
     private companion object {

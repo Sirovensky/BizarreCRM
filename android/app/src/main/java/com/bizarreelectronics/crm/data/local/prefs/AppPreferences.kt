@@ -352,6 +352,45 @@ class AppPreferences @Inject constructor(
         get() = prefs.getLong("last_fcm_token_refresh_at_ms", 0L)
         set(value) = prefs.edit().putLong("last_fcm_token_refresh_at_ms", value).apply()
 
+    // --- plan:L653 — pinned ticket IDs (local cache) -----------------------
+    //
+    // Up to 5 ticket IDs persisted locally as a comma-separated Long string.
+    // Pinning is also synced to the server via PATCH /tickets/{id}/pin;
+    // when the server returns 404 the change is kept local-only without blocking
+    // the UI (see TicketListViewModel.togglePin).
+
+    /**
+     * plan:L653 — Set of ticket IDs currently pinned by the user.
+     *
+     * Persisted as a comma-separated string (e.g. "1,42,7"). Returns an empty
+     * set on a fresh install. Use [addPinnedTicketId] / [removePinnedTicketId]
+     * to mutate; reading is idempotent.
+     */
+    var pinnedTicketIds: Set<Long>
+        get() {
+            val raw = prefs.getString("pinned_ticket_ids", null) ?: return emptySet()
+            return runCatching {
+                raw.split(",")
+                    .mapNotNull { it.trim().toLongOrNull() }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
+        set(value) {
+            prefs.edit()
+                .putString("pinned_ticket_ids", value.joinToString(","))
+                .apply()
+        }
+
+    /** Add [ticketId] to the pinned set. Idempotent. */
+    fun addPinnedTicketId(ticketId: Long) {
+        pinnedTicketIds = pinnedTicketIds + ticketId
+    }
+
+    /** Remove [ticketId] from the pinned set. Idempotent. */
+    fun removePinnedTicketId(ticketId: Long) {
+        pinnedTicketIds = pinnedTicketIds - ticketId
+    }
+
     // --- plan:L644 — ticket list view mode (list vs kanban) -----------------
 
     /**
@@ -688,6 +727,86 @@ class AppPreferences @Inject constructor(
             .putLong("morning_checklist_last_staff_$dateKey", staffId)
             .apply()
     }
+
+    // --- §3.17 L602-L610 — Dashboard layout customization ---------------------
+    //
+    // Three keys store the user's layout customisation independently of density:
+    //
+    //  [dashboardTileOrder]   — ordered list of tile IDs; persisted JSON array.
+    //                           Empty → no saved order (use role-template default).
+    //  [dashboardHiddenTiles] — set of tile IDs the user has hidden.
+    //  [savedDashboards]      — list of named saved layouts (JSON array of
+    //                           SavedDashboard objects), up to 5 entries.
+    //
+    // On first launch (no [dashboardTileOrder] key) the ViewModel applies the
+    // role-template default and hides advanced tiles per L610.
+
+    /**
+     * §3.17 L606 — Ordered list of tile IDs reflecting the user's drag-to-rearrange
+     * choice. Empty list = no override (role-template order applies).
+     *
+     * Written by [DashboardCustomizationSheet] on save. Read by [DashboardViewModel]
+     * during layout-config assembly.
+     */
+    var dashboardTileOrder: List<String>
+        get() {
+            val raw = prefs.getString("dashboard_tile_order", null) ?: return emptyList()
+            return runCatching {
+                raw.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .filter { it.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+        set(value) = prefs.edit()
+            .putString("dashboard_tile_order", serializeTileList(value))
+            .apply()
+
+    /**
+     * §3.17 L496 — Set of tile IDs the user has explicitly hidden via the
+     * customisation sheet. Empty set = no tiles hidden.
+     *
+     * Written by [DashboardCustomizationSheet] on save. Read by [DashboardViewModel]
+     * to filter the rendered tile list.
+     */
+    var dashboardHiddenTiles: Set<String>
+        get() {
+            val raw = prefs.getString("dashboard_hidden_tiles", null) ?: return emptySet()
+            return runCatching {
+                raw.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
+        set(value) = prefs.edit()
+            .putString("dashboard_hidden_tiles", serializeStringSet(value))
+            .apply()
+
+    /**
+     * §3.17 L607-L608 — List of saved named dashboard layouts. Up to 5 entries.
+     *
+     * Stored as a JSON array of SavedDashboard objects (compact representation).
+     * Null / missing key = no saved dashboards (only the built-in Default layout exists).
+     *
+     * Use [setSavedDashboards] to persist; never mutate the list in-place.
+     */
+    val savedDashboards: List<SavedDashboard>
+        get() {
+            val raw = prefs.getString("saved_dashboards", null) ?: return emptyList()
+            return runCatching { SavedDashboard.deserializeList(raw) }.getOrDefault(emptyList())
+        }
+
+    /** Replace the entire saved-dashboard list. Immutable contract: always pass a new list. */
+    fun setSavedDashboards(dashboards: List<SavedDashboard>) {
+        prefs.edit()
+            .putString("saved_dashboards", SavedDashboard.serializeList(dashboards))
+            .apply()
+    }
+
+    private fun serializeTileList(tiles: List<String>): String =
+        "[${tiles.joinToString(",") { "\"$it\"" }}]"
 
     // --- §3.19 L613–L616 — Dashboard density mode ------------------------------
     //

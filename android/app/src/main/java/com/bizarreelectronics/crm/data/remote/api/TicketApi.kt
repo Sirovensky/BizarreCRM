@@ -72,6 +72,17 @@ interface TicketApi {
     @PATCH("tickets/{id}/pin")
     suspend fun togglePin(@Path("id") id: Long): ApiResponse<TicketDetail>
 
+    /**
+     * plan:L653 — Explicit pin/unpin with a body so the server can be told
+     * which direction to set rather than just toggling. Falls back gracefully
+     * when the server returns 404 (local-only pin is kept in [AppPreferences]).
+     */
+    @PATCH("tickets/{id}/pin")
+    suspend fun setPinned(
+        @Path("id") id: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Boolean>,
+    ): ApiResponse<TicketDetail>
+
     @POST("tickets/{id}/convert-to-invoice")
     suspend fun convertToInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetail>
 

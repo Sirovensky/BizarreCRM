@@ -44,8 +44,13 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
+import com.bizarreelectronics.crm.ui.screens.tickets.components.ExportCsvMenuItem
+import com.bizarreelectronics.crm.ui.screens.tickets.components.PinToggleMenuItem
+import com.bizarreelectronics.crm.ui.screens.tickets.components.PinnedTicketsHeader
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRowBadges
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSavedViewSheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSortDropdown
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSwipeRow
@@ -109,6 +114,8 @@ fun TicketListScreen(
 
     // Saved views sheet
     var showSavedViewSheet by remember { mutableStateOf(false) }
+    // Overflow menu (Export CSV etc.)
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -139,6 +146,21 @@ fun TicketListScreen(
                             }
                             IconButton(onClick = { viewModel.loadTickets() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh tickets")
+                            }
+                            // Overflow menu — Export CSV (L652)
+                            Box {
+                                IconButton(onClick = { showOverflowMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                }
+                                DropdownMenu(
+                                    expanded = showOverflowMenu,
+                                    onDismissRequest = { showOverflowMenu = false },
+                                ) {
+                                    ExportCsvMenuItem(
+                                        state = state,
+                                        onDismiss = { showOverflowMenu = false },
+                                    )
+                                }
                             }
                         }
                     },
@@ -274,6 +296,15 @@ fun TicketListScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Pinned tickets header (L653)
+            val pinnedTickets = remember(state.pinnedTicketIds, state.tickets) {
+                state.tickets.filter { it.id in state.pinnedTicketIds }
+            }
+            PinnedTicketsHeader(
+                pinnedTickets = pinnedTickets,
+                onTicketClick = onTicketClick,
+            )
+
             // Kanban placeholder (L644)
             if (state.viewMode == TicketViewMode.Kanban) {
                 Box(
@@ -376,6 +407,7 @@ fun TicketListScreen(
                                 // VM-side sort/filter still applies to the legacy
                                 // state.tickets list (unchanged); paged list is raw.
                                 val isSelected = ticket.id in state.selectedIds
+                                val isPinned = ticket.id in state.pinnedTicketIds
 
                                 TicketSwipeRow(
                                     ticket = ticket,
@@ -390,6 +422,7 @@ fun TicketListScreen(
                                         isSelected = isSelected,
                                         isSelecting = state.isSelecting,
                                         isExpandedWidth = isExpandedWidth,
+                                        isPinned = isPinned,
                                         onTicketClick = {
                                             if (state.isSelecting) {
                                                 viewModel.toggleSelection(ticket.id)
@@ -417,6 +450,7 @@ fun TicketListScreen(
                                                     Toast.makeText(context, "Copied link", Toast.LENGTH_SHORT).show()
                                                 }
                                                 ContextMenuAction.AddNote -> viewModel.onAddNote(ticket.id)
+                                                ContextMenuAction.Pin -> viewModel.togglePin(ticket.id)
                                             }
                                         },
                                     )
@@ -453,7 +487,7 @@ fun TicketListScreen(
 // -----------------------------------------------------------------------
 
 private enum class ContextMenuAction {
-    Open, Assign, MarkDone, CopyId, CopyLink, AddNote
+    Open, Assign, MarkDone, CopyId, CopyLink, AddNote, Pin
 }
 
 // -----------------------------------------------------------------------
@@ -467,11 +501,14 @@ private fun TicketListRow(
     isSelected: Boolean,
     isSelecting: Boolean,
     isExpandedWidth: Boolean,
+    isPinned: Boolean,
     onTicketClick: () -> Unit,
     onLongPress: () -> Unit,
     onContextMenuAction: (ContextMenuAction) -> Unit,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
+    // Customer preview popover (L654) — null means hidden
+    var showCustomerPopover by remember { mutableStateOf(false) }
 
     val statusLabel = ticket.statusName?.ifBlank { null }
     val deviceLabel = ticket.firstDeviceName?.ifBlank { null }
@@ -523,13 +560,28 @@ private fun TicketListRow(
                     Spacer(modifier = Modifier.width(6.dp))
                     // Urgency chip (L637)
                     TicketUrgencyChip(urgency = urgency)
+                    // Pin indicator (L653)
+                    if (isPinned) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Pinned",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             support = {
+                // Customer name — tappable to show popover (L654)
                 Text(
                     ticket.customerName ?: "Unknown",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.combinedClickable(
+                        onClick = { showCustomerPopover = true },
+                        onLongClick = {},
+                    ),
                 )
                 val deviceName = ticket.firstDeviceName
                 if (!deviceName.isNullOrBlank()) {
@@ -552,6 +604,12 @@ private fun TicketListRow(
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
+                    // Age + due-date badges (L655)
+                    TicketRowBadges(
+                        createdAtStr = ticket.createdAt,
+                        dueAtStr = ticket.dueOn,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         ticket.total.formatAsMoney(),
                         style = MaterialTheme.typography.labelLarge,
@@ -568,21 +626,52 @@ private fun TicketListRow(
             expanded = showContextMenu,
             onDismissRequest = { showContextMenu = false },
         ) {
-            ContextMenuAction.entries.forEach { action ->
-                DropdownMenuItem(
-                    text = { Text(contextMenuLabel(action)) },
-                    onClick = {
-                        showContextMenu = false
-                        onContextMenuAction(action)
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = contextMenuIcon(action),
-                            contentDescription = null,
-                        )
-                    },
+            // Standard actions (excluding Pin which gets its own component)
+            ContextMenuAction.entries
+                .filter { it != ContextMenuAction.Pin }
+                .forEach { action ->
+                    DropdownMenuItem(
+                        text = { Text(contextMenuLabel(action)) },
+                        onClick = {
+                            showContextMenu = false
+                            onContextMenuAction(action)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = contextMenuIcon(action),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+            // Pin toggle (L653)
+            PinToggleMenuItem(
+                isPinned = isPinned,
+                onClick = {
+                    showContextMenu = false
+                    onContextMenuAction(ContextMenuAction.Pin)
+                },
+            )
+        }
+
+        // Customer preview popover (L654)
+        if (showCustomerPopover && ticket.customerId != null) {
+            // Build a lightweight CustomerEntity from ticket's denormalised fields
+            // for the popover (full entity loaded via CustomerRepository in future iterations).
+            val previewCustomer = remember(ticket.customerId) {
+                com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity(
+                    id = ticket.customerId,
+                    firstName = ticket.customerName,
+                    phone = ticket.customerPhone,
+                    createdAt = ticket.createdAt,
+                    updatedAt = ticket.updatedAt,
                 )
             }
+            CustomerPreviewPopover(
+                customer = previewCustomer,
+                recentTicketCount = 0, // full count fetched async in full implementation
+                onDismiss = { showCustomerPopover = false },
+            )
         }
     }
 }
@@ -594,6 +683,7 @@ private fun contextMenuLabel(action: ContextMenuAction): String = when (action) 
     ContextMenuAction.CopyId   -> "Copy ID"
     ContextMenuAction.CopyLink -> "Copy link"
     ContextMenuAction.AddNote  -> "Add note…"
+    ContextMenuAction.Pin      -> "Pin / Unpin"
 }
 
 @Composable
@@ -604,6 +694,7 @@ private fun contextMenuIcon(action: ContextMenuAction) = when (action) {
     ContextMenuAction.CopyId   -> Icons.Default.ContentCopy
     ContextMenuAction.CopyLink -> Icons.Default.Link
     ContextMenuAction.AddNote  -> Icons.Default.Note
+    ContextMenuAction.Pin      -> Icons.Default.Star
 }
 
 // -----------------------------------------------------------------------
