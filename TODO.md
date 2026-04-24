@@ -1465,8 +1465,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-930. **[LOW-MED] worker pool maxQueue=200 — no early backpressure; cascading failures under spike** — `packages/server/src/db/worker-pool.ts:55-57`. Fix: metrics on queue depth + consider router-level backpressure.
 
 ### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
-- [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
