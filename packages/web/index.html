@@ -19,18 +19,24 @@
     <script>
       // D4-8: apply dark class synchronously BEFORE the React render cycle so
       // users on dark theme never see a bright-white flash on cold boot.
-      // Must match the logic in stores/uiStore.ts (resolved via ui-storage).
+      // Matches uiStore.ts which writes the flat 'theme' localStorage key
+      // (NOT a Zustand persist 'ui-storage' shape — that was a stale mismatch
+      // causing every user with theme=dark stored to still flash white on
+      // cold load before React mounted and re-resolved).
       (function () {
         try {
-          var raw = localStorage.getItem('ui-storage');
-          var theme = 'system';
-          if (raw) {
-            var parsed = JSON.parse(raw);
-            theme = parsed && parsed.state && parsed.state.theme ? parsed.state.theme : 'system';
-          }
+          var stored = localStorage.getItem('theme');
+          var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
           var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
-          if (isDark) document.documentElement.classList.add('dark');
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            // Also paint the body background via inline style so the first
+            // frame before Tailwind's dark:bg-surface-950 CSS applies is
+            // already dark. This is the gap that kept the cold-boot flash
+            // visible even with the dark class on <html>.
+            document.documentElement.style.backgroundColor = '#0a0a0a';
+          }
         } catch (_) { /* storage disabled — fall through to light */ }
       })();
     </script>
