@@ -22,13 +22,28 @@ import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+/**
+ * Reversible field edits made from the inventory-edit screen.
+ * Named `InventoryItemEdit` (not `InventoryEdit`) to avoid collision with the
+ * identically-named sealed class in InventoryDetailScreen.
+ */
+sealed class InventoryItemEdit {
+    data class FieldEdit(
+        val fieldName: String,
+        val oldValue: String?,
+        val newValue: String?,
+    ) : InventoryItemEdit()
+}
 
 data class InventoryEditUiState(
     val item: InventoryItemEntity? = null,
@@ -47,6 +62,10 @@ data class InventoryEditUiState(
     val isSaving: Boolean = false,
     val saveMessage: String? = null,
     val saved: Boolean = false,
+    /** Non-null while an undo snackbar is pending display. */
+    val undoMessage: String? = null,
+    /** True when the undo stack has at least one undoable action. */
+    val canUndo: Boolean = false,
 )
 
 @HiltViewModel
@@ -61,8 +80,35 @@ class InventoryEditViewModel @Inject constructor(
     val state = _state.asStateFlow()
     private var collectJob: Job? = null
 
+    /** Undo/redo history for optimistic field-edit writes made on this screen. */
+    val undoStack = UndoStack<InventoryItemEdit>()
+
     init {
         loadItem()
+        observeUndoEvents()
+    }
+
+    /** Forward Undone/Redone events to Timber (audit trail). */
+    private fun observeUndoEvents() {
+        viewModelScope.launch {
+            undoStack.events.collect { event ->
+                when (event) {
+                    is UndoStack.UndoEvent.Undone ->
+                        Timber.tag("InventoryItemUndo").i("Undone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Redone ->
+                        Timber.tag("InventoryItemUndo").i("Redone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Failed ->
+                        Timber.tag("InventoryItemUndo").w("Failed: ${event.reason} — ${event.entry.auditDescription}")
+                    else -> Unit
+                }
+            }
+        }
+        // Keep canUndo in sync with the stack so the UI can gate the Undo action.
+        viewModelScope.launch {
+            undoStack.canUndo.collect { can ->
+                _state.value = _state.value.copy(canUndo = can)
+            }
+        }
     }
 
     fun loadItem() {
@@ -144,6 +190,9 @@ class InventoryEditViewModel @Inject constructor(
             return
         }
 
+        // Snapshot original values from the loaded entity for diffing.
+        val originalItem = current.item
+
         viewModelScope.launch {
             _state.value = _state.value.copy(isSaving = true)
             try {
@@ -159,9 +208,17 @@ class InventoryEditViewModel @Inject constructor(
                     reorderLevel = current.reorderLevel.toIntOrNull(),
                 )
                 inventoryRepository.updateItem(itemId, request)
+
+                // Push one undo entry per changed field so each change is
+                // individually undoable. Diff current form state against the
+                // original entity snapshot captured before the save.
+                if (originalItem != null) {
+                    pushFieldUndoEntries(current, originalItem, request)
+                }
+
                 _state.value = _state.value.copy(
                     isSaving = false,
-                    saveMessage = "Inventory item updated",
+                    undoMessage = "Inventory item updated",
                     saved = true,
                 )
             } catch (e: Exception) {
@@ -171,6 +228,138 @@ class InventoryEditViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Computes field-level diffs between the submitted form state and the
+     * original loaded entity, then pushes one [UndoStack.Entry] per changed
+     * field. The compensating sync calls [InventoryRepository.updateItem] with
+     * the old values restored.
+     */
+    private suspend fun pushFieldUndoEntries(
+        current: InventoryEditUiState,
+        original: InventoryItemEntity,
+        savedRequest: CreateInventoryRequest,
+    ) {
+        data class Diff(val field: String, val old: String?, val new: String?)
+
+        val diffs = buildList {
+            val oldName = original.name
+            val newName = savedRequest.name
+            if (oldName != newName) add(Diff("name", oldName, newName))
+
+            val oldSku = original.sku ?: ""
+            val newSku = savedRequest.sku ?: ""
+            if (oldSku != newSku) add(Diff("sku", oldSku.ifBlank { null }, newSku.ifBlank { null }))
+
+            val oldUpc = original.upcCode ?: ""
+            val newUpc = savedRequest.upcCode ?: ""
+            if (oldUpc != newUpc) add(Diff("upcCode", oldUpc.ifBlank { null }, newUpc.ifBlank { null }))
+
+            val oldType = original.itemType ?: "product"
+            val newType = savedRequest.itemType
+            if (oldType != newType) add(Diff("itemType", oldType, newType))
+
+            val oldCost = if (original.costPrice > 0.0) formatAmount(original.costPrice) else ""
+            val newCost = current.costPrice
+            if (oldCost != newCost) add(Diff("costPrice", oldCost.ifBlank { null }, newCost.ifBlank { null }))
+
+            val oldRetail = if (original.retailPrice > 0.0) formatAmount(original.retailPrice) else ""
+            val newRetail = current.retailPrice
+            if (oldRetail != newRetail) add(Diff("retailPrice", oldRetail.ifBlank { null }, newRetail.ifBlank { null }))
+
+            val oldStock = original.inStock.toString()
+            val newStock = current.inStock
+            if (oldStock != newStock) add(Diff("inStock", oldStock, newStock))
+
+            val oldReorder = if (original.reorderLevel > 0) original.reorderLevel.toString() else ""
+            val newReorder = current.reorderLevel
+            if (oldReorder != newReorder) add(Diff("reorderLevel", oldReorder.ifBlank { null }, newReorder.ifBlank { null }))
+
+            val oldDesc = original.description ?: ""
+            val newDesc = savedRequest.description ?: ""
+            if (oldDesc != newDesc) add(Diff("description", oldDesc.ifBlank { null }, newDesc.ifBlank { null }))
+        }
+
+        if (diffs.isEmpty()) return
+
+        // Build a restore request from the original entity values (old state).
+        // A single whole-entity PUT reverts all changed fields at once; each
+        // per-field undo entry shares the same compensatingSync lambda so that
+        // undoing any single field always restores the complete original state.
+        val restoreRequest = CreateInventoryRequest(
+            name = original.name,
+            itemType = original.itemType ?: "product",
+            description = original.description?.ifBlank { null },
+            sku = original.sku?.ifBlank { null },
+            upcCode = original.upcCode?.ifBlank { null },
+            inStock = original.inStock,
+            costPrice = if (original.costPrice > 0.0) original.costPrice else null,
+            price = original.retailPrice,
+            reorderLevel = if (original.reorderLevel > 0) original.reorderLevel else null,
+        )
+
+        for (diff in diffs) {
+            val auditDesc = "Edited ${diff.field} from '${diff.old ?: ""}' to '${diff.new ?: ""}'"
+            undoStack.push(
+                UndoStack.Entry(
+                    payload = InventoryItemEdit.FieldEdit(
+                        fieldName = diff.field,
+                        oldValue = diff.old,
+                        newValue = diff.new,
+                    ),
+                    apply = {
+                        // Redo: optimistically reflect the new value in UI state.
+                        _state.value = applyFieldToState(_state.value, diff.field, diff.new)
+                    },
+                    reverse = {
+                        // Undo: optimistically restore the old value in UI state.
+                        _state.value = applyFieldToState(_state.value, diff.field, diff.old)
+                    },
+                    auditDescription = auditDesc,
+                    compensatingSync = {
+                        try {
+                            inventoryRepository.updateItem(itemId, restoreRequest)
+                            true
+                        } catch (_: Exception) {
+                            false
+                        }
+                    },
+                ),
+            )
+        }
+    }
+
+    /** Returns a new [InventoryEditUiState] with [fieldName] set to [value]. */
+    private fun applyFieldToState(
+        s: InventoryEditUiState,
+        fieldName: String,
+        value: String?,
+    ): InventoryEditUiState = when (fieldName) {
+        "name"         -> s.copy(name = value ?: "")
+        "sku"          -> s.copy(sku = value ?: "")
+        "upcCode"      -> s.copy(upcCode = value ?: "")
+        "itemType"     -> s.copy(itemType = value ?: "product")
+        "costPrice"    -> s.copy(costPrice = value ?: "")
+        "retailPrice"  -> s.copy(retailPrice = value ?: "")
+        "inStock"      -> s.copy(inStock = value ?: "0")
+        "reorderLevel" -> s.copy(reorderLevel = value ?: "")
+        "description"  -> s.copy(description = value ?: "")
+        else           -> s
+    }
+
+    /** Undo the most recent reversible field edit. */
+    fun performUndo() {
+        viewModelScope.launch {
+            val ok = undoStack.undo()
+            if (!ok) {
+                _state.value = _state.value.copy(saveMessage = "Nothing to undo")
+            }
+        }
+    }
+
+    fun clearUndoMessage() {
+        _state.value = _state.value.copy(undoMessage = null)
     }
 
     private fun formatAmount(value: Double): String {
@@ -195,11 +384,32 @@ fun InventoryEditScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Clear the undo stack when the screen leaves composition (nav back / replace).
+    DisposableEffect(Unit) {
+        onDispose { viewModel.undoStack.clear() }
+    }
+
+    // Generic error/validation snackbar (no Undo action).
     LaunchedEffect(state.saveMessage) {
         val msg = state.saveMessage
         if (msg != null) {
             snackbarHostState.showSnackbar(msg)
             viewModel.clearSaveMessage()
+        }
+    }
+
+    // Undo snackbar: shown after a successful save with an Undo action.
+    LaunchedEffect(state.undoMessage) {
+        state.undoMessage?.let { message ->
+            viewModel.clearUndoMessage()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = if (state.canUndo) "Undo" else null,
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.performUndo()
+            }
         }
     }
 
