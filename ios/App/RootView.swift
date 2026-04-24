@@ -269,6 +269,7 @@ private struct iPhoneTabs: View {
 
             PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
                     api: AppServices.shared.apiClient,
+                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
                     cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
                 .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
                 .tag(MainTab.pos)
@@ -326,7 +327,12 @@ private struct iPadSplit: View {
                     detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
                     api: AppServices.shared.apiClient
                 )
-                case .pos:       PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient))
+                case .pos:       PosView(
+                    repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient,
+                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                    cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() }
+                )
                 case .more:      MoreMenuView(onSignOut: onSignOut)
                 case .search:    GlobalSearchView(api: AppServices.shared.apiClient)
                 }

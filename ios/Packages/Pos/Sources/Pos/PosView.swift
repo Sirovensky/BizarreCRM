@@ -392,21 +392,29 @@ public struct PosView: View {
         }
     }
 
+    /// iPad regular layout. Uses an `HStack` rather than a nested
+    /// `NavigationSplitView` — POS is already mounted inside the outer
+    /// `MainShellView` split view's detail column, and stacking split views
+    /// forces SwiftUI to render two sets of navigation chrome, pushing the
+    /// Items + Cart columns down below the top of the screen. An `HStack`
+    /// inside a single `NavigationStack` keeps both columns flush with the
+    /// top edge while still giving us a single nav bar for the toolbar.
     private var regularLayout: some View {
-        NavigationSplitView {
-            PosSearchPanel(
-                search: search,
-                onPick: pick,
-                onAddCustom: { showingCustomLine = true },
-                showsCustomerCTAs: !cart.hasCustomer,
-                onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
-                onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
-            )
-            .navigationTitle("Items")
-            .navigationSplitViewColumnWidth(min: 320, ideal: 420, max: 540)
-        } detail: {
-            NavigationStack {
+        NavigationStack {
+            HStack(spacing: 0) {
+                PosSearchPanel(
+                    search: search,
+                    onPick: pick,
+                    onAddCustom: { showingCustomLine = true },
+                    showsCustomerCTAs: !cart.hasCustomer,
+                    onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
+                    onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
+                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                )
+                .frame(minWidth: 320, idealWidth: 420, maxWidth: 540)
+
+                Divider()
+
                 PosCartPanel(
                     cart: cart,
                     onCharge: startCharge,
@@ -419,12 +427,12 @@ public struct PosView: View {
                     onShowTip: { showingTipSheet = true },
                     onShowFees: { showingFeesSheet = true }
                 )
-                .navigationTitle("Cart")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { posToolbar }
+                .frame(maxWidth: .infinity)
             }
+            .navigationTitle("POS")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { posToolbar }
         }
-        .navigationSplitViewStyle(.balanced)
     }
 
     private var posToolbar: some ToolbarContent {

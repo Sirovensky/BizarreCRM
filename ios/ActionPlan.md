@@ -166,6 +166,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] iPhone `TabView` + iPad `NavigationSplitView` scaffold — shipped.
 - [ ] **Typed path enum** per tab — `TicketsRoute.list | .detail(TicketID) | .create | .edit(TicketID)`. Deep-link router consumes these enums.
 - [ ] **Tab customization** (iPhone): user-reorderable tabs; fifth tab becomes "More" overflow.
+- [ ] **Pin-from-overflow drag** (iPad + iPhone): long-press an entry inside the More menu (e.g. Inventory, Invoices, Reports) → drag it onto the iPad sidebar or iPhone tab bar to pin it as a primary nav destination. Reorder within the primary nav by drag. Drag off the primary nav back into More to unpin. Persist order + pin set per user in `UserDefaults` at `nav.primaryOrder` (array of `MainTab`/domain raw values). Use `.draggable` + `.dropDestination` with a `Transferable` `NavPinItem` payload. Respect a fixed cap (5 on iPhone, 8 on iPad sidebar) — additional items roll back into More.
 - [ ] **Search tab role** (iOS 26): adopt `TabRole.search` so the tab bar renders it correctly.
 - [ ] **Swipe-back gesture** preserved everywhere — no custom back buttons in `NavigationStack`.
 - [ ] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror Android intent filters.
@@ -1936,6 +1937,8 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Attach existing** — `PosCustomerPickerSheet` with debounced 300ms `CustomerRepository.list(keyword:)`; tap row → `cart.attach(customer:)`; CartPill renders chip (initials or walk-in ghost). Loyalty tier badge deferred to §38.
 - [x] **Create new inline** — "+ New customer" opens `CustomerCreateView(api:onCreated:)` sheet; on save `PosCustomerNameFormatter.attachPayload(...)` attaches to cart.
 - [x] **Guest checkout** — `PosCustomer.walkIn` sentinel; walk-in CTA on POS empty state. Warning for store-credit/loyalty deferred.
+- [x] **iPad wiring — customer CTAs visible** — `RootView.iPadSplit` now passes `api` + `customerRepo` + `cashDrawerOpen` into `PosView`, so Walk-in / Find / Create customer buttons render on the iPad POS empty state (parity with iPhone/web desktop: search existing, create new, walk-in). `RootView.iPhoneTabs` gained the missing `customerRepo` too. (fix(ios): POS iPad wiring + full-screen layout)
+- [x] **POS iPad full-screen layout** — `PosView.regularLayout` no longer uses a nested `NavigationSplitView` (which pushed Items + Cart below the top of the screen inside the shell's detail column). Now an `HStack` inside a single `NavigationStack`, Items column (min 320 / ideal 420 / max 540), Divider, Cart column fills the rest. Single inline nav bar for the POS toolbar. (fix(ios): POS iPad wiring + full-screen layout)
 - [ ] **Customer-specific pricing** — if customer is in a Customer Group with discount override, apply automatically (banner "Group discount applied").
 - [ ] **Tax exemption** — if customer has tax-exempt flag, cart removes tax with banner; show exemption cert # if stored.
 - [ ] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled.
@@ -2444,6 +2447,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
+- [ ] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Tapping the Search tab in the sidebar hard-crashes the app. Needs a symbolicated stack — build Debug with `DEBUG_INFORMATION_FORMAT=dwarf-with-dsym`, reproduce from Xcode Organizer or the Console device log. First suspects: `GlobalSearchView` passing a nil `FTSIndexStore` into a non-optional path, FTS5 schema missing its migration on first run, or `api.globalSearch` decoding an envelope shape that no longer matches the server. Add a defensive early-return + `AppLog.ui.error(...)` around `fetchLocal` / `fetchRemote` so the view renders an error state instead of trapping.
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
