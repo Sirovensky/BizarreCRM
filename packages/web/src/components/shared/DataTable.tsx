@@ -165,15 +165,36 @@ export function DataTable<T>({
               )}
               {columns.map((col) => {
                 const isSortable = col.sortable && onSort;
+                const handleSortKey = isSortable
+                  ? (e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSort(col.key);
+                      }
+                    }
+                  : undefined;
                 return (
                   <th
                     key={col.key}
                     className={cn(
                       'px-4 py-3 font-medium text-surface-500 dark:text-surface-400',
-                      isSortable && 'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200 transition-colors',
+                      isSortable &&
+                        'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
                       col.className,
                     )}
                     onClick={isSortable ? () => onSort(col.key) : undefined}
+                    onKeyDown={handleSortKey}
+                    tabIndex={isSortable ? 0 : undefined}
+                    role={isSortable ? 'button' : undefined}
+                    aria-sort={
+                      isSortable
+                        ? sortBy === col.key
+                          ? sortOrder === 'ASC'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                        : undefined
+                    }
                   >
                     <div className={cn(
                       'inline-flex items-center gap-1',
@@ -201,9 +222,22 @@ export function DataTable<T>({
                     isSelected
                       ? 'bg-primary-50 dark:bg-primary-950/20'
                       : 'hover:bg-surface-50 dark:hover:bg-surface-800/50',
-                    onRowClick && 'cursor-pointer',
+                    onRowClick &&
+                      'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onRowClick(row);
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? 'button' : undefined}
                 >
                   {selectable && (
                     <td className="px-4 py-3 w-10">
