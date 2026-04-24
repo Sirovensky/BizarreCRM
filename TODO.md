@@ -1483,10 +1483,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
   <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:980; fix=useMemo -->
 - [ ] SCAN-957. **POS customer step fans out 3 parallel queries every session open — consolidate or hoist with stale cache.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:965-1057; fix=consolidate-or-hoist -->
-- [ ] SCAN-958. **Lead list leaks console.error to production logs on convert/delete failure — toast already shown, console is noise.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/leads/LeadListPage.tsx:303,326; fix=drop-console-error -->
-- [ ] SCAN-959. **POS product search input has no aria-label — unreadable to screen readers.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/ProductsTab.tsx:64; fix=aria-label -->
 - [ ] SCAN-960. **Ticket wizard labels not associated with their inputs — click-label and screen readers broken.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx:140; fix=htmlFor+id -->
 
