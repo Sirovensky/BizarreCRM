@@ -27,6 +27,15 @@ public enum HapticEvent: String, Sendable, CaseIterable {
     case clockIn
     case clockOut
     case signatureCommit
+    // §30 — UI-interaction semantic events
+    /// Fired on primary button press (replaces raw `.addToCart` light tap at CTA sites).
+    case buttonTap
+    /// Fired when a sheet or modal finishes its present animation.
+    case sheetPresented
+    /// Fired as each list item appears during a staggered reveal.
+    case listItemAppear
+    /// Fired on card hover-lift (iPad pointer enter, strong enough to be felt on M-series).
+    case cardHoverActivate
 }
 
 // MARK: - HapticCatalog
@@ -101,10 +110,22 @@ public enum HapticCatalog: Sendable {
             g.prepare()
             g.impactOccurred()
 
-        case .pullToRefresh, .toggle, .tabSwitch, .ticketStatusChange, .signatureCommit:
+        case .pullToRefresh, .toggle, .tabSwitch, .ticketStatusChange, .signatureCommit,
+             .listItemAppear, .cardHoverActivate:
             let g = UISelectionFeedbackGenerator()
             g.prepare()
             g.selectionChanged()
+
+        case .buttonTap:
+            let g = UIImpactFeedbackGenerator(style: .light)
+            g.prepare()
+            g.impactOccurred()
+
+        case .sheetPresented:
+            // Sheets are large view transitions — use medium to acknowledge.
+            let g = UIImpactFeedbackGenerator(style: .medium)
+            g.prepare()
+            g.impactOccurred()
         }
         #endif
     }

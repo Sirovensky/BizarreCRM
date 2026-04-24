@@ -235,4 +235,182 @@ public extension APIClient {
             as: [TimeOffRequest].self
         )
     }
+
+    // MARK: - Employee detail
+
+    /// GET /api/v1/employees/:id
+    /// Returns the employee profile. Admin/self callers also get clock_entries,
+    /// commissions, is_clocked_in, current_clock_entry in the response.
+    func getEmployee(id: Int64) async throws -> EmployeeDetail {
+        try await get("/api/v1/employees/\(id)", as: EmployeeDetail.self)
+    }
+
+    // MARK: - Employee performance
+
+    /// GET /api/v1/employees/:id/performance
+    /// Optional date range filters: from_date, to_date (yyyy-MM-dd).
+    func getEmployeePerformance(
+        id: Int64,
+        fromDate: String? = nil,
+        toDate: String? = nil
+    ) async throws -> EmployeePerformance {
+        var query: [URLQueryItem] = []
+        if let from = fromDate { query.append(URLQueryItem(name: "from_date", value: from)) }
+        if let to   = toDate   { query.append(URLQueryItem(name: "to_date",   value: to)) }
+        return try await get(
+            "/api/v1/employees/\(id)/performance",
+            query: query.isEmpty ? nil : query,
+            as: EmployeePerformance.self
+        )
+    }
+
+    // MARK: - Role assignment
+
+    /// PUT /api/v1/roles/users/:userId/role — assign a custom role to a user (admin only).
+    /// Body: { role_id: Int }
+    func assignEmployeeRole(userId: Int64, roleId: Int) async throws {
+        let body = AssignRoleBody(roleId: roleId)
+        _ = try await put(
+            "/api/v1/roles/users/\(userId)/role",
+            body: body,
+            as: AssignRoleResult.self
+        )
+    }
+
+    // MARK: - Deactivate / reactivate
+
+    /// PUT /api/v1/settings/users/:id — set is_active flag (admin only).
+    /// The settings route accepts a partial update: only `is_active` is required.
+    func setEmployeeActive(id: Int64, isActive: Bool) async throws -> Employee {
+        let body = SetActiveBody(isActive: isActive ? 1 : 0)
+        return try await put(
+            "/api/v1/settings/users/\(id)",
+            body: body,
+            as: Employee.self
+        )
+    }
+
+    // MARK: - Settings user list (all users including inactive)
+
+    /// GET /api/v1/settings/users — full user list including inactive (admin only).
+    func listAllUsers() async throws -> [Employee] {
+        try await get("/api/v1/settings/users", as: [Employee].self)
+    }
+}
+
+// MARK: - Employee detail model
+
+/// Full detail returned by GET /api/v1/employees/:id for admin/self callers.
+/// Non-privileged callers get the same base fields as `Employee` with nil arrays.
+public struct EmployeeDetail: Decodable, Sendable, Identifiable {
+    public let id: Int64
+    public let username: String?
+    public let email: String?
+    public let firstName: String?
+    public let lastName: String?
+    public let role: String?
+    public let avatarUrl: String?
+    public let isActive: Int?
+    public let homeLocationId: Int64?
+    public let createdAt: String?
+    public let permissions: String?
+
+    // Privileged fields (admin/self only):
+    public let clockEntries: [ClockEntry]?
+    public let commissions: [EmployeeCommission]?
+    public let isClockedIn: Bool?
+    public let currentClockEntry: ClockEntry?
+
+    public var displayName: String {
+        let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        return parts.isEmpty ? (username ?? "User #\(id)") : parts.joined(separator: " ")
+    }
+
+    public var active: Bool { (isActive ?? 0) != 0 }
+
+    enum CodingKeys: String, CodingKey {
+        case id, username, email, role, permissions
+        case firstName          = "first_name"
+        case lastName           = "last_name"
+        case avatarUrl          = "avatar_url"
+        case isActive           = "is_active"
+        case homeLocationId     = "home_location_id"
+        case createdAt          = "created_at"
+        case clockEntries       = "clock_entries"
+        case commissions
+        case isClockedIn        = "is_clocked_in"
+        case currentClockEntry  = "current_clock_entry"
+    }
+}
+
+// MARK: - Clock entry model (used in EmployeeDetail)
+
+public struct ClockEntry: Decodable, Sendable, Identifiable {
+    public let id: Int64
+    public let userId: Int64
+    public let clockIn: String
+    public let clockOut: String?
+    public let totalHours: Double?
+    public let locationId: Int64?
+    public let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, notes
+        case userId      = "user_id"
+        case clockIn     = "clock_in"
+        case clockOut    = "clock_out"
+        case totalHours  = "total_hours"
+        case locationId  = "location_id"
+    }
+}
+
+// MARK: - Employee performance model
+
+/// Returned by GET /api/v1/employees/:id/performance
+public struct EmployeePerformance: Decodable, Sendable {
+    public let totalTickets: Int
+    public let closedTickets: Int
+    public let totalRevenue: Double
+    public let avgTicketValue: Double
+    public let avgRepairHours: Double?
+    public let totalDevicesRepaired: Int
+
+    enum CodingKeys: String, CodingKey {
+        case totalTickets        = "total_tickets"
+        case closedTickets       = "closed_tickets"
+        case totalRevenue        = "total_revenue"
+        case avgTicketValue      = "avg_ticket_value"
+        case avgRepairHours      = "avg_repair_hours"
+        case totalDevicesRepaired = "total_devices_repaired"
+    }
+}
+
+// MARK: - Assign role body
+
+struct AssignRoleBody: Encodable, Sendable {
+    let roleId: Int
+
+    enum CodingKeys: String, CodingKey {
+        case roleId = "role_id"
+    }
+}
+
+struct AssignRoleResult: Decodable, Sendable {
+    let userId: Int64
+    let roleId: Int
+
+    enum CodingKeys: String, CodingKey {
+        case userId  = "user_id"
+        case roleId  = "role_id"
+    }
+}
+
+// MARK: - Set active body
+
+struct SetActiveBody: Encodable, Sendable {
+    let isActive: Int
+
+    enum CodingKeys: String, CodingKey {
+        case isActive = "is_active"
+    }
 }

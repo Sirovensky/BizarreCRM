@@ -27,12 +27,14 @@ public struct ReportsView: View {
     @State private var emailRecipient = ""
     @State private var showEmailSheet  = false
 
+    private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
 
     public init(repository: ReportsRepository,
                 onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
         _vm = State(wrappedValue: ReportsViewModel(repository: repository))
         self.exportService = ReportExportService(repository: repository)
+        self.csvService = ReportCSVService()
         self.onTapSaleRecord = onTapSaleRecord
     }
 
@@ -163,6 +165,13 @@ public struct ReportsView: View {
                     Label("Export PDF", systemImage: "doc.richtext")
                 }
                 .accessibilityLabel("Export PDF report")
+
+                Button {
+                    Task { await exportCSV() }
+                } label: {
+                    Label("Export CSV", systemImage: "doc.plaintext")
+                }
+                .accessibilityLabel("Export CSV report")
 
                 Button {
                     showEmailSheet = true
@@ -349,6 +358,26 @@ public struct ReportsView: View {
         )
         do {
             exportURL = try await exportService.generatePDF(report: snapshot)
+            showExportShare = true
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    private func exportCSV() async {
+        let snapshot = ReportSnapshot(
+            title: "BizarreCRM Report",
+            period: "\(vm.fromDateString) – \(vm.toDateString)",
+            revenue: vm.revenue,
+            ticketsByStatus: vm.ticketsByStatus,
+            avgTicketValue: vm.avgTicketValue,
+            topEmployees: Array(vm.employeePerf.prefix(5)),
+            inventoryTurnover: vm.inventoryTurnover,
+            csatScore: vm.csatScore,
+            npsScore: vm.npsScore
+        )
+        do {
+            exportURL = try await csvService.generateSnapshotCSV(report: snapshot)
             showExportShare = true
         } catch {
             exportError = error.localizedDescription

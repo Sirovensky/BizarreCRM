@@ -76,6 +76,7 @@ public struct CampaignDetailView: View {
         .navigationTitle(vm.campaign?.name ?? "Campaign")
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         #endif
         .task { await vm.load() }
         .sheet(isPresented: $showApprovalSheet) { approvalSheet }

@@ -28,6 +28,7 @@ public struct CampaignCreateView: View {
             .navigationTitle("New Campaign")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -64,7 +64,7 @@ struct CampaignCreateViewModelTests {
         let vm = CampaignCreateViewModel(api: mock)
         vm.template = "Hello "
         vm.insertDynamicVar("first_name")
-        #expect(vm.template == "Hello {first_name}")
+        #expect(vm.template == "Hello {{first_name}}")
     }
 
     @Test("templateCharCount and segments correct")

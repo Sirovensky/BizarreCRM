@@ -3,37 +3,138 @@ import Foundation
 @testable import DataExport
 
 // MARK: - MockExportRepository
+// Shared mock for all DataExport test suites. Implements the full ExportRepository
+// protocol so every VM can be tested in isolation via result stubs.
 
 final class MockExportRepository: ExportRepository, @unchecked Sendable {
-    var startTenantResult: Result<ExportJob, Error> = .success(
-        ExportJob(id: "job-1", scope: .fullTenant, status: .queued)
+
+    // MARK: - Tenant async job stubs
+
+    var startTenantResult: Result<TenantExportJob, Error> = .success(
+        TenantExportJob(id: 1, status: .queued)
     )
-    var startDomainResult: Result<ExportJob, Error> = .success(
-        ExportJob(id: "job-2", scope: .domain, status: .queued)
+    var pollTenantResult: Result<TenantExportJob, Error> = .success(
+        TenantExportJob(id: 1, status: .completed)
     )
-    var startCustomerResult: Result<ExportJob, Error> = .success(
-        ExportJob(id: "job-3", scope: .customer, status: .queued)
+    var rateStatusResult: Result<DataExportRateStatus, Error> = .success(
+        DataExportRateStatus(lastExportAt: nil, nextAllowedInSeconds: 0, allowed: true, rateLimitWindowSeconds: 3600)
     )
 
-    // Queue of poll responses to return in sequence
+    // MARK: - Legacy ExportJob shim stubs (ExportProgressViewModel)
+
+    var startTenantLegacyResult: Result<ExportJob, Error> = .success(
+        ExportJob(id: "job-1", scope: .fullTenant, status: .queued)
+    )
+    /// Queue of sequential poll responses for ExportProgressViewModel tests.
     var pollQueue: [Result<ExportJob, Error>] = []
     private var pollIndex = 0
 
-    var errorsResult: Result<[ExportError], Error> = .success([])
-    var schedulesResult: Result<[ScheduledExport], Error> = .success([])
+    // MARK: - GDPR stub
+
+    var eraseResult: Result<Void, Error> = .success(())
+
+    // MARK: - Schedule CRUD stubs
+
+    var schedulesResult: Result<[ExportSchedule], Error> = .success([])
+    var scheduleDetailResult: Result<ScheduleDetail, Error> = .success(
+        ScheduleDetail(
+            schedule: ExportSchedule(id: 1, name: "Detail", exportType: .full, intervalKind: .daily, intervalCount: 1),
+            recentRuns: []
+        )
+    )
+    var createScheduleResult: Result<ExportSchedule, Error> = .success(
+        ExportSchedule(id: 99, name: "Created", exportType: .full, intervalKind: .daily, intervalCount: 1)
+    )
+    var updateScheduleResult: Result<ExportSchedule, Error> = .success(
+        ExportSchedule(id: 99, name: "Updated", exportType: .full, intervalKind: .weekly, intervalCount: 1)
+    )
+    var pauseResumeResult: Result<Void, Error> = .success(())
+    var cancelResult: Result<Void, Error> = .success(())
+
+    // MARK: - Settings export / import stubs
+
+    var settingsExportResult: Result<SettingsExportPayload, Error> = .success(
+        SettingsExportPayload(exportedAt: "2026-04-23T00:00:00Z", version: 1, settings: [:])
+    )
+    var settingsImportResult: Result<SettingsImportResult, Error> = .success(
+        SettingsImportResult(imported: 0, skipped: [], total: 0)
+    )
+    var templatesResult: Result<[ShopTemplate], Error> = .success([])
+    var applyTemplateResult: Result<Void, Error> = .success(())
+
+    // MARK: - Legacy ScheduledExport stubs
+
+    var legacySchedulesResult: Result<[ScheduledExport], Error> = .success([])
     var saveScheduleResult: Result<ScheduledExport, Error> = .success(
         ScheduledExport(id: "sched-1", cadence: .daily, destination: .icloud)
     )
 
-    func startTenantExport(passphrase: String) async throws -> ExportJob {
+    // MARK: - ExportRepository: tenant async job
+
+    func startTenantExport(passphrase: String) async throws -> TenantExportJob {
         try startTenantResult.get()
     }
-    func startDomainExport(entity: String, filters: [String: String]) async throws -> ExportJob {
-        try startDomainResult.get()
+
+    func pollTenantExport(jobId: Int) async throws -> TenantExportJob {
+        try pollTenantResult.get()
     }
-    func startCustomerExport(customerId: String) async throws -> ExportJob {
-        try startCustomerResult.get()
+
+    func fetchDataExportRateStatus() async throws -> DataExportRateStatus {
+        try rateStatusResult.get()
     }
+
+    // MARK: - ExportRepository: GDPR
+
+    func eraseCustomerPII(customerId: Int, confirmName: String) async throws {
+        try eraseResult.get()
+    }
+
+    // MARK: - ExportRepository: schedule CRUD
+
+    func listSchedules() async throws -> [ExportSchedule] {
+        try schedulesResult.get()
+    }
+
+    func getSchedule(id: Int) async throws -> ScheduleDetail {
+        try scheduleDetailResult.get()
+    }
+
+    func createSchedule(_ request: CreateScheduleRequest) async throws -> ExportSchedule {
+        try createScheduleResult.get()
+    }
+
+    func updateSchedule(id: Int, request: UpdateScheduleRequest) async throws -> ExportSchedule {
+        try updateScheduleResult.get()
+    }
+
+    func pauseSchedule(id: Int) async throws { try pauseResumeResult.get() }
+    func resumeSchedule(id: Int) async throws { try pauseResumeResult.get() }
+    func cancelSchedule(id: Int) async throws { try cancelResult.get() }
+
+    // MARK: - ExportRepository: settings export / import
+
+    func fetchSettingsExport() async throws -> SettingsExportPayload {
+        try settingsExportResult.get()
+    }
+
+    func importSettings(payload: [String: String]) async throws -> SettingsImportResult {
+        try settingsImportResult.get()
+    }
+
+    func fetchShopTemplates() async throws -> [ShopTemplate] {
+        try templatesResult.get()
+    }
+
+    func applyShopTemplate(id: String) async throws {
+        try applyTemplateResult.get()
+    }
+
+    // MARK: - ExportRepository: legacy ExportJob shim
+
+    func startLegacyTenantExport(passphrase: String) async throws -> ExportJob {
+        try startTenantLegacyResult.get()
+    }
+
     func pollExport(id: String) async throws -> ExportJob {
         guard pollIndex < pollQueue.count else {
             return ExportJob(id: id, scope: .fullTenant, status: .completed, progressPct: 1.0)
@@ -42,11 +143,17 @@ final class MockExportRepository: ExportRepository, @unchecked Sendable {
         pollIndex += 1
         return try result.get()
     }
-    func getErrors(id: String) async throws -> [ExportError] { try errorsResult.get() }
-    func listSchedules() async throws -> [ScheduledExport] { try schedulesResult.get() }
+
+    func getErrors(id: String) async throws -> [ExportError] { [] }
+
+    func listLegacySchedules() async throws -> [ScheduledExport] {
+        try legacySchedulesResult.get()
+    }
+
     func saveSchedule(cadence: ExportCadence, destination: ExportDestination) async throws -> ScheduledExport {
         try saveScheduleResult.get()
     }
+
     func deleteSchedule(id: String) async throws {}
 }
 

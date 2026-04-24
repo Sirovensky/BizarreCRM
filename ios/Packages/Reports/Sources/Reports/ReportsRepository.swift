@@ -180,11 +180,38 @@ public actor LiveReportsRepository: ReportsRepository {
         )
     }
 
-    // MARK: - Drill-through — endpoint stub (GET /api/v1/reports/drill-through not on server)
+    // MARK: - Drill-through → GET /api/v1/reports/sales (single-day slice)
+    //
+    // The server has no dedicated drill-through endpoint.
+    // For `metric == "revenue"` we fetch /reports/sales narrowed to the
+    // exact date (from_date == to_date == date, group_by=day).
+    // Each row in the response becomes a DrillThroughRecord.
 
     public func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord] {
-        // When the server implements /reports/drill-through, replace with real call.
-        throw ReportsRepositoryError.endpointNotImplemented("/reports/drill-through")
+        guard metric == "revenue" else {
+            // Other metrics have no drill-through endpoint yet.
+            throw ReportsRepositoryError.endpointNotImplemented("/reports/drill-through[\(metric)]")
+        }
+
+        // Narrow the sales report to a single day.
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: date),
+            URLQueryItem(name: "to_date",   value: date),
+            URLQueryItem(name: "group_by",  value: "day")
+        ]
+        let response = try await api.get(
+            "/api/v1/reports/sales", query: query, as: SalesReportResponse.self
+        )
+
+        // Map each revenue row to a DrillThroughRecord.
+        return response.rows.enumerated().map { idx, row in
+            DrillThroughRecord(
+                id: Int64(idx + 1),
+                label: row.date,
+                detail: "\(row.saleCount) sale\(row.saleCount == 1 ? "" : "s")",
+                amountCents: row.amountCents
+            )
+        }
     }
 
     // MARK: - Scheduled Reports → GET /api/v1/reports/scheduled

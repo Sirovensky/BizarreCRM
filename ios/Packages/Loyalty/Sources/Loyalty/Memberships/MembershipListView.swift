@@ -2,6 +2,26 @@ import SwiftUI
 import DesignSystem
 import Networking
 
+// MARK: - Hex colour helper (file-private)
+
+private extension Color {
+    /// Initialise from a 6-digit or 3-digit CSS hex string, with or without `#`.
+    /// Returns `nil` when the string is malformed.
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("#") { s = String(s.dropFirst()) }
+        guard s.count == 6 || s.count == 3 else { return nil }
+        if s.count == 3 {
+            s = s.map { "\($0)\($0)" }.joined()
+        }
+        guard let value = UInt64(s, radix: 16) else { return nil }
+        let r = Double((value & 0xFF0000) >> 16) / 255.0
+        let g = Double((value & 0x00FF00) >>  8) / 255.0
+        let b = Double( value & 0x0000FF       ) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+}
+
 // MARK: - MembershipListViewModel
 
 @MainActor
@@ -18,6 +38,8 @@ public final class MembershipListViewModel {
     public private(set) var state: State = .loading
     public private(set) var memberships: [Membership] = []
     public private(set) var plans: [MembershipPlan] = []
+    /// Keyed by Membership.id — preserves rich admin data (tierName, color, customer name).
+    public private(set) var adminSubsByMembershipId: [String: AdminSubscriptionDTO] = [:]
 
     private let manager: MembershipSubscriptionManager
     private let api: any APIClient
@@ -51,6 +73,10 @@ public final class MembershipListViewModel {
             }
             await manager.hydrate(memberships: domain)
             memberships = await manager.activeMemberships
+            // Build lookup so the row can display tier name + badge colour.
+            adminSubsByMembershipId = Dictionary(
+                uniqueKeysWithValues: adminSubs.map { (String($0.id), $0) }
+            )
             state = .loaded
         } catch let t as APITransportError {
             if case .httpStatus(let c, _) = t, c == 404 || c == 501 {
@@ -151,12 +177,15 @@ public struct MembershipListView: View {
 
     private var iPhoneList: some View {
         List(filtered) { membership in
-            MembershipRow(membership: membership)
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    swipeTrailing(membership)
-                }
-                .contextMenu { contextMenuItems(membership) }
-                .accessibilityElement(children: .combine)
+            MembershipRow(
+                membership: membership,
+                adminSub: vm.adminSubsByMembershipId[membership.id]
+            )
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                swipeTrailing(membership)
+            }
+            .contextMenu { contextMenuItems(membership) }
+            .accessibilityElement(children: .combine)
         }
         #if canImport(UIKit)
         .listStyle(.insetGrouped)
@@ -170,14 +199,28 @@ public struct MembershipListView: View {
     @ViewBuilder
     private var iPadTable: some View {
         Table(filtered) {
-            TableColumn("Customer ID") { m in
-                Text(m.customerId)
-                    .font(.brandBodyMedium())
-                    .textSelection(.enabled)
+            TableColumn("Customer") { m in
+                let sub = vm.adminSubsByMembershipId[m.id]
+                let name = [sub?.firstName, sub?.lastName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(name.isEmpty ? "ID \(m.customerId)" : name)
+                        .font(.brandBodyMedium())
+                        .textSelection(.enabled)
+                    if !name.isEmpty {
+                        Text("ID \(m.customerId)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
+                    }
+                }
             }
-            TableColumn("Plan") { m in
-                Text(m.planId)
-                    .font(.brandBodyMedium())
+            TableColumn("Tier") { m in
+                TierBadge(
+                    tierName: vm.adminSubsByMembershipId[m.id]?.tierName,
+                    colorHex: vm.adminSubsByMembershipId[m.id]?.color
+                )
             }
             TableColumn("Status") { m in
                 StatusChip(status: m.status)
@@ -268,16 +311,23 @@ public struct MembershipListView: View {
 
 private struct MembershipRow: View {
     let membership: Membership
+    let adminSub: AdminSubscriptionDTO?
+
+    private var customerDisplayName: String {
+        let parts = [adminSub?.firstName, adminSub?.lastName].compactMap { $0 }
+        return parts.isEmpty ? "Customer \(membership.customerId)" : parts.joined(separator: " ")
+    }
 
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text("Customer: \(membership.customerId)")
+                Text(customerDisplayName)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                Text("Plan: \(membership.planId)")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                TierBadge(
+                    tierName: adminSub?.tierName,
+                    colorHex: adminSub?.color
+                )
                 if let next = membership.nextBillingAt {
                     Text("Renews \(next.formatted(date: .abbreviated, time: .omitted))")
                         .font(.brandLabelSmall())
@@ -288,6 +338,48 @@ private struct MembershipRow: View {
             StatusChip(status: membership.status)
         }
         .padding(.vertical, BrandSpacing.xxs)
+    }
+}
+
+// MARK: - TierBadge
+
+/// Displays a coloured pill for a membership tier.
+///
+/// Falls back to a neutral "Member" label when no tier name is available.
+/// The colour is decoded from the server's hex string; falls back to
+/// `.bizarreOnSurfaceMuted` on parse failure.
+private struct TierBadge: View {
+    let tierName: String?
+    let colorHex: String?
+
+    private var label: String { tierName ?? "Member" }
+
+    private var badgeColor: Color {
+        // Try to parse the server hex string first.
+        if let hex = colorHex, let c = Color(hex: hex) { return c }
+        // Fall back to the typed tier colour when the name matches.
+        if let name = tierName {
+            return LoyaltyTier.parse(name).displayColor
+        }
+        return .bizarreOnSurfaceMuted
+    }
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            if let name = tierName {
+                Image(systemName: LoyaltyTier.parse(name).systemSymbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(badgeColor)
+                    .accessibilityHidden(true)
+            }
+            Text(label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(badgeColor)
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(Capsule().fill(badgeColor.opacity(0.12)))
+        .accessibilityLabel("Tier: \(label)")
     }
 }
 

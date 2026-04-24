@@ -7,6 +7,7 @@ public struct CampaignListView: View {
     @State private var vm: CampaignListViewModel
     @State private var showingCreate = false
     @State private var selectedCampaignId: String? = nil
+    @State private var selectedCampaignRowId: Int? = nil
     @State private var confirmDelete: Campaign? = nil
     private let api: APIClient
 
@@ -67,6 +68,7 @@ public struct CampaignListView: View {
             .navigationTitle("Campaigns")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             #endif
             .toolbar { newButton }
             .navigationDestination(for: String.self) { id in
@@ -86,6 +88,9 @@ public struct CampaignListView: View {
             }
             .navigationTitle("Campaigns")
             .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
+            #if canImport(UIKit)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            #endif
             .toolbar { newButton }
         } content: {
             ZStack {
@@ -99,7 +104,11 @@ public struct CampaignListView: View {
         } detail: {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                emptyDetail(icon: "chart.bar.fill", message: "Campaign analytics")
+                if let rowId = selectedCampaignRowId {
+                    CampaignAnalyticsView(api: api, campaignId: rowId)
+                } else {
+                    emptyDetail(icon: "chart.bar.fill", message: "Select a campaign to view analytics")
+                }
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -133,40 +142,75 @@ public struct CampaignListView: View {
         }
     }
 
+    @ViewBuilder
+    private func campaignRow(for campaign: Campaign) -> some View {
+        if Platform.isCompact {
+            NavigationLink(value: campaign.id) {
+                CampaignRow(campaign: campaign)
+            }
+            .listRowBackground(Color.bizarreSurface1)
+            #if canImport(UIKit)
+            .hoverEffect(.highlight)
+            #endif
+            .contextMenu { rowContextMenu(campaign) }
+        } else {
+            Button {
+                selectedCampaignId = campaign.id
+                selectedCampaignRowId = campaign.serverRowId
+            } label: {
+                HStack {
+                    CampaignRow(campaign: campaign)
+                    if selectedCampaignId == campaign.id {
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+            .listRowBackground(
+                selectedCampaignId == campaign.id
+                    ? Color.bizarreOrange.opacity(0.12)
+                    : Color.bizarreSurface1
+            )
+            #if canImport(UIKit)
+            .hoverEffect(.highlight)
+            #endif
+            .contextMenu { rowContextMenu(campaign) }
+        }
+    }
+
+    @ViewBuilder
+    private func rowContextMenu(_ campaign: Campaign) -> some View {
+        if let rowId = campaign.serverRowId {
+            Button(role: .destructive) {
+                confirmDelete = campaign
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .accessibilityLabel("Delete \(campaign.name)")
+            Button {
+                Task {
+                    let body = PatchCampaignServerRequest(
+                        status: campaign.status == .active ? "paused" : "active"
+                    )
+                    _ = try? await api.patchCampaignServer(id: rowId, body)
+                    await vm.load()
+                }
+            } label: {
+                Label(
+                    campaign.status == .active ? "Pause" : "Activate",
+                    systemImage: campaign.status == .active ? "pause.circle" : "play.circle"
+                )
+            }
+        }
+    }
+
     private var campaignList: some View {
         List {
             ForEach(vm.campaigns) { campaign in
-                NavigationLink(value: campaign.id) {
-                    CampaignRow(campaign: campaign)
-                }
-                .listRowBackground(Color.bizarreSurface1)
-                #if canImport(UIKit)
-                .hoverEffect(.highlight)
-                #endif
-                .contextMenu {
-                    if let rowId = campaign.serverRowId {
-                        Button(role: .destructive) {
-                            confirmDelete = campaign
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .accessibilityLabel("Delete \(campaign.name)")
-                        Button {
-                            Task {
-                                let body = PatchCampaignServerRequest(
-                                    status: campaign.status == .active ? "paused" : "active"
-                                )
-                                _ = try? await api.patchCampaignServer(id: rowId, body)
-                                await vm.load()
-                            }
-                        } label: {
-                            Label(
-                                campaign.status == .active ? "Pause" : "Activate",
-                                systemImage: campaign.status == .active ? "pause.circle" : "play.circle"
-                            )
-                        }
-                    }
-                }
+                campaignRow(for: campaign)
             }
             if vm.isLoading {
                 HStack {

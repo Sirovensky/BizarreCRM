@@ -15,6 +15,9 @@ public extension Color {
     static let bizarreSuccess            = Color("SuccessGreen",          bundle: .main)
     static let bizarreWarning            = Color("WarningAmber",          bundle: .main)
     static let bizarreError              = Color("ErrorRose",             bundle: .main)
+    // §30 — Semantic badge additions
+    static let bizarreDanger             = Color("DangerRed",             bundle: .main)
+    static let bizarreInfo               = Color("InfoBlue",              bundle: .main)
 }
 
 // Mirror the brand colors onto ShapeStyle so dot-syntax works at call
@@ -34,4 +37,7 @@ public extension ShapeStyle where Self == Color {
     static var bizarreSuccess:         Color { .bizarreSuccess }
     static var bizarreWarning:         Color { .bizarreWarning }
     static var bizarreError:           Color { .bizarreError }
+    // §30 — Semantic badge additions
+    static var bizarreDanger:          Color { .bizarreDanger }
+    static var bizarreInfo:            Color { .bizarreInfo }
 }

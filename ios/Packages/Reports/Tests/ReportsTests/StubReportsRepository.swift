@@ -33,9 +33,12 @@ actor StubReportsRepository: ReportsRepository {
     var npsResult: Result<NPSScore, Error> = .success(
         NPSScore(current: 60, previous: 55, promoterPct: 70, detractorPct: 10, themes: ["Speed", "Quality"])
     )
-    var drillResult: Result<[DrillThroughRecord], Error> = .failure(
-        ReportsRepositoryError.endpointNotImplemented("/reports/drill-through")
-    )
+    var drillResult: Result<[DrillThroughRecord], Error> = .success([
+        DrillThroughRecord(id: 1, label: "2024-01-01", detail: "3 sales", amountCents: 30000)
+    ])
+    private(set) var drillCallCount = 0
+    private(set) var drillLastMetric: String?
+    private(set) var drillLastDate: String?
     var scheduledResult: Result<[ScheduledReport], Error> = .success([])
     var createScheduledResult: Result<ScheduledReport, Error> = .success(
         ScheduledReport(id: 1, reportType: "revenue", frequency: .weekly,
@@ -104,7 +107,10 @@ actor StubReportsRepository: ReportsRepository {
     }
 
     func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord] {
-        try drillResult.get()
+        drillCallCount += 1
+        drillLastMetric = metric
+        drillLastDate = date
+        return try drillResult.get()
     }
 
     func getScheduledReports() async throws -> [ScheduledReport] {
@@ -154,6 +160,9 @@ extension StubReportsRepository {
     }
     func setNPSResult(_ result: Result<NPSScore, Error>) {
         npsResult = result
+    }
+    func setDrillResult(_ result: Result<[DrillThroughRecord], Error>) {
+        drillResult = result
     }
 }
 

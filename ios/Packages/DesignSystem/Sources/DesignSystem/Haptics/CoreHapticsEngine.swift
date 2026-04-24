@@ -161,6 +161,23 @@ public actor CoreHapticsEngine {
 
         case .pullToRefresh, .toggle, .tabSwitch:
             return try singleTapPattern(intensity: 0.35, sharpness: 0.9)
+
+        // §30 — UI-interaction semantic events
+        case .buttonTap:
+            // Crisp, low-intensity click — confirms the press without fanfare.
+            return try singleTapPattern(intensity: 0.30, sharpness: 0.95)
+
+        case .sheetPresented:
+            // Medium thump to mark the sheet landing.
+            return try singleTapPattern(intensity: 0.55, sharpness: 0.60)
+
+        case .listItemAppear:
+            // Barely perceptible — repeated per row, so must stay subtle.
+            return try singleTapPattern(intensity: 0.15, sharpness: 0.80)
+
+        case .cardHoverActivate:
+            // Soft click for pointer enter on iPad.
+            return try singleTapPattern(intensity: 0.20, sharpness: 0.85)
         }
     }
 

@@ -2,6 +2,7 @@
 import UIKit
 import VisionKit
 import AVFoundation
+import Combine
 import Observation
 import Core
 import DesignSystem
@@ -55,6 +56,42 @@ public final class BarcodeCoordinator: NSObject {
 
     public let mode: BarcodeScanMode
 
+    // MARK: - Combine publisher
+
+    /// Emits each accepted ``Barcode`` on the main thread.
+    ///
+    /// Usage:
+    /// ```swift
+    /// coordinator.barcodePublisher
+    ///     .sink { barcode in handleBarcode(barcode) }
+    ///     .store(in: &cancellables)
+    /// ```
+    public let barcodePublisher: AnyPublisher<Barcode, Never>
+    private let barcodeSubject = PassthroughSubject<Barcode, Never>()
+
+    // MARK: - AsyncStream
+
+    /// Returns a new `AsyncStream<Barcode>` that emits every accepted scan
+    /// until the stream is cancelled (e.g. on task cancellation or deallocation).
+    ///
+    /// Usage:
+    /// ```swift
+    /// for await barcode in coordinator.barcodeStream() {
+    ///     handleBarcode(barcode)
+    /// }
+    /// ```
+    public func barcodeStream() -> AsyncStream<Barcode> {
+        AsyncStream { continuation in
+            // Keep the Combine subscription alive for the lifetime of the stream.
+            let cancellable = barcodePublisher.sink { barcode in
+                continuation.yield(barcode)
+            }
+            continuation.onTermination = { @Sendable _ in
+                cancellable.cancel()
+            }
+        }
+    }
+
     // MARK: - Private
 
     private let onScan: @Sendable (Barcode) -> Void
@@ -84,6 +121,7 @@ public final class BarcodeCoordinator: NSObject {
         self.onScan = onScan
         self.isScannerSupported = DataScannerViewController.isSupported
             && DataScannerViewController.isAvailable
+        self.barcodePublisher = barcodeSubject.eraseToAnyPublisher()
         super.init()
     }
 
@@ -146,6 +184,7 @@ public final class BarcodeCoordinator: NSObject {
         lastScanned = barcode
         BrandHaptics.success()
         onScan(barcode)
+        barcodeSubject.send(barcode)
 
         AppLog.ui.info("BarcodeCoordinator: scanned \(payload, privacy: .private) (\(symbology, privacy: .public))")
     }
@@ -160,6 +199,7 @@ public final class BarcodeCoordinator: NSObject {
         lastScanned = barcode
         BrandHaptics.success()
         onScan(barcode)
+        barcodeSubject.send(barcode)
     }
 
     /// Resets the last scanned item so the scanner is ready for the next code.

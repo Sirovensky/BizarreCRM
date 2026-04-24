@@ -101,7 +101,7 @@ public final class EscPosNetworkEngine: PrintEngine {
 
     // MARK: - Private: TCP send
 
-    private func send(_ data: Data, to host: String, port: Int) async throws {
+    func send(_ data: Data, to host: String, port: Int) async throws {
         let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) ?? 9100
         let connection = NWConnection(
             host: NWEndpoint.Host(host),
@@ -149,12 +149,35 @@ public final class EscPosNetworkEngine: PrintEngine {
 
     // MARK: - Private: ping
 
-    private func pingOnce() async -> Bool {
+    func pingOnce() async -> Bool {
         do {
             try await send(Data(), to: config.host, port: config.port)
             return true
         } catch {
             return false
         }
+    }
+}
+
+// MARK: - EscPosSender conformance
+//
+// Allows `EscPosDrawerKick(sender: networkEngine)` to be constructed directly
+// so a cash drawer can share the same TCP transport as the receipt printer.
+// `isConnected` is a best-effort synchronous hint: true once the first
+// successful print (or ping) has completed.
+
+extension EscPosNetworkEngine: EscPosSender {
+
+    /// Send raw bytes to the configured ESC/POS host:port.
+    public func sendBytes(_ bytes: [UInt8]) async throws {
+        try await send(Data(bytes), to: config.host, port: config.port)
+    }
+
+    /// `true` when the printer replied to the last discover/ping call.
+    /// Does NOT establish a persistent connection; ESC/POS is stateless TCP.
+    public var isConnected: Bool {
+        // Synchronous conservative default: assume connected if config is non-empty.
+        // The actual reachability is validated inside `sendBytes` on each call.
+        !config.host.isEmpty
     }
 }

@@ -190,7 +190,11 @@ public struct PosView: View {
                 vm: vm,
                 onCompleted: { result in
                     cashTenderVM = nil
-                    postSale = buildPostSaleViewModel(methodLabel: result.methodLabel, invoiceId: result.invoiceId)
+                    postSale = buildPostSaleViewModel(
+                        methodLabel: result.methodLabel,
+                        methodAmountCents: result.receivedCents,
+                        invoiceId: result.invoiceId
+                    )
                 },
                 onBack: {
                     cashTenderVM = nil
@@ -613,9 +617,16 @@ public struct PosView: View {
     ///   - invoiceId: Server-assigned invoice ID from a completed transaction.
     private func buildPostSaleViewModel(
         methodLabel overrideLabel: String? = nil,
-        invoiceId: Int64 = -1
+        methodAmountCents: Int? = nil,
+        invoiceId: Int64 = -1,
+        orderNumber: String? = nil
     ) -> PosPostSaleViewModel {
-        let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
+        let snapshot = PosReceiptPayloadBuilder.build(
+            cart: cart,
+            methodLabel: overrideLabel,
+            methodAmountCents: methodAmountCents,
+            orderNumber: orderNumber
+        )
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
         let methodLabel: String = overrideLabel ?? {

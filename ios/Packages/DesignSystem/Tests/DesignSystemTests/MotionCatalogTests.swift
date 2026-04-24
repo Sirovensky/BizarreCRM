@@ -90,3 +90,85 @@ struct ReduceMotionFallbackTests {
         #expect(true)
     }
 }
+
+// MARK: - §30 Motion token tests
+
+@Suite("BrandMotion §30 tokens")
+struct BrandMotionSection30Tests {
+
+    @Test("BrandMotion.sheetPresent is defined")
+    func sheetPresentDefined() {
+        let _: Animation = BrandMotion.sheetPresent
+        #expect(true)
+    }
+
+    @Test("BrandMotion.buttonTap is defined")
+    func buttonTapDefined() {
+        let _: Animation = BrandMotion.buttonTap
+        #expect(true)
+    }
+
+    @Test("BrandMotion.listItemAppear is defined")
+    func listItemAppearDefined() {
+        let _: Animation = BrandMotion.listItemAppear
+        #expect(true)
+    }
+
+    @Test("BrandMotion.cardHover is defined")
+    func cardHoverDefined() {
+        let _: Animation = BrandMotion.cardHover
+        #expect(true)
+    }
+
+    // Reduce Motion convenience wrappers
+
+    @Test("ReduceMotionFallback.sheetPresent(reduced:true) returns nil")
+    func sheetPresentReducedNil() {
+        let result = ReduceMotionFallback.sheetPresent(reduced: true)
+        #expect(result == nil)
+    }
+
+    @Test("ReduceMotionFallback.sheetPresent(reduced:false) returns animation")
+    func sheetPresentNotReducedReturnsAnimation() {
+        let result = ReduceMotionFallback.sheetPresent(reduced: false)
+        #expect(result != nil)
+    }
+
+    @Test("ReduceMotionFallback.buttonTap(reduced:true) returns nil")
+    func buttonTapReducedNil() {
+        let result = ReduceMotionFallback.buttonTap(reduced: true)
+        #expect(result == nil)
+    }
+
+    @Test("ReduceMotionFallback.buttonTap(reduced:false) returns animation")
+    func buttonTapNotReducedReturnsAnimation() {
+        let result = ReduceMotionFallback.buttonTap(reduced: false)
+        #expect(result != nil)
+    }
+
+    @Test("ReduceMotionFallback.listItemAppear(reduced:true) returns non-nil fade")
+    func listItemAppearReducedReturnsFade() {
+        let result = ReduceMotionFallback.listItemAppear(reduced: true)
+        let _: Animation = result
+        #expect(true)
+    }
+
+    @Test("ReduceMotionFallback.listItemAppear(reduced:false) returns full animation")
+    func listItemAppearNotReducedReturnsFull() {
+        let result = ReduceMotionFallback.listItemAppear(reduced: false)
+        let _: Animation = result
+        #expect(true)
+    }
+
+    @Test("ReduceMotionFallback.cardHover(reduced:true) returns nil")
+    func cardHoverReducedNil() {
+        let result = ReduceMotionFallback.cardHover(reduced: true)
+        #expect(result == nil)
+    }
+
+    @Test("ReduceMotionFallback.cardHover(reduced:false) returns animation")
+    func cardHoverNotReducedReturnsAnimation() {
+        let result = ReduceMotionFallback.cardHover(reduced: false)
+        #expect(result != nil)
+    }
+}

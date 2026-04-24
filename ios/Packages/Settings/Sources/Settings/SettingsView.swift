@@ -13,6 +13,13 @@ public struct SettingsView: View {
     /// Admin role gate. Caller injects real value; default is false (safe).
     public var isAdmin: Bool
 
+    // MARK: iPad 3-col state
+
+    /// Selected sidebar section on iPad (e.g. "Account", "Organization").
+    @State private var selectedSection: String? = nil
+    /// Selected detail page on iPad — identified by its accessibility id.
+    @State private var selectedPage: String? = nil
+
     public init(onSignOut: (() -> Void)? = nil, isAdmin: Bool = false) {
         self.onSignOut = onSignOut
         self.isAdmin = isAdmin
@@ -23,6 +30,16 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
+        if Platform.isCompact {
+            iPhoneLayout
+        } else {
+            iPadLayout
+        }
+    }
+
+    // MARK: - iPhone layout (unchanged)
+
+    private var iPhoneLayout: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // §19 Settings search — Liquid Glass search field on chrome
@@ -64,6 +81,176 @@ public struct SettingsView: View {
         }
     }
 
+    // MARK: - iPad 3-col layout
+
+    /// Section definitions used in the iPad sidebar.
+    private struct SettingsSection: Identifiable {
+        let id: String
+        let title: String
+        let pages: [SettingsPageEntry]
+    }
+
+    private struct SettingsPageEntry: Identifiable {
+        let id: String     // accessibility identifier
+        let title: String
+        let icon: String
+    }
+
+    private var iPadSections: [SettingsSection] {
+        var sections: [SettingsSection] = [
+            SettingsSection(id: "account", title: "Account", pages: [
+                SettingsPageEntry(id: "settings.profile",       title: "Profile",           icon: "person.circle"),
+                SettingsPageEntry(id: "settings.preferences",   title: "Preferences",       icon: "slider.horizontal.3"),
+            ]),
+            SettingsSection(id: "organization", title: "Organization", pages: [
+                SettingsPageEntry(id: "settings.businessProfile", title: "Business Profile", icon: "building"),
+                SettingsPageEntry(id: "settings.companyInfo",   title: "Company Info",      icon: "building.2"),
+                SettingsPageEntry(id: "settings.tax",           title: "Tax Settings",      icon: "percent"),
+                SettingsPageEntry(id: "settings.hours",         title: "Business Hours",    icon: "clock"),
+                SettingsPageEntry(id: "settings.languageRegion", title: "Language & Region", icon: "globe"),
+            ]),
+            SettingsSection(id: "locations", title: "Locations", pages: [
+                SettingsPageEntry(id: "settings.locations",     title: "Locations",         icon: "mappin.and.ellipse"),
+            ]),
+            SettingsSection(id: "payments", title: "Payments", pages: [
+                SettingsPageEntry(id: "settings.paymentMethods", title: "Payment Methods",  icon: "creditcard"),
+            ]),
+            SettingsSection(id: "integrations", title: "Integrations", pages: [
+                SettingsPageEntry(id: "settings.notifications", title: "Notifications",     icon: "bell"),
+                SettingsPageEntry(id: "settings.smsProvider",   title: "SMS Provider",      icon: "message"),
+            ]),
+            SettingsSection(id: "display", title: "Display", pages: [
+                SettingsPageEntry(id: "settings.appearance",    title: "Appearance",        icon: "paintbrush"),
+            ]),
+            SettingsSection(id: "help", title: "Help", pages: [
+                SettingsPageEntry(id: "settings.helpCenter",    title: "Help Center",       icon: "questionmark.circle"),
+                SettingsPageEntry(id: "settings.bugReport",     title: "Report a Bug",      icon: "ladybug"),
+                SettingsPageEntry(id: "settings.whatsNew",      title: "What's New",        icon: "sparkles"),
+            ]),
+            SettingsSection(id: "app", title: "App", pages: [
+                SettingsPageEntry(id: "settings.syncDiagnostics", title: "Sync Diagnostics", icon: "antenna.radiowaves.left.and.right"),
+                SettingsPageEntry(id: "settings.about",         title: "About",             icon: "info.circle"),
+            ]),
+        ]
+        if isAdmin {
+            sections.append(SettingsSection(id: "admin", title: "Admin", pages: [
+                SettingsPageEntry(id: "settings.tenantAdmin",   title: "Tenant Admin",      icon: "building.columns"),
+                SettingsPageEntry(id: "settings.featureFlags",  title: "Feature Flags",     icon: "flag"),
+            ]))
+        }
+        return sections
+    }
+
+    @ViewBuilder
+    private func iPadDetailView(for pageId: String) -> some View {
+        switch pageId {
+        case "settings.profile":
+            ProfileSettingsPage(api: APIClientHolder.current)
+        case "settings.preferences":
+            PreferencesPage(api: APIClientHolder.current)
+        case "settings.businessProfile":
+            BusinessProfilePage(api: APIClientHolder.current)
+        case "settings.companyInfo":
+            CompanyInfoPage(api: APIClientHolder.current)
+        case "settings.tax":
+            TaxSettingsPage(api: APIClientHolder.current)
+        case "settings.hours":
+            if let api = APIClientHolder.current {
+                BusinessHoursEditorView(viewModel: BusinessHoursEditorViewModel(
+                    repository: LiveHoursRepository(api: api)
+                ))
+            } else {
+                ContentUnavailableView("Not connected", systemImage: "network.slash")
+            }
+        case "settings.languageRegion":
+            LanguageRegionPage(api: APIClientHolder.current)
+        case "settings.locations":
+            if let api = APIClientHolder.current {
+                LocationListView(repo: LiveLocationRepository(api: api))
+            } else {
+                ContentUnavailableView("Not connected", systemImage: "network.slash")
+            }
+        case "settings.paymentMethods":
+            PaymentMethodsPage(api: APIClientHolder.current)
+        case "settings.notifications":
+            NotificationsPage()
+        case "settings.smsProvider":
+            SmsProviderPage(api: APIClientHolder.current)
+        case "settings.appearance":
+            AppearancePage()
+        case "settings.helpCenter":
+            HelpCenterView()
+        case "settings.bugReport":
+            BugReportSheet()
+        case "settings.whatsNew":
+            WhatsNewHelpView()
+        case "settings.syncDiagnostics":
+            SyncDiagnosticsView()
+        case "settings.about":
+            AboutView()
+        case "settings.tenantAdmin":
+            TenantAdminView(api: APIClientHolder.current)
+        case "settings.featureFlags":
+            FeatureFlagsView()
+        default:
+            ContentUnavailableView("Select a setting", systemImage: "gear")
+        }
+    }
+
+    private var iPadLayout: some View {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            // Column 1 — Section sidebar
+            List(iPadSections, selection: $selectedSection) { section in
+                Label(section.title, systemImage: sectionIcon(section.id))
+                    .tag(section.id)
+                    .accessibilityIdentifier("settings.sidebar.\(section.id)")
+            }
+            .navigationTitle("Settings")
+            .listStyle(.sidebar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        } content: {
+            // Column 2 — Page list for selected section
+            if let sectionId = selectedSection,
+               let section = iPadSections.first(where: { $0.id == sectionId }) {
+                List(section.pages, selection: $selectedPage) { page in
+                    Label(page.title, systemImage: page.icon)
+                        .tag(page.id)
+                        .hoverEffect(.highlight)
+                        .accessibilityIdentifier(page.id)
+                }
+                .navigationTitle(section.title)
+                .listStyle(.insetGrouped)
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            } else {
+                ContentUnavailableView("Select a category", systemImage: "sidebar.left")
+            }
+        } detail: {
+            // Column 3 — Detail page
+            NavigationStack {
+                if let pageId = selectedPage {
+                    iPadDetailView(for: pageId)
+                } else {
+                    ContentUnavailableView("Select a setting", systemImage: "gear")
+                }
+            }
+        }
+    }
+
+    private func sectionIcon(_ id: String) -> String {
+        switch id {
+        case "account":       return "person.circle"
+        case "organization":  return "building.2"
+        case "locations":     return "mappin.and.ellipse"
+        case "payments":      return "creditcard"
+        case "integrations":  return "antenna.radiowaves.left.and.right"
+        case "display":       return "paintbrush"
+        case "help":          return "questionmark.circle"
+        case "app":           return "apps.iphone"
+        case "admin":         return "building.columns"
+        default:              return "gear"
+        }
+    }
+
     // MARK: - Main list
 
     private var mainList: some View {
@@ -76,10 +263,24 @@ public struct SettingsView: View {
                     Label("Profile", systemImage: "person.circle")
                 }
                 .accessibilityIdentifier("settings.profile")
+
+                NavigationLink {
+                    PreferencesPage(api: APIClientHolder.current)
+                } label: {
+                    Label("Preferences", systemImage: "slider.horizontal.3")
+                }
+                .accessibilityIdentifier("settings.preferences")
             }
 
             // §19.5 Organization
             Section("Organization") {
+                NavigationLink {
+                    BusinessProfilePage(api: APIClientHolder.current)
+                } label: {
+                    Label("Business Profile", systemImage: "building")
+                }
+                .accessibilityIdentifier("settings.businessProfile")
+
                 NavigationLink {
                     CompanyInfoPage(api: APIClientHolder.current)
                 } label: {

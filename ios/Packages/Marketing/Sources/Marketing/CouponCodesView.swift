@@ -63,6 +63,7 @@ public struct CouponCodesView: View {
         .navigationTitle("Coupon Codes")
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         #endif
         .toolbar { addButton }
         .sheet(isPresented: $showCreate) {

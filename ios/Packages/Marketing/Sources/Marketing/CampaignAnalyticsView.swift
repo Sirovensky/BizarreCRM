@@ -72,6 +72,7 @@ public struct CampaignAnalyticsView: View {
         .navigationTitle("Analytics")
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         #endif
         .task { await vm.load() }
         .refreshable { await vm.load() }
