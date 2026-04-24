@@ -153,18 +153,20 @@
       "rail items cart inspector";
   }
   .ipad-body.has-inspector .items {
-    filter: blur(6px) saturate(0.75);
-    opacity: 0.55;
+    filter: blur(8px) saturate(0.75);
+    opacity: 0.42;
     pointer-events: none;
     transition: filter 180ms ease-out, opacity 180ms ease-out;
   }
   .ipad-body.has-inspector .items::after {
     content: ""; position: absolute; inset: 0;
-    background: linear-gradient(180deg, rgba(14,12,10,0.2), rgba(14,12,10,0.35));
+    background: linear-gradient(180deg, rgba(12,11,9,0.35), rgba(12,11,9,0.55));
     pointer-events: none;
   }
   .ipad-body.has-inspector .cart {
-    opacity: 0.88;
+    filter: blur(3px) saturate(0.8);
+    opacity: 0.65;
+    pointer-events: none;
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -558,9 +560,8 @@
     letter-spacing: -0.01em;
     display: flex; align-items: center; justify-content: center; gap: 10px;
     box-shadow:
-      inset 0 1.5px 0 rgba(255,255,255,0.90),
-      0 0 40px rgba(253,238,208,0.18),
-      0 14px 32px rgba(253,238,208,0.28);
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
     min-height: 56px;
   }
   .tender-btn .tb-amount {
@@ -733,17 +734,16 @@
     color: var(--on-primary);
     border-color: var(--primary);
     box-shadow:
-      inset 0 1.5px 0 rgba(255,255,255,0.92),
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
       inset 0 -2px 0 rgba(43,20,0,0.12),
-      0 0 40px rgba(253,238,208,0.20),
-      0 16px 36px rgba(253,238,208,0.32),
-      0 0 0 1px rgba(253,238,208,0.60);
+      0 6px 16px rgba(253,238,208,0.10),
+      0 0 0 1px rgba(253,238,208,0.40);
   }
   .method.selected::before { background: linear-gradient(140deg, rgba(255,255,255,0.60), rgba(253,238,208,0.30) 50%, rgba(255,255,255,0.40) 100%); }
-  /* Cream halo bloom behind selected */
+  /* Cream halo bloom behind selected — dimmed */
   .method.selected::after {
     content: ""; position: absolute; inset: -10px; border-radius: 28px;
-    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.18), transparent 70%);
+    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.08), transparent 70%);
     pointer-events: none; z-index: -1;
   }
   .method .m-ico { font-size: 30px; margin-bottom: 7px; }
@@ -817,13 +817,13 @@
   }
   .quick-amount.selected {
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.32), transparent 65%),
-      rgba(253,238,208,0.10);
-    border-color: rgba(253,238,208,0.55);
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.16), transparent 65%),
+      rgba(253,238,208,0.06);
+    border-color: rgba(253,238,208,0.40);
     color: var(--primary);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.28),
-      0 4px 14px rgba(253,238,208,0.14);
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      0 4px 14px rgba(253,238,208,0.07);
   }
 
   .numpad {
@@ -836,7 +836,7 @@
     border-radius: 14px;
     position: relative;
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.14), transparent 60%),
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.05), transparent 60%),
       rgba(255,255,255,0.055);
     border: 1px solid rgba(255,255,255,0.13);
     backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -899,9 +899,8 @@
     letter-spacing: -0.01em;
     border: 1px solid rgba(255,255,255,0.28);
     box-shadow:
-      inset 0 1.5px 0 rgba(255,255,255,0.88),
-      0 0 36px rgba(253,238,208,0.18),
-      0 10px 26px rgba(253,238,208,0.28);
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .tender-footer .tf-primary .tb-amount {
@@ -1086,7 +1085,7 @@
   }
   .loyalty-celebration .lc-star {
     font-size: 32px;
-    filter: drop-shadow(0 0 10px rgba(253,238,208,0.55));
+    filter: drop-shadow(0 0 10px rgba(253,238,208,0.28));
   }
   .loyalty-celebration .lc-progress {
     height: 5px; border-radius: 3px;
@@ -1099,7 +1098,7 @@
     height: 100%; width: 57%;
     background: linear-gradient(90deg, var(--primary), var(--primary-bright));
     border-radius: 3px;
-    box-shadow: 0 0 10px rgba(253,238,208,0.50);
+    box-shadow: 0 0 10px rgba(253,238,208,0.25);
   }
 
   .receipt-actions {
@@ -1163,14 +1162,66 @@
     --on:             #1a1816;
     --muted:          #5a5550;
     --muted-2:        #8a847c;
-    --primary:        #fdeed0;
-    --primary-bright: #fff7e0;
-    --primary-soft:   rgba(253, 238, 208, 0.30);
-    --on-primary:     #2b1400;
+    /* Light primary flips from cream to deep warm orange —
+       cream-on-cream is invisible. Cream stays dark-mode primary. */
+    --primary:        #c2410c;
+    --primary-bright: #e2600f;
+    --primary-soft:   rgba(194, 65, 12, 0.12);
+    --on-primary:     #ffffff;
     --success:        #1a7c4d;
     --warning:        #a15b00;
     --error:          #b72a3e;
-    --teal:           #2a7a86;
+    --teal:           #0b5260;
+  }
+  .light-mode .t-price,
+  .light-mode .cr-price,
+  .light-mode .cp,
+  .light-mode .sp-total,
+  .light-mode .total-line .tl-amount,
+  .light-mode .cash-panel .cp-amount,
+  .light-mode .cash-panel-big .cp-amount,
+  .light-mode .ttotal .ta,
+  .light-mode .tender-hero .th-amount,
+  .light-mode .rh-amount { color: #7a3a00 !important; }
+  .light-mode .tender-btn,
+  .light-mode .btn,
+  .light-mode .tf-primary,
+  .light-mode .insp-btn.primary,
+  .light-mode .chip.primary,
+  .light-mode .method.selected,
+  .light-mode .quick-amount.selected,
+  .light-mode .filter-pill.active,
+  .light-mode .c-pill.active,
+  .light-mode .share-tile.primary,
+  .light-mode .tb-btn.primary,
+  .light-mode .d-btn.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: #c2410c !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 16px rgba(194,65,12,0.18) !important;
+  }
+  .light-mode .tender-btn .tb-amount,
+  .light-mode .tf-primary .tb-amount { color: #ffffff !important; }
+  .light-mode .brand-mark {
+    background: linear-gradient(140deg, #e2600f, #c2410c 60%) !important;
+    color: #ffffff !important;
+  }
+  .light-mode .rail-item.active {
+    background: rgba(194,65,12,0.14) !important;
+    color: #c2410c !important;
+  }
+  .light-mode .path-tile.primary {
+    border-color: rgba(194,65,12,0.5) !important;
+    background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid) !important;
+  }
+  .light-mode .path-tile.primary .pt-ico {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: rgba(194,65,12,0.4) !important;
+  }
+  .light-mode .t-badge {
+    background: #c2410c !important;
+    color: #ffffff !important;
   }
   .light-mode .ipad {
     border-color: #c8c4be;
@@ -1336,12 +1387,38 @@
   }
   .light-mode .receipt-actions .btn-destr { background: rgba(183,42,62,0.08); border-color: rgba(183,42,62,0.28); color: var(--error); }
   .light-mode .section-label { color: var(--muted-2); }
-  .light-mode .frame-caption { color: var(--muted); }
-  .light-mode .sect-label { color: var(--muted-2); }
+  .light-mode .frame-caption { color: #5a5550 !important; }
+  .light-mode .sect-label { color: #5a5550 !important; }
   .light-mode .intro code { background: rgba(30,24,16,0.06); color: #7a5200; }
   .light-mode .frame-caption code { background: rgba(30,24,16,0.05); color: #7a5200; }
   .light-mode .meta { color: var(--muted); }
   .light-mode .meta code { background: rgba(30,24,16,0.05); color: #7a5200; }
+
+  /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
+  .light-mode h1 {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: #1a1816 !important;
+  }
+  .light-mode .intro { color: #5a5550 !important; }
+  .light-mode .path-tile .pt-name { color: #1a1816 !important; }
+  .light-mode .path-hero h2 { color: #1a1816 !important; background: none !important; -webkit-background-clip: unset !important; background-clip: unset !important; }
+  .light-mode .topbar .t-title { color: #1a1816 !important; }
+  .light-mode .cart-head .ch-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cn { color: #1a1816 !important; }
+  .light-mode .cart-row .cp { color: #7a5200 !important; }
+  .light-mode .tile .t-name { color: #1a1816 !important; }
+  .light-mode .tile .t-price { color: #7a5200 !important; }
+  .light-mode .ttotal .ta { color: #1a1816 !important; }
+  .light-mode .tender-hero .th-amount { color: #1a1816 !important; }
+  .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
+  .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
+  .light-mode .sheet-title { color: #1a1816 !important; }
+  .light-mode .inspector-head .ih-title { color: #1a1816 !important; }
+  .light-mode .inspector-row .ir-val { color: #1a1816 !important; }
+  .light-mode .smart-tile .st-name { color: #1a1816 !important; }
+  .light-mode .chip.primary { color: #2b1400 !important; }
 </style>
 </head>
 <body>
@@ -1757,7 +1834,7 @@
         <div class="ttotal"><span class="tl">Estimate</span><span class="ta" style="font-size:24px;">$327</span></div>
       </div>
       <button class="tender-btn disabled" style="opacity:0.55; font-size:13px;">
-        <span>Use inspector to proceed</span>
+        <span>Quote in progress…</span>
       </button>
     </div>
 
@@ -1893,7 +1970,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════
      2 — Active cart · customer attached · dynamic loyalty tile in Smart Grid
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="frame-caption">2 · Active cart · customer attached · Smart Grid shows ready-for-pickup shortcut</div>
+<div class="frame-caption">2 · Active cart · customer attached · catalog filtered · coupon + tender pinned</div>
 <div class="stage">
 <div class="ipad">
   <div class="cam"></div>
@@ -1945,15 +2022,6 @@
       </div>
 
       <div class="catalog">
-        <!-- Smart tile — ready-for-pickup shortcut -->
-        <div class="smart-tile">
-          <div class="st-ico">✓</div>
-          <div style="flex: 1;">
-            <div class="st-name">#4829 · Ready for pickup</div>
-            <div class="st-sub">Her last ticket · $274.51 due · tap to open</div>
-          </div>
-        </div>
-
         <div class="tile" style="border-color: rgba(253,238,208,0.38);">
           <div class="t-badge">In cart</div>
           <div class="t-icon">🔧</div>
@@ -3109,7 +3177,7 @@
         <div class="ttotal"><span class="tl">Estimate</span><span class="ta" style="font-size:24px;">$327</span></div>
       </div>
       <button class="tender-btn disabled" style="opacity:0.55; font-size:13px;">
-        <span>Use inspector to proceed</span>
+        <span>Quote in progress…</span>
       </button>
     </div>
 
@@ -3245,7 +3313,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════
      2 — Active cart · customer attached · dynamic loyalty tile in Smart Grid
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="frame-caption">Light · 2 · Active cart · customer attached · Smart Grid shows ready-for-pickup shortcut</div>
+<div class="frame-caption">Light · 2 · Active cart · customer attached · catalog filtered · coupon + tender pinned</div>
 <div class="stage">
 <div class="ipad">
   <div class="cam"></div>
@@ -3297,15 +3365,6 @@
       </div>
 
       <div class="catalog">
-        <!-- Smart tile — ready-for-pickup shortcut -->
-        <div class="smart-tile">
-          <div class="st-ico">✓</div>
-          <div style="flex: 1;">
-            <div class="st-name">#4829 · Ready for pickup</div>
-            <div class="st-sub">Her last ticket · $274.51 due · tap to open</div>
-          </div>
-        </div>
-
         <div class="tile" style="border-color: rgba(253,238,208,0.38);">
           <div class="t-badge">In cart</div>
           <div class="t-icon">🔧</div>

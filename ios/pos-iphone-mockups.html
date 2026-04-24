@@ -230,7 +230,7 @@
     font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.75),
-      0 10px 26px rgba(253,238,208,0.22);
+      0 10px 26px rgba(253,238,208,0.10);
   }
   .btn.secondary {
     background: rgba(255,255,255,0.05);
@@ -442,15 +442,14 @@
     font-size: 17px; font-weight: 800;
     letter-spacing: -0.01em;
     box-shadow:
-      inset 0 1.5px 0 rgba(255,255,255,0.90),
-      0 0 40px rgba(253,238,208,0.20),
-      0 14px 32px rgba(253,238,208,0.28);
+      inset 0 1.5px 0 rgba(255,255,255,0.50),
+      0 8px 20px rgba(253,238,208,0.12);
     min-height: 56px;
   }
   .tender-btn:active {
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.60),
-      0 6px 16px rgba(253,238,208,0.18);
+      inset 0 1px 0 rgba(255,255,255,0.40),
+      0 4px 10px rgba(253,238,208,0.10);
     transform: scale(0.99);
   }
   .tender-btn .tb-amount {
@@ -604,17 +603,17 @@
     color: var(--on-primary);
     border-color: var(--primary);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.85),
-      0 12px 28px rgba(253,238,208,0.28),
-      0 0 0 1px rgba(253,238,208,0.5);
+      inset 0 1px 0 rgba(255,255,255,0.50),
+      0 6px 16px rgba(253,238,208,0.10),
+      0 0 0 1px rgba(253,238,208,0.35);
   }
   .method.selected::before {
     background: linear-gradient(140deg, rgba(255,255,255,0.55), rgba(253,238,208,0.25) 50%, rgba(255,255,255,0.35) 100%);
   }
-  /* Cream halo behind selected tile */
+  /* Cream halo behind selected tile — dimmed */
   .method.selected::after {
     content: ""; position: absolute; inset: -8px; border-radius: 24px;
-    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.20), transparent 70%);
+    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.08), transparent 70%);
     pointer-events: none; z-index: -1;
   }
   .method .m-icon { font-size: 24px; margin-bottom: 5px; }
@@ -649,13 +648,13 @@
   }
   .quick-amount.selected {
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.30), transparent 65%),
-      rgba(253,238,208,0.10);
-    border-color: rgba(253,238,208,0.55);
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.15), transparent 65%),
+      rgba(253,238,208,0.06);
+    border-color: rgba(253,238,208,0.40);
     color: var(--primary);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.30),
-      0 4px 12px rgba(253,238,208,0.12);
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      0 4px 12px rgba(253,238,208,0.06);
   }
 
   /* Numpad — tactile Liquid Glass keys */
@@ -669,7 +668,7 @@
     border-radius: 14px;
     position: relative;
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.14), transparent 60%),
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.05), transparent 60%),
       rgba(255,255,255,0.055);
     border: 1px solid rgba(255,255,255,0.13);
     backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -906,7 +905,7 @@
   }
   .loyalty-celebration .lc-star {
     font-size: 28px;
-    filter: drop-shadow(0 0 8px rgba(253,238,208,0.50));
+    filter: drop-shadow(0 0 8px rgba(253,238,208,0.25));
   }
   .loyalty-celebration .lc-progress {
     height: 4px; border-radius: 2px;
@@ -919,7 +918,7 @@
     height: 100%; width: 57%;
     background: linear-gradient(90deg, var(--primary), var(--primary-bright));
     border-radius: 2px;
-    box-shadow: 0 0 8px rgba(253,238,208,0.45);
+    box-shadow: 0 0 8px rgba(253,238,208,0.22);
   }
 
   /* Dynamic Island live activity */
@@ -960,20 +959,72 @@
     --bg:             #f5f2ed;
     --surface-solid:  #ffffff;
     --surface-elev:   #faf7f2;
-    --surface-glass:  rgba(255, 250, 245, 0.75);
+    --surface-glass:  rgba(255, 250, 245, 0.78);
     --outline:        rgba(30, 24, 16, 0.10);
     --outline-bright: rgba(30, 24, 16, 0.18);
     --on:             #1a1816;
     --muted:          #5a5550;
     --muted-2:        #8a847c;
-    --primary:        #fdeed0;
-    --primary-bright: #fff7e0;
-    --primary-soft:   rgba(253, 238, 208, 0.30);
-    --on-primary:     #2b1400;
+    /* Light-mode primary flips from cream to deep warm orange —
+       cream-on-cream is invisible. Cream stays the dark-mode primary. */
+    --primary:        #c2410c;
+    --primary-bright: #e2600f;
+    --primary-soft:   rgba(194, 65, 12, 0.12);
+    --on-primary:     #ffffff;
     --success:        #1a7c4d;
     --warning:        #a15b00;
     --error:          #b72a3e;
-    --teal:           #2a7a86;
+    --teal:           #0b5260;
+  }
+  /* Override color mappings that hardcoded cream in light mode */
+  .light-mode .t-price,
+  .light-mode .cr-price,
+  .light-mode .cp,
+  .light-mode .sp-total,
+  .light-mode .pickup-hero b,
+  .light-mode .total-line .tl-amount,
+  .light-mode .cash-panel .cp-amount,
+  .light-mode .cash-panel-big .cp-amount,
+  .light-mode .ttotal .ta,
+  .light-mode .tender-hero .th-amount,
+  .light-mode .rh-amount {
+    color: #7a3a00 !important;
+  }
+  /* Tender CTA: orange fill, white text */
+  .light-mode .tender-btn,
+  .light-mode .btn,
+  .light-mode .tf-primary,
+  .light-mode .insp-btn.primary,
+  .light-mode .chip.primary,
+  .light-mode .method.selected,
+  .light-mode .quick-amount.selected,
+  .light-mode .filter-chip.active,
+  .light-mode .c-pill.active,
+  .light-mode .share-tile.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: #c2410c !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 16px rgba(194,65,12,0.18) !important;
+  }
+  .light-mode .tender-btn .tb-amount { color: #ffffff !important; }
+  .light-mode .p-icon.primary,
+  .light-mode .path-row.primary .p-icon,
+  .light-mode .path-tile.primary .pt-ico,
+  .light-mode .row-card.primary .icon.primary,
+  .light-mode .icon.primary {
+    background: linear-gradient(180deg, #e2600f, #c2410c) !important;
+    color: #ffffff !important;
+    border-color: rgba(194,65,12,0.4) !important;
+  }
+  .light-mode .path-row.primary,
+  .light-mode .path-tile.primary {
+    border-color: rgba(194,65,12,0.5) !important;
+    background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid) !important;
+  }
+  /* Badges: cream-tinted backgrounds become orange-tinted */
+  .light-mode .t-badge {
+    background: #c2410c !important;
+    color: #ffffff !important;
   }
   .light-mode .phone {
     border-color: #c8c4be;
@@ -1099,11 +1150,33 @@
   }
   .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08); }
   .light-mode .section-label { color: var(--muted-2); }
-  .light-mode .frame-caption { color: var(--muted); }
-  .light-mode .sect-label { color: var(--muted-2); }
+  .light-mode .frame-caption { color: #5a5550 !important; }
+  .light-mode .sect-label { color: #5a5550 !important; }
   .light-mode .intro code { background: rgba(30,24,16,0.06); color: #7a5200; }
   .light-mode .meta { color: var(--muted); }
   .light-mode .meta code { background: rgba(30,24,16,0.05); color: #7a5200; }
+
+  /* ─── Fix 1: Light-mode text visibility — explicit overrides ─────────── */
+  .light-mode h1 {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: #1a1816 !important;
+  }
+  .light-mode .intro { color: #5a5550 !important; }
+  .light-mode .nav-title { color: #1a1816 !important; }
+  .light-mode .path-row .p-name { color: #1a1816 !important; }
+  .light-mode .cart-head .ch-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cn { color: #1a1816 !important; }
+  .light-mode .cart-row .cr-name { color: #1a1816 !important; }
+  .light-mode .cart-row .cr-price { color: #7a5200 !important; }
+  .light-mode .tile .t-name { color: #1a1816 !important; }
+  .light-mode .tile .t-price { color: #7a5200 !important; }
+  .light-mode .total-line .tl-amount { color: #1a1816 !important; }
+  .light-mode .receipt-hero .rh-amount { color: #1a1816 !important; }
+  .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
+  .light-mode .sheet-title { color: #1a1816 !important; }
+  .light-mode .chip.primary { color: #2b1400 !important; }
 </style>
 </head>
 <body>
