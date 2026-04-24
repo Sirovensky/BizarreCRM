@@ -83,7 +83,7 @@ public final class ImportWizardViewModel {
 
     // Progress step -- job polling + checkpoint
     public internal(set) var job: ImportJob? = nil
-    public private(set) var rowErrors: [ImportRowError] = []
+    public internal(set) var rowErrors: [ImportRowError] = []
     public internal(set) var checkpoint: ImportCheckpoint? = nil
 
     // Rollback state
