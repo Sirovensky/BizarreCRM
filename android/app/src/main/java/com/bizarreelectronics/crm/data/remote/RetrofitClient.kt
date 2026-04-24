@@ -666,4 +666,6 @@ object RetrofitClient {
     @Provides @Singleton fun providePaymentLinkApi(retrofit: Retrofit): PaymentLinkApi = retrofit.create(PaymentLinkApi::class.java)
     // §42 — voice / calls; all endpoints 404-tolerant
     @Provides @Singleton fun provideVoiceApi(retrofit: Retrofit): VoiceApi = retrofit.create(VoiceApi::class.java)
+    // §47 — team chat rooms + messages + reactions; all endpoints 404-tolerant
+    @Provides @Singleton fun provideTeamChatApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.TeamChatApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.TeamChatApi::class.java)
 }

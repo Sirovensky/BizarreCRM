@@ -383,6 +383,13 @@ sealed class Screen(val route: String) {
 
     // §40 — Gift Cards / Store Credit screen.
     data object GiftCards : Screen("gift-cards")
+
+    // §47 — Team Chat rooms list + thread screens.
+    data object TeamChat : Screen("team-chat")
+    data object TeamChatThread : Screen("team-chat/{roomId}") {
+        fun createRoute(roomId: String, roomName: String = "") =
+            "team-chat/${android.net.Uri.encode(roomId)}?roomName=${android.net.Uri.encode(roomName)}"
+    }
 }
 
 data class BottomNavItem(
@@ -1952,6 +1959,29 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+
+            // ─── §47 Team Chat ────────────────────────────────────────────────
+            composable(Screen.TeamChat.route) {
+                com.bizarreelectronics.crm.ui.screens.team.TeamChatListScreen(
+                    onRoomClick = { roomId, roomName ->
+                        navController.navigate(Screen.TeamChatThread.createRoute(roomId, roomName))
+                    },
+                )
+            }
+            composable(
+                route = Screen.TeamChatThread.route + "?roomName={roomName}",
+                arguments = listOf(
+                    navArgument("roomId") { type = NavType.StringType },
+                    navArgument("roomName") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.team.TeamChatThreadScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
@@ -2043,6 +2073,8 @@ fun MoreScreen(
                 MoreItem(Icons.Default.PointOfSale,     "Cash Register", Screen.CashRegister.route),
                 // §40 — Gift Cards / Store Credit
                 MoreItem(Icons.Default.CardGiftcard,    "Gift Cards",    Screen.GiftCards.route),
+                // §47 — Team Chat internal messaging
+                MoreItem(Icons.Default.Forum,           "Team Chat",     Screen.TeamChat.route),
             ),
         ),
         MoreSection(
