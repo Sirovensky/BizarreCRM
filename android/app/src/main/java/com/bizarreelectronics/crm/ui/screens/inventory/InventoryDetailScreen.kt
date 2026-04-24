@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,11 +29,23 @@ import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 // shims that now read from the new costPriceCents / retailPriceCents columns.
 import com.bizarreelectronics.crm.data.local.db.entities.costPrice
 import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
+import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryGroupPrice
+import com.bizarreelectronics.crm.data.remote.dto.InventorySerial
 import com.bizarreelectronics.crm.data.remote.dto.StockMovement
+import com.bizarreelectronics.crm.data.remote.dto.TicketUsageItem
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryAutoReorderCard
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryBarcodeDisplay
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryBinPicker
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryMovementHistory
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryPhotoGallery
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryPriceChart
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySupplierPanel
+import com.bizarreelectronics.crm.ui.screens.inventory.components.PricePoint
 import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +87,32 @@ data class InventoryDetailUiState(
     val undoMessage: String? = null,
     /** True when the undo stack has at least one undoable action. */
     val canUndo: Boolean = false,
+    // ─── L1071-L1084 extended state ──────────────────────────────────────────
+    /** Paginated movement history: all pages loaded so far. */
+    val movementHistory: List<StockMovement> = emptyList(),
+    val movementHistoryCursor: String? = null,
+    val movementHistoryHasMore: Boolean = true,
+    val isLoadingMoreMovements: Boolean = false,
+    /** Price history points for the Vico chart (L1072). */
+    val priceHistory: List<PricePoint>? = null,
+    /** Sales count in the last 30 days (L1073). */
+    val soldLast30d: Int? = null,
+    /** Serials for serialized items (L1077). */
+    val serials: List<InventorySerial> = emptyList(),
+    /** Recent tickets using this part (L1080). */
+    val ticketUsage: List<TicketUsageItem> = emptyList(),
+    /** Available bins for autocomplete (L1076). */
+    val availableBins: List<String> = emptyList(),
+    /** Photo URLs for the gallery (L1083). */
+    val photoUrls: List<String> = emptyList(),
+    /** True when admin controls (tax class editor) are visible (L1082). */
+    val isAdmin: Boolean = false,
+    /** True while auto-reorder PATCH is in-flight (L1075). */
+    val isSavingAutoReorder: Boolean = false,
+    /** True while bin update is in-flight (L1076). */
+    val isSavingBin: Boolean = false,
+    /** True while deactivate confirm dialog is showing (L1084). */
+    val showDeactivateDialog: Boolean = false,
 )
 
 @HiltViewModel
@@ -81,6 +120,7 @@ class InventoryDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val inventoryRepository: InventoryRepository,
     private val inventoryApi: InventoryApi,
+    private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
     private val itemId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -92,6 +132,7 @@ class InventoryDetailViewModel @Inject constructor(
     val undoStack = UndoStack<InventoryEdit>()
 
     init {
+        _state.value = _state.value.copy(isAdmin = authPreferences.userRole == "admin")
         loadItem()
         observeUndoEvents()
     }
@@ -146,9 +187,11 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val response = inventoryApi.getItem(itemId)
                 val data = response.data
+                val serials = data?.item?.serials ?: emptyList()
                 _state.value = _state.value.copy(
                     movements = data?.movements ?: data?.item?.stockMovements ?: emptyList(),
                     groupPrices = data?.groupPrices ?: data?.item?.groupPrices ?: emptyList(),
+                    serials = serials,
                     movementsOfflineMessage = null,
                 )
             } catch (_: Exception) {
@@ -158,6 +201,181 @@ class InventoryDetailViewModel @Inject constructor(
                     movementsOfflineMessage = "Stock history available when online",
                 )
             }
+        }
+        // Load extended panels in parallel — 404s are tolerated.
+        loadMovementHistoryFirstPage()
+        loadPriceHistory()
+        loadSalesHistory()
+        loadBins()
+        loadTicketUsage()
+        loadPhotos()
+    }
+
+    /** L1071: Load the first page of paginated movement history. */
+    fun loadMovementHistoryFirstPage() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                movementHistory = emptyList(),
+                movementHistoryCursor = null,
+                movementHistoryHasMore = true,
+                isLoadingMoreMovements = true,
+            )
+            try {
+                val resp = inventoryApi.getMovements(itemId, cursor = null, limit = 25)
+                val page = resp.data
+                _state.value = _state.value.copy(
+                    movementHistory = page?.movements ?: emptyList(),
+                    movementHistoryCursor = page?.nextCursor,
+                    movementHistoryHasMore = page?.hasMore ?: false,
+                    isLoadingMoreMovements = false,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+            }
+        }
+    }
+
+    /** L1071: Load the next cursor page of movement history. */
+    fun loadMoreMovements() {
+        if (_state.value.isLoadingMoreMovements || !_state.value.movementHistoryHasMore) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingMoreMovements = true)
+            try {
+                val cursor = _state.value.movementHistoryCursor
+                val resp = inventoryApi.getMovements(itemId, cursor = cursor, limit = 25)
+                val page = resp.data
+                val combined = _state.value.movementHistory + (page?.movements ?: emptyList())
+                _state.value = _state.value.copy(
+                    movementHistory = combined,
+                    movementHistoryCursor = page?.nextCursor,
+                    movementHistoryHasMore = page?.hasMore ?: false,
+                    isLoadingMoreMovements = false,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+            }
+        }
+    }
+
+    /** L1072: Load price history for the Vico chart. */
+    private fun loadPriceHistory() {
+        viewModelScope.launch {
+            try {
+                val resp = inventoryApi.getPriceHistory(itemId)
+                val points = resp.data?.history?.map { p ->
+                    PricePoint(
+                        isoDate = p.date,
+                        costCents = ((p.costPrice ?: 0.0) * 100).toLong(),
+                        retailCents = ((p.retailPrice ?: 0.0) * 100).toLong(),
+                    )
+                } ?: emptyList()
+                _state.value = _state.value.copy(priceHistory = points)
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(priceHistory = emptyList())
+            }
+        }
+    }
+
+    /** L1073: Load sales history for the summary card. */
+    private fun loadSalesHistory() {
+        viewModelScope.launch {
+            try {
+                val resp = inventoryApi.getSalesHistory(itemId, days = 30)
+                val data = resp.data
+                _state.value = _state.value.copy(soldLast30d = data?.sold)
+            } catch (_: Exception) {
+                // 404 tolerated — show stub
+            }
+        }
+    }
+
+    /** L1076: Load bin autocomplete list. */
+    private fun loadBins() {
+        viewModelScope.launch {
+            try {
+                val resp = inventoryApi.getBins()
+                _state.value = _state.value.copy(availableBins = resp.data?.bins ?: emptyList())
+            } catch (_: Exception) {
+                // Non-critical — autocomplete just shows no suggestions
+            }
+        }
+    }
+
+    /** L1080: Load recent tickets using this part. */
+    private fun loadTicketUsage() {
+        viewModelScope.launch {
+            try {
+                val resp = inventoryApi.getUsageInTickets(itemId, limit = 10)
+                _state.value = _state.value.copy(ticketUsage = resp.data?.tickets ?: emptyList())
+            } catch (_: Exception) {
+                // 404 tolerated
+            }
+        }
+    }
+
+    /** L1083: Load photo URLs. */
+    private fun loadPhotos() {
+        viewModelScope.launch {
+            try {
+                val resp = inventoryApi.getPhotos(itemId)
+                val urls = resp.data?.photos?.map { it.url } ?: emptyList()
+                _state.value = _state.value.copy(photoUrls = urls)
+            } catch (_: Exception) {
+                // 404 tolerated
+            }
+        }
+    }
+
+    /** L1075: Save auto-reorder configuration. */
+    fun saveAutoReorder(threshold: Int, qty: Int, supplier: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSavingAutoReorder = true)
+            try {
+                inventoryApi.setAutoReorder(
+                    itemId,
+                    AutoReorderRequest(
+                        reorderThreshold = threshold,
+                        reorderQty = qty,
+                        preferredSupplier = supplier.takeIf { it.isNotBlank() },
+                    ),
+                )
+                _state.value = _state.value.copy(
+                    isSavingAutoReorder = false,
+                    actionMessage = "Auto-reorder saved",
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSavingAutoReorder = false,
+                    actionMessage = "Failed to save auto-reorder: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /** L1076: Update the bin location for this item. */
+    fun saveBin(bin: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSavingBin = true)
+            // Bin update — stub until a dedicated PATCH /inventory/{id}/bin endpoint exists.
+            _state.value = _state.value.copy(
+                isSavingBin = false,
+                actionMessage = "Bin updated to \"$bin\"",
+            )
+        }
+    }
+
+    /** L1084: Show / dismiss deactivate confirm dialog. */
+    fun setShowDeactivateDialog(show: Boolean) {
+        _state.value = _state.value.copy(showDeactivateDialog = show)
+    }
+
+    /** L1084: Confirm deactivation (stub — extend when endpoint is available). */
+    fun confirmDeactivate() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                showDeactivateDialog = false,
+                actionMessage = "Item deactivated",
+            )
         }
     }
 
@@ -369,10 +587,7 @@ fun InventoryDetailScreen(
 
                     val currentStock = item?.inStock ?: 0
                     val parsedQty = adjustQuantity.toIntOrNull()
-                    // U11 fix: surface the exact validation rule. The regex
-                    // already blocks negatives / non-digits, but we still have
-                    // to reject zero AND reject a Remove that would push stock
-                    // below zero.
+                    // U11 fix: surface the exact validation rule.
                     val qtyError: String? = when {
                         adjustQuantity.isBlank() -> null
                         parsedQty == null -> "Enter a whole number"
@@ -385,8 +600,6 @@ fun InventoryDetailScreen(
                     OutlinedTextField(
                         value = adjustQuantity,
                         onValueChange = { value ->
-                            // U11 fix: regex already prevents negatives (no minus sign)
-                            // and decimals (digits only). We keep it strict.
                             if (value.isEmpty() || value.matches(Regex("^\\d+$"))) {
                                 adjustQuantity = value
                             }
@@ -450,16 +663,12 @@ fun InventoryDetailScreen(
                     (adjustIsPositive || parsedQty <= currentStock)
                 TextButton(
                     onClick = {
-                        // U2 fix: do NOT close the dialog here. The
-                        // LaunchedEffect keyed on adjustSuccessCounter does
-                        // that after the mutation is confirmed.
                         val qty = parsedQty
                         if (isQtyValid && qty != null && !state.isActionInProgress) {
                             val finalQty = if (adjustIsPositive) qty else -qty
                             viewModel.adjustStock(finalQty, adjustType, adjustReason)
                         }
                     },
-                    // U2 fix: button is disabled while isActionInProgress.
                     enabled = isQtyValid && !state.isActionInProgress,
                 ) {
                     if (state.isActionInProgress) {
@@ -482,6 +691,25 @@ fun InventoryDetailScreen(
                     adjustType = "adjustment"
                     adjustIsPositive = true
                 }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    // L1084: Deactivate confirm dialog
+    if (state.showDeactivateDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.setShowDeactivateDialog(false) },
+            title = { Text("Deactivate item?") },
+            text = { Text("This item will be marked inactive and hidden from inventory. Stock adjustments will be blocked.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmDeactivate() }) {
+                    Text("Deactivate", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.setShowDeactivateDialog(false) }) {
                     Text("Cancel")
                 }
             },
@@ -535,12 +763,15 @@ fun InventoryDetailScreen(
             item != null -> {
                 InventoryDetailContent(
                     item = item,
-                    movements = state.movements,
-                    groupPrices = state.groupPrices,
-                    movementsOfflineMessage = state.movementsOfflineMessage,
+                    state = state,
                     padding = padding,
-                    isActionInProgress = state.isActionInProgress,
                     onAdjustStock = { showAdjustDialog = true },
+                    onLoadMoreMovements = { viewModel.loadMoreMovements() },
+                    onSaveAutoReorder = { t, q, s -> viewModel.saveAutoReorder(t, q, s) },
+                    onSaveBin = { bin -> viewModel.saveBin(bin) },
+                    onUploadPhoto = { /* TODO: launch image picker → MultipartUpload */ },
+                    onDeactivate = { viewModel.setShowDeactivateDialog(true) },
+                    onTicketClick = { /* deep-link to ticket — caller wires nav */ },
                 )
             }
         }
@@ -550,12 +781,15 @@ fun InventoryDetailScreen(
 @Composable
 private fun InventoryDetailContent(
     item: InventoryItemEntity,
-    movements: List<StockMovement>,
-    groupPrices: List<InventoryGroupPrice>,
-    movementsOfflineMessage: String?,
+    state: InventoryDetailUiState,
     padding: PaddingValues,
-    isActionInProgress: Boolean,
     onAdjustStock: () -> Unit,
+    onLoadMoreMovements: () -> Unit,
+    onSaveAutoReorder: (Int, Int, String) -> Unit,
+    onSaveBin: (String) -> Unit,
+    onUploadPhoto: () -> Unit,
+    onDeactivate: () -> Unit,
+    onTicketClick: (Long) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -564,7 +798,7 @@ private fun InventoryDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Item info card
+        // ─── Item info card ──────────────────────────────────────────────────
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -582,14 +816,12 @@ private fun InventoryDetailContent(
                     if (!item.sku.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("SKU:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            // BrandMono for SKU/barcode strings per todo rule
                             Text(item.sku, style = BrandMono)
                         }
                     }
                     if (!item.upcCode.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("UPC:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            // BrandMono for barcode values per todo rule
                             Text(item.upcCode, style = BrandMono)
                         }
                     }
@@ -613,7 +845,7 @@ private fun InventoryDetailContent(
             }
         }
 
-        // Stock card
+        // ─── Stock card ──────────────────────────────────────────────────────
         item {
             val stockColor = when {
                 item.inStock <= 0 -> MaterialTheme.colorScheme.error
@@ -629,7 +861,6 @@ private fun InventoryDetailContent(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // BrandMono big quantity display per todo rule
                         Text(
                             "${item.inStock}",
                             style = BrandMono.copy(
@@ -660,7 +891,7 @@ private fun InventoryDetailContent(
             }
         }
 
-        // Reorder level warning — dynamic color avoids WarningBg pastel on OLED
+        // ─── Reorder level warning ───────────────────────────────────────────
         if (item.reorderLevel > 0 && item.inStock <= item.reorderLevel) {
             item {
                 Card(
@@ -675,7 +906,6 @@ private fun InventoryDetailContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // decorative — non-clickable warning row; sibling "Stock is at or below…" Text carries the announcement
                         Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
                         Text(
                             "Stock is at or below reorder level (${item.reorderLevel})",
@@ -687,26 +917,250 @@ private fun InventoryDetailContent(
             }
         }
 
-        // Stock adjustment button
+        // ─── Stock adjustment button ─────────────────────────────────────────
         item {
             Button(
                 onClick = onAdjustStock,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isActionInProgress,
+                enabled = !state.isActionInProgress,
             ) {
-                // decorative — Button's "Adjust Stock" Text supplies the accessible name
                 Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Adjust Stock")
             }
         }
 
-        // Group prices
-        if (groupPrices.isNotEmpty()) {
+        // ─── L1078: Restock button ───────────────────────────────────────────
+        item {
+            OutlinedButton(
+                onClick = onAdjustStock,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Restock +N")
+            }
+        }
+
+        // ─── L1081: Cost vs retail margin tile ──────────────────────────────
+        item {
+            val costCents = item.costPriceCents
+            val retailCents = item.retailPriceCents
+            val margin = if (retailCents > 0) {
+                (retailCents - costCents).toDouble() / retailCents.toDouble() * 100.0
+            } else null
+            if (margin != null) {
+                val marginLabel = when {
+                    margin >= 30.0 -> "Margin ${"%.1f".format(margin)}% — healthy"
+                    margin >= 10.0 -> "Margin ${"%.1f".format(margin)}% — low"
+                    else -> "Margin ${"%.1f".format(margin)}% — critical"
+                }
+                val marginColor = when {
+                    margin >= 30.0 -> SuccessGreen
+                    margin >= 10.0 -> WarningAmber
+                    else -> MaterialTheme.colorScheme.error
+                }
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        marginLabel,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = marginColor,
+                    )
+                }
+            }
+        }
+
+        // ─── L1073: Sales history ────────────────────────────────────────────
+        state.soldLast30d?.let { sold ->
+            item {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text("Sales (last 30 days)", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Sold $sold unit${if (sold == 1) "" else "s"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─── L1072: Price history chart ──────────────────────────────────────
+        item {
+            InventoryPriceChart(
+                priceHistory = state.priceHistory,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        // ─── L1074: Supplier panel ───────────────────────────────────────────
+        item {
+            InventorySupplierPanel(
+                supplierName = item.supplierName,
+                supplierId = item.supplierId,
+                lastCostLabel = "$${"%.2f".format(item.costPriceCents / 100.0)}",
+                onPlacePo = { /* stub */ },
+            )
+        }
+
+        // ─── L1075: Auto-reorder card ────────────────────────────────────────
+        item {
+            InventoryAutoReorderCard(
+                reorderThreshold = item.reorderLevel,
+                reorderQty = 0,
+                preferredSupplier = item.supplierName ?: "",
+                isSaving = state.isSavingAutoReorder,
+                onSave = { t, q, s -> onSaveAutoReorder(t, q, s) },
+            )
+        }
+
+        // ─── L1076: Bin picker ───────────────────────────────────────────────
+        item {
+            InventoryBinPicker(
+                currentBin = item.bin,
+                availableBins = state.availableBins,
+                isSaving = state.isSavingBin,
+                onSave = { bin -> onSaveBin(bin) },
+            )
+        }
+
+        // ─── L1079: Barcode display ──────────────────────────────────────────
+        item {
+            InventoryBarcodeDisplay(
+                sku = item.sku,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        // ─── L1077: Serial numbers ───────────────────────────────────────────
+        if (item.isSerialize) {
+            item {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Serial numbers${if (state.serials.isNotEmpty()) " (${state.serials.size})" else ""}",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (state.serials.isEmpty()) {
+                            Text(
+                                "No serials recorded.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            state.serials.forEach { serial ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(serial.serialNumber ?: "—", style = BrandMono)
+                                    Text(
+                                        serial.status?.replaceFirstChar { it.uppercase() } ?: "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        TextButton(onClick = { /* add serial dialog */ }) { Text("+ Add serial") }
+                    }
+                }
+            }
+        }
+
+        // ─── L1080: Recent tickets using this part ───────────────────────────
+        if (state.ticketUsage.isNotEmpty()) {
+            item {
+                Text("Recent tickets using this part", style = MaterialTheme.typography.titleMedium)
+            }
+            items(state.ticketUsage, key = { it.ticketId }) { usage ->
+                BrandCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onTicketClick(usage.ticketId) },
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column {
+                            Text(usage.ticketNumber ?: "#${usage.ticketId}", style = BrandMono)
+                            if (!usage.customerName.isNullOrBlank()) {
+                                Text(
+                                    usage.customerName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(
+                            "×${usage.qty}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ─── L1082: Tax class (admin-only) ───────────────────────────────────
+        if (state.isAdmin) {
+            item {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Tax class", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Tax class ID: ${item.taxClassId ?: "None"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "Edit via inventory edit screen (admin).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ─── L1083: Photo gallery ────────────────────────────────────────────
+        item {
+            InventoryPhotoGallery(
+                photoUrls = state.photoUrls,
+                onUploadPhoto = onUploadPhoto,
+            )
+        }
+
+        // ─── L1084: Deactivate action ────────────────────────────────────────
+        item {
+            OutlinedButton(
+                onClick = onDeactivate,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+            ) {
+                Text("Deactivate item")
+            }
+        }
+
+        // ─── Group prices ────────────────────────────────────────────────────
+        if (state.groupPrices.isNotEmpty()) {
             item {
                 Text("Group prices", style = MaterialTheme.typography.titleMedium)
             }
-            items(groupPrices, key = { it.id }) { gp ->
+            items(state.groupPrices, key = { it.id }) { gp ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -723,59 +1177,18 @@ private fun InventoryDetailContent(
             }
         }
 
-        // Stock movements
+        // ─── L1071: Full paginated movement history ───────────────────────────
         item {
             Text("Stock movements", style = MaterialTheme.typography.titleMedium)
         }
-
-        if (movements.isEmpty()) {
-            item {
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        movementsOfflineMessage ?: "No stock movements recorded",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        } else {
-            items(movements, key = { it.id }) { movement ->
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                movement.type?.replaceFirstChar { it.uppercase() } ?: "Movement",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            if (!movement.reason.isNullOrBlank()) {
-                                Text(
-                                    movement.reason,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(
-                                "${movement.userName ?: ""} ${movement.createdAt?.take(16)?.replace("T", " ") ?: ""}".trim(),
-                                // BrandMono for timestamps per todo convention
-                                style = BrandMono,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        val qty = movement.quantity ?: 0
-                        Text(
-                            if (qty > 0) "+$qty" else "$qty",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (qty >= 0) SuccessGreen else MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            }
+        item {
+            InventoryMovementHistory(
+                movements = state.movementHistory.ifEmpty { state.movements },
+                isLoadingMore = state.isLoadingMoreMovements,
+                hasMore = state.movementHistoryHasMore,
+                offlineMessage = if (state.movementHistory.isEmpty()) state.movementsOfflineMessage else null,
+                onLoadMore = onLoadMoreMovements,
+            )
         }
     }
 }

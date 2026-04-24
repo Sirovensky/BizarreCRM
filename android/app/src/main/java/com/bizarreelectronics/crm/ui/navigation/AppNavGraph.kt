@@ -929,7 +929,6 @@ fun AppNavGraph(
                     onNavigate = { route -> navController.navigate(route) },
                 )
             }
-            }
             composable(Screen.Tickets.route) {
                 TicketListScreen(
                     onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },

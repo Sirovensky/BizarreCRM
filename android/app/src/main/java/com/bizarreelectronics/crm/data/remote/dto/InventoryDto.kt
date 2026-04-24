@@ -150,3 +150,118 @@ data class AdjustStockRequest(
     val reason: String? = null,
     val reference: String? = null
 )
+
+// ─── New DTOs for L1071-L1084 detail panels ─────────────────────────────────
+
+/** One entry in the paginated movement history (L1071). */
+data class MovementPage(
+    val movements: List<StockMovement>,
+    @SerializedName("next_cursor")
+    val nextCursor: String?,
+    @SerializedName("has_more")
+    val hasMore: Boolean,
+)
+
+/** One price sample returned by [InventoryApi.getPriceHistory] (L1072). */
+data class PriceHistoryPoint(
+    @SerializedName("date")
+    val date: String,
+    @SerializedName("cost_price")
+    val costPrice: Double?,
+    @SerializedName("retail_price")
+    val retailPrice: Double?,
+)
+
+data class PriceHistoryData(
+    val history: List<PriceHistoryPoint>,
+)
+
+/** Sales summary returned by [InventoryApi.getSalesHistory] (L1073). */
+data class SalesHistoryData(
+    val sold: Int,
+    val days: Int,
+    val points: List<SalesDayPoint>,
+)
+
+data class SalesDayPoint(
+    val date: String,
+    val qty: Int,
+)
+
+/** Supplier detail returned by [InventoryApi.getSupplierDetail] (L1074). */
+data class SupplierDetail(
+    val id: Long,
+    val name: String?,
+    val contact: String?,
+    val email: String?,
+    val phone: String?,
+)
+
+data class SupplierDetailData(
+    val supplier: SupplierDetail,
+)
+
+/** Auto-reorder configuration (L1075). */
+data class AutoReorderConfig(
+    @SerializedName("reorder_threshold")
+    val reorderThreshold: Int,
+    @SerializedName("reorder_qty")
+    val reorderQty: Int,
+    @SerializedName("preferred_supplier")
+    val preferredSupplier: String?,
+)
+
+data class AutoReorderRequest(
+    @SerializedName("reorder_threshold")
+    val reorderThreshold: Int,
+    @SerializedName("reorder_qty")
+    val reorderQty: Int,
+    @SerializedName("preferred_supplier")
+    val preferredSupplier: String?,
+)
+
+/** List of bin locations returned by [InventoryApi.getBins] (L1076). */
+data class BinListData(
+    val bins: List<String>,
+)
+
+/** Ticket usage row returned by [InventoryApi.getUsageInTickets] (L1080). */
+data class TicketUsageItem(
+    @SerializedName("ticket_id")
+    val ticketId: Long,
+    @SerializedName("ticket_number")
+    val ticketNumber: String?,
+    @SerializedName("customer_name")
+    val customerName: String?,
+    val qty: Int,
+    @SerializedName("created_at")
+    val createdAt: String?,
+)
+
+data class TicketUsageData(
+    val tickets: List<TicketUsageItem>,
+)
+
+/** Tax class list item (L1082). */
+data class TaxClassOption(
+    val id: Long,
+    val name: String,
+    val rate: Double,
+)
+
+data class TaxClassOptionsData(
+    @SerializedName("tax_classes")
+    val taxClasses: List<TaxClassOption>,
+)
+
+/** Photo metadata returned by the photos endpoint (L1083). */
+data class InventoryPhoto(
+    val id: Long,
+    val url: String,
+    @SerializedName("created_at")
+    val createdAt: String?,
+)
+
+data class PhotoListData(
+    val photos: List<InventoryPhoto>,
+)
