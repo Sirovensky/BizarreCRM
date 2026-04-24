@@ -20,6 +20,7 @@ import {
   validateIntegerQuantity,
   validateId,
 } from '../utils/validate.js';
+import { parsePage, parsePageSize } from '../utils/pagination.js';
 
 // Post-enrichment audit §9: per-user cap on deposit collection. Every POST
 // inserts a money row — a fat-fingered tap-to-collect on a touchscreen POS
@@ -69,6 +70,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   }
   const applied = req.query.applied as string | undefined;
 
+  // SCAN-1047: replace hard LIMIT 500 with proper pagination. Legacy clients
+  // that just want "everything" still get page 1 (50 rows by default);
+  // completeness-assuming clients can walk pages via `page`/`pagesize`.
+  const page = parsePage(req.query.page);
+  const pageSize = parsePageSize(req.query.pagesize ?? req.query.page_size, 50);
+  const offset = (page - 1) * pageSize;
+
   const where: string[] = [];
   const params: any[] = [];
   if (Number.isFinite(customerId)) { where.push('d.customer_id = ?'); params.push(customerId); }
@@ -76,17 +84,37 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   if (applied === 'unapplied')     { where.push('d.applied_to_invoice_id IS NULL AND d.refunded_at IS NULL'); }
   if (applied === 'applied')       { where.push('d.applied_to_invoice_id IS NOT NULL'); }
 
-  const rows = await req.asyncDb.all<Row>(
-    `SELECT d.*, c.first_name, c.last_name
-       FROM deposits d
-       LEFT JOIN customers c ON c.id = d.customer_id
-       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-       ORDER BY d.id DESC
-       LIMIT 500`,
-    ...params,
-  );
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-  res.json({ success: true, data: rows });
+  const [totalRow, rows] = await Promise.all([
+    req.asyncDb.get<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM deposits d ${whereClause}`,
+      ...params,
+    ),
+    req.asyncDb.all<Row>(
+      `SELECT d.*, c.first_name, c.last_name
+         FROM deposits d
+         LEFT JOIN customers c ON c.id = d.customer_id
+         ${whereClause}
+         ORDER BY d.id DESC
+         LIMIT ? OFFSET ?`,
+      ...params, pageSize, offset,
+    ),
+  ]);
+
+  const total = totalRow?.c ?? 0;
+  res.json({
+    success: true,
+    data: rows,
+    meta: {
+      pagination: {
+        page,
+        per_page: pageSize,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    },
+  });
 }));
 
 // ---------------------------------------------------------------------------
