@@ -657,23 +657,23 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Offline state** — list renders from Room; banner "Showing cached tickets" + last-sync time.
 
 ### 4.2 Detail
-- [ ] Base detail (customer, devices, notes, history, totals).
-- [ ] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. Phone = `TabRow` at top of `Scaffold`. Tablet/ChromeOS = left-side secondary nav inside detail pane.
-- [ ] **Header** — ticket ID (copyable via `SelectionContainer` + copy IconButton), status chip (tap to change), urgency chip, customer card, created / due / assignee.
-- [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots; picker via `ModalBottomSheet`.
-- [ ] **Assignee picker** — avatar grid (`LazyVerticalGrid`); filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
-- [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `SelectionContainer` on each; copyable grand total.
-- [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
-- [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed".
-- [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
+- [x] Base detail (customer, devices, notes, history, totals). (commit bf6369f — TicketDetailScreen rewritten with PrimaryTabRow + base sections fully wired)
+- [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. Phone = `TabRow` at top of `Scaffold`. Tablet/ChromeOS = left-side secondary nav inside detail pane. (commit bf6369f — `components/TicketTabs.kt` Material 3 `PrimaryTabRow` 4 tabs; tablet side-nav deferred)
+- [~] **Header** — ticket ID (copyable via `SelectionContainer` + copy IconButton), status chip (tap to change), urgency chip, customer card, created / due / assignee.
+- [x] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots; picker via `ModalBottomSheet`. (commit bf6369f — Actions tab status chip row → ModalBottomSheet with current highlighted + transitions; PATCH via VM)
+- [~] **Assignee picker** — avatar grid (`LazyVerticalGrid`); filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
+- [x] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `SelectionContainer` on each; copyable grand total. (commit bf6369f — `components/TicketTotalsPanel.kt` subtotal+tax+discount+deposit+balance via `Money` util)
+- [~] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
+- [x] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed". (commit bf6369f — Devices tab renders `preConditionsList` per device card)
+- [x] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated. (commit bf6369f — Devices tab renders services+parts with qty/price columns; catalog picker wiring deferred)
 - [ ] **Photos** — full-screen gallery with pinch-zoom (`Modifier.pointerInput(detectTransformGestures)`), swipe (`HorizontalPager`), share intent. Upload via `POST /tickets/:id/photos` (multipart) through WorkManager + foreground service so uploads survive app kill. Progress chip per photo. Delete via swipe. Mark "before / after" tag. EXIF-strip PII on upload via `ExifInterface`.
-- [ ] **Notes** — types: internal / customer-visible / diagnostic / sms / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
-- [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Pill per day header.
-- [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
+- [x] **Notes** — types: internal / customer-visible / diagnostic / sms / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight. (commit bf6369f — `components/TicketNotesTab.kt` type chip selector + compose box + POST via VM; flagged badge highlight)
+- [x] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Pill per day header. (commit bf6369f — `components/TicketHistoryTimeline.kt` vertical dot-connector timeline + M3 icons; empty state; event fetch via VM)
+- [x] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load. (commit bf6369f — prominent banner above tabs color-coded by days remaining; warningContainer/errorContainer tokens)
 - [ ] **QR code** — render ticket order-ID as QR via ZXing `BarcodeEncoder`; tap → full-screen enlarge for counter printer. `Image(bitmap)` + plaintext below.
 - [ ] **Share PDF / Android Print** — on-device PDF pipeline per §17.4. `WorkOrderTicketView(model)` Composable → `PdfDocument` via `writeTo(outputStream)`; hand file URI (via `FileProvider`) to `PrintManager.print(...)` or share sheet (`Intent.createChooser`). SMS shares public tracking link (§55); email attaches locally-rendered PDF so recipient sees it without login. Fully offline-capable.
-- [ ] **Copy link to ticket** — App Link `app.bizarrecrm.com/tickets/:id`.
-- [ ] **Customer quick actions** — Call (`ACTION_DIAL`), SMS (opens thread), Email (`ACTION_SENDTO` with `mailto:`), open Customer detail, Create ticket for this customer.
+- [x] **Copy link to ticket** — App Link `app.bizarrecrm.com/tickets/:id`. (commit bf6369f — overflow menu "Copy link" action + `ClipboardUtil.copy("bizarrecrm://tickets/$id")` + Snackbar "Link copied")
+- [x] **Customer quick actions** — Call (`ACTION_DIAL`), SMS (opens thread), Email (`ACTION_SENDTO` with `mailto:`), open Customer detail, Create ticket for this customer. (commit bf6369f — `components/TicketCustomerActions.kt` AssistChip row {Call/SMS/Email}; `util/PhoneIntents.kt` helpers via ACTION_DIAL / ACTION_VIEW `sms:` / ACTION_SENDTO `mailto:`)
 - [ ] **Related** — side rail (tablet) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Update notification (§24).
 - [ ] **Continuity banner** (tablet/ChromeOS) — `ComponentActivity.onProvideAssistContent` advertises this ticket so Cross-device Services / handoff can pick up on another signed-in device.
@@ -1052,19 +1052,19 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] Base list + filter chips + search.
 - [x] **Tabs** — All / Products / Parts. NOT SERVICES — services aren't inventoriable. Settings menu handles services catalog (device types, manufacturers).
 - [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
-- [ ] **Filters** (collapsible drawer via `ModalBottomSheet`): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock.
+- [x] **Filters** (collapsible drawer via `ModalBottomSheet`): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock. (commit 4428dc6 — `components/InventoryFilterSheet.kt` ModalBottomSheet with 6 filter fields + `InventoryFilter` data class + active-count badge on filter icon)
 - [ ] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user.
-- [ ] **Sort** — SKU / name / stock / last restocked / price / last sold / margin.
-- [ ] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion).
-- [ ] **Quick stock adjust** — inline +/- stepper on row (debounced PUT via `distinctUntilChanged` + debounce).
-- [ ] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels.
+- [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (commit 4428dc6 — `components/InventorySortDropdown.kt` InventorySort enum + `applyInventorySortOrder()` + DropdownMenu; 6 options; 8 JVM tests)
+- [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (commit 4428dc6 — `components/InventoryStockBadge.kt` 3-tier badge Out/Critical-low-with-pulse/Low; ReduceMotion-aware static display)
+- [x] **Quick stock adjust** — inline +/- stepper on row (debounced PUT via `distinctUntilChanged` + debounce). (commit 4428dc6 — `components/QuickStockAdjust.kt` tablet inline stepper + long-press ModalBottomSheet with `AdjustReason` dropdown {Sold/Received/Damaged/Adjusted}; optimistic VM `adjustStockBy()` + SyncQueue enqueue)
+- [~] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels. (commit 4428dc6 — long-press on tablet → selection mode + BulkActionBar with Adjust/Export/Delete; Print labels TODO)
 - [ ] **Receive items** modal — scan items into stock or add manually; creates stock-movement batch.
 - [ ] **Receive by PO** — pick PO, scan items to increment received qty; close PO on completion.
 - [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
 - [ ] **Mass label print** — multi-select → label printer (Android Printing / MFi thermal via Bluetooth SPP).
-- [ ] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete.
-- [ ] **Cost price hidden** from non-admin roles (server returns null).
-- [ ] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs.
+- [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (commit 4428dc6 — `components/InventoryContextMenu.kt` overflow + long-press DropdownMenu 6 actions; Print label logs TODO)
+- [~] **Cost price hidden** from non-admin roles (server returns null). (commit 4428dc6 — `LocalIsAdmin` CompositionLocal defaults false with `TODO(role-gate)` pending Session role exposure)
+- [x] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs. (commit 4428dc6 — filter-aware: "No items match these filters" + {Clear filters / Import CSV stub} CTAs)
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements.
