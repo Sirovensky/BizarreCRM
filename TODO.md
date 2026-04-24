@@ -1409,27 +1409,16 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-581. **[SEC] stocktake POST /:id/counts (scan entry) no role gate** — `packages/server/src/routes/stocktake.routes.ts:169-247`. Fix: admin|manager|technician minimum.
 - [ ] SCAN-582. **[SEC-TCPA] dunningScheduler dispatchStep sends SMS without `sms_opt_in` / `sms_consent_transactional` check** — `packages/server/src/services/dunningScheduler.ts:598-644`. Fix: load consent in `loadCustomer` + skip when opted-out + record `outcome:'skipped'`.
 - [ ] SCAN-583. **dunningScheduler sendSmsTenant return typed `any`; fragile `.success === false` check passes undefined → every SMS logged dispatched even on silent fail** — `packages/server/src/services/dunningScheduler.ts:617`. Fix: assert provider-specific success field OR check `!result`.
-- [ ] SCAN-587. **tenantTermination WAL/SHM rename bare `catch {}` silent swallow — incomplete archive on permission/lock error** — `packages/server/src/services/tenantTermination.ts:315`. Fix: `logger.warn` with slug+error.
-- [ ] SCAN-588. **repairPricing /prices query params empty string not validated — silent zero rows instead of 400** — `packages/server/src/routes/repairPricing.routes.ts:146-177`. Fix: parseInt + isFinite before use.
 - [ ] SCAN-590. **estimates POST /:id/convert tier-limit block leaves estimate in 'converting' permanently (no finally block revert)** — `packages/server/src/routes/estimates.routes.ts:757`. Fix: add finally{} that reverts status when function exits before 'converted' write; OR move tier check before status lock.
 
 ### Wave-12 scan findings (2026-04-23)
-- [ ] SCAN-592. **crashResiliency module-level `currentRequestRoute` mutable — concurrent requests interleave, A's crash attributed to B's route** — `packages/server/src/middleware/crashResiliency.ts:34`. Fix: per-request `res.locals.currentRoute` read from uncaughtException handler.
 - [ ] SCAN-593. **[SEC] stepUpTotp no replay guard — valid TOTP code usable multiple times within 30s window → 2 concurrent PII-export requests both succeed on one OTP tap** — `packages/server/src/middleware/stepUpTotp.ts:196`. Fix: `(userId, code, windowBucket)` set in memory or DB; reject reuse within bucket.
-- [ ] SCAN-595. **[SEC-DATA-LOSS] tenantTermination purgeExpiredDeletions uses archive file `mtime` not DB `deletion_scheduled_at` — touch/backup-restore causes early purge OR permanent retention** — `packages/server/src/services/tenantTermination.ts:404`. Fix: authoritative cutoff from master DB; fallback to mtime only when DB record absent.
-- [ ] SCAN-596. **campaigns review-request/trigger coupled to admin JWT despite being internal-event hook — server-internal calls drop silently** — `packages/server/src/routes/campaigns.routes.ts:731`. Fix: expose as internal function OR add IP-allowlist/service-token path.
-- [ ] SCAN-597. **customFields PUT /values/:entityType/:entityId no entity existence check — phantom entity_id values silently accumulate** — `packages/server/src/routes/customFields.routes.ts:133`. Fix: `SELECT id FROM <entity_table> WHERE id = ?` precheck.
 - [ ] SCAN-599. **web App.tsx `/super-admin/tenants` route reachable for regular tenant admins — no SuperAdminRoute guard (page has its own login but routing is unrestricted)** — `packages/web/src/App.tsx:425`. Fix: SuperAdminRoute wrapper.
-- [ ] SCAN-600. **useWebSocket `connect` in effect deps + queryClient dep in useCallback — queryClient identity change recreates connect → old onclose reconnects after new WS is live (redundant reconnect)** — `packages/web/src/hooks/useWebSocket.ts:314,362`. Fix: queryClient into useRef OR stabilize identity.
-- [ ] SCAN-601. **useDraft keyRef.current read inside timeout callback — key change before timeout fire writes new key's text with old-key's last value** — `packages/web/src/hooks/useDraft.ts:33`. Fix: capture `const currentKey = keyRef.current` in effect body.
-- [ ] SCAN-603. **tenantTermination master_audit_log row hardcodes `ip_address=NULL` for `tenant_self_terminated` — IP available but not threaded** — `packages/server/src/services/tenantTermination.ts:350,354`. Fix: plumb requestIp through FinalizeTerminationInput.
 
 ### Wave-13 scan findings (2026-04-23)
 - [ ] SCAN-614. **web client.ts JWT atob decode without length cap — corrupt localStorage payload can block main thread + catch doesn't remove malformed token** — `packages/web/src/api/client.ts:87`. Fix: `localStorage.removeItem('accessToken')` in catch OR byte-length cap pre-parse.
 
 ### Wave-14 scan findings (2026-04-23)
-- [ ] SCAN-621. **estimates POST /:id/convert vs POST /bulk-convert use DIFFERENT column names for ticket_notes — `note` vs `content` — one is wrong** — `packages/server/src/routes/estimates.routes.ts:808,418`. Fix: confirm actual column + align both.
-- [ ] SCAN-626. **estimates POST /:id/send imports from `providers/sms/index.js` not `services/smsProvider.js` — bypasses tenant provider lookup** — `packages/server/src/routes/estimates.routes.ts:924-925`. Fix: use `sendSmsTenant` from `services/smsProvider.js`.
 
 ### Wave-15 scan findings (2026-04-23)
 - [ ] SCAN-629. **refunds reverseCommission called OUTSIDE approval tx — 403 from locked-payroll-period propagates as unhandled 500 AFTER refund already committed → caller thinks failed, retries** — `packages/server/src/routes/refunds.routes.ts:287`. Fix: wrap in try/catch, 200 with `commission_reversal_skipped:true` on AppError 403.
@@ -1641,12 +1630,8 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-908. **super-admin challenge cleanup 60s — manual delete sits in Map up to 60s** — `packages/server/src/routes/super-admin.routes.ts:156-159`. Fix: explicit delete on manual OR accept as minor.
 
 ### Wave-42 scan-loop findings (2026-04-23)
-- [ ] SCAN-909. **portal widget postMessage origin uses string comparison not URL parse — protocol mismatch passes** — `packages/server/src/routes/portal.routes.ts:1579`. Fix: new URL(e.origin).origin === new URL(server).origin.
 - [ ] SCAN-910. **portal widget console.error exposes config + data-server URL to DevTools** — `packages/server/src/routes/portal.routes.ts:1514,1527`. Fix: silent fail in prod builds OR structured logger.
 - [ ] SCAN-911. **db-worker.mjs console.warn on eviction + shutdown** — `packages/server/src/db/db-worker.mjs:75,96`. Fix: structured logger via parentPort message.
 - [ ] SCAN-912. **[POSSIBLE] ws isTenantOriginAllowed JSON.parse catch logs + continues; returns true on empty allowlist** — `packages/server/src/ws/server.ts:170,235-239`. Fix: verify fail-closed behavior; document.
-- [ ] SCAN-913. **config.ts CONFIG_ENCRYPTION_KEY too-short fallback silent — warning logged but fallback still used** — `packages/server/src/config.ts:192`. Fix: hard-fail in production when key too short.
-- [ ] SCAN-914. **billing.routes.ts console.error at 3 sites** — `packages/server/src/routes/billing.routes.ts:34,64,91`. Fix: logger.error.
 - [ ] SCAN-915. **portal lockout SMS fire-and-forget** — `packages/server/src/routes/portal.routes.ts:598-602`. Fix: already logged; accept as low-priority.
 - [ ] SCAN-916. **portal /embed/config queries portal_embed_enabled separately from getStoreConfig** — `packages/server/src/routes/portal.routes.ts:215-225,1480`. Fix: add to getStoreConfig helper.
-- [ ] SCAN-917. **scheduledReports daily-report failure not audit-logged** — `packages/server/src/services/scheduledReports.ts:273-276`. Fix: audit() on per-recipient delivery fail.

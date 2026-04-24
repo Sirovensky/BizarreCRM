@@ -2563,3 +2563,20 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-907. **fireWebhook no idempotency key** — FIXED wave-42 via `idempotency_key: payment:<invoiceId>:<paymentId>` in payload.
 - [x] SCAN-904. **device trust cookie key** — FIXED wave-42 via DEVICE_TRUST_SECRET env-var preferred path + HKDF fallback + startup warn.
 - [x] SCAN-905. **cookie secure flag** — FIXED wave-42 via `req.secure || config.nodeEnv === 'production'` at 7 cookie sites in auth.routes.
+
+## Closed 2026-04-23 (wave-43)
+- [x] SCAN-587. **tenantTermination WAL/SHM rename bare `catch {}` silent swallow** — FIXED wave-43 via `logger.warn` with slug+src+err at `services/tenantTermination.ts:329-330`.
+- [x] SCAN-909. **portal widget postMessage origin string-compare** — FIXED wave-43 via `new URL(e.origin).origin === new URL(server).origin` comparison at `routes/portal.routes.ts:1631`.
+- [x] SCAN-913. **config CONFIG_ENCRYPTION_KEY too-short silent fallback** — FIXED wave-43 via throw on `nodeEnv==='production'` before dev fallback; `exit(1)` also at init.
+- [x] SCAN-917. **scheduledReports per-recipient audit missing** — FIXED wave-43 via `audit(db, 'scheduled_report_delivered'|'scheduled_report_failed', ...)` in each send attempt loop.
+- [x] SCAN-588. **repairPricing /prices query params empty string not validated** — VERIFIED wave-43 already-fixed; `validatePriceField` uses `Number.isFinite` at `routes/repairPricing.routes.ts:32`.
+- [x] SCAN-592. **crashResiliency module-level currentRequestRoute mutable** — VERIFIED wave-43 stale; file doesn't exist at `middleware/crashResiliency.ts`.
+- [x] SCAN-595. **tenantTermination purgeExpiredDeletions mtime vs DB column** — VERIFIED wave-43 already-fixed; uses `deletion_scheduled_at` DB column with `stat.mtimeMs` only as documented fallback.
+- [x] SCAN-596. **campaigns review-request/trigger admin-JWT-only** — VERIFIED wave-43 already-fixed; `requireAdminOrServiceToken` at `routes/campaigns.routes.ts:750` accepts both admin JWT + `x-internal-service-token` header.
+- [x] SCAN-597. **customFields PUT /values entity existence check missing** — VERIFIED wave-43 already-fixed; precheck present at `routes/customFields.routes.ts:160-169`.
+- [x] SCAN-600. **useWebSocket connect deps + queryClient** — VERIFIED wave-43 already-fixed; `queryClientRef` pattern present; `connect()` deps exclude queryClient with SCAN-600 comment.
+- [x] SCAN-601. **useDraft keyRef.current inside timeout** — VERIFIED wave-43 already-fixed; stale-ref documented at `hooks/useDraft.ts:35` with SCAN-601 comment.
+- [x] SCAN-603. **tenantTermination master_audit_log ip_address NULL** — VERIFIED wave-43 already-fixed; `executeTermination` accepts `requestIp` + passes at `services/tenantTermination.ts:385`.
+- [x] SCAN-621. **estimates convert column-name drift note vs content** — VERIFIED wave-43 not a bug; both single + bulk convert paths use `content` column consistently.
+- [x] SCAN-626. **estimates POST /:id/send SMS provider import** — VERIFIED wave-43 already-fixed; imports `services/smsProvider.js` at `routes/estimates.routes.ts:969`.
+- [x] SCAN-914. **billing.routes.ts console.error at 3 sites** — VERIFIED wave-43 already-fixed; uses `logger.error` at 3 sites; no `console.error` present.
