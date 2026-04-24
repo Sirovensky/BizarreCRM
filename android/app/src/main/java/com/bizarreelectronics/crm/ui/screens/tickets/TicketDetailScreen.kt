@@ -56,10 +56,44 @@ import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.bizarreelectronics.crm.util.UndoStack
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+// ---------------------------------------------------------------------------
+// Domain type for ticket undo entries (§1 L232)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sealed payload type covering all reversible ticket mutations wired to
+ * [UndoStack] in [TicketDetailViewModel]. Immutable data classes only.
+ */
+sealed class TicketEdit {
+    /** A generic scalar field update (e.g. assignedTo, discount). */
+    data class FieldEdit(
+        val fieldName: String,
+        val oldValue: String?,
+        val newValue: String?,
+    ) : TicketEdit()
+
+    /** Status change — carries both status ids and display names for audit descriptions. */
+    data class StatusChange(
+        val oldStatusId: Long?,
+        val newStatusId: Long,
+        val oldStatusName: String?,
+        val newStatusName: String?,
+    ) : TicketEdit()
+
+    /** A note that was added online (noteId is the server-assigned id). */
+    data class NoteAdded(
+        val noteId: Long,
+        val noteText: String,
+    ) : TicketEdit()
+}
 
 /** Strip HTML tags from server-generated descriptions */
 private fun stripHtml(html: String?): String {
@@ -98,6 +132,19 @@ class TicketDetailViewModel @Inject constructor(
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
     val serverUrl: String get() = authPreferences.serverUrl ?: ""
+
+    // -----------------------------------------------------------------------
+    // Undo / redo (§1 L232 — ticket field edit, status change, notes add)
+    // -----------------------------------------------------------------------
+
+    /** Undo stack scoped to this ViewModel instance; cleared on nav dismiss. */
+    val undoStack = UndoStack<TicketEdit>()
+
+    /**
+     * Convenience alias so the screen can gate an Undo Snackbar action without
+     * importing [UndoStack] — delegates directly to [undoStack.canUndo].
+     */
+    val canUndo: StateFlow<Boolean> = undoStack.canUndo
 
     /**
      * AND-20260414-L1: expose reachability so the Print button can disable
@@ -181,6 +228,10 @@ class TicketDetailViewModel @Inject constructor(
 
     fun changeStatus(newStatusId: Long) {
         val ticket = _state.value.ticket ?: return
+        val oldStatusId = ticket.statusId
+        val oldStatusName = ticket.statusName
+        val newStatusName = _state.value.statuses.find { it.id == newStatusId }?.name
+
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
@@ -189,9 +240,58 @@ class TicketDetailViewModel @Inject constructor(
                     updatedAt = ticket.updatedAt,
                 )
                 ticketRepository.updateTicket(ticketId, request)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Status updated",
+                // Note: no separate "Status updated" actionMessage here — the UndoStack.Pushed
+                // event will show "Edit saved / Undo" Snackbar immediately after push(), which
+                // serves as the confirmation. Avoiding double-snackbar.
+                _state.value = _state.value.copy(isActionInProgress = false)
+
+                // Push undo entry after optimistic update succeeds (or is queued offline).
+                // apply = re-apply the new status; reverse = restore the old status.
+                val payload = TicketEdit.StatusChange(
+                    oldStatusId = oldStatusId,
+                    newStatusId = newStatusId,
+                    oldStatusName = oldStatusName,
+                    newStatusName = newStatusName,
+                )
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            viewModelScope.launch {
+                                ticketRepository.updateTicket(
+                                    ticketId,
+                                    UpdateTicketRequest(statusId = newStatusId),
+                                )
+                            }
+                        },
+                        reverse = {
+                            if (oldStatusId != null) {
+                                viewModelScope.launch {
+                                    ticketRepository.updateTicket(
+                                        ticketId,
+                                        UpdateTicketRequest(statusId = oldStatusId),
+                                    )
+                                }
+                            }
+                        },
+                        auditDescription = "Status changed: ${oldStatusName ?: oldStatusId} → ${newStatusName ?: newStatusId}",
+                        compensatingSync = {
+                            if (oldStatusId == null) {
+                                false // Cannot revert to unknown prior status
+                            } else {
+                                try {
+                                    ticketRepository.updateTicket(
+                                        ticketId,
+                                        UpdateTicketRequest(statusId = oldStatusId),
+                                    )
+                                    true
+                                } catch (e: Exception) {
+                                    Timber.tag("TicketUndo").e(e, "compensatingSync: status revert failed")
+                                    false
+                                }
+                            }
+                        },
+                    )
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -208,12 +308,48 @@ class TicketDetailViewModel @Inject constructor(
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
-                    ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                    val response = ticketApi.addNote(ticketId, mapOf("type" to "internal", "content" to text))
+                    val noteId = response.data?.id ?: -1L
                     _state.value = _state.value.copy(
                         isActionInProgress = false,
                         actionMessage = "Note added",
                     )
                     loadTicketDetail()
+
+                    // Push undo entry — compensatingSync attempts server delete if noteId is valid.
+                    // Note: server DELETE /notes/:noteId is not yet in TicketApi; compensatingSync
+                    // returns false so UndoStack emits UndoEvent.Failed and the screen shows
+                    // "Can't undo — action already processed" per spec. Wire a real API call here
+                    // when TicketApi.deleteNote is added.
+                    val payload = TicketEdit.NoteAdded(noteId = noteId, noteText = text)
+                    undoStack.push(
+                        UndoStack.Entry(
+                            payload = payload,
+                            apply = {
+                                // Re-add: just reload — no local note list mutation needed
+                                viewModelScope.launch { loadTicketDetail() }
+                            },
+                            reverse = {
+                                // Remove from local notes list optimistically
+                                _state.value = _state.value.copy(
+                                    notes = _state.value.notes.filter { it.id != noteId },
+                                )
+                            },
+                            auditDescription = "Note added: \"${text.take(60)}${if (text.length > 60) "…" else ""}\"",
+                            compensatingSync = compensatingSyncForNote@{
+                                if (noteId < 0L) {
+                                    // Note was offline-queued; nothing to compensate server-side
+                                    Timber.tag("TicketUndo").w("compensatingSync: note was offline-queued, cannot server-delete")
+                                    false
+                                } else {
+                                    // TicketApi.deleteNote not yet available — signal failure
+                                    // so UndoStack emits UndoEvent.Failed and UI shows toast.
+                                    Timber.tag("TicketUndo").w("compensatingSync: deleteNote endpoint not in TicketApi yet; noteId=$noteId")
+                                    false
+                                }
+                            },
+                        )
+                    )
                     return@launch
                 } catch (_: Exception) {
                     // Fall through to offline queue
@@ -372,6 +508,46 @@ fun TicketDetailScreen(
             onNavigateToInvoice(invoiceId)
             viewModel.clearConvertedInvoiceId()
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Undo stack UI (§1 L232)
+    // -----------------------------------------------------------------------
+
+    // Collect UndoStack events: show a Snackbar with an "Undo" action on
+    // Pushed, and a plain toast-style Snackbar on Failed.
+    LaunchedEffect(viewModel.undoStack) {
+        viewModel.undoStack.events.collect { event ->
+            when (event) {
+                is UndoStack.UndoEvent.Pushed -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Edit saved",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        scope.launch { viewModel.undoStack.undo() }
+                    }
+                }
+                is UndoStack.UndoEvent.Undone -> {
+                    Timber.tag("TicketUndo").i("Undone: ${event.entry.auditDescription}")
+                    snackbarHostState.showSnackbar("Undone: ${event.entry.auditDescription}")
+                }
+                is UndoStack.UndoEvent.Redone -> {
+                    Timber.tag("TicketUndo").i("Redone: ${event.entry.auditDescription}")
+                }
+                is UndoStack.UndoEvent.Failed -> {
+                    Timber.tag("TicketUndo").w("Undo failed: ${event.reason}")
+                    snackbarHostState.showSnackbar(event.reason)
+                }
+            }
+        }
+    }
+
+    // Clear undo history when the screen is removed from composition so stale
+    // entries don't survive a back-stack pop and re-push.
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.undoStack.clear() }
     }
 
     // Confirmation dialog for Convert to Invoice
