@@ -1469,8 +1469,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
 ### Wave-50 scan-loop findings (2026-04-23) — web/pages
-- [ ] SCAN-951. **Ticket list add-note fails silently — user sees nothing if the note save errors.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketListPage.tsx:1039; fix=try-catch+toast -->
 - [ ] SCAN-954. **Invoice list typed as any[] — no compile-time guarantees on row shape.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:108; fix=define-Invoice-interface -->
 - [ ] SCAN-955. **POS customer search swallows network errors — user sees "no results" when the backend was actually unreachable.**
