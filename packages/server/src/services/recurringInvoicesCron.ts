@@ -150,6 +150,25 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         return;
       }
 
+      // SCAN-1122: verify the customer still exists + isn't soft-deleted
+      // before minting an invoice. Templates live on after a customer is
+      // deleted/archived; the cron was happily inserting new invoices
+      // referencing a dead customer_id, leaving the shop with an orphan
+      // invoice that no one could collect on. Skip the template run and
+      // leave it active so a future manual reassignment can resume it.
+      const cust = db.prepare(
+        'SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0',
+      ).get(tpl.customer_id) as { 1: number } | undefined;
+      if (!cust) {
+        logger.warn('recurring invoice: customer missing or soft-deleted — skipping', {
+          template_id: tpl.id,
+          customer_id: tpl.customer_id,
+        });
+        throw new Error(
+          `recurring invoice template ${tpl.id}: customer ${tpl.customer_id} not found or soft-deleted`,
+        );
+      }
+
       // Create the invoice
       const seq = allocateCounter(db, 'invoice_order_id');
       const orderId = formatInvoiceOrderId(seq);

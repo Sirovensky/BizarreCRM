@@ -32,9 +32,15 @@ export function CashRegisterPage() {
     staleTime: 25_000, // just under the 30s interval
   });
 
+  // SCAN-1121: server returns `{ cash_in, cash_out, cash_sales, net, entries }`
+  // (see pos.routes.ts GET /register). This page was reading
+  // `cash_payments`/`balance`/`recent` — all undefined — so Balance + Cash
+  // Payments cards were permanently $0 and the history was always empty.
+  // Align the UI keys with the actual envelope and keep the local type
+  // in sync.
   const register = data?.data?.data || {};
-  const history: CashRegisterHistoryEntry[] = Array.isArray(register.recent)
-    ? (register.recent as CashRegisterHistoryEntry[])
+  const history: CashRegisterHistoryEntry[] = Array.isArray(register.entries)
+    ? (register.entries as CashRegisterHistoryEntry[])
     : [];
 
   const cashInMut = useMutation({
@@ -88,12 +94,12 @@ export function CashRegisterPage() {
         </div>
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Cash Payments</p>
-          <p className="text-xl font-bold text-blue-600">{formatCurrency(register.cash_payments || 0)}</p>
+          <p className="text-xl font-bold text-blue-600">{formatCurrency(register.cash_sales || 0)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Balance</p>
-          <p className={cn('text-xl font-bold', (register.balance || 0) >= 0 ? 'text-surface-900 dark:text-surface-100' : 'text-red-600')}>
-            {formatCurrency(register.balance || 0)}
+          <p className={cn('text-xl font-bold', (register.net || 0) >= 0 ? 'text-surface-900 dark:text-surface-100' : 'text-red-600')}>
+            {formatCurrency(register.net || 0)}
           </p>
         </div>
       </div>

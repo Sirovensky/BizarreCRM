@@ -1,10 +1,36 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 const logger = createLogger('tv.routes');
 
 const router = Router();
+
+// SCAN-1120 [HIGH]: the TV routes are intentionally public (wall-mounted
+// screens cannot authenticate), but previously there was no rate limit
+// AND the payload included `customer_first_name` + assigned-tech full
+// name. With `tv_display_enabled=1` any unauthenticated WAN caller
+// (including drive-by scanners) could poll the endpoint unlimited and
+// scrape a live feed of customer first names attached to device makes +
+// order ids. Layered defences:
+//   1. Per-IP rate limit (30 req/min/IP) closes the enumeration path.
+//   2. Payload redaction below drops customer first name and tech name
+//      from the public shape — signage only needs order_id + device
+//      name + status. Re-surfacing identifiers on the TV would require
+//      a dedicated authed view.
+const TV_RATE_CATEGORY = 'tv_public';
+const TV_RATE_MAX = 30;
+const TV_RATE_WINDOW_MS = 60_000;
+
+function enforceTvRateLimit(req: Request): void {
+  const ip = (req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 64);
+  const r = consumeWindowRate(req.db, TV_RATE_CATEGORY, ip, TV_RATE_MAX, TV_RATE_WINDOW_MS);
+  if (!r.allowed) {
+    throw new AppError(`TV board polled too frequently. Retry in ${r.retryAfterSeconds}s`, 429);
+  }
+}
 
 // SECURITY: TV display routes are intentionally public (no auth middleware).
 // These endpoints serve data to wall-mounted TV screens in the shop that
@@ -78,6 +104,11 @@ const READY_PICKUP_KEYWORDS = [
 ];
 
 function shapeTicket(row: TicketRow, devices: DeviceRow[]): TvBoardTicket {
+  // SCAN-1120: customer_first_name + assigned_tech are now redacted from the
+  // public TV payload. The on-screen signage works fine with just order_id
+  // + device_name + status — those are already visible on the printed
+  // ticket stub the customer has. An authed "manager view" of the same
+  // data (with identifiers) can live under a gated route if ever needed.
   return {
     id: row.id,
     order_id: row.order_id,
@@ -86,10 +117,8 @@ function shapeTicket(row: TicketRow, devices: DeviceRow[]): TvBoardTicket {
       name: row.status_name ?? '',
       color: row.status_color ?? '#6b7280',
     },
-    customer_first_name: row.customer_first_name,
-    assigned_tech: row.tech_first_name
-      ? `${row.tech_first_name}${row.tech_last_name ? ` ${row.tech_last_name}` : ''}`
-      : null,
+    customer_first_name: null,
+    assigned_tech: null,
     device_names: devices
       .filter((d) => d.ticket_id === row.id)
       .map((d) => d.device_name ?? 'Unknown device'),
@@ -117,6 +146,7 @@ async function isTvDisplayEnabled(adb: Request['asyncDb']): Promise<boolean> {
  * off in settings" message instead of sitting blank.
  */
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  enforceTvRateLimit(req);
   const adb = req.asyncDb;
   const enabled = await isTvDisplayEnabled(adb);
   if (!enabled) {
@@ -147,6 +177,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
  * statuses from the in-progress panel. Gated on `tv_display_enabled`.
  */
 router.get('/board', asyncHandler(async (req: Request, res: Response) => {
+  enforceTvRateLimit(req);
   const adb = req.asyncDb;
   const enabled = await isTvDisplayEnabled(adb);
   if (!enabled) {
