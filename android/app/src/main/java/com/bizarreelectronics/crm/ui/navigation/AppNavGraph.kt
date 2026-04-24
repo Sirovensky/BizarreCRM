@@ -166,6 +166,13 @@ sealed class Screen(val route: String) {
         fun createRoute(phone: String) = "messages/${Uri.encode(phone)}"
     }
     data object Reports : Screen("reports")
+
+    // §15 L1722 — sub-report destinations (SegmentedButton routing)
+    data object ReportSales : Screen("reports/sales")
+    data object ReportTickets : Screen("reports/tickets")
+    data object ReportInventory : Screen("reports/inventory")
+    data object ReportTax : Screen("reports/tax")
+    data object ReportCustom : Screen("reports/custom")
     data object Employees : Screen("employees")
     data object EmployeeCreate : Screen("employee-create")
     data object ClockInOut : Screen("clock-in-out")
@@ -1165,7 +1172,25 @@ fun AppNavGraph(
                 )
             }
             composable(Screen.Reports.route) {
-                ReportsScreen()
+                ReportsScreen(navController = navController)
+            }
+            // §15 L1722 — sub-report routes (deep-link targets from SegmentedButton)
+            composable(Screen.ReportSales.route) {
+                com.bizarreelectronics.crm.ui.screens.reports.SalesReportScreen(
+                    onDrillThroughDate = { date -> navController.navigate("tickets?date=$date") },
+                )
+            }
+            composable(Screen.ReportTickets.route) {
+                com.bizarreelectronics.crm.ui.screens.reports.TicketsReportScreen()
+            }
+            composable(Screen.ReportInventory.route) {
+                com.bizarreelectronics.crm.ui.screens.reports.InventoryReportScreen()
+            }
+            composable(Screen.ReportTax.route) {
+                com.bizarreelectronics.crm.ui.screens.reports.TaxReportScreen()
+            }
+            composable(Screen.ReportCustom.route) {
+                com.bizarreelectronics.crm.ui.screens.reports.CustomReportScreen()
             }
             composable(Screen.Employees.route) { backStackEntry ->
                 // When the create screen pops back it sets this flag — observe

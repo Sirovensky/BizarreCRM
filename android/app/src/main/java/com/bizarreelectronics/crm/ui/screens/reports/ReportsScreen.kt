@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,12 +30,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.ReportApi
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.reports.components.ReportType
+import com.bizarreelectronics.crm.ui.screens.reports.components.ReportTypeSelector
 import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -156,6 +161,11 @@ data class ReportsUiState(
     val salesByDay: List<SalesByDayPoint> = emptyList(),
     val revenueOverTime: List<RevenueOverTimePoint> = emptyList(),
     val categoryBreakdown: List<CategoryBreakdownSlice> = emptyList(),
+    // §15 L1722 — SegmentedButton report type
+    val selectedReportType: ReportType = ReportType.SALES,
+    // §15 L1726 — Scheduled reports stub
+    val scheduledReports: List<String> = emptyList(),
+    val isScheduledLoading: Boolean = false,
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -252,6 +262,31 @@ class ReportsViewModel @Inject constructor(
             )
         }
         loadSalesReport()
+    }
+
+    fun selectReportType(type: ReportType) {
+        _state.update { it.copy(selectedReportType = type) }
+        if (type == ReportType.SALES) loadSalesReport()
+    }
+
+    /** Fetches /reports/scheduled — 404 is tolerated and results in an empty list. */
+    fun loadScheduledReports() {
+        viewModelScope.launch {
+            _state.update { it.copy(isScheduledLoading = true) }
+            runCatching { reportApi.getScheduledReports() }
+                .onSuccess { resp ->
+                    _state.update {
+                        it.copy(
+                            isScheduledLoading = false,
+                            scheduledReports = resp.data?.filterIsInstance<String>() ?: emptyList(),
+                        )
+                    }
+                }
+                .onFailure {
+                    // 404 or any error → silently show empty list
+                    _state.update { it.copy(isScheduledLoading = false, scheduledReports = emptyList()) }
+                }
+        }
     }
 
     fun loadSalesReport() {
@@ -380,6 +415,7 @@ class ReportsViewModel @Inject constructor(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(
+    navController: NavController = rememberNavController(),
     viewModel: ReportsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -387,6 +423,7 @@ fun ReportsScreen(
     // "Overview" tab (index 1) hosts the §15 Vico charts.
     // Existing indices shifted: Dashboard=0, Overview=1, Sales=2, Needs Attention=3.
     val tabs = listOf("Dashboard", "Overview", "Sales", "Needs Attention")
+    var showScheduleSheet by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = { BrandTopAppBar(title = "Reports") },
@@ -394,40 +431,53 @@ fun ReportsScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+            // ── §15 L1722 SegmentedButton report-type selector ─────────────
+            ReportTypeSelector(
+                selected = state.selectedReportType,
+                onSelect = { type ->
+                    viewModel.selectReportType(type)
+                    // Navigate to sub-report screens for non-inline types
+                    when (type) {
+                        ReportType.SALES -> { /* rendered inline via tabs */ }
+                        else -> { /* sub-screens rendered below via when() */ }
+                    }
+                },
+            )
+
             // CROSS37: TabRow labels all rendered in primary color; only the
             // underline indicated the active tab. Conditionally color the label
             // text via the `selected` prop so active=primary and
             // inactive=onSurfaceVariant — underline (already primary) + text
             // color both carry the active-state signal.
-            TabRow(selectedTabIndex = selectedTabIndex) {
-                tabs.forEachIndexed { index, title ->
-                    val isSelected = selectedTabIndex == index
-                    Tab(
-                        selected = isSelected,
-                        onClick = { selectedTabIndex = index },
-                        text = {
-                            Text(
-                                title,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
+            if (state.selectedReportType == ReportType.SALES) {
+                TabRow(selectedTabIndex = selectedTabIndex) {
+                    tabs.forEachIndexed { index, title ->
+                        val isSelected = selectedTabIndex == index
+                        Tab(
+                            selected = isSelected,
+                            onClick = { selectedTabIndex = index },
+                            text = {
+                                Text(
+                                    title,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            },
+                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.semantics {
+                                role = Role.Tab
+                                contentDescription = if (isSelected) {
+                                    "$title tab, selected"
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                        },
-                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        // a11y: Role.Tab + explicit selection announcement so TalkBack says
-                        // "<tab name> tab, selected/not selected" rather than just the label.
-                        modifier = Modifier.semantics {
-                            role = Role.Tab
-                            contentDescription = if (isSelected) {
-                                "$title tab, selected"
-                            } else {
-                                "$title tab, not selected"
-                            }
-                        },
-                    )
+                                    "$title tab, not selected"
+                                }
+                            },
+                        )
+                    }
                 }
             }
 
@@ -436,50 +486,208 @@ fun ReportsScreen(
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                // Sales tab index is now 2 (Overview added at 1).
-                val isSalesTab = selectedTabIndex == 2
-                if (state.isLoading && !state.isRefreshing && !isSalesTab) {
-                    // a11y: mergeDescendants so TalkBack announces "Loading report" as a single item.
-                    Box(
-                        modifier = Modifier.semantics(mergeDescendants = true) {
-                            contentDescription = "Loading report"
+                when (state.selectedReportType) {
+                    ReportType.SALES -> SalesTabContent(
+                        state = state,
+                        selectedTabIndex = selectedTabIndex,
+                        viewModel = viewModel,
+                        onDrillThroughDate = { date ->
+                            navController.navigate("tickets?date=$date")
                         },
-                    ) {
-                        BrandSkeleton(
-                            rows = 4,
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        )
-                    }
-                } else if (state.error != null && !isSalesTab) {
-                    // a11y: liveRegion=Assertive so TalkBack immediately interrupts and announces the error.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .semantics { liveRegion = LiveRegionMode.Assertive },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ErrorState(
-                            message = state.error ?: "Failed to load reports.",
-                            onRetry = { viewModel.loadData() },
-                        )
-                    }
-                } else {
-                    when (selectedTabIndex) {
-                        0 -> DashboardReportTab(state)
-                        1 -> OverviewChartsTab(
-                            state = state,
-                            appPreferences = viewModel.appPreferences,
-                        )
-                        2 -> SalesReportTab(
-                            state = state,
-                            onPresetSelected = viewModel::selectPreset,
-                            onCustomRangeSelected = viewModel::setCustomRange,
-                            onRetry = viewModel::loadSalesReport,
-                        )
-                        3 -> NeedsAttentionTab(state)
-                    }
+                    )
+                    ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
+                    ReportType.EMPLOYEES -> EmployeesReportPlaceholder()
+                    ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
+                    ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
+                    ReportType.INSIGHTS -> InsightsPlaceholder()
+                    ReportType.CUSTOM -> CustomReportScreen()
                 }
             }
+        }
+    }
+
+    // §15 L1758 — Schedule bottom sheet
+    if (showScheduleSheet) {
+        ScheduleReportSheet(onDismiss = { showScheduleSheet = false })
+    }
+}
+
+// ─── Tab content for SALES type ───────────────────────────────────────────────
+
+@Composable
+private fun SalesTabContent(
+    state: ReportsUiState,
+    selectedTabIndex: Int,
+    viewModel: ReportsViewModel,
+    onDrillThroughDate: (String) -> Unit,
+) {
+    val isSalesTab = selectedTabIndex == 2
+    if (state.isLoading && !state.isRefreshing && !isSalesTab) {
+        Box(
+            modifier = Modifier.semantics(mergeDescendants = true) {
+                contentDescription = "Loading report"
+            },
+        ) {
+            BrandSkeleton(
+                rows = 4,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+        }
+    } else if (state.error != null && !isSalesTab) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { liveRegion = LiveRegionMode.Assertive },
+            contentAlignment = Alignment.Center,
+        ) {
+            ErrorState(
+                message = state.error ?: "Failed to load reports.",
+                onRetry = { viewModel.loadData() },
+            )
+        }
+    } else {
+        when (selectedTabIndex) {
+            0 -> DashboardReportTab(state)
+            1 -> OverviewChartsTab(
+                state = state,
+                appPreferences = viewModel.appPreferences,
+            )
+            2 -> SalesReportScreenInline(
+                state = state,
+                viewModel = viewModel,
+                onDrillThroughDate = onDrillThroughDate,
+            )
+            3 -> NeedsAttentionTab(state)
+        }
+    }
+}
+
+/**
+ * Inline Sales report content (used inside the existing TabRow at index 2).
+ * Full-page variant is [SalesReportScreen] (separate file for standalone navigation).
+ */
+@Composable
+private fun SalesReportScreenInline(
+    state: ReportsUiState,
+    viewModel: ReportsViewModel,
+    onDrillThroughDate: (String) -> Unit,
+) {
+    SalesReportTab(
+        state = state,
+        onPresetSelected = viewModel::selectPreset,
+        onCustomRangeSelected = viewModel::setCustomRange,
+        onRetry = viewModel::loadSalesReport,
+    )
+}
+
+// ─── Placeholder sub-report screens ──────────────────────────────────────────
+
+@Composable
+private fun EmployeesReportPlaceholder() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.Group,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("Employee Reports", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "See the Employees section for individual technician stats.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun InsightsPlaceholder() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Insights,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text("Insights coming soon", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "AI-powered business insights based on your repair trends, customer patterns, and inventory velocity.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+// ─── §15 L1758 — Schedule report bottom sheet ────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduleReportSheet(onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedFrequency by rememberSaveable { mutableStateOf("Weekly") }
+    val frequencies = listOf("Daily", "Weekly", "Monthly")
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                "Schedule Report",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            frequencies.forEach { freq ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(freq, style = MaterialTheme.typography.bodyMedium)
+                    RadioButton(
+                        selected = selectedFrequency == freq,
+                        onClick = { selectedFrequency = freq },
+                    )
+                }
+            }
+            Text(
+                "Scheduled delivery is a stub — the /reports/scheduled endpoint will power this in a future wave.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false,
+            ) {
+                Text("Schedule (coming soon)")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
