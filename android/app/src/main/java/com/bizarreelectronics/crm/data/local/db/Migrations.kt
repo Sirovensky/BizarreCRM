@@ -682,6 +682,29 @@ object Migrations {
         }
     }
 
+    /**
+     * Migration 8 to 9 — adds parked_carts table.
+     *
+     * Plan §16.1 L1800: offline POS cart parking (ParkedCartEntity).
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS parked_carts (
+                    id              TEXT    NOT NULL PRIMARY KEY,
+                    label           TEXT    NOT NULL,
+                    cart_json       TEXT    NOT NULL,
+                    parked_at       INTEGER NOT NULL DEFAULT 0,
+                    customer_id     INTEGER,
+                    customer_name   TEXT,
+                    subtotal_cents  INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -691,5 +714,6 @@ object Migrations {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )
 }

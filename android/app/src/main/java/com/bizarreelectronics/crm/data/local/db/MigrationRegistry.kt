@@ -119,6 +119,12 @@ object MigrationRegistry {
             name = "sync-state-table: cursor/pagination bookkeeping + _synced_at columns [plan:L180,L183]",
             migration = Migrations.MIGRATION_7_8,
         ),
+        Entry(
+            fromVersion = 8,
+            toVersion = 9,
+            name = "parked-carts-table: offline POS cart parking [plan:L1800]",
+            migration = Migrations.MIGRATION_8_9,
+        ),
     )
 
     /**

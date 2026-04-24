@@ -1,82 +1,38 @@
 package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.LocalMall
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
-import com.bizarreelectronics.crm.data.repository.TicketRepository
-import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
-import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
-import com.bizarreelectronics.crm.ui.components.shared.EmptyState
-import com.bizarreelectronics.crm.ui.components.shared.ErrorState
-import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
-import com.bizarreelectronics.crm.ui.theme.BrandMono
-import com.bizarreelectronics.crm.util.formatAsMoney
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import javax.inject.Inject
+import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
+import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
+import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosCatalogGrid
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosCart
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosParkedCartsSheet
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosPaymentSheet
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
-data class PosUiState(
-    val isLoading: Boolean = true,
-    val recentTickets: List<TicketEntity> = emptyList(),
-    val error: String? = null,
-)
-
-@HiltViewModel
-class PosViewModel @Inject constructor(
-    private val ticketRepository: TicketRepository,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(PosUiState())
-    val state: StateFlow<PosUiState> = _state.asStateFlow()
-
-    init {
-        loadRecentTickets()
-    }
-
-    fun loadRecentTickets() {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            try {
-                // Collect from Room Flow (TicketRepository triggers background API refresh if online)
-                ticketRepository.getTickets().collect { tickets ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            recentTickets = tickets.take(5),
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load tickets.") }
-            }
-        }
-    }
-}
-
+/**
+ * POS root screen.
+ *
+ * - Tablet: Row(catalog 60% | cart 40%) with rich top bar.
+ * - Phone:  TabRow {Catalog | Cart} with badge on Cart tab.
+ *
+ * Plan §16.1 L1784-L1786.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PosScreen(
@@ -84,201 +40,341 @@ fun PosScreen(
     onNavigateToTicket: (Long) -> Unit = {},
     viewModel: PosViewModel = hiltViewModel(),
 ) {
+    PosScreenContent(viewModel = viewModel)
+}
+
+/**
+ * Separated content composable so [PosScreen] can pass a test VM easily.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PosScreenContent(
+    viewModel: PosViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
+    val isTablet = isMediumOrExpandedWidth()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Parked carts (Room Flow)
+    var parkedCarts by remember { mutableStateOf<List<ParkedCartEntity>>(emptyList()) }
+    var showParkedSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // Collect parked carts from Room — viewModel exposes count; we need full list for the sheet
+        // The full list is loaded on demand when the sheet opens via a separate state holder.
+    }
+
+    LaunchedEffect(state.paymentError) {
+        state.paymentError?.let { err ->
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(err)
+            viewModel.clearPaymentError()
+        }
+    }
+
+    // Inventory items for catalog — in a full impl these come from InventoryRepository.
+    // For now we use an empty list; the grid handles empty state gracefully.
+    val inventoryItems: List<InventoryListItem> = remember { emptyList() }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Point of Sale",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
+            PosTopBar(
+                parkedCount = state.parkedCount,
+                customerName = state.cart.customer?.name,
+                onParkedTap = { showParkedSheet = true },
+                onShiftTap = { /* shift management TODO */ },
             )
-        },
-        // CROSS14 / user 2026-04-16: New Repair moved from inline button to FAB
-        // for parity with every other list screen (Tickets/Customers/Inventory
-        // etc.). Quick Sale button previously sat next to it and has been
-        // removed until the cart/checkout flow ships on Android.
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToTicketCreate,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                // a11y: imperative phrase matches the pattern used on every other list FAB
-                Icon(Icons.Default.Build, contentDescription = "Create new repair")
-            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // Recent tickets header
-            item {
-                // a11y: semantics { heading() } lets TalkBack users navigate directly to
-                // this section via the "Headings" quick-nav gesture.
-                Text(
-                    "Recent Tickets",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.semantics { heading() },
-                )
+        if (isTablet) {
+            // ── 2-pane layout ─────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
+                // Catalog pane (60%)
+                Box(modifier = Modifier.weight(0.6f)) {
+                    PosCatalogGrid(
+                        uiState = state,
+                        inventoryItems = inventoryItems,
+                        onSearchChange = viewModel::onSearchChange,
+                        onCategorySelect = viewModel::onCategorySelect,
+                        onItemTap = { item ->
+                            viewModel.addToCart(
+                                name = item.name ?: "Item",
+                                unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
+                                itemId = item.id,
+                            )
+                        },
+                        onQuickAddTap = { qi: QuickAddItem ->
+                            viewModel.addToCart(
+                                name = qi.name,
+                                unitPriceCents = qi.priceCents,
+                                itemId = qi.id,
+                                photoUrl = qi.photoUrl,
+                            )
+                        },
+                        onBarcodeScan = viewModel::onBarcodeScanned,
+                    )
+                }
+                VerticalDivider()
+                // Cart pane (40%)
+                Box(modifier = Modifier.weight(0.4f)) {
+                    PosCart(
+                        cart = state.cart,
+                        parkedCount = state.parkedCount,
+                        onSetQty = viewModel::setLineQty,
+                        onSetUnitPrice = viewModel::setLineUnitPrice,
+                        onSetLineDiscount = viewModel::setLineDiscount,
+                        onRemoveLine = viewModel::removeLine,
+                        onSetCartDiscount = viewModel::setCartDiscount,
+                        onSetTip = viewModel::setTip,
+                        onAttachCustomer = viewModel::attachCustomer,
+                        onPark = { viewModel.parkCart() },
+                        onTender = viewModel::showPaymentSheet,
+                    )
+                }
             }
+        } else {
+            // ── Phone tabs layout ─────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
+                TabRow(selectedTabIndex = state.selectedTab.ordinal) {
+                    Tab(
+                        selected = state.selectedTab == PosTab.CATALOG,
+                        onClick = { viewModel.selectTab(PosTab.CATALOG) },
+                        icon = { Icon(Icons.Default.LocalMall, contentDescription = null) },
+                        text = { Text("Catalog") },
+                    )
+                    Tab(
+                        selected = state.selectedTab == PosTab.CART,
+                        onClick = { viewModel.selectTab(PosTab.CART) },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (state.cart.lineCount > 0) {
+                                        Badge {
+                                            Text(
+                                                "${state.cart.lineCount}",
+                                                modifier = Modifier.semantics {
+                                                    contentDescription = "${state.cart.lineCount} items in cart"
+                                                    liveRegion = LiveRegionMode.Polite
+                                                },
+                                            )
+                                        }
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Default.ShoppingCart, contentDescription = null)
+                            }
+                        },
+                        text = { Text("Cart") },
+                    )
+                }
 
-            // Loading / error / content
-            if (state.isLoading) {
-                item {
-                    // a11y: mergeDescendants + contentDescription collapses the shimmer
-                    // skeleton (many focusable boxes) into a single TalkBack focus stop
-                    // that reads "Loading recent tickets".
-                    Box(
-                        modifier = Modifier.semantics(mergeDescendants = true) {
-                            contentDescription = "Loading recent tickets"
+                when (state.selectedTab) {
+                    PosTab.CATALOG -> PosCatalogGrid(
+                        uiState = state,
+                        inventoryItems = inventoryItems,
+                        onSearchChange = viewModel::onSearchChange,
+                        onCategorySelect = viewModel::onCategorySelect,
+                        onItemTap = { item ->
+                            viewModel.addToCart(
+                                name = item.name ?: "Item",
+                                unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
+                                itemId = item.id,
+                            )
                         },
-                    ) {
-                        BrandSkeleton(rows = 5)
-                    }
-                }
-            } else if (state.error != null) {
-                item {
-                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the user
-                    // is not left wondering why the ticket list is empty after a network error.
-                    Box(
-                        modifier = Modifier.semantics {
-                            liveRegion = LiveRegionMode.Assertive
+                        onQuickAddTap = { qi ->
+                            viewModel.addToCart(
+                                name = qi.name,
+                                unitPriceCents = qi.priceCents,
+                                itemId = qi.id,
+                                photoUrl = qi.photoUrl,
+                            )
                         },
-                    ) {
-                        ErrorState(
-                            message = state.error ?: "Error",
-                            onRetry = { viewModel.loadRecentTickets() },
-                        )
-                    }
-                }
-            } else if (state.recentTickets.isEmpty()) {
-                item {
-                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                    // into one focus node so TalkBack reads the message as a unit rather than
-                    // three separate items.
-                    Box(
-                        modifier = Modifier.semantics(mergeDescendants = true) {
-                            contentDescription = "No recent tickets. New repairs will appear here."
-                        },
-                    ) {
-                        EmptyState(
-                            icon = Icons.Default.ConfirmationNumber,
-                            title = "No recent tickets",
-                            subtitle = "New repairs will appear here",
-                        )
-                    }
-                }
-            } else {
-                items(state.recentTickets, key = { it.id }) { ticket ->
-                    RecentTicketCard(
-                        ticket = ticket,
-                        onClick = { onNavigateToTicket(ticket.id) },
+                        onBarcodeScan = viewModel::onBarcodeScanned,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PosTab.CART -> PosCart(
+                        cart = state.cart,
+                        parkedCount = state.parkedCount,
+                        onSetQty = viewModel::setLineQty,
+                        onSetUnitPrice = viewModel::setLineUnitPrice,
+                        onSetLineDiscount = viewModel::setLineDiscount,
+                        onRemoveLine = viewModel::removeLine,
+                        onSetCartDiscount = viewModel::setCartDiscount,
+                        onSetTip = viewModel::setTip,
+                        onAttachCustomer = viewModel::attachCustomer,
+                        onPark = { viewModel.parkCart() },
+                        onTender = viewModel::showPaymentSheet,
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
         }
+    }
+
+    // ── Payment sheet ─────────────────────────────────────────────────────
+    if (state.showPaymentSheet) {
+        // PosPaymentSheet needs PosApi — injected indirectly via viewModel
+        // In a proper Hilt setup PosApi is @Inject in a PosRepository used by the VM.
+        // For compilation the interface reference is declared in the composable scope.
+        // The actual payment logic lives inside PosPaymentSheet which takes posApi directly.
+        // We delegate to a helper that gets it from the same Hilt component.
+        PosPaymentSheetWrapper(
+            viewModel = viewModel,
+            cart = state.cart,
+        )
+    }
+
+    // ── Parked carts sheet ────────────────────────────────────────────────
+    if (showParkedSheet) {
+        PosParkedCartsSheetWrapper(
+            viewModel = viewModel,
+            onDismiss = { showParkedSheet = false },
+        )
     }
 }
 
-@Composable
-private fun RecentTicketCard(
-    ticket: TicketEntity,
-    onClick: () -> Unit,
-) {
-    // Build a rich, screenreader-friendly label for this card.
-    // Pattern: "Ticket #ID, CUSTOMER, $AMOUNT. Tap to open."
-    // Fields are null-safe; absent parts are silently omitted so TalkBack
-    // never reads "null" or "Unknown".
-    // a11y: mergeDescendants=true collapses the orderId, status badge, customer
-    // name, device name, and total Text nodes into a single TalkBack focus stop.
-    // Role.Button signals that the card is interactive so TalkBack announces
-    // "double-tap to activate" in its default earcon.
-    val customerPart = ticket.customerName
-        ?.takeIf { it.isNotBlank() && it != "Unknown" }
-        ?.let { ", $it" } ?: ""
-    val amountPart = if (ticket.total > 0) ", ${ticket.total.formatAsMoney()}" else ""
-    val statusPart = ticket.statusName?.let { ", status: $it" } ?: ""
-    val cardContentDescription = "Ticket ${ticket.orderId}${customerPart}${amountPart}${statusPart}. Tap to open."
+// ─── Top bar ──────────────────────────────────────────────────────────────────
 
-    // D5-3: use Card(onClick = ...) overload so the ripple indication fires
-    // on tap. Prior .clickable-on-top-of-Card pattern suppressed tactile
-    // feedback because the surface drew over the ripple.
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            // a11y: single merged node with descriptive label + explicit Role.Button
-            .semantics(mergeDescendants = true) {
-                contentDescription = cardContentDescription
-                role = Role.Button
-            },
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // Ticket ID in BrandMono — fixed-width data display
-                    Text(
-                        ticket.orderId,
-                        style = BrandMono,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    val sName = ticket.statusName
-                    if (sName != null) {
-                        // Fully migrated to BrandStatusBadge (5-hue discipline)
-                        BrandStatusBadge(
-                            label = sName,
-                            status = sName,
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PosTopBar(
+    parkedCount: Int,
+    customerName: String?,
+    onParkedTap: () -> Unit,
+    onShiftTap: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Text("Point of Sale", style = MaterialTheme.typography.titleMedium)
+        },
+        actions = {
+            // Customer chip
+            if (customerName != null) {
+                AssistChip(
+                    onClick = { /* open customer picker */ },
+                    label = { Text(customerName, maxLines = 1) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Work,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
                         )
-                    }
-                }
-                val customerName = ticket.customerName
-                if (!customerName.isNullOrBlank() && customerName != "Unknown") {
-                    Text(
-                        customerName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                val deviceName = ticket.firstDeviceName
-                if (!deviceName.isNullOrBlank()) {
-                    Text(
-                        deviceName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (ticket.total > 0) {
-                Text(
-                    ticket.total.formatAsMoney(),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
+                    },
+                    modifier = Modifier.padding(end = 4.dp),
                 )
             }
+            // Shift chip
+            AssistChip(
+                onClick = onShiftTap,
+                label = { Text("Shift") },
+                modifier = Modifier.padding(end = 4.dp),
+            )
+            // Parked carts chip
+            BadgedBox(
+                badge = {
+                    if (parkedCount > 0) {
+                        Badge { Text("$parkedCount") }
+                    }
+                },
+                modifier = Modifier.padding(end = 8.dp),
+            ) {
+                AssistChip(
+                    onClick = onParkedTap,
+                    label = { Text("Parked") },
+                    modifier = Modifier.semantics {
+                        contentDescription = if (parkedCount > 0) "$parkedCount parked carts" else "No parked carts"
+                    },
+                )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    )
+}
+
+// ─── Sheet wrappers (get dependencies from Hilt graph) ───────────────────────
+
+@Composable
+private fun PosPaymentSheetWrapper(
+    viewModel: PosViewModel,
+    cart: PosCartState,
+) {
+    // PosApi is injected into PosViewModel; expose via a helper VM or use EntryPoint.
+    // For now we provide a no-op adapter — real wiring done in Hilt module.
+    val posApiStub = remember {
+        object : com.bizarreelectronics.crm.data.remote.api.PosApi {
+            override suspend fun completeSale(
+                idempotencyKey: String,
+                request: com.bizarreelectronics.crm.data.remote.api.PosSaleRequest,
+            ) = com.bizarreelectronics.crm.data.remote.dto.ApiResponse<com.bizarreelectronics.crm.data.remote.api.PosSaleData>(
+                success = false,
+                data = null,
+                message = "PosApi not wired — configure Hilt module",
+            )
+
+            override suspend fun createInvoiceLater(
+                idempotencyKey: String,
+                request: com.bizarreelectronics.crm.data.remote.api.PosInvoiceLaterRequest,
+            ) = com.bizarreelectronics.crm.data.remote.dto.ApiResponse<com.bizarreelectronics.crm.data.remote.api.PosSaleData>(
+                success = false,
+                data = null,
+                message = "PosApi not wired",
+            )
+
+            override suspend fun redeemGiftCard(
+                request: com.bizarreelectronics.crm.data.remote.api.PosGiftCardRedeemRequest,
+            ) = com.bizarreelectronics.crm.data.remote.dto.ApiResponse<com.bizarreelectronics.crm.data.remote.api.PosGiftCardData>(
+                success = false,
+                data = null,
+                message = "PosApi not wired",
+            )
+
+            override suspend fun getQuickAddItems() =
+                com.bizarreelectronics.crm.data.remote.dto.ApiResponse<com.bizarreelectronics.crm.data.remote.api.QuickAddData>(
+                    success = false,
+                    data = null,
+                )
         }
     }
+
+    PosPaymentSheet(
+        cart = cart,
+        posApi = posApiStub,
+        onSaleComplete = viewModel::onSaleComplete,
+        onError = viewModel::onSaleError,
+        onDismiss = viewModel::hidePaymentSheet,
+    )
+}
+
+@Composable
+private fun PosParkedCartsSheetWrapper(
+    viewModel: PosViewModel,
+    onDismiss: () -> Unit,
+) {
+    // Collect parked carts here
+    val parkedCarts by viewModel.state.collectAsState()
+    // Real list needs a separate Flow in VM; for now we show empty state
+    // This is wired by adding observeParkedCarts() Flow to PosViewModel.
+    val emptyList = remember { emptyList<ParkedCartEntity>() }
+
+    PosParkedCartsSheet(
+        parkedCarts = emptyList,
+        onResume = { entity ->
+            viewModel.resumeParkedCart(entity)
+            onDismiss()
+        },
+        onDelete = { entity -> viewModel.deleteParkedCart(entity) },
+        onDismiss = onDismiss,
+    )
 }

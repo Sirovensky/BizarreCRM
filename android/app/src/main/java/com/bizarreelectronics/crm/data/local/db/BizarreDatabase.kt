@@ -7,6 +7,8 @@ import androidx.room.TypeConverters
 import com.bizarreelectronics.crm.data.local.db.converters.Converters
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.db.entities.*
+import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
+import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
 import com.bizarreelectronics.crm.data.local.draft.DraftDao
 import com.bizarreelectronics.crm.data.local.draft.DraftEntity
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +65,7 @@ import kotlinx.coroutines.withContext
         DraftEntity::class,
         AppliedMigrationEntity::class,
         SyncStateEntity::class,
+        ParkedCartEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -85,7 +88,8 @@ import kotlinx.coroutines.withContext
     //
     // Plan §1 L180+L183: bumped from 7 to 8 to add `sync_state` table and
     // `_synced_at` bookkeeping columns on tickets/customers/inventory_items/invoices.
-    version = 8,
+    // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -107,6 +111,7 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun draftDao(): DraftDao
     abstract fun appliedMigrationDao(): AppliedMigrationDao
     abstract fun syncStateDao(): SyncStateDao
+    abstract fun parkedCartDao(): ParkedCartDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
@@ -119,7 +124,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 8
+        const val SCHEMA_VERSION = 9
     }
 }
 
