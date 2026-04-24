@@ -207,6 +207,10 @@ function buildEmailBody(summary: DailySummary, currency: string = 'USD'): string
  * it falls back to the legacy `store_config.scheduled_report_email` single-
  * address string so existing deployments keep working without manual action.
  */
+function isValidEmail(s: string): boolean {
+  return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 320;
+}
+
 function resolveRecipients(db: any): string[] {
   try {
     const tableExists = db
@@ -217,7 +221,14 @@ function resolveRecipients(db: any): string[] {
         .prepare("SELECT email FROM scheduled_report_recipients WHERE enabled = 1")
         .all() as Array<{ email: string }>;
       if (rows.length > 0) {
-        return rows.map((r) => r.email);
+        const valid = rows
+          .map((r) => String(r.email).trim())
+          .filter(isValidEmail);
+        const dropped = rows.length - valid.length;
+        if (dropped > 0) {
+          log.warn('resolveRecipients: dropped invalid email addresses', { dropped });
+        }
+        return valid;
       }
       // Table exists but no enabled recipients — fall through to legacy key
       // so an operator who cleared the table but still has the old config key
@@ -232,7 +243,13 @@ function resolveRecipients(db: any): string[] {
   const legacy = (db.prepare(
     "SELECT value FROM store_config WHERE key = 'scheduled_report_email'"
   ).get() as any)?.value as string | undefined;
-  return legacy ? [legacy] : [];
+  if (!legacy) return [];
+  const trimmed = String(legacy).trim();
+  if (!isValidEmail(trimmed)) {
+    log.warn('resolveRecipients: legacy scheduled_report_email is invalid', { value: trimmed });
+    return [];
+  }
+  return [trimmed];
 }
 
 export async function sendDailyReport(db: any): Promise<void> {

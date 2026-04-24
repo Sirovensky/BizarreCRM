@@ -5,6 +5,14 @@ import { sendEmail, isEmailConfigured } from '../services/email.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { validateId } from '../utils/validate.js';
+import { audit } from '../utils/audit.js';
+
+function requireManagerOrAdmin(req: any): void {
+  const role = req?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
 
 const router = Router();
 
@@ -177,11 +185,17 @@ router.put(
 router.post(
   '/send-receipt',
   asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
+
     const db = req.db;
     const adb = req.asyncDb;
-    const { invoice_id, email } = req.body;
+    const { invoice_id, recipient_email } = req.body as { invoice_id: unknown; recipient_email: unknown };
 
-    if (!invoice_id) throw new AppError('invoice_id is required', 400);
+    const invoiceId = validateId(invoice_id, 'invoice_id');
+
+    if (typeof recipient_email !== 'string' || !recipient_email.includes('@')) {
+      throw new AppError('recipient_email required', 400);
+    }
 
     // Look up invoice with customer info
     const invoice = await adb.get<any>(`
@@ -190,11 +204,15 @@ router.post(
       FROM invoices inv
       LEFT JOIN customers c ON c.id = inv.customer_id
       WHERE inv.id = ?
-    `, invoice_id);
+    `, invoiceId);
     if (!invoice) throw new AppError('Invoice not found', 404);
 
-    const recipientEmail = email || invoice.customer_email;
-    if (!recipientEmail) throw new AppError('No email address available. Provide an email in the request.', 400);
+    // SCAN-811: Verify recipient matches the invoice's customer (defense in depth)
+    if (invoice.customer_email !== recipient_email) {
+      throw new AppError('recipient_email must match the invoice customer', 403);
+    }
+
+    const recipientEmail = recipient_email;
 
     if (!isEmailConfigured(db)) {
       throw new AppError('SMTP is not configured. Set up email in Settings.', 400);
@@ -206,7 +224,7 @@ router.post(
         SELECT description, quantity, unit_price, tax_amount, total
         FROM invoice_line_items WHERE invoice_id = ?
         ORDER BY id ASC
-      `, invoice_id),
+      `, invoiceId),
       adb.all<{ key: string; value: string }>(
         `SELECT key, value FROM store_config WHERE key IN ('store_name','receipt_header','receipt_footer','receipt_thermal_footer')`
       ),
@@ -260,6 +278,9 @@ router.post(
         <p style="font-size:12px;color:#999;">${escapeHtml(receiptFooter)}</p>
       </div>
     `;
+
+    // SCAN-810: Audit before dispatch so the record exists even if email fails
+    audit(db, 'receipt_emailed', req.user!.id, req.ip ?? '', { invoice_id: invoiceId, recipient_email: recipientEmail });
 
     // @audit-fixed: §37 — strip CR/LF from email subject so a malicious
     // order_id can't inject extra headers (header injection).

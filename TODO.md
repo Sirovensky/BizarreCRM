@@ -1579,3 +1579,20 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-816. **scheduledReports resolveRecipients no email validation — past-admin personal email leaks reports indefinitely** — `packages/server/src/services/scheduledReports.ts:217-220`. Fix: validate domain or tenant-owned recipient.
 - [ ] SCAN-817. **bench timer elapsed seconds no cap — 100-yr sessions overflow labor cost** — `packages/server/src/routes/bench.routes.ts:207-222`. Fix: cap at 24h per session.
 - [ ] SCAN-822. **OAuth POST /oauth/refresh no rate-limit — hammer RD API** — `packages/server/src/routes/import.routes.ts:1492`. Fix: 1/min/user rate-limit.
+
+### Wave-32 scan-loop findings (2026-04-23)
+- [ ] SCAN-823. **[HIGH] loaners POST create missing requirePermission — any authed user creates assets** — `packages/server/src/routes/loaners.routes.ts:67`. Fix: requirePermission('inventory.adjust') matching sibling GETs.
+- [ ] SCAN-824. **loaners req.params.id unvalidated at 5 sites (52,97,128,145,177)** — `packages/server/src/routes/loaners.routes.ts`. Fix: validateId helper.
+- [ ] SCAN-825. **heldCarts POST / no audit log — POS financial event missing audit** — `packages/server/src/routes/heldCarts.routes.ts:182`. Fix: audit(req.db, {...}).
+- [ ] SCAN-826. **catalog scraper `.catch()` silent swallow — third-party injection bypass** — `packages/server/src/routes/catalog.routes.ts:259`. Fix: logger.warn in catch.
+- [ ] SCAN-827. **automations dry-run `Number()` at 3 sites — NaN queries return undefined silently** — `packages/server/src/routes/automations.routes.ts:222,227,232`. Fix: validateId optional.
+- [ ] SCAN-828. **voice webhook JSON.parse transcription_text no try/catch** — `packages/server/src/routes/voice.routes.ts:529`. Fix: wrap + log.
+- [ ] SCAN-829. **customers .catch(() => {}) silent at line 1045** — `packages/server/src/routes/customers.routes.ts:1045`. Fix: logger.warn.
+- [ ] SCAN-830. **creditNotes apply check-then-update race — tx scope doesn't cover pre-read** — `packages/server/src/routes/creditNotes.routes.ts:256-283`. Fix: conditional UPDATE + changes check.
+- [ ] SCAN-831. **Vonage webhook fallback console.warn on missing rawBody — no hard reject; unsigned webhooks proceed** — `packages/server/src/providers/sms/vonage.ts:214`. Fix: throw + fail closed.
+- [ ] SCAN-832. **Telnyx webhook same pattern as SCAN-831 — console.warn no throw on missing rawBody** — `packages/server/src/providers/sms/telnyx.ts:100`. Fix: throw + fail closed.
+- [ ] SCAN-833. **auth.routes parseInt(req.params.userId) no isInteger check at :1878** — `packages/server/src/routes/auth.routes.ts:1878`. Fix: validateId.
+- [ ] SCAN-834. **heldCarts GET /:id Number(req.params.id) no validation at :93** — `packages/server/src/routes/heldCarts.routes.ts:93`. Fix: validateId.
+- [ ] SCAN-835. **[LOW] audit.ts details truncated at 16KB silently; consumer has no way to detect loss** — `packages/server/src/utils/audit.ts:27`. Fix: log.warn on truncate + include `truncated_bytes_dropped` metric.
+- [ ] SCAN-836. **Vonage signature method fallback returns true on unknown method — config mismatch allows unsigned** — `packages/server/src/providers/sms/vonage.ts:246`. Fix: fail closed (return false).
+- [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.

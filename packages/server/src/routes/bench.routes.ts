@@ -218,7 +218,13 @@ function computeElapsedSeconds(row: BenchTimerRow): number {
   }
 
   const active = end - start - paused;
-  return Math.max(0, Math.round(active / 1000));
+  const seconds = Math.max(0, Math.round(active / 1000));
+  const MAX_SECONDS_PER_SESSION = 24 * 3600;
+  if (seconds > MAX_SECONDS_PER_SESSION) {
+    logger.warn('bench timer session exceeds 24h — capping', { start, end, seconds });
+    return MAX_SECONDS_PER_SESSION;
+  }
+  return seconds;
 }
 
 function isCurrentlyPaused(row: BenchTimerRow): boolean {
@@ -484,12 +490,13 @@ router.post(
 
     // If the timer is still paused, close the pause segment first so the
     // subtracted paused-time matches reality.
+    let pauseLogJson = row.pause_log_json;
     if (isCurrentlyPaused(row)) {
       const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
       const last = pauses[pauses.length - 1];
       if (last) last.resume_at = new Date().toISOString();
-      await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
-      row.pause_log_json = JSON.stringify(pauses);
+      pauseLogJson = JSON.stringify(pauses);
+      row.pause_log_json = pauseLogJson;
     }
 
     const elapsed = computeElapsedSeconds(row);
@@ -500,15 +507,15 @@ router.post(
         ? validateTextLength(req.body.notes, 500, 'notes')
         : row.notes;
 
-    await adb.run(
-      `UPDATE bench_timers SET ended_at = datetime('now'),
-        total_seconds = ?, labor_cost_cents = ?, notes = ?
+    // Wrap pause_log update + timer stop in one atomic transaction (SCAN-809).
+    await adb.transaction([
+      {
+        sql: `UPDATE bench_timers SET ended_at = datetime('now'),
+        total_seconds = ?, labor_cost_cents = ?, notes = ?, pause_log_json = ?
        WHERE id = ?`,
-      elapsed,
-      cost,
-      notes,
-      id,
-    );
+        params: [elapsed, cost, notes, pauseLogJson, id],
+      },
+    ]);
 
     audit(req.db, 'bench_timer_stopped', req.user?.id ?? null, req.ip ?? 'unknown', {
       timer_id: id,
