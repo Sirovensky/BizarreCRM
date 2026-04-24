@@ -1353,57 +1353,14 @@ Verified working. Not TODOs.
 Do NOT flip `[x]` — web UI consumption still needed to fully close these items.
 
 ### Scan-loop findings in wave-1/2/3 code (2026-04-23, wave-4 scan)
-- [ ] SCAN-499. **recurringInvoices 7 route handlers use raw `async (req,res)` without `asyncHandler` wrap — unhandled rejections bypass global error handler** — `packages/server/src/routes/recurringInvoices.routes.ts:113`. Fix: wrap each handler with `asyncHandler(...)`.
-- [ ] SCAN-500. **shifts swap-accept writes two `adb.run()` calls (UPDATE shift_schedules + UPDATE shift_swap_requests) with no transaction — concurrent accepts double-fire** — `packages/server/src/routes/shiftsSchedule.routes.ts:350`. Fix: `adb.transaction([...])` wrap.
-- [ ] SCAN-501. **recurringInvoices `next_run_at` accepted with only `typeof !== 'string'` check — garbage datetime strings persist unchecked** — `packages/server/src/routes/recurringInvoices.routes.ts:311`. Fix: `Date.parse()` guard or zod datetime schema; reject invalid.
-- [ ] SCAN-502. **fieldService POST /routes N+1 — `Promise.all(jobIds.map(...))` fires one SELECT per job** — `packages/server/src/routes/fieldService.routes.ts:752`. Fix: single `WHERE id IN (?)` query.
-- [ ] SCAN-503. **fieldService PATCH /routes/:id same N+1 per-job SELECT inside map** — `packages/server/src/routes/fieldService.routes.ts:801`. Fix: batch WHERE id IN.
-- [ ] SCAN-504. **fieldService POST /routes/optimize same N+1 per-job SELECT inside map** — `packages/server/src/routes/fieldService.routes.ts:893`. Fix: batch WHERE id IN.
-- [ ] SCAN-505. **smsGroups POST /:id/members adds up to 500 members per call with no per-user rate-limit (only group-level send limit exists)** — `packages/server/src/routes/smsGroups.routes.ts:293`. Fix: 10 calls/min/user write limit via `checkWindowRate`.
-- [ ] SCAN-506. **activity `metadata_json` returned raw to any manager — signer_name/signer_email/timesheet-edit-reason leak PII cross-entity** — `packages/server/src/routes/activity.routes.ts:147`. Fix: scrub PII fields from metadata before return OR scope metadata visibility to the owning-entity manager.
 
 ### Scan-loop wave-5 findings in cron/service/new-route code (2026-04-23)
-- [ ] SCAN-507. **No index on `expense_receipt_uploads(ocr_status, created_at)` — cron polls every 2 min with full table scan** — `packages/server/src/db/migrations/129_ticket_signatures_receipt_ocr.sql:57`. Fix: `CREATE INDEX idx_expense_receipt_uploads_ocr_status ON expense_receipt_uploads(ocr_status, created_at)`.
-- [ ] SCAN-508. **`checklist_instances.template_id` FK no ON DELETE — deleting active template blocks with RESTRICT** — `packages/server/src/db/migrations/128_checklist_sla.sql:29`. Fix: add `ON DELETE SET NULL` (+ nullable) or `CASCADE`.
-- [ ] SCAN-509. **`tickets.sla_policy_id` ALTER FK no ON DELETE — policy delete RESTRICTed** — `packages/server/src/db/migrations/128_checklist_sla.sql:76`. Fix: `ON DELETE SET NULL` via table rebuild.
-- [ ] SCAN-510. **`field_service_jobs.customer_id` FK no ON DELETE — customer delete silently blocked** — `packages/server/src/db/migrations/130_field_service_dispatch.sql:12`. Fix: `ON DELETE SET NULL`.
-- [ ] SCAN-511. **slaBreachCron first-response scan no index on `tickets.sla_first_response_due_at` — full scan every 5 min** — `packages/server/src/services/slaBreachCron.ts:151-165` + `128_checklist_sla.sql:77`. Fix: partial index `CREATE INDEX idx_tickets_sla_first_response_due ON tickets(sla_first_response_due_at) WHERE sla_first_response_due_at IS NOT NULL`.
-- [ ] SCAN-512. **receiptOcrCron stale cleanup template-literal interpolates `STALE_PENDING_HOURS` into SQL** — `packages/server/src/services/receiptOcrCron.ts:68-70`. Fix: parameterize via `datetime('now', ? || ' hours')`.
-- [ ] SCAN-513. **owner-pl arQuery fetches every outstanding invoice with no LIMIT — heap bloat on large tenants** — `packages/server/src/routes/ownerPl.routes.ts:292-301`. Fix: LIMIT 10000 + `truncated:true` flag OR server-side SQL aging aggregation.
 - [ ] SCAN-514. **pl_snapshots `metadata_json` stores `generated_by` user-id that is also in dedicated typed column — duplicate + leaks on export** — `packages/server/src/routes/ownerPl.routes.ts:589`. Fix: drop duplicate from metadata_json OR redact in SELECT projection.
-- [ ] SCAN-515. **bookingPublic /availability 404 on unknown service_id enables service-id enumeration** — `packages/server/src/routes/bookingPublic.routes.ts:192`. Fix: return generic 400 "Invalid service" (no info leak).
-- [ ] SCAN-516. **smsAutoResponderMatcher loads all active rules with no LIMIT — hundreds-of-rules tenant → heap on every inbound SMS** — `packages/server/src/services/smsAutoResponderMatcher.ts:134-138`. Fix: LIMIT 200 or configurable cap.
-- [ ] SCAN-517. **`sync_conflicts.resolved_by_user_id` FK no ON DELETE — user delete RESTRICTed** — `packages/server/src/db/migrations/134_sync_conflicts.sql:53`. Fix: `ON DELETE SET NULL`.
-- [ ] SCAN-518. **`pl_snapshots.generated_by_user_id` FK no ON DELETE — admin delete RESTRICTed** — `packages/server/src/db/migrations/131_owner_pl_snapshot.sql:24`. Fix: `ON DELETE SET NULL`.
-- [ ] SCAN-519. **dataExportGenerator uses `.all()` not `.iterate()` — full table materialized despite claimed streaming** — `packages/server/src/services/dataExportGenerator.ts:204`. Fix: `db.prepare(...).iterate()` row-by-row.
-- [ ] SCAN-520. **syncConflicts GET / list returns `sc.*` including 32KB+ `client_version_json` + `server_version_json` per row — bloated list responses** — `packages/server/src/routes/syncConflicts.routes.ts:307`. Fix: omit version blobs from list; return only in detail endpoint.
 - [ ] SCAN-521. **[STALE-DEP add-required] `tesseract.js` not in packages/server/package.json — receipt OCR cron always fails with "OCR processor not installed; configure tesseract.js in package.json"** — `packages/server/package.json`. Real OCR processing blocked until dep added. Fix (needs user approval per no-dep-bump policy): `npm install --workspace=@bizarre-crm/server tesseract.js@^5`. After install, `services/receiptOcr.ts` lazy-imports it; no code change needed.
 
 ### Wave-7 scan-loop + helpers audit findings (2026-04-23)
-- [x] SCAN-522. **[SEC-CRITICAL FIXED commit pending] activity_events table NEVER populated — zero INSERT sites anywhere except `logActivity` helper which was never called** — `packages/server/src/utils/activityLog.ts` + `packages/server/src/routes/activity.routes.ts`. Fix: logActivity now wired at 6 sites (ticket created/status-changed, invoice created, payment received, customer created, inventory stock-adjusted).
-- [x] SCAN-523. ~~customerHealthScore 4 orphan exports~~ FIXED — removed export keyword on internal helpers.
-- [x] SCAN-524. ~~recordCustomerInteraction orphan~~ FIXED — wired into invoices.routes.ts payment handler as fire-and-forget.
-- [x] SCAN-525. ~~sweepClosedTicketPhotos orphan export~~ FIXED — removed export.
-- [x] SCAN-526. ~~[SEC-P0] tickets GET /export authz gap~~ FIXED — allViewCfg visibility guard mirrored from list handler.
-- [x] SCAN-527. ~~[SEC-P0 PII] tickets feedback SMS console.log phone~~ FIXED — logger + redactPhone.
-- [x] SCAN-528. ~~[SEC-P0 PII] OTP SMS console.error phone~~ FIXED — logger + redactPhone.
-- [x] SCAN-529. ~~tickets clone-warranty INSERT missing location_id~~ FIXED — inherits source.location_id ?? 1.
-- [x] SCAN-530. ~~[SEC-P0 TCPA] sms auto-responder doesn't check sms_opt_in~~ FIXED — lookup added before tryAutoRespond block.
-- [x] SCAN-531. ~~[SEC-P0 TCPA] sms business-hours auto-reply missing opt-in~~ FIXED — sms_opt_in guard on isOutsideHours branch.
-- [x] SCAN-532. ~~[SEC] sms templates write endpoints no authz~~ FIXED — requireManagerOrAdmin on POST/PUT/DELETE /templates.
-- [x] SCAN-533. ~~invoices credit-note location_id missing~~ FIXED — inherits original.location_id ?? 1.
-- [x] SCAN-534. ~~invoices console.warn/error bypassing structured logger~~ FIXED — logger.warn/error at 3 sites.
-- [x] SCAN-535. ~~sms preview-template tenant scope~~ CONFIRMED not an issue — per-tenant DB-file model isolates; comment added.
-- [x] SCAN-536. ~~[SEC] invoices GET /stats no authz~~ FIXED — requirePermission('invoices.view').
 
 ### Wave-8 scan-loop findings (2026-04-23)
-- [ ] SCAN-537. **[SEC] reports GET /dashboard no role gate — cashier/tech reads revenue totals + staff leaderboard** — `packages/server/src/routes/reports.routes.ts:51`. Fix: `requireAdminOrManager(req)` (pattern matches /dashboard-kpis:288).
-- [ ] SCAN-538. **[SEC] reports GET /insights no role gate — 12-mo revenue-by-model + popular-services** — `packages/server/src/routes/reports.routes.ts:545`. Fix: role gate.
-- [ ] SCAN-539. **[SEC] reports GET /employees no role gate — commission totals + hours + revenue per staff leak to cashier/tech** — `packages/server/src/routes/reports.routes.ts:779`. Fix: role gate.
-- [ ] SCAN-540. **[SEC] reports GET /inventory no role gate — cost_price × in_stock value + top-moving parts w/ cost** — `packages/server/src/routes/reports.routes.ts:834`. Fix: role gate.
-- [ ] SCAN-541. **[SEC] reports GET /tech-workload no role gate — per-tech open-tickets + revenue-this-month + avg repair hours (salary-correlated)** — `packages/server/src/routes/reports.routes.ts:933`. Fix: role gate.
-- [ ] SCAN-542. **[SEC] reports GET /needs-attention no role gate — overdue invoices + customer PII + low-stock SKUs** — `packages/server/src/routes/reports.routes.ts:1092`. Fix: role gate.
-- [ ] SCAN-543. **[SEC] reports GET /device-models no role gate — aggregated repair counts + avg ticket totals per model (competitive intel)** — `packages/server/src/routes/reports.routes.ts:1191`. Fix: role gate.
 - [ ] SCAN-544. **[SEC] reports GET /parts-usage no role gate — supplier names + cost totals per part** — `packages/server/src/routes/reports.routes.ts:1224`. Fix: role gate.
 - [ ] SCAN-545. **[SEC] reports GET /stalled-tickets no role gate — tech names grouped with per-tech stall counts (staff-performance PII)** — `packages/server/src/routes/reports.routes.ts:1312`. Fix: role gate.
 - [ ] SCAN-546. **portal-enrich /ticket/:id/queue-position missing `guardPortalRate` — rate-limiter applied on other reads but skipped here; unbounded COUNT(*)+EXISTS scans possible** — `packages/server/src/routes/portal-enrich.routes.ts:296`. Fix: add `guardPortalRate(req, PORTAL_READ_CATEGORY, portalIdentityKey(req), PORTAL_READ_MAX, PORTAL_READ_WINDOW_MS)`.
@@ -1511,92 +1468,39 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-634. **blockchyp getClient accepts `db: any` — callers may pass req.asyncDb accidentally, runtime crash on `.prepare()`** — `packages/server/src/services/blockchyp.ts:105-151`. Fix: type as `Database.Database`.
 - [ ] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template-literal SQL (`-${STUCK_PENDING_THRESHOLD_MINUTES} minutes`) — pattern risk for future config-driven values** — `packages/server/src/services/blockchyp.ts:820,817`. Fix: parameterize via `datetime('now', ? || ' minutes')`.
 - [ ] SCAN-636. **[SEC] dunning GET /sequences no role gate — cashier reads collection cadence + contact strategy** — `packages/server/src/routes/dunning.routes.ts:49-63`. Fix: `requireAdmin(req)` (matches sibling writes).
-- [ ] SCAN-637. **rma `received` transition status UPDATE + N stock increments NOT in transaction — mid-flight crash leaves RMA received but stock not restored** — `packages/server/src/routes/rma.routes.ts:255-268,230`. Fix: batch in `adb.transaction([TxQuery[]])`.
 - [ ] SCAN-638. **web ReportsPage useEffect risk of loop — openUpgradeModal not in deps + isReportTabLocked not memoized + eslint-disable suppresses exhaustive-deps warning** — `packages/web/src/pages/reports/ReportsPage.tsx:1144-1153`. Fix: `useCallback` isReportTabLocked + include openUpgradeModal in deps (or ref) + drop lint-disable.
 - [ ] SCAN-639. **portal embed-config uses dynamic `import('../utils/rateLimiter.js')` at request time — overhead + theoretical failure lets request pass without rate-limit** — `packages/server/src/routes/portal.routes.ts:1487`. Fix: use static top-of-file import (already exists at line 9).
 
 ### Wave-16 scan findings (2026-04-23)
-- [ ] SCAN-640. **errorHandler middleware 2 console.error bypass structured logger** — `packages/server/src/middleware/errorHandler.ts:40,42`. Fix: logger.error.
-- [ ] SCAN-641. **tenantResolver 2 console.error in critical auth path** — `packages/server/src/middleware/tenantResolver.ts:429,491`. Fix: log.error.
-- [ ] SCAN-642. **tierGate 2 console.warn** — `packages/server/src/middleware/tierGate.ts:17,28`. Fix: createLogger + structured.
-- [ ] SCAN-643. **tickets feedback SMS detached setTimeout console.error** — `packages/server/src/routes/tickets.routes.ts:2132`. Fix: logger.error.
-- [ ] SCAN-644. **tickets notification import dynamic-chain console.error** — `packages/server/src/routes/tickets.routes.ts:2091`. Fix: logger.error.
-- [ ] SCAN-645. **auth.routes JSON.parse(backup_codes) no try/catch — corrupt column throws in loop, unhandled 500 leak** — `packages/server/src/routes/auth.routes.ts:1051`. Fix: try/catch → valid:false.
-- [ ] SCAN-646. **auth.routes JSON.parse(user.permissions) 3 bare sites (generateTokens, refresh, impersonate) — corrupt column throws during token gen** — `packages/server/src/routes/auth.routes.ts:401,1287,1443`. Fix: `safeParsePermissions(raw)` helper at all 3 sites.
-- [ ] SCAN-647. **campaigns `requireAdminOrServiceToken(req: any)` — type-check disabled on auth helper** — `packages/server/src/routes/campaigns.routes.ts:750`. Fix: `Request` type + augmented req.user.
-- [ ] SCAN-648. **settings req.body `Record<string,string>` cast without typeof guard — non-string values silently coerce via String()** — `packages/server/src/routes/settings.routes.ts:428,487,1830`. Fix: typeof-string guard before accept.
-- [ ] SCAN-649. **10 bare `setInterval(...)` across 7+ route files not using trackInterval — leak handles on shutdown/test** — admin×2, auth, signup×3, invoices, management, super-admin, import. Fix: `trackInterval` (extract to shared util if needed).
-- [ ] SCAN-650. **catalog req.body `as` cast + `q.trim()` without typeof string check — `q:42` → TypeError** — `packages/server/src/routes/catalog.routes.ts:580`. Fix: typeof guard.
-- [ ] SCAN-651. **metricsCollector 2 console.log startup + rollup** — `packages/server/src/services/metricsCollector.ts:144,307`. Fix: log.info.
-- [ ] SCAN-652. **tenantTermination module-scope `setInterval(...)` not via trackInterval** — `packages/server/src/services/tenantTermination.ts:76`. Fix: return handle from start() + register in index.ts.
-- [ ] SCAN-653. **posEnrich `JSON.parse(cartSerialized)` no try/catch (surrounding helper has one, this doesn't)** — `packages/server/src/routes/posEnrich.routes.ts:553`. Fix: use parseTrainingTxList helper OR wrap + AppError.
 
 ### Wave-18 scan-loop findings in wave-3/4 code (2026-04-23)
-- [ ] SCAN-654. **[SEC-HIGH] bookingPublic /availability IP rate-limit uses `req.ip` directly — XFF spoof bypass behind proxy** — `packages/server/src/routes/bookingPublic.routes.ts:44`. Fix: use `req.socket.remoteAddress` (SCAN-194 pattern).
-- [ ] SCAN-655. **[HIGH] pos POST `/workstations/:id/set-default` missing `asyncHandler` wrap — unhandled rejection crashes server** — `packages/server/src/routes/pos.routes.ts:2294`. Fix: wrap handler.
-- [ ] SCAN-656. **locations POST /:id/set-default trigger `trg_locations_single_default_update` clears others AND app also runs UPDATE — non-atomic double-clear race** — `packages/server/src/routes/locations.routes.ts:493`. Fix: rely on trigger alone OR wrap both in adb.transaction.
-- [ ] SCAN-657. **ownerPl LRU cache key uses `req.tenantSlug` hint — if resolved tenant differs, cross-tenant cache collision** — `packages/server/src/routes/ownerPl.routes.ts:544-545`. Fix: include `req.tenantId` (DB-resolved) in key; not the client-supplied slug.
-- [ ] SCAN-658. **fieldService PATCH /jobs/:id `validateOptionalLatLng` accepts empty string → `Number('')=0`, PATCH writes NaN/0 to DB** — `packages/server/src/routes/fieldService.routes.ts:398-400,439`. Fix: treat `''` as `undefined` (no-op) OR reject 400.
-- [ ] SCAN-659. **locations PATCH /:id inconsistent COALESCE — `address_line` uses `?? null` while other fields use conditional; undefined overwrites old value on some fields only** — `packages/server/src/routes/locations.routes.ts:405-414`. Fix: uniform COALESCE pattern for all optional fields.
 - [ ] SCAN-660. **[POSSIBLE] ownerPl computeSummary fires 14 parallel queries incl AR capped at 10k — memory spike unbounded on large tenants** — `packages/server/src/routes/ownerPl.routes.ts:390-405`. Fix: sequential or limit concurrency (p-limit 4) OR SQL-side aggregation.
-- [ ] SCAN-661. **bookingConfig POST /exceptions allows `is_closed=true` with `open_time`/`close_time` supplied — no mutual exclusion enforcement** — `packages/server/src/routes/bookingConfig.routes.ts:434-449`. Fix: reject 400 if is_closed && (open_time || close_time).
-- [ ] SCAN-662. **syncConflicts `validateVersionJson` byte-size check after `.trim()` — whitespace-padded JSON bypasses 32KB cap** — `packages/server/src/routes/syncConflicts.routes.ts:144`. Fix: size-check raw input before trim.
-- [ ] SCAN-663. **bookingPublic /availability Cache-Control header set conditionally AFTER JSON build — thrown error drops cache directive** — `packages/server/src/routes/bookingPublic.routes.ts:255,273,293`. Fix: set header at top of handler.
 
 ### Wave-19 scan-loop findings — remaining bare setInterval leakers (2026-04-23)
-- [ ] SCAN-664. **ws/server.ts 2 bare setInterval — heartbeat (line 586) + zero-count sweeper (line 143) — stored in variable but not via trackInterval; shutdown handle tracking differs from registry pattern** — `packages/server/src/ws/server.ts:143,586`. Fix: route through `trackInterval` so backgroundIntervals cleanup covers them.
-- [ ] SCAN-665. **providers/sms/index.ts module-scope setInterval (cleanup/retry) — fires at import time, cannot be stopped cleanly in tests** — `packages/server/src/providers/sms/index.ts:65`. Fix: extract to start function + trackInterval.
-- [ ] SCAN-666. **services/githubUpdater.ts `checkInterval = setInterval(...)` — stored local but not trackInterval; not in backgroundIntervals registry** — `packages/server/src/services/githubUpdater.ts:358`. Fix: swap to trackInterval; remove module-scope variable.
-- [ ] SCAN-667. **routes/employees.routes.ts `autoClockoutSweepTimer = setInterval(...)` — stored but not trackInterval-registered; async callback can reject uncaught** — `packages/server/src/routes/employees.routes.ts:639`. Fix: trackInterval wrapping + error-catching callback.
-- [ ] SCAN-668. **middleware/stepUpTotp.ts module-scope setInterval — challenge reaper fires on import; cannot be stopped** — `packages/server/src/middleware/stepUpTotp.ts:63`. Fix: wrap in startStepUpReaper() + trackInterval.
-- [ ] SCAN-669. **services/metricsCollector.ts sampleTimer + rollupTimer use raw setInterval with manual `.unref()` — not registered for graceful shutdown** — `packages/server/src/services/metricsCollector.ts:329,334`. Fix: trackInterval with { unref: true } option.
 
 ### Wave-20 scan-loop findings (2026-04-23)
-- [ ] SCAN-671. **[HIGH pervasive] `Number(req.params.id)` without `Number.isFinite` guard across 15 route files — NaN/Infinity leak into WHERE id = ? predicates (silent no-match or SQLite coercion)** — automations (4), bench (6), campaigns (6), catalog (2), crm (14), customers (6), deviceTemplates (3), employees (6), estimates (8), heldCarts (3), leads (8), notifications (1), pos (2), reports (1), snippets (2). Fix: shared `parseIdOrThrow(raw, label)` helper + migrate call sites.
-- [ ] SCAN-672. **[MEDIUM] auth.routes 11 unauthenticated handlers use bare `async (req,res) =>` without asyncHandler — unhandled rejection crashes request + leaks stack** — `packages/server/src/routes/auth.routes.ts:453,484,625,809,851,885,1021,1133,1557,1679,1933`. Fix: wrap each in asyncHandler.
-- [ ] SCAN-673. **[POSSIBLE MEDIUM] paymentLinks DELETE /:id check-then-update race — concurrent DELETEs both pass `status !== 'paid'` check, double-cancellation state possible** — `packages/server/src/routes/paymentLinks.routes.ts:170`. Fix: conditional UPDATE (`WHERE status NOT IN ('paid','cancelled')`) + check `changes`; 409 when 0.
-- [ ] SCAN-674. **[LOW] management audit-write catch logs raw `error.message` (leaks system paths on EPERM/ENOENT to server log)** — `packages/server/src/routes/management.routes.ts:72`. Fix: log `err?.code` only.
 
 ### Wave-21 production migration hardening (2026-04-23)
-- [x] SCAN-676. **migrate.ts missing `@skip-if-no-table` directive — master-only migrations (116) crashed on legacy single-tenant DB** — FIXED commit 16239b28.
-- [x] SCAN-677. **migration 128 `checklist_templates` collided with migration 001 same-name-different-schema table — CREATE INDEX `kind` column crash** — FIXED commit fdeead53 via rename to `ops_checklist_templates` / `ops_checklist_instances`.
-- [x] SCAN-678. **migration 138 explicit `BEGIN TRANSACTION` nested inside migrate.ts outer wrapper — "cannot start a transaction within a transaction"** — FIXED commit 44f49823 via `@no-transaction` header.
-- [x] SCAN-679. **migration 142 re-ADD `location_id` on shift_schedules already added by migration 121 — duplicate column crash** — FIXED commit a8381870 by dropping redundant ALTER; kept idempotent UPDATE + INDEX.
 
 ### Wave-21 scan-loop findings (2026-04-23)
 - [ ] SCAN-680. **[INFO] migration 142 appointments ADD COLUMN location_id — no other migration adds this column, but SQLite lacks IF NOT EXISTS on ADD; if any external path added it, same dup-column crash as 121/142** — `packages/server/src/db/migrations/142_work_tables_location_id.sql:52`. Fix option: pre-check via pragma_table_info.
-- [ ] SCAN-681. **migration 141 home_location_id backfill relies on user_locations join — users without user_locations row get NULL home_location_id, left unassigned** — `packages/server/src/db/migrations/141_users_home_location_id.sql:25-29`. Fix: fallback UPDATE users SET home_location_id = 1 WHERE home_location_id IS NULL.
 - [ ] SCAN-682. **migration 140 inventory UPDATE SET location_id=1 assumes locations(id=1) seeded by 132 — order dependency not enforced; out-of-order application bricks FK** — `packages/server/src/db/migrations/140_inventory_location_id.sql:16`. Fix: guard with SELECT EXISTS check OR enforce ordering via file-number sort (already done).
 - [ ] SCAN-683. **migration 136 CREATE INDEX tickets(location_id, status_id) silently excludes rows where status_id is NULL from index** — `packages/server/src/db/migrations/136_tickets_location_id.sql:22`. Fix: understand impact; if status_id is NOT NULL in schema, no issue — verify migration 001.
 - [ ] SCAN-684. **[LOW] reports.routes.ts res.send(html) interpolates revenue/cogs values — currently numeric/ISO only; future refactor with user strings = XSS** — `packages/server/src/routes/reports.routes.ts:2794,2889`. Fix: apply escapeHtml() prophylactically on all interpolations.
-- [ ] SCAN-685. **[MEDIUM] migration 013 `PRAGMA foreign_keys = OFF` without `@no-transaction` header — migrate.ts outer tx silently no-ops PRAGMA; FK enforced during table rebuild** — `packages/server/src/db/migrations/013_invoices_nullable_customer.sql:3`. Fix: add `-- @no-transaction` header. Existing deploys unaffected (already applied).
 - [ ] SCAN-686. **[LOW] portal widget script validates data-server regex but not data-position / data-color — embedder-controlled CSS with `") onclick=...` injection; sandboxed iframe limits blast radius** — `packages/server/src/routes/portal.routes.ts`. Fix: whitelist valid values.
 - [ ] SCAN-687. **backup.ts execFile sqlite3 dump stdout not validated — escape-sequence in output bypasses scrutiny if sqlite3 binary compromised** — `packages/server/src/services/backup.ts`. Fix: sanity-check first/last bytes; reject non-SQL prefix.
-- [ ] SCAN-688. **[LOW] migration 042 INSERT INTO ticket_notes_new SELECT * — column-by-position copy; future schema drift silently miscopies** — `packages/server/src/db/migrations/042_fix_ticket_notes_type_check.sql:24`. Fix: explicit column list in both INSERT + SELECT.
-- [ ] SCAN-689. **migrate.ts `@no-transaction` regex `/^[\t ]*--\s*@no-transaction\b/m` misses lines with trailing content — e.g., `-- @no-transaction reason: ...`** — `packages/server/src/db/migrate.ts:45`. Fix: loosen regex end-of-line OR document exact header shape.
 
 ### Wave-22 scan-loop findings (2026-04-23)
 - [ ] SCAN-690. **[POSSIBLE] SMS rate-limit category keys inconsistent across endpoints — attacker might switch routes to evade per-destination throttle** — `packages/server/src/routes/sms.routes.ts:96`. Fix: enumerate all SMS category strings + normalize shared family to same key.
-- [ ] SCAN-691. **auth.routes last_active update fire-and-forget `.catch(noop)` silently drops audit trail** — `packages/server/src/routes/auth.routes.ts:154-155`. Fix: log the caught error.
-- [ ] SCAN-692. **[HIGH] `index.ts:1152` casts `req.db as any` for consumeWindowRate — tenantResolver may leave undefined pass-through** — `packages/server/src/index.ts:1152`. Fix: narrow via runtime guard OR refine Request augmentation.
-- [ ] SCAN-693. **tierGate returns 500 when tenantPlan undefined — masks middleware-chain bugs; should 403 or 400** — `packages/server/src/middleware/tierGate.ts:19-26`. Fix: 400 with error "tenant context missing".
 - [ ] SCAN-694. **[LOW] import oauth callback sends inline JS setTimeout via `res.send()` — safe now but fragile pattern** — `packages/server/src/routes/import.routes.ts:1481-1488`. Fix: migrate to res.render OR sanitized template.
 - [ ] SCAN-695. **db/worker-pool "queue is full" detection via substring match — brittle if Piscina error text changes** — `packages/server/src/db/worker-pool.ts:106-110`. Fix: check `err.name` or `err instanceof` Piscina QueueFullError if exported.
-- [ ] SCAN-696. **`index.ts:1484` casts tenant-lookup row `as any` without null-narrowing — downstream `.id` / `.slug` deref throws on null** — `packages/server/src/index.ts:1484`. Fix: typed `as Tenant | undefined` + existence check.
-- [ ] SCAN-697. **auth middleware .then().catch() chain — catch path has no `return` before response; potential follow-on next() call risk** — `packages/server/src/middleware/auth.ts:123-186`. Fix: add explicit return on all response paths.
-- [ ] SCAN-698. **[POSSIBLE] WS socket-level auth timeout not cleared on silent drop path (malformed message return) — leak + potential callback on reused socket** — `packages/server/src/ws/server.ts:313-331,383`. Fix: stash handle on ws instance + clear in close handler.
 - [ ] SCAN-699. **rateLimiter category collisions — creditNotes + recurringInvoices both use userId-keyed bucket; same user hits both → shared limit** — `packages/server/src/routes/creditNotes.routes.ts,recurringInvoices.routes.ts`. Fix: scope category string per family.
-- [ ] SCAN-700. **reports/tickets CSV export missing explicit Content-Type header — express auto-detect based on string content; vulnerable to content-sniffing** — `packages/server/src/routes/reports.routes.ts:1810,packages/server/src/routes/tickets.routes.ts:1703`. Fix: `res.setHeader('Content-Type', 'text/csv; charset=utf-8')`.
-- [ ] SCAN-701. **normalizeOrigin catch returns raw input on URL parse failure — malformed origin passes through unvalidated** — `packages/server/src/index.ts:954-956`. Fix: return empty string on parse error (reject).
-- [ ] SCAN-702. **tenantResolver skipped on /api/v1/signup — signup must not assume `req.tenantSlug` exists** — `packages/server/src/routes/signup.routes.ts + index.ts:1410`. Fix: verify signup handler guards req.tenantSlug access.
 - [ ] SCAN-703. **[LOW] stepUpTotp replay check uses `Date.now() / 30_000` bucket — clock skew + leap second drift; otplib window-tolerance handles verify but not replay bucket** — `packages/server/src/middleware/stepUpTotp.ts:80`. Fix: accept otplib's validation as sufficient OR add skew tolerance.
-- [ ] SCAN-704. **[LOW] giftCardCodeHashes backfill opens direct Database() at boot — races lazy tenant-pool opens** — `packages/server/src/index.ts:410-477`. Fix: use getTenantDb() not direct connection.
 
 ### Wave-24 scan-loop findings (2026-04-23)
 - [ ] SCAN-705. **admin.routes.ts `AnyRow = Record<string, any>` throughout — type safety lost on admin panel queries** — `packages/server/src/routes/admin.routes.ts:27`. Fix: swap `any` to `unknown` OR typed interface per query.
 - [ ] SCAN-706. **shared/types/automation.ts trigger + action configs use `Record<string, unknown>` permissively — runtime validation needed** — `packages/shared/src/types/automation.ts:6,8`. Fix: Zod schemas per trigger/action type.
 - [ ] SCAN-707. **[LOW] authStore.ts access token persisted to localStorage without encryption — XSS exposure** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: sessionStorage OR in-memory only; refresh via httpOnly cookie only.
-- [ ] SCAN-708. **admin file browser symlink traversal — fs.realpathSync after path.resolve blocked-check; symlink in user-writable dir evades check** — `packages/server/src/routes/admin.routes.ts:276,288-289`. Fix: realpath FIRST, then check.
 - [ ] SCAN-709. **admin backup download Content-Disposition unquoted filename — special chars break header parsing** — `packages/server/src/routes/admin.routes.ts:381`. Fix: quote + escape filename per RFC 5987.
 - [ ] SCAN-710. **repairDeskImport `RdResponse<T = any>` — third-party API shape unvalidated, silent type confusion risk** — `packages/server/src/services/repairDeskImport.ts:130`. Fix: Zod schema + parse at boundary.
 - [ ] SCAN-711. **[POSSIBLE LOW] email.ts subject passed to nodemailer without \r\n sanitization — header injection if future caller supplies user input** — `packages/server/src/services/email.ts:161`. Fix: strip \r\n from subject prophylactically.

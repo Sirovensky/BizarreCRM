@@ -299,19 +299,23 @@ router.get('/drives/browse', (req, res) => {
 
   // Block access to sensitive system directories
   const blocked = ['/etc', '/proc', '/sys', '/dev', '/root', 'C:\\Windows', 'C:\\Program Files', 'C:\\ProgramData'];
-  const normalized = path.resolve(dirPath);
-  if (blocked.some(b => normalized.toLowerCase().startsWith(b.toLowerCase()))) {
+
+  // Resolve symlinks FIRST, then apply the blocked-prefix check on the real path.
+  // Checking before realpath would allow a symlink in a non-blocked dir to point
+  // into a blocked dir and bypass the guard.
+  let realDir: string;
+  try {
+    realDir = fs.realpathSync(path.resolve(dirPath));
+  } catch {
+    res.json({ success: true, data: { current: dirPath, folders: [] } });
+    return;
+  }
+  if (blocked.some(b => realDir.toLowerCase().startsWith(path.normalize(b).toLowerCase()))) {
     res.json({ success: true, data: { current: dirPath, folders: [] } });
     return;
   }
 
   try {
-    // Resolve symlinks to check real path
-    const realDir = fs.existsSync(dirPath) ? fs.realpathSync(dirPath) : dirPath;
-    if (blocked.some(b => realDir.toLowerCase().startsWith(path.normalize(b).toLowerCase()))) {
-      res.json({ success: true, data: { current: dirPath, folders: [] } });
-      return;
-    }
     const entries = fs.readdirSync(realDir, { withFileTypes: true })
       .filter(d => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('$'))
       .map(d => {
