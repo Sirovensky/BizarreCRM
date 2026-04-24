@@ -323,15 +323,11 @@ private fun Step1CustomerContent(
                 }
             }
 
-            // "Create new" text button
-            item {
-                TextButton(
-                    onClick = onShowCreate,
-                    modifier = Modifier.semantics { contentDescription = "Create new customer" },
-                ) {
-                    Text("+ Create new customer")
-                }
-            }
+            // "Create new customer" tile — primary-bordered per mockup,
+            // with a cream-filled "+" icon box. Replaces the earlier bare
+            // TextButton that looked orphaned between the search field and
+            // the walk-in ghost tile.
+            item { CreateNewCustomerTile(onClick = onShowCreate) }
 
             // Walk-in ghost tile — dashed-border per GhostWalkInTile pattern
             // (inline; no util extracted per single-file preference).
@@ -521,6 +517,54 @@ private fun CustomerSearchRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/** Primary-bordered "Create new customer" tile matching the mockup. */
+@Composable
+private fun CreateNewCustomerTile(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.5.dp,
+                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(14.dp),
+            )
+            .clickable(onClickLabel = "Create new customer") { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .defaultMinSize(minHeight = 60.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "+",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Create new customer",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "First name required",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
