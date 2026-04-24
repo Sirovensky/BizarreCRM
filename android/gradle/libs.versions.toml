@@ -10,6 +10,11 @@ androidx-core-ktx = "1.15.0"
 lifecycle = "2.8.7"
 activity-compose = "1.10.0"
 compose-bom = "2026.04.01"
+# material3-expressive = "1.5.0-alpha18" — overrides BOM-managed material3 to
+# unlock MaterialExpressiveTheme, MotionScheme, LoadingIndicator,
+# WavyProgressIndicator, ButtonGroup, HorizontalFloatingToolbar, MaterialShapes.
+# Promoted to public in alpha-18; stable expected in material3 1.5.0 (TBD).
+material3-expressive = "1.5.0-alpha18"
 navigation-compose = "2.8.6"
 room = "2.7.0"
 sqlcipher = "4.6.1"
@@ -68,7 +73,7 @@ androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graph
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3-expressive" }
 androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 

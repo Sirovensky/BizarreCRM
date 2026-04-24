@@ -28,6 +28,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.bizarreelectronics.crm.BuildConfig
 
 // ---------------------------------------------------------------------------
 // Primitive palette — Wave 1 brand foundation
@@ -199,6 +200,19 @@ val LocalBrandAccent = staticCompositionLocalOf<Color> { BrandAccent }
 // Theme entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * [BizarreCrmTheme] wraps the tree in a Material 3 theme. When
+ * `BuildConfig.USE_EXPRESSIVE_THEME` is true (default 2026-04), the inner
+ * wrapper is [MaterialExpressiveTheme] (material3 1.5.0-alpha18) which
+ * ships the motion-scheme / shape-morph / typography-emphasis tokens.
+ * When the flag is flipped off at build time, the tree falls back to
+ * plain [MaterialTheme] so ops can hotfix an expressive regression
+ * without a rebuild.
+ *
+ * Reduce-Motion compliance stays in [ui/theme/Motion.kt] — every spring
+ * still routes through [ReduceMotion].
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BizarreCrmTheme(
     // Default is true — dark-first. AppPreferences.darkMode overrides from
@@ -211,7 +225,7 @@ fun BizarreCrmTheme(
     // When true AND Android 12+ (API 31+), Material You derives the color scheme
     // from the user's wallpaper via dynamicLightColorScheme / dynamicDarkColorScheme.
     dynamicColor: Boolean = false,
-    // Tenant accent override — null uses BrandAccent (logo orange).
+    // Tenant accent override — null uses BrandAccent (brand cream).
     tenantAccent: Color? = null,
     content: @Composable () -> Unit,
 ) {
@@ -229,19 +243,29 @@ fun BizarreCrmTheme(
     // hardcoded top-level color vals.
     val extendedColors = if (darkTheme) darkExtended() else lightExtended()
 
-    // §1.4 line 195: resolve tenant accent (falls back to logo orange).
+    // §1.4 line 195: resolve tenant accent (falls back to brand cream).
     val resolvedAccent = tenantAccentOrFallback(tenantAccent)
 
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,
         LocalBrandAccent provides resolvedAccent,
     ) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = BizarreTypography,
-            shapes = BizarreShapes,
-            content = content,
-        )
+        if (BuildConfig.USE_EXPRESSIVE_THEME) {
+            MaterialExpressiveTheme(
+                colorScheme = colorScheme,
+                typography = BizarreTypography,
+                shapes = BizarreShapes,
+                motionScheme = MotionScheme.expressive(),
+                content = content,
+            )
+        } else {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = BizarreTypography,
+                shapes = BizarreShapes,
+                content = content,
+            )
+        }
     }
 }
 
@@ -251,17 +275,12 @@ fun BizarreCrmTheme(
 
 /**
  * [DesignSystemTheme] is the forward-looking entry point for the Bizarre CRM
- * design system. It currently wraps [BizarreCrmTheme] 1-to-1 so all existing
- * callers that use [BizarreCrmTheme] continue to compile unchanged.
+ * design system. Wraps [BizarreCrmTheme] 1-to-1 so all callers that use
+ * [BizarreCrmTheme] continue to compile unchanged.
  *
- * When AndroidX Material3 Expressive reaches stable (currently in alpha as
- * `androidx.compose.material3.expressive`), this wrapper will be updated to
- * call `MaterialExpressiveTheme` instead of `MaterialTheme` inside
- * [BizarreCrmTheme], without changing the public signature here.
- *
- * TODO(M3Expressive): Replace inner MaterialTheme call with MaterialExpressiveTheme
- * once androidx.compose.material3:material3-expressive is stable. Track at:
- * https://developer.android.com/jetpack/compose/material3/expressive
+ * M3 Expressive (material3 1.4.0 stable, 2025-09) is now live behind the
+ * `BuildConfig.USE_EXPRESSIVE_THEME` flag managed in [BizarreCrmTheme]. No
+ * further refactor needed at this layer.
  */
 @Composable
 fun DesignSystemTheme(

@@ -62,6 +62,12 @@ android {
         // BASE_DOMAIN comes from Gradle -PBASE_DOMAIN, environment, or repo .env.
         buildConfigField("String", "BASE_DOMAIN", quoteBuildConfig(configuredBaseDomain))
         buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
+
+        // M3 Expressive theme feature flag. Default true across all build types.
+        // Ops can flip to "false" in a hotfix if a whole-app expressive
+        // regression hits production without requiring a full rebuild cycle —
+        // MaterialExpressiveTheme collapses back to MaterialTheme cleanly.
+        buildConfigField("boolean", "USE_EXPRESSIVE_THEME", "true")
     }
 
     // Release signing config — keystore is read from a properties file outside
