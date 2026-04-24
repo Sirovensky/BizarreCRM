@@ -31,23 +31,32 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
+import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateDto
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
 
 data class SmsThreadUiState(
     val messages: List<SmsMessageItem> = emptyList(),
@@ -70,6 +79,8 @@ class SmsThreadViewModel @Inject constructor(
     private val smsApi: SmsApi,
     private val smsRepository: SmsRepository,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val draftStore: DraftStore,
+    private val gson: Gson,
 ) : ViewModel() {
 
     val phone: String = savedStateHandle.get<String>("phone") ?: ""
@@ -77,12 +88,27 @@ class SmsThreadViewModel @Inject constructor(
     private val _state = MutableStateFlow(SmsThreadUiState())
     val state = _state.asStateFlow()
 
+    private val _pendingDraft = MutableStateFlow<DraftStore.Draft?>(null)
+    val pendingDraft: StateFlow<DraftStore.Draft?> = _pendingDraft.asStateFlow()
+
     private var collectJob: Job? = null
+    private var autosaveJob: Job? = null
 
     init {
         collectThread()
         loadOnlineDetails()
         smsRepository.markRead(phone)
+        // Load any persisted SMS draft saved for this thread (identified by phone).
+        // DraftStore.DraftType.SMS is a single slot per user — entityId disambiguates
+        // which thread the draft belongs to.  Only surface the prompt when the
+        // entityId matches the current thread's phone so a draft from a different
+        // conversation is never accidentally shown here.
+        viewModelScope.launch {
+            val draft = draftStore.load(DraftStore.DraftType.SMS)
+            if (draft != null && draft.entityId == phone) {
+                _pendingDraft.value = draft
+            }
+        }
     }
 
     /** Collect messages from Room (offline-capable) */
@@ -123,6 +149,8 @@ class SmsThreadViewModel @Inject constructor(
             _state.value = _state.value.copy(isSending = true)
             try {
                 smsRepository.sendMessage(phone, text)
+                // Message sent — draft is no longer needed.
+                discardDraft()
                 _state.value = _state.value.copy(
                     isSending = false,
                     actionMessage = if (serverMonitor.isEffectivelyOnline.value) "Message sent" else "Message queued for sending",
@@ -148,6 +176,53 @@ class SmsThreadViewModel @Inject constructor(
 
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
+    }
+
+    // ── Draft autosave ───────────────────────────────────────────────
+
+    /**
+     * Call this whenever the compose field text changes.
+     * Cancels any pending autosave and restarts the 2-second debounce counter.
+     * Uses [phone] as the entityId so the draft is bound to this thread.
+     */
+    fun onComposeFieldChanged(body: String) {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(DRAFT_AUTOSAVE_DEBOUNCE_MS)
+            val json = serializePayload(body)
+            draftStore.save(DraftStore.DraftType.SMS, json, entityId = phone)
+        }
+    }
+
+    /** Serialise the compose body into a minimal JSON payload. */
+    private fun serializePayload(body: String): String {
+        val obj = JsonObject()
+        obj.addProperty("body", body)
+        obj.addProperty("threadPhone", phone)
+        return gson.toJson(obj)
+    }
+
+    /**
+     * Restore the compose field from a persisted draft.
+     * Returns the body string to set in the UI's messageText state.
+     * Clears [_pendingDraft] so the prompt is dismissed.
+     */
+    fun resumeDraft(draft: DraftStore.Draft): String {
+        _pendingDraft.value = null
+        return try {
+            JsonParser.parseString(draft.payloadJson).asJsonObject
+                .get("body")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /** Permanently discard the pending draft and clear the recovery prompt. */
+    fun discardDraft() {
+        _pendingDraft.value = null
+        viewModelScope.launch {
+            draftStore.discard(DraftStore.DraftType.SMS)
+        }
     }
 
     /**
@@ -200,6 +275,7 @@ fun SmsThreadScreen(
     viewModel: SmsThreadViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val pendingDraft by viewModel.pendingDraft.collectAsState()
     // @audit-fixed: was remember { mutableStateOf("") } — a half-typed message
     // would be wiped on rotation. rememberSaveable persists it across the
     // configuration change.
@@ -246,6 +322,21 @@ fun SmsThreadScreen(
             }
             put("customer_phone", phone)
         }
+    }
+
+    // Show DraftRecoveryPrompt when a persisted draft exists for this thread and
+    // the compose field is currently empty (avoid overwriting text the user has
+    // already started typing).
+    if (pendingDraft != null && messageText.isEmpty()) {
+        DraftRecoveryPrompt(
+            draft = pendingDraft!!,
+            previewFormatter = ::buildSmsDraftPreview,
+            onResume = {
+                val restored = viewModel.resumeDraft(pendingDraft!!)
+                messageText = restored
+            },
+            onDiscard = { viewModel.discardDraft() },
+        )
     }
 
     // Show the inline template picker sheet.
@@ -322,7 +413,10 @@ fun SmsThreadScreen(
         bottomBar = {
             ComposeBar(
                 messageText = messageText,
-                onMessageChange = { messageText = it },
+                onMessageChange = { newText ->
+                    messageText = newText
+                    viewModel.onComposeFieldChanged(newText)
+                },
                 isSending = state.isSending,
                 onSend = {
                     viewModel.sendMessage(messageText.trim())
@@ -592,5 +686,34 @@ private fun MessageBubble(message: SmsMessageItem) {
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Draft preview formatter — used by DraftRecoveryPrompt
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a short, human-readable preview string from an SMS draft payload JSON.
+ * Used by [DraftRecoveryPrompt] so the user can identify the draft at a glance.
+ *
+ * Shows the first 60 characters of the body and the thread phone number, e.g.:
+ *   "Draft for +15551234567: Hi, your repair is ready for pickup an…"
+ *   "Draft for +15551234567" (when body is blank)
+ */
+private fun buildSmsDraftPreview(payloadJson: String): String {
+    return try {
+        val obj = JsonParser.parseString(payloadJson).asJsonObject
+        val threadPhone = obj.get("threadPhone")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val body = obj.get("body")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val prefix = if (threadPhone.isNotBlank()) "Draft for $threadPhone" else "SMS draft"
+        if (body.isBlank()) {
+            prefix
+        } else {
+            val snippet = if (body.length > 60) body.take(60) + "\u2026" else body
+            "$prefix: $snippet"
+        }
+    } catch (_: Exception) {
+        "SMS draft"
     }
 }
