@@ -15,6 +15,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -319,6 +325,19 @@ fun CheckoutScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // a11y: zero-size live-region node that triggers an Assertive announcement the
+            // moment a payment error enters the state. TalkBack will interrupt whatever it is
+            // currently reading and say "Payment failed: <reason>" so the cashier doesn't miss
+            // it. The snackbar also shows the message visually; this node is purely auditory.
+            if (state.error != null) {
+                Box(
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Assertive
+                        contentDescription = "Payment failed: ${state.error}"
+                    },
+                )
+            }
+
             // ── Order summary card ───────────────────────────────────
             OrderSummaryCard(
                 customerName = state.customerName,
@@ -358,7 +377,20 @@ fun CheckoutScreen(
                 onClick = { viewModel.completePayment(onSuccess) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(56.dp)
+                    // a11y: mergeDescendants collapses the icon + text content into one focus node.
+                    // contentDescription switches between the actionable label ("Charge $X via Cash")
+                    // and a processing announcement so the user always knows what is happening.
+                    // liveRegion=Polite lets TalkBack re-announce when the processing state changes
+                    // without jarring interruptions.
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = if (state.isProcessing) {
+                            "Processing payment"
+                        } else {
+                            "Charge ${formatCurrency(state.total)} via ${state.selectedMethod.label}"
+                        }
+                        liveRegion = LiveRegionMode.Polite
+                    },
                 enabled = state.canComplete && !state.isProcessing,
             ) {
                 if (state.isProcessing) {
@@ -370,7 +402,7 @@ fun CheckoutScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Processing...")
                 } else {
-                    // decorative — Button's "Complete Payment …" Text supplies the accessible name
+                    // a11y: decorative — merged contentDescription on the button carries the spoken label
                     Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(24.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -431,36 +463,49 @@ private fun CheckoutInvalidArgsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(24.dp))
-            Icon(
-                Icons.Default.ErrorOutline,
-                // decorative — illustrative error icon; sibling "Invalid checkout parameters" Text carries the announcement
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(48.dp),
-            )
-            Text(
-                "Invalid checkout parameters",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-            )
-            val reason = when {
+            val invalidReason = when {
                 ticketId == 0L && total <= 0.0 -> "Missing ticket id and total."
                 ticketId == 0L -> "Missing ticket id."
                 else -> "Total must be greater than zero."
             }
-            Text(
-                reason,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                "Return to the ticket and try again.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            // a11y: mergeDescendants collapses the error icon, title, reason, and hint into
+            // a single TalkBack focus stop. contentDescription reads the full explanation
+            // so the user doesn't have to swipe through three separate nodes to understand
+            // why checkout cannot proceed.
+            Column(
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    contentDescription =
+                        "Invalid checkout parameters. $invalidReason Return to the ticket and try again."
+                },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    // a11y: decorative — merged contentDescription on the parent Column carries the full announcement
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(48.dp),
+                )
+                Text(
+                    "Invalid checkout parameters",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    invalidReason,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    "Return to the ticket and try again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             BrandPrimaryButton(
                 onClick = onBack,
@@ -476,8 +521,22 @@ private fun CheckoutInvalidArgsScreen(
 
 @Composable
 private fun OrderSummaryCard(customerName: String, total: Double) {
+    // a11y: mergeDescendants collapses the customer name, "Total Due" label, and
+    // formatted amount into a single TalkBack focus stop. contentDescription is
+    // built eagerly so the value is stable across recompositions and can include
+    // the customer name only when it is present.
+    val summaryDesc = if (customerName.isNotBlank()) {
+        "Customer: $customerName, Total: ${formatCurrency(total)}"
+    } else {
+        "Total: ${formatCurrency(total)}"
+    }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // a11y: single merged focus node — reads the full order summary as one announcement
+            .semantics(mergeDescendants = true) {
+                contentDescription = summaryDesc
+            },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
         ),
@@ -526,7 +585,19 @@ private fun PaymentMethodSelector(
                 onClick = { onSelect(method) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(80.dp),
+                    .height(80.dp)
+                    // a11y: Role.RadioButton makes TalkBack announce "radio button, selected/not
+                    // selected" for each method tile. mergeDescendants collapses the icon + label
+                    // into one focus stop; contentDescription gives a clean spoken label
+                    // ("Cash payment method, selected") so the user never hears "payments icon".
+                    .semantics(mergeDescendants = true) {
+                        role = Role.RadioButton
+                        contentDescription = if (isSelected) {
+                            "${method.label} payment method, selected"
+                        } else {
+                            "${method.label} payment method"
+                        }
+                    },
                 border = BorderStroke(
                     width = if (isSelected) 2.dp else 1.dp,
                     color = if (isSelected) MaterialTheme.colorScheme.primary
@@ -546,7 +617,8 @@ private fun PaymentMethodSelector(
                 ) {
                     Icon(
                         method.icon,
-                        contentDescription = method.label,
+                        // a11y: decorative — the card's merged contentDescription carries the label
+                        contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = if (isSelected) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -594,7 +666,12 @@ private fun CashPaymentSection(
                 )
             },
             placeholder = { Text("0.00") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // a11y: explicit contentDescription for the amount field so TalkBack
+                // reads "Payment amount in dollars, edit box" instead of "Cash amount, edit box"
+                // which omits the currency context a blind user needs.
+                .semantics { contentDescription = "Payment amount in dollars" },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
         )
@@ -607,39 +684,58 @@ private fun CashPaymentSection(
             AssistChip(
                 onClick = onExact,
                 label = { Text("Exact") },
-                modifier = Modifier.weight(1f),
+                // a11y: Role.Button + descriptive label so TalkBack reads
+                // "Set exact amount, button" rather than just "Exact".
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "Set exact amount" },
             )
             if (total <= 5.0) {
                 AssistChip(
                     onClick = { onRound(5) },
                     label = { Text("$5") },
-                    modifier = Modifier.weight(1f),
+                    // a11y: spoken as "Round up to 5 dollars, button"
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Round up to 5 dollars" },
                 )
             }
             if (total <= 10.0) {
                 AssistChip(
                     onClick = { onRound(10) },
                     label = { Text("$10") },
-                    modifier = Modifier.weight(1f),
+                    // a11y: spoken as "Round up to 10 dollars, button"
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Round up to 10 dollars" },
                 )
             }
             AssistChip(
                 onClick = { onRound(20) },
                 label = { Text("$20") },
-                modifier = Modifier.weight(1f),
+                // a11y: spoken as "Round up to 20 dollars, button"
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "Round up to 20 dollars" },
             )
             if (total > 20.0) {
                 AssistChip(
                     onClick = { onRound(50) },
                     label = { Text("$50") },
-                    modifier = Modifier.weight(1f),
+                    // a11y: spoken as "Round up to 50 dollars, button"
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Round up to 50 dollars" },
                 )
             }
             if (total > 50.0) {
                 AssistChip(
                     onClick = { onRound(100) },
                     label = { Text("$100") },
-                    modifier = Modifier.weight(1f),
+                    // a11y: spoken as "Round up to 100 dollars, button"
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = "Round up to 100 dollars" },
                 )
             }
         }
@@ -647,7 +743,15 @@ private fun CashPaymentSection(
         // Change due display
         if (changeDue > 0) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // a11y: liveRegion=Polite so TalkBack announces the updated change amount
+                    // after each keystroke without interrupting mid-sentence. mergeDescendants
+                    // collapses "Change Due" label + formatted value into a single focus stop.
+                    .semantics(mergeDescendants = true) {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Change due: ${formatCurrency(changeDue)}"
+                    },
                 colors = CardDefaults.cardColors(
                     containerColor = SuccessGreen.copy(alpha = 0.12f),
                 ),
