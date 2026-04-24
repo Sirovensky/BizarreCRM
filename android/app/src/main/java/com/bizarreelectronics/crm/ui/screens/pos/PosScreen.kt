@@ -9,6 +9,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -106,7 +113,8 @@ fun PosScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(Icons.Default.Build, contentDescription = "New Repair")
+                // a11y: imperative phrase matches the pattern used on every other list FAB
+                Icon(Icons.Default.Build, contentDescription = "Create new repair")
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -117,32 +125,61 @@ fun PosScreen(
         ) {
             // Recent tickets header
             item {
+                // a11y: semantics { heading() } lets TalkBack users navigate directly to
+                // this section via the "Headings" quick-nav gesture.
                 Text(
                     "Recent Tickets",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
 
             // Loading / error / content
             if (state.isLoading) {
                 item {
-                    BrandSkeleton(rows = 5)
+                    // a11y: mergeDescendants + contentDescription collapses the shimmer
+                    // skeleton (many focusable boxes) into a single TalkBack focus stop
+                    // that reads "Loading recent tickets".
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading recent tickets"
+                        },
+                    ) {
+                        BrandSkeleton(rows = 5)
+                    }
                 }
             } else if (state.error != null) {
                 item {
-                    ErrorState(
-                        message = state.error ?: "Error",
-                        onRetry = { viewModel.loadRecentTickets() },
-                    )
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the user
+                    // is not left wondering why the ticket list is empty after a network error.
+                    Box(
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Assertive
+                        },
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Error",
+                            onRetry = { viewModel.loadRecentTickets() },
+                        )
+                    }
                 }
             } else if (state.recentTickets.isEmpty()) {
                 item {
-                    EmptyState(
-                        icon = Icons.Default.ConfirmationNumber,
-                        title = "No recent tickets",
-                        subtitle = "New repairs will appear here",
-                    )
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one focus node so TalkBack reads the message as a unit rather than
+                    // three separate items.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "No recent tickets. New repairs will appear here."
+                        },
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.ConfirmationNumber,
+                            title = "No recent tickets",
+                            subtitle = "New repairs will appear here",
+                        )
+                    }
                 }
             } else {
                 items(state.recentTickets, key = { it.id }) { ticket ->
@@ -161,12 +198,33 @@ private fun RecentTicketCard(
     ticket: TicketEntity,
     onClick: () -> Unit,
 ) {
+    // Build a rich, screenreader-friendly label for this card.
+    // Pattern: "Ticket #ID, CUSTOMER, $AMOUNT. Tap to open."
+    // Fields are null-safe; absent parts are silently omitted so TalkBack
+    // never reads "null" or "Unknown".
+    // a11y: mergeDescendants=true collapses the orderId, status badge, customer
+    // name, device name, and total Text nodes into a single TalkBack focus stop.
+    // Role.Button signals that the card is interactive so TalkBack announces
+    // "double-tap to activate" in its default earcon.
+    val customerPart = ticket.customerName
+        ?.takeIf { it.isNotBlank() && it != "Unknown" }
+        ?.let { ", $it" } ?: ""
+    val amountPart = if (ticket.total > 0) ", ${ticket.total.formatAsMoney()}" else ""
+    val statusPart = ticket.statusName?.let { ", status: $it" } ?: ""
+    val cardContentDescription = "Ticket ${ticket.orderId}${customerPart}${amountPart}${statusPart}. Tap to open."
+
     // D5-3: use Card(onClick = ...) overload so the ripple indication fires
     // on tap. Prior .clickable-on-top-of-Card pattern suppressed tactile
     // feedback because the surface drew over the ripple.
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // a11y: single merged node with descriptive label + explicit Role.Button
+            .semantics(mergeDescendants = true) {
+                contentDescription = cardContentDescription
+                role = Role.Button
+            },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
