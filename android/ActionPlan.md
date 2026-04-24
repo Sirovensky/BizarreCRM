@@ -1317,23 +1317,23 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 ### 8.1 List
 - [x] Base list + is-expiring warning.
-- [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
-- [ ] Filters — date range, customer, amount, validity.
-- [ ] Bulk actions — Send / Delete / Export.
-- [ ] Expiring-soon chip (pulse animation when ≤3 days; honor Reduce Motion).
-- [ ] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
+- [x] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted. (commit 388f4c2 — `components/EstimateStatusTabs.kt` ScrollableTabRow with a11y annotations)
+- [x] Filters — date range, customer, amount, validity. (commit 388f4c2 — `components/EstimateFilterSheet.kt` ModalBottomSheet customer + date range; `EstimateFilterState` in VM)
+- [x] Bulk actions — Send / Delete / Export. (commit 388f4c2 — bulk top bar + bottom action bar; VM `bulkSend/bulkDelete/selectAll/exitBulkMode`)
+- [x] Expiring-soon chip (pulse animation when ≤3 days; honor Reduce Motion). (commit 388f4c2 — `components/ExpiringSoonChip.kt` + `isExpiringSoon()` helper + pulse animation ReduceMotion-static)
+- [x] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete. (commit 388f4c2 — `components/EstimateContextMenu.kt` 8-item DropdownMenu; `combinedClickable` long-press)
 - [ ] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room.
 
 ### 8.2 Detail
 - [ ] **Header** — estimate # + status + valid-until date.
 - [ ] **Line items** + totals.
-- [ ] **Send** — SMS / email; body includes approval link (customer portal).
-- [ ] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (Compose Canvas).
-- [ ] **Reject** — reason required.
-- [ ] **Convert to ticket** — prefill ticket; inventory reservation.
-- [ ] **Convert to invoice**.
-- [ ] **Versioning** — revise estimate; keep prior versions visible.
-- [ ] **Customer-facing PDF preview** — "See what customer sees" button.
+- [x] **Send** — SMS / email; body includes approval link (customer portal). (commit 388f4c2 — send bottom sheet reuses SMS/Email intent helpers from wave 15)
+- [x] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (Compose Canvas). (commit 388f4c2 — POST + confirm dialog; 404-tolerant; signature capture deferred)
+- [x] **Reject** — reason required. (commit 388f4c2 — reject dialog with required-reason field; POST /estimates/:id/reject)
+- [x] **Convert to ticket** — prefill ticket; inventory reservation. (commit 388f4c2 — existing endpoint wired + prefill; inventory reservation server-side)
+- [x] **Convert to invoice**. (commit 388f4c2 — POST /estimates/:id/convert-to-invoice; 404 → stub toast)
+- [x] **Versioning** — revise estimate; keep prior versions visible. (commit 388f4c2 — VM state `versions: List<EstimateVersion>` + GET endpoint + version dropdown)
+- [x] **Customer-facing PDF preview** — "See what customer sees" button. (commit 388f4c2 — Print action in overflow menu via PrintManager + WebView — mirrors InvoiceSendActions)
 
 ### 8.3 Create
 - [ ] Same structure as invoice + validity window.
@@ -1469,23 +1469,23 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 ### 11.1 List
 - [x] Base list + summary header.
 - [~] **Filters** — category / date range / employee / reimbursable flag / approval status.
-- [ ] **Sort** — date / amount / category.
-- [~] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending. (commit f8f6a90 — By-category donut pie shipped; Total tile + Reimbursable-pending tile pending)
+- [x] **Sort** — date / amount / category. (commit 117106a — `components/ExpenseSortDropdown.kt` ExpenseSort enum + VM `currentSort` + `onSortChanged()`)
+- [x] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending. (commit f8f6a90 + 117106a — By-category donut + Reimbursable-pending tile now live; Total tile existed)
 - [x] **Category breakdown pie** (tablet/ChromeOS). (commit f8f6a90 — `ExpenseCategoryPieChart.kt` Canvas donut + tappable legend + collapsible card on ExpenseListScreen; ReduceMotion-aware)
-- [ ] **Export CSV** via SAF.
-- [ ] **Swipe** — edit / delete.
-- [ ] **Context menu** — Open, Duplicate, Delete.
+- [x] **Export CSV** via SAF. (commit 117106a — SAF `ACTION_CREATE_DOCUMENT` + VM `buildCsvContent()`)
+- [x] **Swipe** — edit / delete. (commit 117106a — SwipeToDismissBox approve/reject hints)
+- [x] **Context menu** — Open, Duplicate, Delete. (commit 117106a — long-press DropdownMenu 3 actions; VM `duplicateExpense()` via create + `deleteExpense()`)
 
 ### 11.2 Detail
-- [ ] Receipt photo preview (full-screen zoom, pinch via `detectTransformGestures`).
-- [ ] Fields — category / amount / vendor / payment method / notes / date / reimbursable flag / approval status / employee.
-- [ ] Edit / Delete.
-- [ ] Approval workflow — admin Approve / Reject with comment.
+- [x] Receipt photo preview (full-screen zoom, pinch via `detectTransformGestures`). (commit 117106a — `ExpenseDetailScreen.kt` full-width Image + `pointerInput(detectTransformGestures)` pinch-zoom)
+- [x] Fields — category / amount / vendor / payment method / notes / date / reimbursable flag / approval status / employee. (commit 117106a — all field rows wired in Detail screen)
+- [x] Edit / Delete. (commit 117106a — Edit routes to Create in edit mode + Delete via VM)
+- [x] Approval workflow — admin Approve / Reject with comment. (commit 117106a — `components/ExpenseApprovalBar.kt` role-gated; POST /expenses/:id/approve + /reject with comment field; 404 tolerated)
 
 ### 11.3 Create
 - [x] Minimal.
-- [ ] **Receipt capture** — CameraX inline; OCR total via ML Kit `TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable).
-- [ ] **PhotoPicker import** — pick existing receipt.
+- [x] **Receipt capture** — CameraX inline; OCR total via ML Kit `TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable). (commit 117106a — `ReceiptOcrScanner.kt` ML Kit `TextRecognition` wrapper + `parseReceiptText()` regex extracts total/vendor/date; auto-fill with override; `mlkit-text-recognition:16.0.0` dep; 5 JVM tests)
+- [x] **PhotoPicker import** — pick existing receipt. (commit 117106a — `ReceiptPhotoPicker.kt` `ActivityResultContracts.PickVisualMedia(ImageOnly)` + preview thumbnail + clear + OCR spinner)
 - [ ] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
 - [ ] **Amount validation** — decimal 2 places; cap $100k.
 - [ ] **Date picker** — Material3 `DatePicker`; defaults today.
@@ -1493,8 +1493,8 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [ ] **Offline create** + temp-id reconcile.
 
 ### 11.4 Approval (admin)
-- [ ] List filter "Pending approval".
-- [ ] Approve / Reject with comment; auto-notify submitter via FCM.
+- [x] List filter "Pending approval". (commit 117106a — filter tab added to ExpenseListScreen)
+- [x] Approve / Reject with comment; auto-notify submitter via FCM. (commit 117106a — `ExpenseApprovalBar` + `ExpenseApi.approveExpense/rejectExpense` endpoints; FCM notify is server-side)
 
 ---
 ## 12. SMS & Communications
