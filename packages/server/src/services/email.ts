@@ -132,6 +132,34 @@ function sanitizeSubject(s: string): string {
   return s.replace(/[\r\n]+/g, ' ').slice(0, 998);
 }
 
+// SCAN-1051b: best-effort HTML sanitizer for outbound email bodies. We strip
+// `<script>` and inline event handlers (e.g. `onerror=`, `onclick=`) before
+// handing the blob to nodemailer. Not a full HTML parser — adversarial HTML
+// needs a library like DOMPurify or sanitize-html — but it closes the easy
+// XSS path from admin-authored automation templates while keeping the
+// normal styling/images untouched. Also caps total body length to stop a
+// runaway template from pushing megabytes through SMTP.
+const EMAIL_HTML_MAX_BYTES = 200_000;
+function sanitizeEmailHtml(raw: string): string {
+  if (!raw) return '';
+  let out = raw;
+  // Drop <script>...</script> blocks entirely.
+  out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Drop standalone inline `on*=` event handlers (e.g. onclick="...", onerror='...').
+  // Two passes cover both " and ' quoting.
+  out = out.replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi, '');
+  out = out.replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi, '');
+  out = out.replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi, '');
+  // Drop `javascript:` URLs from href/src (best-effort).
+  out = out.replace(/(href|src)\s*=\s*"\s*javascript:[^"]*"/gi, '$1="#"');
+  out = out.replace(/(href|src)\s*=\s*'\s*javascript:[^']*'/gi, "$1='#'");
+  if (Buffer.byteLength(out, 'utf8') > EMAIL_HTML_MAX_BYTES) {
+    out = out.slice(0, EMAIL_HTML_MAX_BYTES);
+    emailLogger.warn('email body truncated to 200KB cap');
+  }
+  return out;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
@@ -156,8 +184,9 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
   }
 
   const safeSubject = sanitizeSubject(opts.subject || '');
+  const safeHtml = sanitizeEmailHtml(opts.html || '');
   // Regex is best-effort for non-adversarial HTML; proper parser library preferable if ever processing untrusted HTML.
-  const plainText = opts.text || opts.html
+  const plainText = opts.text || safeHtml
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     .replace(/<[^>]+>/g, '')
@@ -170,7 +199,7 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
         from: result.from,
         to: opts.to,
         subject: safeSubject,
-        html: opts.html,
+        html: safeHtml,
         text: plainText,
       }),
     );

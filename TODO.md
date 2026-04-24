@@ -722,8 +722,6 @@ Verified working. Not TODOs.
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
-- [ ] SCAN-1051b. **[HIGH/XSS] AutomationsTab email body — client 10KB cap shipped; server-side HTML sanitize/escape still pending.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/email.ts; fix=sanitize-or-escape-on-send -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 
