@@ -65,6 +65,7 @@ export function SegmentsPage() {
       const res = await crmApi.listSegments();
       return res.data;
     },
+    staleTime: 30_000,
   });
 
   const segments: Segment[] = (data as any)?.data ?? [];
@@ -316,6 +317,7 @@ function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => v
       const res = await crmApi.segmentMembers(segment.id, { pagesize: 100 });
       return res.data;
     },
+    staleTime: 30_000,
   });
 
   const members: Member[] = (data as any)?.data?.members ?? [];

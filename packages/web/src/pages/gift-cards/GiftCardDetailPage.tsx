@@ -156,6 +156,7 @@ export function GiftCardDetailPage() {
       return (res.data as { data: GiftCardDetail }).data;
     },
     enabled: Number.isFinite(cardId) && cardId > 0,
+    staleTime: 30_000,
   });
 
   if (isLoading) {

@@ -82,6 +82,7 @@ export function CampaignsPage() {
       const res = await campaignsApi.list();
       return res.data;
     },
+    staleTime: 30_000,
   });
 
   const { data: segmentsRes } = useQuery({
@@ -90,6 +91,7 @@ export function CampaignsPage() {
       const res = await crmApi.listSegments();
       return res.data;
     },
+    staleTime: 30_000,
   });
 
   const campaigns: Campaign[] = (campaignsRes as any)?.data ?? [];
