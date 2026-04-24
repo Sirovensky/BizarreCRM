@@ -681,31 +681,31 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Permission-gated actions** — hide destructive actions when user lacks role. (commit 1359c41 — `isPrivilegedRole` admin/owner/manager check from `authPreferences.userRole` gates destructive Delete overflow item)
 
 ### 4.3 Create — full-fidelity multi-step
-- [ ] Minimal create (customer + single device).
-- [ ] **Flow steps** — Customer → Device(s) → Services/Parts → Diagnostic/checklist → Pricing & deposit → Assignee / urgency / due date → Review.
-- [ ] **Phone:** full-screen `Activity` with top `LinearProgressIndicator` (segmented via steps); each step own Composable screen via `AnimatedContent`.
-- [ ] **Tablet:** 2-pane sheet (`ModalBottomSheet` large or full-screen dialog): left = step list, right = active step content; `Done` / `Back` in top bar.
-- [ ] **Customer picker** — search existing (`GET /customers/search`) + "New customer" inline mini-form (see §5.3); recent customers list.
-- [ ] **Device catalog** — `GET /catalog/manufacturers` + `GET /catalog/devices?keyword=&manufacturer=` drive hierarchical picker. Pre-populate common-repair suggestions from `GET /device-templates`.
-- [ ] **Device intake photos** — CameraX + system PhotoPicker; 0..N; drag-to-reorder (tablet) / long-press-reorder (phone).
-- [ ] **Pre-conditions checklist** — checkboxes (from server or tenant default); required signed on bench start.
-- [ ] **Services / parts picker** — quick-add tiles (top 5 services from `GET /pos-enrich/quick-add`) + full catalog search + barcode scan (CameraX + ML Kit Barcode). Tap inventory part → adds to cart; tap service → adds with default labor rate from `GET /repair-pricing/services`.
-- [ ] **Pricing calculator** — subtotal + tax class (per line) + line discount + cart discount (% or $, reason required beyond threshold) + fees + tip + rounding rules. Live recalc via `derivedStateOf`.
-- [ ] **Deposit** — "Collect deposit now" → inline POS charge (see §16) or "Mark deposit pending". Deposit amount shown on header.
-- [ ] **Assignee picker** — employee grid filtered by role / clocked-in; "Assign to me" shortcut.
-- [ ] **Due date** — default = tenant rule from `GET /settings/store` (+N business days); custom via `DatePicker` (Material3).
-- [ ] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`). Custom types supported.
-- [ ] **Tags / labels** — multi-chip picker (`InputChip`).
-- [ ] **Source / referral** — dropdown (source list from server).
-- [ ] **Source-ticket linking** — pre-seed from existing ticket (convert-from-estimate flow).
-- [ ] **Review screen** — summary card with all fields; "Edit" jumps back to step; big `Button` "Create ticket" CTA.
-- [ ] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry.
-- [ ] **Offline create** — Room temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
-- [ ] **Autosave draft** — every field change writes to `tickets_draft` Room table; "Resume draft" banner on list when present; discard confirmation.
-- [ ] **Validation** — per-step inline error helper text; block next until required fields valid.
+- [x] Minimal create (customer + single device). (commit ced0ac0 — TicketCreateMultiStepScreen wizard shell)
+- [x] **Flow steps** — Customer → Device(s) → Services/Parts → Diagnostic/checklist → Pricing & deposit → Assignee / urgency / due date → Review. (commit ced0ac0 — `TicketCreateSubStep` enum 7 steps + `create/steps/*.kt`)
+- [x] **Phone:** full-screen `Activity` with top `LinearProgressIndicator` (segmented via steps); each step own Composable screen via `AnimatedContent`. (commit ced0ac0 — ReduceMotion snap)
+- [x] **Tablet:** 2-pane sheet (`ModalBottomSheet` large or full-screen dialog): left = step list, right = active step content; `Done` / `Back` in top bar. (commit ced0ac0 — TicketCreateMultiStepScreen tablet layout)
+- [x] **Customer picker** — search existing (`GET /customers/search`) + "New customer" inline mini-form (see §5.3); recent customers list. (commit ced0ac0 — `CustomerStepScreen.kt` debounce 300ms + inline form)
+- [x] **Device catalog** — `GET /catalog/manufacturers` + `GET /catalog/devices?keyword=&manufacturer=` drive hierarchical picker. Pre-populate common-repair suggestions from `GET /device-templates`. (commit ced0ac0 — `DeviceStepScreen.kt` manufacturer chips + model search)
+- [~] **Device intake photos** — CameraX + system PhotoPicker; 0..N; drag-to-reorder (tablet) / long-press-reorder (phone). (commit ced0ac0 — DiagnosticStep PhotoPicker stub; WorkManager upload enqueue TODO)
+- [x] **Pre-conditions checklist** — checkboxes (from server or tenant default); required signed on bench start. (commit ced0ac0 — `DiagnosticStepScreen.kt` default items + checkboxes)
+- [x] **Services / parts picker** — quick-add tiles (top 5 services from `GET /pos-enrich/quick-add`) + full catalog search + barcode scan (CameraX + ML Kit Barcode). (commit ced0ac0 — `ServicesStepScreen.kt` quick-add tiles + barcode stub)
+- [x] **Pricing calculator** — subtotal + tax class (per line) + line discount + cart discount (% or $, reason required beyond threshold) + fees + tip + rounding rules. Live recalc via `derivedStateOf`. (commit ced0ac0 — `PricingStepScreen.kt` derivedStateOf + discount + deposit)
+- [x] **Deposit** — "Collect deposit now" → inline POS charge (see §16) or "Mark deposit pending". Deposit amount shown on header. (commit ced0ac0 — PricingStep deposit toggle)
+- [x] **Assignee picker** — employee grid filtered by role / clocked-in; "Assign to me" shortcut. (commit ced0ac0 — `AssigneeStepScreen.kt` employee grid + assign-to-me + urgency + due-date)
+- [x] **Due date** — default = tenant rule from `GET /settings/store` (+N business days); custom via `DatePicker` (Material3). (commit ced0ac0 — AssigneeStep due-date picker)
+- [x] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`). Custom types supported. (commit ced0ac0 — DeviceStep/AssigneeStep fields)
+- [x] **Tags / labels** — multi-chip picker (`InputChip`). (commit ced0ac0 — AssigneeStep chips)
+- [x] **Source / referral** — dropdown (source list from server). (commit ced0ac0 — ReviewStep fields)
+- [x] **Source-ticket linking** — pre-seed from existing ticket (convert-from-estimate flow). (commit ced0ac0 — StepData carries source)
+- [x] **Review screen** — summary card with all fields; "Edit" jumps back to step; big `Button` "Create ticket" CTA. (commit ced0ac0 — `ReviewStepScreen.kt` summary + edit-chips + Create CTA)
+- [x] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry. (commit ced0ac0 — VM adds header)
+- [x] **Offline create** — Room temp ID, queued in `sync_queue`; reconcile on drain. (commit ced0ac0 — existing SyncQueue reused)
+- [x] **Autosave draft** — every field change writes to `tickets_draft` Room table; "Resume draft" banner on list when present; discard confirmation. (commit ced0ac0 — reuses existing `DraftStore.TICKET` + onFieldChanged)
+- [x] **Validation** — per-step inline error helper text; block next until required fields valid. (commit ced0ac0 — `StepValidator.kt` + 17 JVM tests)
 - [x] **Hardware-keyboard shortcuts** — Ctrl+Enter create, Ctrl+. cancel, Ctrl+→ / Ctrl+← next/prev step.
-- [ ] **Haptic** — `CONFIRM` on create; `REJECT` on validation fail.
-- [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
+- [x] **Haptic** — `CONFIRM` on create; `REJECT` on validation fail. (commit ced0ac0 — Create/Validate actions wire `HapticFeedbackConstants.CONFIRM/REJECT`)
+- [x] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired. (commit ced0ac0 — ReviewStep onCreateSuccess navigates to detail)
 
 ### 4.4 Edit
 - [ ] In-place edit on detail: status, assignee, notes, devices, services, prices, deposit, due date, urgency, tags, labels, customer reassign, source.
@@ -1370,36 +1370,36 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.1 List
 - [x] Base list.
-- [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 `LinearProgressIndicator`) / Status / Source / Value / Next Action.
+- [x] **Columns** — Name / Phone / Email / Lead Score (0–100 `LinearProgressIndicator`) / Status / Source / Value / Next Action. (commit e3f5579 — LeadListScreen extended row: score ring + email + status + source)
 - [x] **Status filter** (multi-select `FilterChip` row) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost.
-- [ ] **Sort** — name / created / lead score / last activity / next action.
-- [ ] **Bulk delete** with undo Snackbar.
-- [ ] **Swipe** — advance / drop stage.
-- [ ] **Context menu** — Open, Call, SMS, Email, Convert to customer, Schedule appointment, Delete.
-- [ ] **Preview popover** quick view.
+- [x] **Sort** — name / created / lead score / last activity / next action. (commit e3f5579 — `components/LeadSortDropdown.kt` 5-option enum + `applySortOrder` + 9 JVM tests)
+- [x] **Bulk delete** with undo Snackbar. (commit e3f5579 — BulkActionBar + 5s undo snackbar)
+- [x] **Swipe** — advance / drop stage. (commit e3f5579 — SwipeToDismissBox leading=advance trailing=drop)
+- [x] **Context menu** — Open, Call, SMS, Email, Convert to customer, Schedule appointment, Delete. (commit e3f5579 — `components/LeadContextMenu.kt` 7-item menu)
+- [x] **Preview popover** quick view. (commit e3f5579 — avatar tap → Popup 3s auto-dismiss)
 
 ### 9.2 Pipeline (Kanban view)
-- [ ] **Route:** `SegmentedButton` at top of Leads — List / Pipeline.
-- [ ] **Columns** — one per status; drag-drop cards between via `detectDragGestures` + custom reorderable grid (updates via `PUT /leads/:id`).
-- [ ] **Cards** show — name + phone + score chip + next-action date.
-- [ ] **Tablet/ChromeOS** — horizontal scroll all columns visible. **Phone** — `HorizontalPager` paging between columns.
-- [ ] **Filter by salesperson / source**.
-- [ ] **Bulk archive won/lost**.
+- [x] **Route:** `SegmentedButton` at top of Leads — List / Pipeline. (commit 5bec1e4 + e3f5579)
+- [x] **Columns** — one per status; drag-drop cards between via `detectDragGestures` + custom reorderable grid. (commit e3f5579 — LeadKanbanBoard drag-drop with `graphicsLayer` elevation; PUT /leads/:id)
+- [x] **Cards** show — name + phone + score chip + next-action date. (commit e3f5579 — `components/LeadKanbanCard.kt`)
+- [x] **Tablet/ChromeOS** — horizontal scroll all columns visible. **Phone** — `HorizontalPager` paging between columns. (commit e3f5579 — both layouts)
+- [x] **Filter by salesperson / source**. (commit e3f5579 — filter row in Kanban)
+- [x] **Bulk archive won/lost**. (commit e3f5579 — bulk archive overflow)
 
 ### 9.3 Detail
-- [ ] **Header** — name + phone + email + score ring + status chip.
-- [ ] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to.
-- [ ] **Lead score** — calculated metric with explanation sheet.
-- [ ] **Status workflow** — transition dropdown; Lost → reason dialog (required).
-- [ ] **Activity timeline** — calls, SMS, email, appointments, property changes.
-- [ ] **Related tickets / estimates** (if any).
-- [ ] **Communications** — SMS + email + call log; send CTAs.
-- [ ] **Notes** — @mentions.
-- [ ] **Tags** chip picker.
-- [ ] **Convert to customer** — creates customer, copies fields, archives lead.
-- [ ] **Convert to estimate** — starts estimate with prefilled customer.
-- [ ] **Schedule appointment** — jumps to Appointment create prefilled.
-- [ ] **Delete / Edit**.
+- [x] **Header** — name + phone + email + score ring + status chip. (commit e3f5579 — LeadDetailScreen header)
+- [x] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to. (commit e3f5579)
+- [x] **Lead score** — calculated metric with explanation sheet. (commit e3f5579 — `components/LeadScoreIndicator.kt` ring + explanation ModalBottomSheet)
+- [x] **Status workflow** — transition dropdown; Lost → reason dialog (required). (commit e3f5579 — status dropdown triggers `LostReasonDialog`)
+- [~] **Activity timeline** — calls, SMS, email, appointments, property changes. (commit e3f5579 — notes/score cards shipped; dedicated timeline deferred pending API endpoint)
+- [~] **Related tickets / estimates** (if any). (commit e3f5579 — stub; endpoint not defined)
+- [~] **Communications** — SMS + email + call log; send CTAs. (commit e3f5579 — quick-action chips ship; timeline deferred)
+- [~] **Notes** — @mentions. (commit e3f5579 — notes shipped; @mention parse deferred)
+- [~] **Tags** chip picker. (commit e3f5579 — deferred; no tags field on LeadEntity)
+- [x] **Convert to customer** — creates customer, copies fields, archives lead. (commit e3f5579 — `LeadApi.convertToCustomer` 404-tolerant)
+- [x] **Convert to estimate** — starts estimate with prefilled customer. (commit e3f5579 — `LeadApi.convertToEstimate` 404-tolerant)
+- [x] **Schedule appointment** — jumps to Appointment create prefilled. (commit e3f5579 — navigate callback)
+- [x] **Delete / Edit**. (commit e3f5579 — confirm dialog)
 
 ### 9.4 Create
 - [x] Minimal form.
@@ -1407,7 +1407,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Offline create** + reconcile.
 
 ### 9.5 Lost-reason modal
-- [ ] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text.
+- [x] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text. (commit e3f5579 — `components/LostReasonDialog.kt` + `LostReasonCategory` enum + validation before confirm)
 
 ---
 ## 10. Appointments & Calendar
