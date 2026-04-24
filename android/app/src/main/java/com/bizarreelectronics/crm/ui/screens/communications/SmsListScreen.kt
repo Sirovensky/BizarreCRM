@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.communications
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,12 +20,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +45,9 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilter
+import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilterChipRow
+import com.bizarreelectronics.crm.ui.screens.communications.components.applySmsFilter
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -57,6 +64,8 @@ data class SmsListUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
+    /** L1508 — active filter chip */
+    val currentFilter: SmsFilter = SmsFilter.All,
 )
 
 @HiltViewModel
@@ -68,6 +77,9 @@ class SmsListViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(SmsListUiState())
     val state = _state.asStateFlow()
+
+    /** Raw unfiltered conversations from server/cache. Filters applied in displayConversations. */
+    private var rawConversations: List<SmsConversationItem> = emptyList()
 
     init {
         loadConversations()
@@ -82,15 +94,14 @@ class SmsListViewModel @Inject constructor(
                     val q = _state.value.searchQuery.trim()
                     val keyword = q.ifEmpty { null }
                     val response = smsApi.getConversations(keyword)
-                    val conversations = response.data?.conversations ?: emptyList()
+                    rawConversations = response.data?.conversations ?: emptyList()
                     _state.value = _state.value.copy(
-                        conversations = conversations,
+                        conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
                         isLoading = false,
                         isRefreshing = false,
                     )
-                    // Also cache messages in Room for offline
-                    for (conv in conversations) {
-                        smsRepository.getThread(conv.convPhone) // triggers background cache
+                    for (conv in rawConversations) {
+                        smsRepository.getThread(conv.convPhone)
                     }
                     return@launch
                 } catch (e: Exception) {
@@ -98,7 +109,6 @@ class SmsListViewModel @Inject constructor(
                 }
             }
 
-            // Offline fallback: show cached conversations from Room
             smsRepository.getConversations().collect { cachedMessages ->
                 val offlineConversations = cachedMessages.map { msg ->
                     SmsConversationItem(
@@ -115,10 +125,13 @@ class SmsListViewModel @Inject constructor(
                     )
                 }
                 val q = _state.value.searchQuery.trim().lowercase()
-                val filtered = if (q.isEmpty()) offlineConversations
-                else offlineConversations.filter { it.convPhone.contains(q) || it.lastMessage?.lowercase()?.contains(q) == true }
+                val searched = if (q.isEmpty()) offlineConversations
+                else offlineConversations.filter {
+                    it.convPhone.contains(q) || it.lastMessage?.lowercase()?.contains(q) == true
+                }
+                rawConversations = searched
                 _state.value = _state.value.copy(
-                    conversations = filtered,
+                    conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
                     isLoading = false,
                     isRefreshing = false,
                 )
@@ -141,6 +154,55 @@ class SmsListViewModel @Inject constructor(
             loadConversations()
         }
     }
+
+    /** L1508 — switch filter and re-apply to cached raw list. */
+    fun onFilterSelected(filter: SmsFilter) {
+        _state.value = _state.value.copy(
+            currentFilter = filter,
+            conversations = applySmsFilter(rawConversations, filter),
+        )
+    }
+
+    /** L1509 — optimistic pin; calls API (404 tolerated). */
+    fun pinThread(phone: String) {
+        rawConversations = rawConversations.map { conv ->
+            if (conv.convPhone == phone) conv.copy(isPinned = !conv.isPinned) else conv
+        }
+        _state.value = _state.value.copy(
+            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+        )
+        viewModelScope.launch {
+            try {
+                smsApi.pinThread(phone)
+            } catch (_: Exception) { /* 404-tolerated */ }
+        }
+    }
+
+    /** L1511 — optimistic archive; calls API (404 tolerated). */
+    fun archiveThread(phone: String) {
+        rawConversations = rawConversations.map { conv ->
+            if (conv.convPhone == phone) conv.copy(isArchived = true) else conv
+        }
+        _state.value = _state.value.copy(
+            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+        )
+        viewModelScope.launch {
+            try {
+                smsApi.archiveThread(phone)
+            } catch (_: Exception) { /* 404-tolerated */ }
+        }
+    }
+
+    /** L1511 — mark read/unread. */
+    fun markRead(phone: String) {
+        smsRepository.markRead(phone)
+        rawConversations = rawConversations.map { conv ->
+            if (conv.convPhone == phone) conv.copy(unreadCount = 0) else conv
+        }
+        _state.value = _state.value.copy(
+            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,9 +213,6 @@ fun SmsListScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    // @audit-fixed: dialog state and the typed phone were both wiped on
-    // rotation. Persisting them via rememberSaveable preserves the open
-    // dialog and the phone number the user was entering.
     var showNewMsgDialog by rememberSaveable { mutableStateOf(false) }
     var newMsgPhone by rememberSaveable { mutableStateOf("") }
 
@@ -206,20 +265,13 @@ fun SmsListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
-            // placement for every list screen (Messages previously had none).
             Column {
                 BrandTopAppBar(
                     title = "Messages",
                     actions = {
-                        // CROSS42: New-message action moved to FAB for parity with
-                        // every other list screen (Customers/Tickets/Inventory/etc.).
-                        // Only the refresh action stays in the top bar.
                         IconButton(onClick = { viewModel.loadConversations() }) {
                             Icon(
                                 Icons.Default.Refresh,
-                                // a11y: specific phrase so TalkBack announces "Refresh messages"
-                                // rather than generic "Refresh" — matches §26 spec.
                                 contentDescription = "Refresh messages",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -235,8 +287,6 @@ fun SmsListScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                // a11y: imperative phrase per §26 spec so TalkBack announces
-                // "Compose new SMS" when the FAB receives focus.
                 Icon(Icons.Default.Edit, contentDescription = "Compose new SMS")
             }
         },
@@ -253,15 +303,17 @@ fun SmsListScreen(
                 placeholder = "Search conversations...",
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    // a11y: explicit label so TalkBack announces "Search conversations"
-                    // when the field gains focus rather than reading the placeholder text.
                     .semantics { contentDescription = "Search conversations" },
+            )
+
+            // L1508 — filter chips
+            SmsFilterChipRow(
+                currentFilter = state.currentFilter,
+                onFilterSelected = { viewModel.onFilterSelected(it) },
             )
 
             when {
                 state.isLoading -> {
-                    // a11y: mergeDescendants + contentDescription collapses shimmer boxes
-                    // into a single "Loading conversations" TalkBack focus node.
                     Box(modifier = Modifier.semantics(mergeDescendants = true) {
                         contentDescription = "Loading conversations"
                     }) {
@@ -269,8 +321,6 @@ fun SmsListScreen(
                     }
                 }
                 state.error != null -> {
-                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
-                    // user is not left wondering why the list is empty after a network failure.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -285,8 +335,6 @@ fun SmsListScreen(
                 }
                 state.conversations.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                        // into one TalkBack node so the empty state reads as a single announcement.
                         Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
                             EmptyState(
                                 icon = Icons.Default.Forum,
@@ -303,20 +351,26 @@ fun SmsListScreen(
                         onRefresh = { viewModel.refresh() },
                     ) {
                         LazyColumn(
-                            // CROSS16-ext: bottom inset so the last row can
-                            // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(bottom = 80.dp),
-                            // a11y: liveRegion=Polite so TalkBack announces new incoming
-                            // messages without stealing focus from whatever the user is reading.
                             modifier = Modifier.semantics {
                                 liveRegion = LiveRegionMode.Polite
                             },
                         ) {
                             items(state.conversations, key = { it.convPhone }) { conversation ->
-                                ConversationRow(
+                                // L1511 — swipe to archive (left) or mark read (right)
+                                ConversationSwipeRow(
                                     conversation = conversation,
-                                    onClick = { onConversationClick(conversation.convPhone) },
-                                )
+                                    onArchive = { viewModel.archiveThread(conversation.convPhone) },
+                                    onMarkRead = { viewModel.markRead(conversation.convPhone) },
+                                ) {
+                                    ConversationRow(
+                                        conversation = conversation,
+                                        onClick = { onConversationClick(conversation.convPhone) },
+                                        onPin = { viewModel.pinThread(conversation.convPhone) },
+                                        onArchive = { viewModel.archiveThread(conversation.convPhone) },
+                                        onMarkRead = { viewModel.markRead(conversation.convPhone) },
+                                    )
+                                }
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                                     thickness = 1.dp,
@@ -330,18 +384,113 @@ fun SmsListScreen(
     }
 }
 
+// ---------------------------------------------------------------------------
+// L1511 — SwipeToDismissBox: left=Archive, right=Mark read/unread
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Unit) {
+private fun ConversationSwipeRow(
+    conversation: SmsConversationItem,
+    onArchive: () -> Unit,
+    onMarkRead: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val view = LocalView.current
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.EndToStart -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    onArchive()
+                    false
+                }
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    onMarkRead()
+                    false
+                }
+                SwipeToDismissBoxValue.Settled -> false
+            }
+        },
+        positionalThreshold = { totalDistance -> totalDistance * 0.35f },
+    )
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.reset()
+        }
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            val scheme = MaterialTheme.colorScheme
+            when (direction) {
+                SwipeToDismissBoxValue.EndToStart -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(scheme.errorContainer)
+                            .padding(end = 20.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Icon(
+                            Icons.Default.Archive,
+                            contentDescription = "Archive",
+                            tint = scheme.onErrorContainer,
+                        )
+                    }
+                }
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    val isUnread = conversation.unreadCount > 0
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(scheme.primaryContainer)
+                            .padding(start = 20.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Icon(
+                            if (isUnread) Icons.Default.MarkEmailRead else Icons.Default.Email,
+                            contentDescription = if (isUnread) "Mark read" else "Mark unread",
+                            tint = scheme.onPrimaryContainer,
+                        )
+                    }
+                }
+                SwipeToDismissBoxValue.Settled -> {
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+                }
+            }
+        },
+        content = { content() },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Conversation row with long-press context menu
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ConversationRow(
+    conversation: SmsConversationItem,
+    onClick: () -> Unit,
+    onPin: () -> Unit,
+    onArchive: () -> Unit,
+    onMarkRead: () -> Unit,
+) {
     val customer = conversation.customer
     val displayName = listOfNotNull(customer?.firstName, customer?.lastName)
         .joinToString(" ")
         .ifBlank { null }
 
     val hasUnread = conversation.unreadCount > 0
+    val clipboardManager = LocalClipboardManager.current
 
-    // a11y: build the full announcement string once so semantics can reference it.
-    // Unread count is folded in here so the badge dot is NOT a separate speakable node.
-    // Format: "Conversation with NAME. Last message: PREVIEW. N unread. At TIMESTAMP. Tap to open."
+    // L1512 — context menu state
+    var showContextMenu by remember { mutableStateOf(false) }
+
     val contactLabel = displayName ?: conversation.convPhone
     val preview = conversation.lastMessage?.takeIf { it.isNotBlank() }
     val timestamp = DateFormatter.formatRelative(conversation.lastMessageAt)
@@ -350,25 +499,20 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
         if (preview != null) append(" Last message: $preview.")
         if (hasUnread) append(" ${conversation.unreadCount} unread.")
         append(" At $timestamp.")
+        if (conversation.isPinned) append(" Pinned.")
+        if (conversation.sentiment == "negative") append(" Negative sentiment.")
         append(" Tap to open.")
     }
 
-    // D5-3: explicit interactionSource + ripple() indication so the row
-    // flashes on tap. A bare ListItem modifier = .clickable sometimes
-    // suppressed the ripple because ListItem renders its own Surface
-    // background over the indication layer.
     val interactionSource = remember { MutableInteractionSource() }
 
-    // 2dp purple left accent bar for unread rows — applied via Box overlay
-    // a11y: mergeDescendants=true collapses all child nodes (avatar, name, preview,
-    // timestamp, badge dot) into a single TalkBack focus stop; Role.Button signals
-    // the interactive affordance.
-    Box(modifier = Modifier
-        .fillMaxWidth()
-        .semantics(mergeDescendants = true) {
-            contentDescription = a11yDesc
-            role = Role.Button
-        }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = a11yDesc
+                role = Role.Button
+            },
     ) {
         if (hasUnread) {
             Box(
@@ -384,6 +528,7 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
                 interactionSource = interactionSource,
                 indication = ripple(),
                 onClick = onClick,
+                onClickLabel = "Open conversation",
             ),
             headlineContent = {
                 Row(
@@ -413,6 +558,18 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }
+                    // L1510 — negative sentiment badge
+                    if (conversation.sentiment == "negative") {
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("Negative", style = MaterialTheme.typography.labelSmall) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                labelColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
+                            modifier = Modifier.height(20.dp),
+                        )
+                    }
                 }
             },
             supportingContent = {
@@ -434,7 +591,6 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
                     )
                     if (hasUnread) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        // Small purple dot — replaces badge-style chip
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
@@ -443,13 +599,57 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
                                 .align(Alignment.End),
                         )
                     }
+                    // L1512 — context menu anchor
+                    Box {
+                        IconButton(
+                            onClick = { showContextMenu = true },
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showContextMenu,
+                            onDismissRequest = { showContextMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Open") },
+                                leadingIcon = { Icon(Icons.Default.OpenInNew, null) },
+                                onClick = { showContextMenu = false; onClick() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy phone") },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                onClick = {
+                                    showContextMenu = false
+                                    clipboardManager.setText(AnnotatedString(conversation.convPhone))
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (hasUnread) "Mark read" else "Mark unread") },
+                                leadingIcon = { Icon(Icons.Default.MarkEmailRead, null) },
+                                onClick = { showContextMenu = false; onMarkRead() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (conversation.isPinned) "Unpin" else "Pin") },
+                                leadingIcon = { Icon(Icons.Default.PushPin, null) },
+                                onClick = { showContextMenu = false; onPin() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Archive") },
+                                leadingIcon = { Icon(Icons.Default.Archive, null) },
+                                onClick = { showContextMenu = false; onArchive() },
+                            )
+                        }
+                    }
                 }
             },
             leadingContent = {
-                // Avatar placeholder: purple-container bg with initial letter
-                AvatarInitial(
-                    name = displayName ?: conversation.convPhone,
-                )
+                AvatarInitial(name = displayName ?: conversation.convPhone)
             },
         )
     }

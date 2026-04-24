@@ -261,6 +261,43 @@ class AppPreferences @Inject constructor(
         prefs.edit().remove("recent_searches").apply()
     }
 
+    // --- L1528 SMS compliance opt-in tracking ---------------------------------
+    //
+    // Tracks which phone numbers have already received the TCPA/CTIA opt-out footer
+    // "Reply STOP to opt out." on first send. Only added once per number so repeat
+    // sends in the same thread don't keep appending the footer.
+    //
+    // Stored as a JSON-array string (same serialisation as dismissedAttentionIds).
+    // Plain prefs are sufficient; these are business-operational phone numbers, not PII credentials.
+
+    /**
+     * L1528 — set of phone numbers (E.164 or normalized 10-digit) that have already
+     * received the compliance opt-out footer in their first outbound message.
+     */
+    val smsOptInSentTo: Set<String>
+        get() {
+            val raw = prefs.getString("sms_opt_in_sent_to", null) ?: return emptySet()
+            return runCatching {
+                raw.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
+
+    /**
+     * Mark [phone] as having received the compliance footer.
+     * Idempotent — adding an already-present phone is a no-op (set semantics).
+     */
+    fun markSmsOptInSent(phone: String) {
+        val updated = smsOptInSentTo + phone
+        prefs.edit().putString("sms_opt_in_sent_to", serializeStringSet(updated)).apply()
+    }
+
+    /** Returns true if [phone] has already received the compliance opt-out footer. */
+    fun hasSmsOptInBeenSent(phone: String): Boolean = phone in smsOptInSentTo
+
     // --- §1.7 line 239 — screen-capture prevention pref -----------------------
     //
     // When true, MainActivity applies FLAG_SECURE + setRecentsScreenshotEnabled(false)

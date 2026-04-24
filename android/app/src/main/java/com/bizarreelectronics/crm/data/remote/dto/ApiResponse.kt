@@ -103,7 +103,16 @@ data class SmsConversationItem(
     @SerializedName("is_flagged")
     val isFlagged: Boolean,
     @SerializedName("is_pinned")
-    val isPinned: Boolean
+    val isPinned: Boolean,
+    // L1510 — sentiment badge; null when server doesn't return the field
+    @SerializedName("sentiment")
+    val sentiment: String? = null,
+    // L1511 — archive filter support
+    @SerializedName("is_archived")
+    val isArchived: Boolean = false,
+    // L1512 — assign filter support
+    @SerializedName("assigned_to")
+    val assignedTo: String? = null,
 )
 
 data class SmsThreadData(

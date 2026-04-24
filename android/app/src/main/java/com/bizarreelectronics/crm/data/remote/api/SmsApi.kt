@@ -28,14 +28,39 @@ interface SmsApi {
         @Body request: Map<String, @JvmSuppressWildcards Any>
     ): ApiResponse<@JvmSuppressWildcards Any>
 
+    /**
+     * Schedule send — POST /sms/send?send_at=<iso8601>.
+     * 404-tolerant: caller falls back to WorkManager if server returns 404.
+     */
+    @POST("sms/send")
+    suspend fun sendSmsScheduled(
+        @Query("send_at") sendAt: String,
+        @Body request: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
+
     @PATCH("sms/conversations/{phone}/flag")
     suspend fun toggleFlag(@Path("phone") phone: String): ApiResponse<@JvmSuppressWildcards Any>
+
+    /** L1509 — pin a conversation. 404-tolerant: callers catch and ignore. */
+    @PATCH("sms/conversations/{phone}/pin")
+    suspend fun pinThread(@Path("phone") phone: String): ApiResponse<@JvmSuppressWildcards Any>
 
     @PATCH("sms/conversations/{phone}/pin")
     suspend fun togglePin(@Path("phone") phone: String): ApiResponse<@JvmSuppressWildcards Any>
 
     @PATCH("sms/conversations/{phone}/read")
     suspend fun markRead(@Path("phone") phone: String): ApiResponse<Unit>
+
+    /** L1512 — archive a conversation. 404-tolerant. */
+    @PATCH("sms/conversations/{phone}/archive")
+    suspend fun archiveThread(@Path("phone") phone: String): ApiResponse<@JvmSuppressWildcards Any>
+
+    /** L1512 — assign a conversation to a user. 404-tolerant. */
+    @PATCH("sms/conversations/{phone}/assign")
+    suspend fun assignThread(
+        @Path("phone") phone: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
 
     @GET("sms/templates")
     suspend fun getTemplates(): ApiResponse<SmsTemplateListData>

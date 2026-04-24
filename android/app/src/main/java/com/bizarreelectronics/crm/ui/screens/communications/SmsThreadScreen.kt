@@ -1,9 +1,11 @@
 package com.bizarreelectronics.crm.ui.screens.communications
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -25,6 +28,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -32,6 +37,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
@@ -42,6 +48,10 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.communications.components.ScheduleSendSheet
+import com.bizarreelectronics.crm.ui.screens.communications.components.SmsCharCounter
+import com.bizarreelectronics.crm.ui.screens.communications.components.SmsDeliveryStatusDot
+import com.bizarreelectronics.crm.ui.screens.communications.components.scheduleSendLocally
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
@@ -57,6 +67,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
+private const val COMPLIANCE_FOOTER = "\n\nReply STOP to opt out."
+
+// L1524 — 50 common emoji for the emoji picker
+private val COMMON_EMOJI = listOf(
+    "😀", "😊", "😂", "🥲", "😍", "🤩", "😎", "😢", "😅", "🙏",
+    "👍", "👎", "👋", "✌️", "🤝", "💪", "🔥", "⭐", "✅", "❌",
+    "📱", "💬", "📞", "📧", "🔔", "⚡", "💡", "🛠️", "🧰", "🔧",
+    "🏠", "🚗", "📦", "💰", "💳", "🎉", "🎁", "🙌", "❤️", "💙",
+    "💯", "⏰", "📅", "🗓️", "🔑", "🛡️", "🌟", "🎯", "🚀", "✨",
+)
 
 data class SmsThreadUiState(
     val messages: List<SmsMessageItem> = emptyList(),
@@ -71,6 +91,10 @@ data class SmsThreadUiState(
     /** Templates for the inline picker sheet. Fetched once per screen lifetime. */
     val templates: List<SmsTemplateDto> = emptyList(),
     val isLoadingTemplates: Boolean = false,
+    /** L1521 — true when WS emits typing event for this thread */
+    val isRemoteTyping: Boolean = false,
+    /** L1533 — true when server is in off-hours auto-reply mode */
+    val isOffHours: Boolean = false,
 )
 
 @HiltViewModel
@@ -81,6 +105,7 @@ class SmsThreadViewModel @Inject constructor(
     private val serverMonitor: ServerReachabilityMonitor,
     private val draftStore: DraftStore,
     private val gson: Gson,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     val phone: String = savedStateHandle.get<String>("phone") ?: ""
@@ -93,16 +118,12 @@ class SmsThreadViewModel @Inject constructor(
 
     private var collectJob: Job? = null
     private var autosaveJob: Job? = null
+    private var typingJob: Job? = null
 
     init {
         collectThread()
         loadOnlineDetails()
         smsRepository.markRead(phone)
-        // Load any persisted SMS draft saved for this thread (identified by phone).
-        // DraftStore.DraftType.SMS is a single slot per user — entityId disambiguates
-        // which thread the draft belongs to.  Only surface the prompt when the
-        // entityId matches the current thread's phone so a draft from a different
-        // conversation is never accidentally shown here.
         viewModelScope.launch {
             val draft = draftStore.load(DraftStore.DraftType.SMS)
             if (draft != null && draft.entityId == phone) {
@@ -144,12 +165,25 @@ class SmsThreadViewModel @Inject constructor(
         loadOnlineDetails()
     }
 
+    /**
+     * L1528 — compliance footer. Appends "Reply STOP to opt out." to [text] if
+     * this is the first outbound send to [phone]. Marks the number as opted-in.
+     */
+    private fun applyComplianceFooter(text: String): String {
+        return if (!appPreferences.hasSmsOptInBeenSent(phone)) {
+            appPreferences.markSmsOptInSent(phone)
+            text + COMPLIANCE_FOOTER
+        } else {
+            text
+        }
+    }
+
     fun sendMessage(text: String) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isSending = true)
             try {
-                smsRepository.sendMessage(phone, text)
-                // Message sent — draft is no longer needed.
+                val body = applyComplianceFooter(text)
+                smsRepository.sendMessage(phone, body)
                 discardDraft()
                 _state.value = _state.value.copy(
                     isSending = false,
@@ -180,11 +214,6 @@ class SmsThreadViewModel @Inject constructor(
 
     // ── Draft autosave ───────────────────────────────────────────────
 
-    /**
-     * Call this whenever the compose field text changes.
-     * Cancels any pending autosave and restarts the 2-second debounce counter.
-     * Uses [phone] as the entityId so the draft is bound to this thread.
-     */
     fun onComposeFieldChanged(body: String) {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
@@ -194,7 +223,6 @@ class SmsThreadViewModel @Inject constructor(
         }
     }
 
-    /** Serialise the compose body into a minimal JSON payload. */
     private fun serializePayload(body: String): String {
         val obj = JsonObject()
         obj.addProperty("body", body)
@@ -202,11 +230,6 @@ class SmsThreadViewModel @Inject constructor(
         return gson.toJson(obj)
     }
 
-    /**
-     * Restore the compose field from a persisted draft.
-     * Returns the body string to set in the UI's messageText state.
-     * Clears [_pendingDraft] so the prompt is dismissed.
-     */
     fun resumeDraft(draft: DraftStore.Draft): String {
         _pendingDraft.value = null
         return try {
@@ -217,7 +240,6 @@ class SmsThreadViewModel @Inject constructor(
         }
     }
 
-    /** Permanently discard the pending draft and clear the recovery prompt. */
     fun discardDraft() {
         _pendingDraft.value = null
         viewModelScope.launch {
@@ -225,10 +247,6 @@ class SmsThreadViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Fetch templates from the server and cache them in state.
-     * Idempotent: no-ops if templates are already loaded or currently loading.
-     */
     fun loadTemplates() {
         if (_state.value.templates.isNotEmpty() || _state.value.isLoadingTemplates) return
         viewModelScope.launch {
@@ -241,9 +259,41 @@ class SmsThreadViewModel @Inject constructor(
                     isLoadingTemplates = false,
                 )
             } catch (_: Exception) {
-                // On failure leave templates empty so the sheet shows the empty state.
                 _state.value = _state.value.copy(isLoadingTemplates = false)
             }
+        }
+    }
+
+    // ── L1521 — typing indicator ─────────────────────────────────────
+
+    /**
+     * Called when a WebSocket "typing" event arrives for this thread.
+     * Shows the indicator for 3 seconds then auto-hides.
+     */
+    fun onRemoteTyping() {
+        _state.value = _state.value.copy(isRemoteTyping = true)
+        typingJob?.cancel()
+        typingJob = viewModelScope.launch {
+            delay(3_000L)
+            _state.value = _state.value.copy(isRemoteTyping = false)
+        }
+    }
+
+    // ── L1525 — schedule send ────────────────────────────────────────
+
+    /**
+     * Schedule send via server. 404 fallback is handled in the UI layer
+     * which has access to [Context] for WorkManager.
+     */
+    suspend fun scheduleSend(text: String, sendAtIso: String): Boolean {
+        return try {
+            smsApi.sendSmsScheduled(
+                sendAt = sendAtIso,
+                request = mapOf("to" to phone, "message" to text),
+            )
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 }
@@ -266,23 +316,23 @@ fun SmsThreadScreen(
     phone: String,
     onBack: () -> Unit,
     onNavigateToTemplates: (() -> Unit)? = null,
-    // AND-20260414-M4: the nav graph passes the current NavBackStackEntry so we
-    // can observe the `sms_template_body` key that SmsTemplatesScreen writes
-    // when the user picks a template. When null (preview/tests) the feature is
-    // simply unavailable and the top-bar icon is hidden.
     templateBodyFlow: kotlinx.coroutines.flow.StateFlow<String?>? = null,
     onTemplateConsumed: (() -> Unit)? = null,
     viewModel: SmsThreadViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val pendingDraft by viewModel.pendingDraft.collectAsState()
-    // @audit-fixed: was remember { mutableStateOf("") } — a half-typed message
-    // would be wiped on rotation. rememberSaveable persists it across the
-    // configuration change.
-    var messageText by rememberSaveable { mutableStateOf("") }
+    // Using TextFieldValue to track cursor position for emoji insertion (L1524)
+    var messageText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     var showTemplateSheet by remember { mutableStateOf(false) }
+    var showEmojiSheet by remember { mutableStateOf(false) }
+    var showScheduleSheet by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val customerName = state.customer?.let {
         "${it.firstName ?: ""} ${it.lastName ?: ""}".trim()
@@ -295,21 +345,15 @@ fun SmsThreadScreen(
         }
     }
 
-    // AND-20260414-M4: consume a template body that SmsTemplatesScreen wrote
-    // into our savedStateHandle. Replace the compose draft with the template
-    // (matches how RepairDesk web canned-responses behave) and clear the key
-    // so navigating away and back doesn't re-apply the same template.
     val templateBody by (templateBodyFlow?.collectAsState() ?: remember { mutableStateOf(null) })
     LaunchedEffect(templateBody) {
         val body = templateBody
         if (!body.isNullOrBlank()) {
-            messageText = body
+            messageText = TextFieldValue(body, TextRange(body.length))
             onTemplateConsumed?.invoke()
         }
     }
 
-    // Build interpolation context from the current thread. Keys must match
-    // server-documented available_variables (customer_name, first_name, …).
     val templateContext = remember(state.customer, phone) {
         buildMap {
             val customer = state.customer
@@ -324,28 +368,24 @@ fun SmsThreadScreen(
         }
     }
 
-    // Show DraftRecoveryPrompt when a persisted draft exists for this thread and
-    // the compose field is currently empty (avoid overwriting text the user has
-    // already started typing).
-    if (pendingDraft != null && messageText.isEmpty()) {
+    if (pendingDraft != null && messageText.text.isEmpty()) {
         DraftRecoveryPrompt(
             draft = pendingDraft!!,
             previewFormatter = ::buildSmsDraftPreview,
             onResume = {
                 val restored = viewModel.resumeDraft(pendingDraft!!)
-                messageText = restored
+                messageText = TextFieldValue(restored, TextRange(restored.length))
             },
             onDiscard = { viewModel.discardDraft() },
         )
     }
 
-    // Show the inline template picker sheet.
     if (showTemplateSheet) {
         SmsTemplatePickerSheet(
             templates = state.templates,
             context = templateContext,
             onTemplateSelected = { expandedBody ->
-                messageText = expandedBody
+                messageText = TextFieldValue(expandedBody, TextRange(expandedBody.length))
                 showTemplateSheet = false
             },
             onDismiss = { showTemplateSheet = false },
@@ -353,12 +393,53 @@ fun SmsThreadScreen(
         )
     }
 
+    // L1524 — emoji picker sheet
+    if (showEmojiSheet) {
+        EmojiPickerSheet(
+            onEmojiSelected = { emoji ->
+                val cur = messageText
+                val before = cur.text.substring(0, cur.selection.end)
+                val after = cur.text.substring(cur.selection.end)
+                val newText = before + emoji + after
+                val newCursor = before.length + emoji.length
+                messageText = TextFieldValue(newText, TextRange(newCursor))
+                showEmojiSheet = false
+            },
+            onDismiss = { showEmojiSheet = false },
+        )
+    }
+
+    // L1525 — schedule send sheet
+    if (showScheduleSheet) {
+        ScheduleSendSheet(
+            onDismiss = { showScheduleSheet = false },
+            onSchedule = { sendAtIso ->
+                showScheduleSheet = false
+                val textToSend = messageText.text.trim()
+                if (textToSend.isNotBlank()) {
+                    coroutineScope.launch {
+                        val success = viewModel.scheduleSend(textToSend, sendAtIso)
+                        if (!success) {
+                            // 404 fallback: WorkManager
+                            val triggerMs = try {
+                                java.time.OffsetDateTime.parse(sendAtIso).toInstant().toEpochMilli()
+                            } catch (_: Exception) {
+                                System.currentTimeMillis() + 60_000L
+                            }
+                            scheduleSendLocally(context, phone, textToSend, triggerMs)
+                        }
+                        messageText = TextFieldValue("")
+                        snackbarHostState.showSnackbar("Message scheduled")
+                    }
+                }
+            },
+        )
+    }
+
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // Flag active = error (hue-shifted red), pin active = primary (purple).
-            // activeActionIndex = null since callers control tinting inline.
             BrandTopAppBar(
                 title = customerName ?: phone,
                 navigationIcon = {
@@ -371,8 +452,6 @@ fun SmsThreadScreen(
                     }
                 },
                 actions = {
-                    // AND-20260414-M4: template picker — opens SmsTemplatesScreen
-                    // which writes the selected body back via savedStateHandle.
                     if (onNavigateToTemplates != null) {
                         IconButton(onClick = onNavigateToTemplates) {
                             Icon(
@@ -382,7 +461,6 @@ fun SmsThreadScreen(
                             )
                         }
                     }
-                    // Flag: error tint when flagged, muted when not
                     IconButton(onClick = { viewModel.toggleFlag() }) {
                         Icon(
                             Icons.Default.Flag,
@@ -391,7 +469,6 @@ fun SmsThreadScreen(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    // Pin: primary purple when pinned, muted when not
                     IconButton(onClick = { viewModel.togglePin() }) {
                         Icon(
                             Icons.Default.PushPin,
@@ -411,88 +488,122 @@ fun SmsThreadScreen(
             )
         },
         bottomBar = {
-            ComposeBar(
-                messageText = messageText,
-                onMessageChange = { newText ->
-                    messageText = newText
-                    viewModel.onComposeFieldChanged(newText)
-                },
-                isSending = state.isSending,
-                onSend = {
-                    viewModel.sendMessage(messageText.trim())
-                    messageText = ""
-                },
-                onTemplateClick = {
-                    viewModel.loadTemplates()
-                    showTemplateSheet = true
-                },
-            )
-        },
-    ) { padding ->
-        when {
-            state.isLoading -> {
-                // a11y: mergeDescendants collapses each shimmer box into a single
-                // focus stop; contentDescription announces loading state to TalkBack.
-                BrandSkeleton(
-                    rows = 6,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = "Loading messages"
-                        },
+            Column {
+                // L1527 — char counter above compose bar
+                if (messageText.text.isNotEmpty()) {
+                    SmsCharCounter(text = messageText.text)
+                }
+                ComposeBar(
+                    messageText = messageText,
+                    onMessageChange = { newValue ->
+                        messageText = newValue
+                        viewModel.onComposeFieldChanged(newValue.text)
+                    },
+                    isSending = state.isSending,
+                    onSend = {
+                        viewModel.sendMessage(messageText.text.trim())
+                        messageText = TextFieldValue("")
+                    },
+                    onTemplateClick = {
+                        viewModel.loadTemplates()
+                        showTemplateSheet = true
+                    },
+                    onEmojiClick = { showEmojiSheet = true },
+                    onScheduleClick = { showScheduleSheet = true },
                 )
             }
-            state.error != null && state.messages.isEmpty() -> {
-                // a11y: liveRegion=Assertive interrupts TalkBack immediately on error
-                // so the user hears the failure without manual exploration.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .semantics { liveRegion = LiveRegionMode.Assertive },
-                    contentAlignment = Alignment.Center,
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            // L1533 — off-hours banner
+            if (state.isOffHours) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    ErrorState(
-                        message = state.error ?: "Something went wrong",
-                        onRetry = { viewModel.loadThread() },
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.NightlightRound,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            "Off-hours — auto-reply active until 8 AM.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                    }
                 }
             }
-            state.messages.isEmpty() -> {
-                // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                // into a single TalkBack focus stop with a cohesive description.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = "No messages yet. Send the first message below."
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EmptyState(
-                        icon = Icons.Default.Chat,
-                        title = "No messages yet",
-                        subtitle = "Send the first message below",
+
+            when {
+                state.isLoading -> {
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "Loading messages"
+                            },
                     )
                 }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        // a11y: liveRegion=Polite so TalkBack announces new incoming message
-                        // bodies without interrupting the user's current focus.
-                        .semantics { liveRegion = LiveRegionMode.Polite },
-                    state = listState,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    reverseLayout = true,
-                ) {
-                    items(state.messages.reversed(), key = { it.id }) { message ->
-                        MessageBubble(message = message)
+                state.error != null && state.messages.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Something went wrong",
+                            onRetry = { viewModel.loadThread() },
+                        )
+                    }
+                }
+                state.messages.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "No messages yet. Send the first message below."
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.Chat,
+                            title = "No messages yet",
+                            subtitle = "Send the first message below",
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                        state = listState,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        reverseLayout = true,
+                    ) {
+                        // L1521 — typing indicator bubble
+                        if (state.isRemoteTyping) {
+                            item(key = "typing_indicator") {
+                                TypingIndicatorBubble()
+                            }
+                        }
+                        items(state.messages.reversed(), key = { it.id }) { message ->
+                            MessageBubble(message = message)
+                        }
                     }
                 }
             }
@@ -500,27 +611,87 @@ fun SmsThreadScreen(
     }
 }
 
-/**
- * Bottom compose bar.
- * - `surfaceContainer` bg + 1px top outline divider (no tonalElevation which
- *   reads flat on OLED dark surfaces).
- * - Character counter in BrandMono labelSmall.
- * - Send button: purple when enabled, muted when disabled.
- */
+// ---------------------------------------------------------------------------
+// L1521 — Typing indicator bubble
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun TypingIndicatorBubble() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 2.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .semantics { contentDescription = "Customer is typing" },
+        ) {
+            Text(
+                "Typing\u2026",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// L1524 — Emoji picker bottom sheet
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiPickerSheet(
+    onEmojiSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Text("Emoji", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            val rows = COMMON_EMOJI.chunked(10)
+            rows.forEach { rowEmoji ->
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(rowEmoji) { emoji ->
+                        TextButton(onClick = { onEmojiSelected(emoji) }) {
+                            Text(emoji, style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bottom compose bar
+// ---------------------------------------------------------------------------
+
 @Composable
 private fun ComposeBar(
-    messageText: String,
-    onMessageChange: (String) -> Unit,
+    messageText: TextFieldValue,
+    onMessageChange: (TextFieldValue) -> Unit,
     isSending: Boolean,
     onSend: () -> Unit,
     onTemplateClick: () -> Unit,
+    onEmojiClick: () -> Unit,
+    onScheduleClick: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
-            // 1px top outline divider instead of tonalElevation
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                 thickness = 1.dp,
@@ -530,30 +701,28 @@ private fun ComposeBar(
                     .fillMaxWidth()
                     .padding(8.dp),
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 OutlinedTextField(
                     value = messageText,
                     onValueChange = onMessageChange,
                     modifier = Modifier
                         .weight(1f)
-                        // a11y: explicit label so TalkBack reads "Message input" instead
-                        // of reading the placeholder text as the field label.
                         .semantics { contentDescription = "Message input" },
                     placeholder = { Text("Type a message...") },
                     maxLines = 4,
-                    trailingIcon = {
-                        // Character counter in BrandMono
-                        Text(
-                            "${messageText.length}/160",
-                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
-                            color = if (messageText.length > 160) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
                 )
 
-                // Template picker icon — between text field and send button.
+                // L1524 — emoji picker
+                IconButton(onClick = onEmojiClick) {
+                    Icon(
+                        Icons.Default.EmojiEmotions,
+                        contentDescription = "Insert emoji",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Template picker
                 IconButton(onClick = onTemplateClick) {
                     Icon(
                         Icons.Default.ListAlt,
@@ -562,13 +731,20 @@ private fun ComposeBar(
                     )
                 }
 
+                // L1525 — schedule send
+                IconButton(onClick = onScheduleClick) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = "Schedule send",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
                 IconButton(
                     onClick = {
-                        if (messageText.isNotBlank()) {
-                            onSend()
-                        }
+                        if (messageText.text.isNotBlank()) onSend()
                     },
-                    enabled = messageText.isNotBlank() && !isSending,
+                    enabled = messageText.text.isNotBlank() && !isSending,
                 ) {
                     if (isSending) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -576,7 +752,7 @@ private fun ComposeBar(
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send message",
-                            tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary
+                            tint = if (messageText.text.isNotBlank()) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -586,14 +762,10 @@ private fun ComposeBar(
     }
 }
 
-/**
- * Single chat bubble.
- * - Outbound: [primaryContainer] bg + [onPrimaryContainer] text.
- * - Inbound:  [surfaceContainerHigh] bg + [onSurface] text.
- * - 14dp radius on all corners; tail corner (bottom-end for outbound,
- *   bottom-start for inbound) squared to 2dp.
- * - Timestamps rendered in [BrandMono] labelSmall.
- */
+// ---------------------------------------------------------------------------
+// Message bubble with L1519 delivery status + L1520 read receipt
+// ---------------------------------------------------------------------------
+
 @Composable
 private fun MessageBubble(message: SmsMessageItem) {
     val isOutbound = message.direction == "outbound"
@@ -616,18 +788,15 @@ private fun MessageBubble(message: SmsMessageItem) {
     else
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
 
-    // a11y: build a cohesive sentence TalkBack reads for the whole bubble.
-    // Status is folded into the outbound description so the delivery-status Text
-    // node below does not need its own announcement (avoids double-read).
     val timeDisplay = message.createdAt?.take(16)?.replace("T", " ") ?: ""
     val messageBody = message.message ?: ""
     val bubbleContentDescription = if (isOutbound) {
         val statusSuffix = when (message.status) {
             "delivered" -> ", delivered"
-            "sent"      -> ", sent"
-            "queued"    -> ", queued"
-            "failed"    -> ", failed"
-            else        -> ""
+            "sent" -> ", sent"
+            "queued" -> ", queued"
+            "failed" -> ", failed"
+            else -> ""
         }
         "Sent at $timeDisplay$statusSuffix: $messageBody"
     } else {
@@ -644,9 +813,6 @@ private fun MessageBubble(message: SmsMessageItem) {
                 .clip(bubbleShape)
                 .background(bubbleBg)
                 .padding(12.dp)
-                // a11y: mergeDescendants=true collapses all child Text nodes into this
-                // single focus stop; clearAndSetSemantics replaces the auto-merged text
-                // with our curated sentence so TalkBack reads a natural description.
                 .clearAndSetSemantics { contentDescription = bubbleContentDescription },
         ) {
             Column {
@@ -660,27 +826,17 @@ private fun MessageBubble(message: SmsMessageItem) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Timestamp in BrandMono
+                    // Timestamp
                     Text(
                         timeDisplay,
                         style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
                         color = timestampColor,
                     )
-                    if (isOutbound && message.status != null) {
-                        // a11y: status text is already folded into bubbleContentDescription;
-                        // visual-only — clearAndSetSemantics on the parent Box hides it
-                        // from the accessibility tree, so no double-read occurs.
-                        Text(
-                            when (message.status) {
-                                "delivered" -> "Delivered"
-                                "sent" -> "Sent"
-                                "queued" -> "Queued"
-                                "failed" -> "Failed"
-                                else -> ""
-                            },
-                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
-                            color = if (message.status == "failed") MaterialTheme.colorScheme.error
-                            else timestampColor,
+                    // L1519 — delivery status dot (outbound only)
+                    if (isOutbound) {
+                        SmsDeliveryStatusDot(
+                            status = message.status,
+                            readAt = null, // readAt not in SmsMessageItem yet — stub null
                         )
                     }
                 }
@@ -693,14 +849,6 @@ private fun MessageBubble(message: SmsMessageItem) {
 // Draft preview formatter — used by DraftRecoveryPrompt
 // ---------------------------------------------------------------------------
 
-/**
- * Build a short, human-readable preview string from an SMS draft payload JSON.
- * Used by [DraftRecoveryPrompt] so the user can identify the draft at a glance.
- *
- * Shows the first 60 characters of the body and the thread phone number, e.g.:
- *   "Draft for +15551234567: Hi, your repair is ready for pickup an…"
- *   "Draft for +15551234567" (when body is blank)
- */
 private fun buildSmsDraftPreview(payloadJson: String): String {
     return try {
         val obj = JsonParser.parseString(payloadJson).asJsonObject
