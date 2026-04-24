@@ -5,12 +5,15 @@ import android.util.Log
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
-import com.bizarreelectronics.crm.data.local.db.Migrations
+import com.bizarreelectronics.crm.data.local.db.DatabaseGuard
+import com.bizarreelectronics.crm.data.local.db.MigrationRegistry
 import com.bizarreelectronics.crm.data.local.db.PlaintextToEncryptedMigrator
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.draft.DraftDao
 import com.bizarreelectronics.crm.data.local.prefs.DatabasePassphrase
+import com.bizarreelectronics.crm.data.sync.DbMigrationBackupWorker
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -56,15 +59,34 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): BizarreDatabase {
         val passphrase: CharArray = DatabasePassphrase.loadOrCreate(context)
-        // One-shot upgrade from pre-SQLCipher plaintext DBs. Safe no-op on
-        // fresh installs and on already-migrated installs (internally
-        // guarded by a SharedPreferences flag). Must run BEFORE Room opens
-        // the DB, otherwise Room would fail on the plaintext header.
+
+        // --- Line 217: forward-only guard (check before anything else) -------
+        // If the DB on disk is from a newer build than the current APK,
+        // exit immediately rather than letting Room open an incompatible file.
+        DatabaseGuard.checkForwardOnly(context, BizarreDatabase.SCHEMA_VERSION)
+
+        // --- Line 219: backup before migrate ----------------------------------
+        // Copy the DB file to cacheDir/db-backups/ before Room opens it and
+        // potentially runs migrations. Safe no-op on fresh installs.
+        val backupFile = DatabaseGuard.backupIfNeeded(context)
+
+        // --- Line 220: DEBUG dry-run on backup --------------------------------
+        // Only in debug builds: run integrity_check on the backup copy.
+        DatabaseGuard.dryRunOnBackupIfDebug(backupFile, BuildConfig.DEBUG)
+
+        // --- Line 219: One-shot upgrade from pre-SQLCipher plaintext DBs -----
+        // Safe no-op on fresh installs and on already-migrated installs.
+        // Must run BEFORE Room opens the DB, otherwise Room would fail on the
+        // plaintext header.
         PlaintextToEncryptedMigrator.migrateIfNeeded(context, passphrase)
         val passphraseBytes = String(passphrase).toByteArray(Charsets.UTF_8)
         val factory = SupportOpenHelperFactory(passphraseBytes)
 
-        return Room.databaseBuilder(
+        // Build the database instance with a temporary null-DAO migration set.
+        // We will get the real DAO reference from the built instance and use it
+        // inside the onOpen callback below. MigrationRegistry.allMigrations(dao=null)
+        // wraps each migration — timing is recorded once the DAO is available.
+        val db = Room.databaseBuilder(
             context,
             BizarreDatabase::class.java,
             BizarreDatabase.DATABASE_NAME,
@@ -72,12 +94,16 @@ object DatabaseModule {
             .openHelperFactory(factory)
             // NOTE: fallbackToDestructiveMigration() is deliberately NOT called.
             // Any schema bump MUST have a matching Migration object in
-            // [Migrations.ALL_MIGRATIONS], otherwise the app will hard-fail on
+            // MigrationRegistry.ALL_ENTRIES, otherwise the app will hard-fail on
             // first launch after upgrade instead of silently deleting queued
             // offline changes. If a migration throws, Room surfaces an
             // IllegalStateException which we WANT — a crash is recoverable,
             // silent data loss is not.
-            .addMigrations(*Migrations.ALL_MIGRATIONS)
+            //
+            // fallbackToDestructiveMigrationOnDowngrade() is also NOT called.
+            // Downgrade detection is handled by DatabaseGuard.checkForwardOnly
+            // (exitProcess(2)) before Room ever opens the file.
+            .addMigrations(*MigrationRegistry.allMigrations(dao = null))
             // Enable SQLite foreign key enforcement on every connection.
             // Without this, our @ForeignKey annotations are decorative only.
             .addCallback(object : RoomDatabase.Callback() {
@@ -96,6 +122,34 @@ object DatabaseModule {
             .also {
                 Log.i(TAG, "Room database opened (version=${BizarreDatabase.SCHEMA_VERSION}, encrypted=true)")
             }
+
+        // --- Line 216: validate migration tracking table ----------------------
+        // Now that Room is open, run the gap check on the applied_migrations table.
+        // On a fresh install the table is empty and installedVersion == SCHEMA_VERSION,
+        // so validateAllStepsPresent returns silently (no prior migrations expected).
+        // On upgrade the check fires if any migration row is missing.
+        try {
+            val dao = db.appliedMigrationDao()
+            MigrationRegistry.validateAllStepsPresent(dao, BizarreDatabase.SCHEMA_VERSION)
+        } catch (e: MigrationRegistry.MissingMigrationException) {
+            Log.e(TAG, "FATAL: migration gap detected — ${e.message}")
+            throw e
+        }
+
+        // --- Line 217: record successful open for next-launch guard -----------
+        DatabaseGuard.recordSuccessfulOpen(context, BizarreDatabase.SCHEMA_VERSION)
+
+        // --- Line 218: enqueue heavy migrations out-of-band (infra stub) ------
+        // Check if any registered migration step is flagged as heavy. If so,
+        // enqueue DbMigrationBackupWorker to run it via expedited WorkManager.
+        // No heavy migration exists yet — this is infrastructure for future use.
+        MigrationRegistry.ALL_ENTRIES
+            .filter { it.heavy }
+            .forEach { entry ->
+                DbMigrationBackupWorker.enqueue(context, entry.fromVersion, entry.toVersion)
+            }
+
+        return db
     }
 
     @Provides fun provideTicketDao(db: BizarreDatabase): TicketDao = db.ticketDao()
@@ -112,4 +166,5 @@ object DatabaseModule {
     @Provides fun provideEstimateDao(db: BizarreDatabase): EstimateDao = db.estimateDao()
     @Provides fun provideExpenseDao(db: BizarreDatabase): ExpenseDao = db.expenseDao()
     @Provides fun provideDraftDao(db: BizarreDatabase): DraftDao = db.draftDao()
+    @Provides fun provideAppliedMigrationDao(db: BizarreDatabase): AppliedMigrationDao = db.appliedMigrationDao()
 }

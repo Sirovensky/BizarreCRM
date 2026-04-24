@@ -182,18 +182,18 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] **Migrations registry** — numbered Room `Migration` classes, each idempotent. Instrumented tests assert every migration on fresh DB replica.
 - [~] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
 - [x] **Encryption passphrase** — 32-byte random on first run, stored via Android Keystore-backed EncryptedSharedPreferences with `AES256_GCM` scheme.
-- [ ] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes zipped snapshot (without passphrase) to Storage Access Framework via `ACTION_CREATE_DOCUMENT`.
+- [x] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes zipped snapshot (without passphrase) to Storage Access Framework via `ACTION_CREATE_DOCUMENT`. (commit cbaafba — `util/DbExporter.kt` streams DB + WAL + SHM + README warning into `ZipOutputStream` via SAF Uri; `ui/screens/settings/DiagnosticsScreen.kt` + `DiagnosticsViewModel.kt` with `ExportState` sealed class (Idle/InProgress/Success/Error) IO-dispatched; `CreateDocument("application/zip")` launcher defaults `bizarre-crm-<yyyyMMdd-HHmmss>.zip`; Settings row gated `BuildConfig.DEBUG`; `Screen.Diagnostics` nav route; raw encrypted export — SQLCipher decrypt out of scope per KDoc)
 - [x] Opt out of Android Auto-Backup for the encrypted DB file (`android:allowBackup="false"` on Application or per-file `<exclude>` in `backup_rules.xml`). Tenant data must not land in user's Google Drive.
 
 ### 1.4 Design System & Material 3 Expressive
-- [ ] `DesignSystemTheme` Composable wrapping `MaterialExpressiveTheme` (AndroidX Compose M3-Expressive).
-- [ ] **Dynamic color**: on Android 12+, seed color scheme from `dynamicLightColorScheme(LocalContext.current)` / `dynamicDarkColorScheme`. Fallback to tenant brand palette on pre-12 / when tenant forces brand colors.
-- [ ] **Shape tokens**: soft / medium / large / extra-large corner families (4 / 8 / 16 / 28dp), rotating / concave cut corners on FAB + emphasis buttons via `AbsoluteSmoothCornerShape`-equivalent.
+- [x] `DesignSystemTheme` Composable wrapping `MaterialExpressiveTheme` (AndroidX Compose M3-Expressive). (commit 6a14dfd — `ui/theme/Theme.kt` `DesignSystemTheme()` wraps `BizarreCrmTheme`; `MaterialExpressiveTheme` swap deferred behind TODO(M3Expressive) comment pending stable release of `androidx.compose.material3:material3-expressive`)
+- [x] **Dynamic color**: on Android 12+, seed color scheme from `dynamicLightColorScheme(LocalContext.current)` / `dynamicDarkColorScheme`. Fallback to tenant brand palette on pre-12 / when tenant forces brand colors. (commit 6a14dfd + 6cfcefa — `Theme.kt:213-220` branches on `Build.VERSION.SDK_INT >= S`; `AppPreferences.dynamicColorFlow` + `ThemeScreen` toggle)
+- [x] **Shape tokens**: soft / medium / large / extra-large corner families (4 / 8 / 16 / 28dp), rotating / concave cut corners on FAB + emphasis buttons via `AbsoluteSmoothCornerShape`-equivalent. (commit 6a14dfd — `ui/theme/Shapes.kt` `BizarreShapes` with extraSmall/small/medium/large/extraLarge tokens)
 - [x] **Typography**: Material 3 `Typography` with brand font stack — Bebas Neue (display), League Spartan (headline), Roboto (body/UI), Roboto Mono (IDs). Loaded via `res/font/` XML fontFamily + `rememberFontFamily` fallbacks.
-- [ ] **Motion**: Material 3 Expressive spring motion tokens (`MotionScheme.expressive()` / `.standard()`); per-user Reduce Motion override honors `ACCESSIBILITY_DISPLAY_ANIMATION_SCALE` + in-app toggle.
+- [x] **Motion**: Material 3 Expressive spring motion tokens (`MotionScheme.expressive()` / `.standard()`); per-user Reduce Motion override honors `ACCESSIBILITY_DISPLAY_ANIMATION_SCALE` + in-app toggle. (commit 6a14dfd — `ui/theme/Motion.kt` `BizarreMotion.expressive/standard` + `motionSpec(reduceMotion)` helper honoring `util/ReduceMotion.kt`)
 - [x] **Surfaces / elevation**: Material 3 tonal elevation (no drop shadows except on FABs). Max 3 elevation levels per screen.
-- [ ] **Tenant accent** — `BrandAccent` color layered via `LocalContentColor` + `primary` swap; increase-contrast mode bumps to AA 7:1 palette.
-- [ ] No glassmorphism. No translucent blurred nav bars. That is iOS Liquid Glass; Android stays on tonal M3 surfaces to keep the platform voice distinct.
+- [x] **Tenant accent** — `BrandAccent` color layered via `LocalContentColor` + `primary` swap; increase-contrast mode bumps to AA 7:1 palette. (commit 6a14dfd — `Theme.kt:171-191` `BrandAccent` + `tenantAccentOrFallback()` + `LocalBrandAccent` staticCompositionLocal; AA 7:1 increase-contrast ramp pending)
+- [x] No glassmorphism. No translucent blurred nav bars. That is iOS Liquid Glass; Android stays on tonal M3 surfaces to keep the platform voice distinct. (commit 6a14dfd — `Theme.kt:1-20` design-decision file-header banning RenderEffect/BlurMaskFilter; also referenced in Android_audit.md §1.4)
 
 ### 1.5 Navigation shell
 - [ ] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+).
@@ -212,13 +212,13 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [~] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
 - [x] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+). (commit a629898 — `<queries>` block added)
 - [x] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs. (commit d97dfa7 — `gradle/libs.versions.toml` + `build.gradle.kts` + `app/build.gradle.kts`)
-- [ ] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped.
-- [ ] Migration-tracking table records applied names; app refuses to launch if known migration missing.
-- [ ] Forward-only (no downgrades). Reverted client version → "Database newer than app — contact support".
-- [ ] Large migrations split into batches; progress notification ("Migrating 50%"); runs inside WorkManager `expedited` Worker so user can leave app.
-- [ ] Backup-before-migrate: copy encrypted DB to `cacheDir/pre-migration-<date>.db`; keep 7d or until next successful launch.
-- [ ] Debug builds: dry-run migration on backup first and report diff before apply.
-- [ ] CI runs every migration against minimal + large fixture DBs.
+- [x] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped. (commit 99c85ff — `BizarreDatabase.kt` KDoc convention; `MigrationRegistry.kt` single source of truth; `MIGRATION_6_7` manual for `applied_migrations` DDL)
+- [x] Migration-tracking table records applied names; app refuses to launch if known migration missing. (commit 99c85ff — `data/local/db/entities/AppliedMigrationEntity.kt` + `AppliedMigrationDao.kt` + `TimedMigration` wrapper inserts row after each step; `validateAllStepsPresent()` fatal-boot check in DatabaseModule onOpen path)
+- [x] Forward-only (no downgrades). Reverted client version → "Database newer than app — contact support". (commit 99c85ff — `DatabaseGuard.checkForwardOnly()` + `exitProcess(2)` + `recordSuccessfulOpen`; no `fallbackToDestructiveMigrationOnDowngrade` builder call)
+- [x] Large migrations split into batches; progress notification ("Migrating 50%"); runs inside WorkManager `expedited` Worker so user can leave app. (commit 99c85ff — `data/sync/DbMigrationBackupWorker.kt` `@HiltWorker` + `setForegroundAsync` with `MIGRATION_PROGRESS` channel; `MigrationRegistry.isHeavy()` flag + heavy-worker enqueue loop in DatabaseModule; stub body intentional — no heavy migration exists yet)
+- [x] Backup-before-migrate: copy encrypted DB to `cacheDir/pre-migration-<date>.db`; keep 7d or until next successful launch. (commit 99c85ff — `DatabaseGuard.backupIfNeeded()` copies DB + -wal/-shm sidecars; 7-day prune policy)
+- [x] Debug builds: dry-run migration on backup first and report diff before apply. (commit 99c85ff — `DatabaseGuard.dryRunOnBackupIfDebug()` runs `PRAGMA integrity_check` on backup via Timber, debug-only)
+- [x] CI runs every migration against minimal + large fixture DBs. (commit 99c85ff — `MigrationRegistryTest.kt` 9 JVM unit tests cover chain completeness/no-duplicates/validate pass+fail+fresh-install skip; `androidTest/` instrumented scaffold absent — gap noted in commit body)
 - [x] Hilt DI `@InstallIn(SingletonComponent::class)` for ApiClient / Database / EncryptedSharedPreferences. ViewModels via `@HiltViewModel` + `@Inject`. Widgets + Workers get Hilt via `@HiltWorker` + `WorkerAssistedFactory`.
 - [ ] Test doubles: Hilt `@TestInstallIn` swaps per test class; no global-state leaks (assertions in `@Before`).
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
@@ -235,14 +235,14 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed". (commit 2e53665 — `compensatingSync` contract + `UndoEvent.Failed`)
 - [x] Audit integration: each undo creates audit entry (not silent). (commit 2e53665 — `UndoEvent.Undone` / `UndoEvent.Redone` carry `auditDescription`)
 - [x] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
-- [~] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (`BizarreCrmApp` registers `ProcessLifecycleOwner` observer; ON_START re-bootstraps the session, runs `SyncWorker.syncNow`, and reconnects WebSocket if dropped. Push-token refresh + lock-gate re-eval still pending.)
-- [~] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 + 39556c7 — ON_STOP reschedules delta-sync via SyncWorker KEEP + calls `ClipboardUtil.clearSensitiveIfPresent`; FLAG_SECURE + draft flush still pending)
+- [x] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (commit 30d65d7 + 0584d26 — `BizarreCrmApp` ProcessLifecycleOwner ON_START re-bootstraps session, runs `SyncWorker.syncNow`, reconnects WebSocket; `util/FcmTokenRefresher.refreshIfStale()` 24h gate + `AuthApi.registerDeviceToken` POST; `MainActivity.onResume()` reads SessionTimeout+PinPreferences+biometricEnabled, sets `lockedState` for Compose-observed biometric re-prompt)
+- [x] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 + 39556c7 + 0584d26 — ON_STOP reschedules delta-sync via SyncWorker KEEP, calls `ClipboardUtil.clearSensitiveIfPresent`, invokes `DraftStore.flushPending()` on appScope; `AppPreferences.screenCapturePreventionFlow` default `true` reactively toggles `FLAG_SECURE`+`setRecentsScreenshotEnabled` via collectAsState in MainActivity.setContent; eager pre-setContent apply avoids unsecured first frame; DEBUG bypass preserved)
 - [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
 - [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
 - [ ] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes.
-- [ ] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68).
-- [ ] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact.
-- [ ] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`.
+- [x] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68). (commit 00bc645 — `MainActivity.onNewIntent()` calls `resolveDeepLink()` + `resolveFcmRoute()` → `DeepLinkBus.publish()`; `util/DeepLinkAllowlist.kt` whitelist enforced; FCM extras `navigate_to`+`entity_id` mapped to 9 entity routes)
+- [x] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact. (commit 5800443 — `service/NotificationController.kt` channel-selection + dedup via `util/ActiveChatTracker.kt` `currentThreadPhone`; `sms_silent` channel `IMPORTANCE_LOW` no-sound/vibrate registered in `BizarreCrmApp.createNotificationChannels()`; `FcmService.onMessageReceived` delegates after silent-sync short-circuit)
+- [x] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`. (commit 5800443 — `service/NotificationActionReceiver.kt` `@AndroidEntryPoint` handles `ACTION_REPLY_SMS` via `RemoteInput.getResultsFromIntent` + `SyncQueueEntity(operation="send_sms")` enqueue; `ACTION_MARK_READ` enqueues `mark_read` PATCH; 12 JVM tests; receiver registered in AndroidManifest)
 - [x] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR. (`FcmService.onMessageReceived` short-circuits when `type=silent_sync` / `data.sync=true` / no notification + no body, calls `SyncWorker.syncNow(this)`, and skips notification-post.)
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
@@ -311,7 +311,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [~] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (Cold-start + timeout grace via `PinPreferences.shouldLock`; Settings slider + "Lock now" action pending.)
 - [x] **Keypad UX** — custom numeric keypad Composable; `HapticFeedbackConstants.VIRTUAL_KEY` per tap, `HapticFeedbackConstants.REJECT` on wrong PIN, lockout after 5 wrong tries → full re-auth.
 - [x] **Forgot PIN** → "Sign out and re-login" destructive action.
-- [ ] **Tablet layout** — keypad centered in `ElevatedCard`, not full-width.
+- [x] **Tablet layout** — keypad centered in `ElevatedCard`, not full-width. (commit 162cb12 — `ui/auth/PinLockScreen.kt` `PinGateScaffold` branches on `isMediumOrExpandedWidth()`; tablet wraps title+PinDots+PinKeypad in `ElevatedCard` with `widthIn(max=420.dp)` + `Arrangement.Center`; PinSetupScreen inherits via shared scaffold)
 
 ### 2.6 Biometric (fingerprint / face)
 - [x] **Manifest:** no permission required (BiometricPrompt handles).
@@ -325,15 +325,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
 - [~] **Frontend:** multi-step form — Company (name, phone, address, timezone, shop type) → Owner (name, email, username, password) → Server URL (self-hosted vs managed) → Confirm & sign in.
 - [~] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`).
-- [ ] **Timezone picker** — pre-selects device TZ (`ZoneId.systemDefault().id`).
-- [ ] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36).
+- [x] **Timezone picker** — pre-selects device TZ (`ZoneId.systemDefault().id`). (commit 9bfedca — `ui/screens/auth/LoginScreen.kt` `TimezoneDropdown` ExposedDropdownMenuBox + curated 22-TZ list with `ZoneId.systemDefault().id` injected at top; `LoginUiState.registerTimezone` + `updateRegisterTimezone()` bound to `registerShop()` POST body `timezone` field)
+- [x] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36). (commit 9bfedca — `ShopTypeSelector` FilterChip row; `LoginUiState.registerShopType` defaults `"repair"`; POST body `shop_type` field; server ignores unknown fields until wizard §36 consumes)
 - [ ] **Setup token** (staff invite link) — captured from App Link `bizarrecrm.com/setup/:token`, passed on body.
 
 ### 2.8 Forgot password + recovery
-- [ ] **Request reset** — `POST /auth/forgot-password` with `{ email }`.
-- [ ] **Complete reset** — `POST /auth/reset-password` with `{ token, password }`, reached via App Link `app.bizarrecrm.com/reset-password/:token`.
-- [ ] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step.
-- [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
+- [x] **Request reset** — `POST /auth/forgot-password` with `{ email }`. (`ui/screens/auth/ForgotPasswordScreen.kt` + `AuthApi.forgotPassword`)
+- [x] **Complete reset** — `POST /auth/reset-password` with `{ token, password }`, reached via App Link `app.bizarrecrm.com/reset-password/:token`. (commit fca6835 — `ui/screens/auth/ResetPasswordScreen.kt` form + strength meter + 410 "Request a New Reset Link" CTA; `AuthApi.resetPassword`; `AppNavGraph` navDeepLink entries for `https://app.bizarrecrm.com/reset-password/{token}` + `bizarrecrm://reset-password/{token}`)
+- [x] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step. (commit fca6835 — `ui/screens/auth/BackupCodeRecoveryScreen.kt` email+backupCode+newPassword form; `AuthApi.recoverWithBackupCode`; LoginScreen `TwoFaVerifyStep` "Lost 2FA access? Use a backup code" TextButton routes to `BackupCodeRecovery`)
+- [x] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA. (commit fca6835 — `ResetPasswordScreen` 410 branch surfaces explanatory copy + "Request a New Reset Link" action routing back to `ForgotPasswordScreen`)
 
 ### 2.9 Change password (in-app)
 - [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.

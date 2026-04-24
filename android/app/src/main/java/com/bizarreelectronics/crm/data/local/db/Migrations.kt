@@ -557,6 +557,39 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 6 → 7: add `applied_migrations` tracking table (Plan §1 L215-L221).**
+     *
+     * Creates the `applied_migrations` table with a composite primary key on
+     * `(from_version, to_version)`. Every [MigrationRegistry.TimedMigration] that
+     * runs in future upgrades inserts a row so [MigrationRegistry.validateAllStepsPresent]
+     * can verify the migration chain is complete at boot.
+     *
+     * Existing installs upgrading from v6 will have no rows in this table —
+     * that is expected. [MigrationRegistry.validateAllStepsPresent] skips
+     * validation for steps whose `toVersion` predates the table's existence
+     * by comparing against the installed version at open-time. A fresh v7
+     * install starts with an empty table and zero expected rows.
+     *
+     * `CREATE TABLE IF NOT EXISTS` is idempotent — a retried migration is safe.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS applied_migrations (
+                    from_version INTEGER NOT NULL,
+                    to_version   INTEGER NOT NULL,
+                    applied_at   INTEGER NOT NULL,
+                    duration_ms  INTEGER NOT NULL,
+                    name         TEXT    NOT NULL,
+                    PRIMARY KEY (from_version, to_version)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -564,5 +597,6 @@ object Migrations {
         MIGRATION_3_4,
         MIGRATION_4_5,
         MIGRATION_5_6,
+        MIGRATION_6_7,
     )
 }

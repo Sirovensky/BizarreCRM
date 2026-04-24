@@ -12,6 +12,37 @@ import com.bizarreelectronics.crm.data.local.draft.DraftEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Room database definition for Bizarre Electronics CRM.
+ *
+ * ## Migration convention (ActionPlan §1 L215)
+ *
+ * All schema changes MUST be registered in [MigrationRegistry]. Choose the
+ * right migration type:
+ *
+ * - **@AutoMigration** — for purely additive / shape-only changes with no data
+ *   transformation. Declare the `@AutoMigration(from = X, to = Y)` annotation
+ *   on this class and add a corresponding [MigrationRegistry.Entry]. Room
+ *   generates the DDL automatically; no manual SQL is needed.
+ * - **Manual [Migration]** — required whenever rows must be back-filled, column
+ *   types change (e.g. REAL → INTEGER cents), foreign keys are added, or any
+ *   data transformation is necessary. Add a `MIGRATION_N_(N+1)` object in
+ *   [Migrations] with full KDoc explaining *why* the change is needed and
+ *   *what data transform* occurs.
+ *
+ * Rule of thumb: if the diff to the schema JSON only adds a new table or adds
+ * a nullable column, `@AutoMigration` is fine. If anything is renamed, altered
+ * in type, or requires copying data between tables, use a manual migration.
+ *
+ * ## Version bump checklist
+ *
+ * 1. Bump `version` here and [SCHEMA_VERSION] below in lockstep.
+ * 2. Add `MIGRATION_N_(N+1)` to [Migrations].
+ * 3. Add an [MigrationRegistry.Entry] to [MigrationRegistry.ALL_ENTRIES].
+ * 4. Update [com.bizarreelectronics.crm.data.local.db.RoomSchemaFilesTest] with
+ *    the new JSON filename.
+ * 5. Run `./gradlew :app:kspDebugKotlin` to export the schema JSON.
+ */
 @Database(
     entities = [
         TicketEntity::class,
@@ -30,6 +61,7 @@ import kotlinx.coroutines.withContext
         EstimateEntity::class,
         ExpenseEntity::class,
         DraftEntity::class,
+        AppliedMigrationEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -46,7 +78,10 @@ import kotlinx.coroutines.withContext
     //
     // Plan §1 L260-266: bumped from 5 to 6 to add the `drafts` table for
     // autosave storage (DraftEntity + unique index on user_id+draft_type).
-    version = 6,
+    //
+    // Plan §1 L215-L221: bumped from 6 to 7 to add the `applied_migrations`
+    // tracking table (AppliedMigrationEntity) for migration discipline.
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -66,13 +101,20 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun estimateDao(): EstimateDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun draftDao(): DraftDao
+    abstract fun appliedMigrationDao(): AppliedMigrationDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
 
-        /** Current schema version — must match the `version` in @Database above.
-         *  Keep in sync when bumping. Used for logging only. */
-        const val SCHEMA_VERSION = 6
+        /**
+         * Current schema version — must match the `version` in @Database above.
+         * Keep in sync when bumping.
+         *
+         * Used by [DatabaseGuard.checkForwardOnly] (downgrade protection) and
+         * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
+         * to Room's internal version tracking.
+         */
+        const val SCHEMA_VERSION = 7
     }
 }
 

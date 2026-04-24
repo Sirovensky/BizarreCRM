@@ -176,6 +176,9 @@
                 android:resource="@xml/widget_info" />
         </receiver>
 
+        <!-- §1.7 L245 — BroadcastReceiver for notification action buttons (Reply, Mark as read). -->
+        <receiver android:name=".service.NotificationActionReceiver" android:exported="false" />
+
         <!-- §32.3: FileProvider for sharing crash-report log files from
              filesDir/crash-reports via the system share-sheet. Authority is
              ${applicationId}.fileprovider; mapped paths live in

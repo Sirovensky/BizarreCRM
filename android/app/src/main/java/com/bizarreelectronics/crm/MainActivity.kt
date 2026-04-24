@@ -9,6 +9,7 @@ import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,7 @@ import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
+import com.bizarreelectronics.crm.util.SessionTimeoutCore
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
 import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -105,8 +107,18 @@ class MainActivity : FragmentActivity() {
     /** Pending deep-link route extracted from the launch intent, if any. */
     private var pendingDeepLink: String? = null
 
-    /** True until biometric unlock has either succeeded or been skipped. */
-    private var isLocked: Boolean = false
+    /**
+     * §1.7 line 238 — activity-level lock state, readable by both the Compose
+     * tree and [onResume]. Promoted from a local `remember { mutableStateOf }` so
+     * that [onResume] can set it to `true` when the inactivity threshold has
+     * elapsed, causing the Compose scaffold to re-render the biometric prompt
+     * without duplicating any logic inside the composition.
+     *
+     * Initialized to `false`; [onCreate] overwrites it with the computed
+     * `shouldLock` value before [setContent] is called, so the composition
+     * always reads the correct initial value.
+     */
+    private val lockedState: MutableState<Boolean> = mutableStateOf(false)
 
     /**
      * §27 — pre-Android-13 locale persistence.
@@ -133,20 +145,24 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // AUDIT-AND-011: FLAG_SECURE — customer PII should not leak via Recents thumbnail,
-        // MediaProjection, or adb screencap. GDPR Article 32 + PCI-DSS 3.4.
-        // DEBUG builds skip FLAG_SECURE so QA / on-device debugging via
-        // adb screencap can capture screens. Release keeps it on.
-        if (!BuildConfig.DEBUG) {
+        // AUDIT-AND-011 / §1.7 line 239 — FLAG_SECURE is now driven reactively by
+        // AppPreferences.screenCapturePreventionFlow so the user can toggle it
+        // from Settings without an activity recreate.
+        //
+        // Applied once eagerly here (before setContent) to guarantee no single
+        // Compose frame is ever rendered without the flag when the pref is ON.
+        // The Compose collector below then keeps the flag in sync on every pref
+        // change. BuildConfig.DEBUG bypass: when the pref is false AND the build
+        // is a debug build the flag is not set, allowing QA screencaps. In all
+        // release builds the flag follows the pref exactly.
+        val screenCapturePrevEnabled = appPreferences.screenCapturePreventionEnabled
+        if (screenCapturePrevEnabled || !BuildConfig.DEBUG) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-        // §2.13: Android 12+ adds a dedicated switch to hide the current
-        // Activity from the Recents task thumbnail on top of FLAG_SECURE.
-        // Belt-and-suspenders: FLAG_SECURE already blanks the thumbnail, but
-        // setRecentsScreenshotEnabled is the supported API going forward
-        // and keeps us covered if the flag semantics drift.
-        if (!BuildConfig.DEBUG && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            setRecentsScreenshotEnabled(false)
+        // §2.13: Android 12+ setRecentsScreenshotEnabled — belt-and-suspenders on
+        // top of FLAG_SECURE. Follows the same pref so both surfaces stay in sync.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            setRecentsScreenshotEnabled(!(screenCapturePrevEnabled || !BuildConfig.DEBUG))
         }
         enableEdgeToEdge()
         // §29 — start frame-timing collection so jank surfaces in
@@ -181,7 +197,7 @@ class MainActivity : FragmentActivity() {
         val shouldLock = appPreferences.biometricEnabled &&
             hasSession &&
             biometricAuth.canAuthenticate(this)
-        isLocked = shouldLock
+        lockedState.value = shouldLock
 
         setContent {
             // AUDIT-AND-003 / Wave-3: observe darkModeFlow and dynamicColorFlow
@@ -195,8 +211,37 @@ class MainActivity : FragmentActivity() {
                 "light" -> false
                 else    -> systemDark   // "system" follows OS setting
             }
+
+            // §1.7 line 239 — reactive FLAG_SECURE: observe the pref flow so
+            // the flag is added or cleared whenever the user changes the
+            // screen-capture prevention setting. The eager apply in onCreate
+            // guarantees the flag is set before the first frame; this collector
+            // keeps it in sync on subsequent pref changes.
+            //
+            // BuildConfig.DEBUG bypass: when pref=false AND debug build, clear
+            // the flag (QA screenshots). In all other cases follow the pref.
+            val screenCapturePrev by appPreferences.screenCapturePreventionFlow.collectAsState(
+                initial = appPreferences.screenCapturePreventionEnabled,
+            )
+            val applySecure = screenCapturePrev || !BuildConfig.DEBUG
+            if (applySecure) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    setRecentsScreenshotEnabled(false)
+                }
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    setRecentsScreenshotEnabled(true)
+                }
+            }
+
             BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
-                var locked by remember { mutableStateOf(isLocked) }
+                // §1.7 line 238 — lock state is owned by lockedState (Activity level)
+                // so onResume can set it to true when the inactivity threshold has
+                // elapsed, causing the biometric prompt to re-appear without any
+                // logic duplication inside the composition.
+                var locked by lockedState
                 // AUDIT §2.5: PIN gate. Shown after biometric (or on devices
                 // without biometric) whenever the user has set a PIN and
                 // PinPreferences.shouldLock() decides the grace window has
@@ -257,6 +302,47 @@ class MainActivity : FragmentActivity() {
         // for the ordering rationale.
         pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
         deepLinkBus.publish(pendingDeepLink)
+    }
+
+    /**
+     * §1.7 line 238 — lock-gate re-evaluation on every resume.
+     *
+     * [SessionTimeout] ticks in the background accumulating inactivity time.
+     * When the user returns to the app (e.g. after a phone call, switching tasks,
+     * or the screen turning off), the system calls [onResume] before any content
+     * is drawn. We check whether the elapsed inactivity has exceeded the biometric
+     * threshold and, if so, set [lockedState] to `true`. The Compose scaffold
+     * observes [lockedState] and immediately renders [LaunchBiometricPrompt] in
+     * the same recomposition — no logic is duplicated inside the composition.
+     *
+     * Conditions that trigger lock:
+     *   - [SessionTimeout.state] level is already [SessionTimeout.ReAuthLevel.Biometric]
+     *     or higher (ticker already escalated in the background), OR
+     *   - [PinPreferences.shouldLock] returns true (PIN grace window elapsed), OR
+     *   - Both biometricEnabled AND canAuthenticate AND the last-activity age
+     *     computed locally exceeds the biometric threshold.
+     *
+     * Idempotent: setting [lockedState] to `true` when it is already `true` is
+     * a no-op in Compose (same reference, no recomposition triggered).
+     */
+    override fun onResume() {
+        super.onResume()
+        val timeoutState = sessionTimeout.state.value
+        val hasSession = authPreferences.accessToken != null ||
+            authPreferences.refreshToken != null
+
+        val shouldLockNow = hasSession && (
+            timeoutState.level is SessionTimeoutCore.ReAuthLevel.Biometric ||
+            timeoutState.level is SessionTimeoutCore.ReAuthLevel.Password ||
+            timeoutState.level is SessionTimeoutCore.ReAuthLevel.Full ||
+            pinPreferences.shouldLock() ||
+            (appPreferences.biometricEnabled && biometricAuth.canAuthenticate(this) &&
+                timeoutState.level !is SessionTimeoutCore.ReAuthLevel.None)
+        )
+
+        if (shouldLockNow) {
+            lockedState.value = true
+        }
     }
 
     /**

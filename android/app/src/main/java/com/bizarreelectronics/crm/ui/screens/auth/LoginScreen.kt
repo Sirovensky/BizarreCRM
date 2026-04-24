@@ -120,6 +120,10 @@ data class LoginUiState(
     val registerShopName: String = "",
     val registerEmail: String = "",
     val registerPassword: String = "",
+    // §2.7-L328 — timezone chosen during registration (pre-filled from device)
+    val registerTimezone: String = java.time.ZoneId.systemDefault().id,
+    // §2.7-L329 — shop type chosen during registration
+    val registerShopType: String = "repair",
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -276,6 +280,8 @@ class LoginViewModel @Inject constructor(
     fun updateRegisterShopName(value: String) { _state.value = _state.value.copy(registerShopName = value, error = null) }
     fun updateRegisterEmail(value: String) { _state.value = _state.value.copy(registerEmail = value, error = null) }
     fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
+    fun updateRegisterTimezone(value: String) { _state.value = _state.value.copy(registerTimezone = value, error = null) }
+    fun updateRegisterShopType(value: String) { _state.value = _state.value.copy(registerShopType = value, error = null) }
     fun updateUsername(value: String) {
         _state.value = _state.value.copy(username = value, error = null, unreachableHost = false, rateLimited = false)
     }
@@ -402,6 +408,10 @@ class LoginViewModel @Inject constructor(
                         put("shop_name", s.registerShopName.trim())
                         put("admin_email", s.registerEmail.trim())
                         put("admin_password", s.registerPassword)
+                        // §2.7-L328 — timezone (optional; server ignores unknown fields)
+                        put("timezone", s.registerTimezone)
+                        // §2.7-L329 — shop type (optional)
+                        put("shop_type", s.registerShopType)
                     }
                     val requestBody = json.toString().toRequestBody("application/json".toMediaType())
                     val request = Request.Builder()
@@ -755,6 +765,8 @@ fun LoginScreen(
     onSessionBannerDismissed: () -> Unit = {},
     // §2.8 — shown on the CREDENTIALS step only; routes to ForgotPasswordScreen.
     onForgotPassword: (() -> Unit)? = null,
+    // §2.8 L335 — shown on the TWO_FA_VERIFY step; routes to BackupCodeRecoveryScreen.
+    onBackupCodeRecovery: (() -> Unit)? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -940,7 +952,7 @@ fun LoginScreen(
                             SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel, onForgotPassword)
                             SetupStep.SET_PASSWORD -> SetPasswordStep(state, viewModel)
                             SetupStep.TWO_FA_SETUP -> TwoFaSetupStep(state, viewModel, onLoginSuccess)
-                            SetupStep.TWO_FA_VERIFY -> TwoFaVerifyStep(state, viewModel, onLoginSuccess)
+                            SetupStep.TWO_FA_VERIFY -> TwoFaVerifyStep(state, viewModel, onLoginSuccess, onBackupCodeRecovery)
                         }
                     }
                 }
@@ -1247,6 +1259,22 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
         supportingText = { Text("Minimum 8 characters") },
     )
 
+    // §2.7-L328 — Timezone picker
+    Spacer(Modifier.height(8.dp))
+    TimezoneDropdown(
+        selected = state.registerTimezone,
+        onSelected = viewModel::updateRegisterTimezone,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    // §2.7-L329 — Shop type selector
+    Spacer(Modifier.height(12.dp))
+    ShopTypeSelector(
+        selected = state.registerShopType,
+        onSelected = viewModel::updateRegisterShopType,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
@@ -1261,6 +1289,121 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Create Shop")
+        }
+    }
+}
+
+// ─── §2.7-L328 — Timezone dropdown ─────────────────────────────────
+
+private val CURATED_TIMEZONES = listOf(
+    "US/Pacific",
+    "US/Mountain",
+    "US/Central",
+    "US/Eastern",
+    "America/Anchorage",
+    "Pacific/Honolulu",
+    "UTC",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Asia/Kolkata",
+    "Australia/Sydney",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/New_York",
+    "America/Sao_Paulo",
+    "America/Mexico_City",
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimezoneDropdown(
+    selected: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Ensure device default is in the list even if not in the curated set
+    val options = remember(selected) {
+        if (selected in CURATED_TIMEZONES) CURATED_TIMEZONES
+        else listOf(selected) + CURATED_TIMEZONES
+    }
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier,
+    ) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Timezone") },
+            leadingIcon = { Icon(Icons.Default.Schedule, null) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            singleLine = true,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { tz ->
+                DropdownMenuItem(
+                    text = { Text(tz, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onSelected(tz)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+}
+
+// ─── §2.7-L329 — Shop type selector ────────────────────────────────
+
+private val SHOP_TYPES = listOf("repair", "retail", "hybrid", "other")
+
+@Composable
+private fun ShopTypeSelector(
+    selected: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            "Shop Type",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SHOP_TYPES.forEach { type ->
+                val isSelected = type == selected
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onSelected(type) },
+                    label = {
+                        Text(
+                            type.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -1631,7 +1774,12 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
 // ─── Step 3b: 2FA Verify (code only) ────────────────────────────────
 
 @Composable
-private fun TwoFaVerifyStep(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
+private fun TwoFaVerifyStep(
+    state: LoginUiState,
+    viewModel: LoginViewModel,
+    onSuccess: () -> Unit,
+    onBackupCodeRecovery: (() -> Unit)? = null,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
@@ -1646,6 +1794,20 @@ private fun TwoFaVerifyStep(state: LoginUiState, viewModel: LoginViewModel, onSu
     TotpCodeInputContent(state, viewModel, onSuccess)
     // §2.13-L366: countdown shown while challenge token is live
     ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
+
+    // §2.8 L335 — recovery escape hatch shown below the verify form
+    if (onBackupCodeRecovery != null) {
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = onBackupCodeRecovery,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "Lost 2FA access? Use a backup code",
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
 }
 
 // ─── Shared TOTP code input ─────────────────────────────────────────
