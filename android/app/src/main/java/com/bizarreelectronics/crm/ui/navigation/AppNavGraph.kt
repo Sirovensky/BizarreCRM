@@ -108,6 +108,10 @@ import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.ui.screens.memberships.MembershipListScreen
 import com.bizarreelectronics.crm.ui.screens.cash.CashRegisterScreen
 import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardScreen
+import com.bizarreelectronics.crm.ui.screens.audit.AuditLogsScreen
+import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
+import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
+import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
 import java.util.Locale
 import javax.inject.Inject
 
@@ -396,6 +400,19 @@ sealed class Screen(val route: String) {
     data object PerformanceReviews : Screen("performance-reviews")
     data object TimeOffRequest : Screen("time-off-request")
     data object TimeOffList : Screen("time-off-list")
+
+    // §52 — Audit Logs (admin-only)
+    data object AuditLogs : Screen("audit-logs")
+
+    // §50 — Data Import (admin-only)
+    data object DataImport : Screen("data-import")
+
+    // §51 — Data Export (manager+)
+    data object DataExport : Screen("data-export")
+
+    // §54 — Command Palette (overlay; not a real nav destination, but registered
+    // so Ctrl+K handling in AppNavGraph can check against it)
+    data object CommandPalette : Screen("command-palette")
 }
 
 data class BottomNavItem(
@@ -452,6 +469,11 @@ fun AppNavGraph(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // §54 — Command palette overlay state. Toggled by Ctrl+K (keyboard) or a
+    // FAB wired at the call site. Palette is a Dialog overlay — not a nav
+    // destination — so we keep the boolean here rather than in the back-stack.
+    var showCommandPalette by remember { mutableStateOf(false) }
 
     // §32.5 — log every nav route change so the breadcrumb tail in any
     // future crash log shows the user's path leading up to the throwable.
@@ -761,6 +783,8 @@ fun AppNavGraph(
                         }
                     }
                 },
+                // §54 — Ctrl+K opens the command palette overlay.
+                onCommandPalette = { showCommandPalette = true },
             ) {
             // §22.2 — at tablet+ widths render NavigationRail alongside the
             // NavHost in a Row. Phones fall through to single-column.
@@ -2016,6 +2040,36 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+
+            // ─── §52 Audit Logs (admin-only) ──────────────────────────────────
+            // Role gate: AuditLogsScreen itself also renders an access-denied
+            // message for defense-in-depth, but callers should prefer to only
+            // surface this route in admin-visible navigation (MoreScreen / Settings).
+            composable(Screen.AuditLogs.route) {
+                val isAdmin = authPreferences?.userRole == "admin"
+                AuditLogsScreen(
+                    isAdmin = isAdmin,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §50 Data Import (admin-only) ─────────────────────────────────
+            // Role gate enforced in DataImportViewModel.isAdmin; server also enforces.
+            // 404-tolerant: screen shows "not configured" if /imports/* returns 404.
+            composable(Screen.DataImport.route) {
+                DataImportScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §51 Data Export (manager+) ───────────────────────────────────
+            // Role gate enforced in DataExportViewModel.canExport; server enforces too.
+            // 404-tolerant: screen shows "not configured" if /exports/* returns 404.
+            composable(Screen.DataExport.route) {
+                DataExportScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
@@ -2033,6 +2087,18 @@ fun AppNavGraph(
                     authPreferences.clear()
                     // authCleared flow (above) will navigate to Screen.Login.
                 },
+            )
+        }
+
+        // §54 — Command palette overlay. Triggered by Ctrl+K (wired above in
+        // KeyboardShortcutsHost.onCommandPalette). Only shown when logged in.
+        if (showCommandPalette && authPreferences?.isLoggedIn == true) {
+            CommandPaletteScreen(
+                onNavigate = { route ->
+                    showCommandPalette = false
+                    navController.navigate(route)
+                },
+                onDismiss = { showCommandPalette = false },
             )
         }
     }
