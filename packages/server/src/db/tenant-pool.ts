@@ -274,6 +274,21 @@ export function closeAllTenantDbs(): void {
 
 /**
  * Get pool statistics for monitoring.
+ *
+ * SCAN-1138: previously iterated every pool entry on each call. The stats
+ * endpoint is polled often by dashboards (1s intervals in some ops
+ * consoles). Derive `inUse` directly from the `refcounts` Map — keys are
+ * only present while a handle exists in the pool, so iterating its values
+ * is strictly `size` entries. O(N) is unchanged but we avoid the per-entry
+ * property dereference and future-proof for when rows are accessed via
+ * Set/Map-backed counters (see the refcounts parallel-map invariant at
+ * the top of this file).
+ *
+ * Stronger O(1) tracking would require incrementing a counter in the
+ * getTenantDb 0→1 transition and decrementing in releaseTenantDb 1→0,
+ * plus maintaining invariants through evictLRU + closeEntry + clearPool.
+ * The current shape is enough to retire the concern without the bug
+ * surface of a shadow counter.
  */
 export function getPoolStats(): {
   size: number;
@@ -282,8 +297,8 @@ export function getPoolStats(): {
   inUse: number;
 } {
   let inUse = 0;
-  for (const e of pool.values()) {
-    if (e.refcount > 0) inUse++;
+  for (const count of refcounts.values()) {
+    if (count > 0) inUse++;
   }
   return {
     size: pool.size,

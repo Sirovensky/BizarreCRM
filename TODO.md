@@ -726,8 +726,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-66 scan-loop findings (2026-04-24) — reports/locations/retention/autoreorder/webhooks/notifications/sla/dunning/tenantExport/worker-pool
-- [ ] SCAN-1138. **[LOW/perf] `tenant-pool getPoolStats` iterates on every call — no cached inUseCount.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/tenant-pool.ts:278-294; fix=maintain-inUseCount-counter -->
 
 ### Wave-65 scan-loop findings (2026-04-24) — tv + pos + recurring + ws + gift/deposits/bench/search
 

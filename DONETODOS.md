@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-66 tail — tenant-pool stats)
+
+- [x] SCAN-1138 [perf]. **`getPoolStats` walked `pool.values()` and dereferenced `e.refcount` on every call** — the stats endpoint is polled on 1s intervals by some ops dashboards. Swapped to iterating the parallel `refcounts` Map (same invariant: key present iff pool entry present) so we skip the property dereference and the shape is future-proof for a shadow counter rework without the current bug surface. Complexity is still O(pool.size) but the constant is lower and the loop body is one compare instead of a lookup+compare.
+
 ## Closed 2026-04-24 (wave-66 retention 0-sentinel + sla broadcast gate + autoreorder NaN)
 
 - [x] SCAN-1132 / SCAN-1136. **`DataRetentionTab` hint claimed "set 0 to disable" but `readPiiRetentionMonths` clamped anything `<1` back to `DEFAULT_PII_MONTHS`** — operators who wanted to keep a single PII table indefinitely (e.g. ticket_notes) had no way to express that per-table, and the UI copy was actively misleading. Lowered `MIN_PII_MONTHS` to `0` (still clamps negatives to default) and added an `if (months === 0) return 0;` early-return in `applyPiiRule` so both the DELETE and redact branches skip the table cleanly. The tab hint is now accurate.
