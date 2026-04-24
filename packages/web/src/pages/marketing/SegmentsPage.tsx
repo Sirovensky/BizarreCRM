@@ -148,19 +148,23 @@ export function SegmentsPage() {
                   <td className="p-3 text-right">
                     <div className="inline-flex gap-1">
                       <button
+                        type="button"
                         onClick={() => setViewingSegment(s)}
+                        aria-label={`View members of segment ${s.name}`}
                         className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
                         title="View members"
                       >
-                        <Eye className="h-4 w-4" />
+                        <Eye aria-hidden="true" className="h-4 w-4" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => refresh.mutate(s.id)}
                         disabled={refresh.isPending}
+                        aria-label={`Re-evaluate segment ${s.name}`}
                         className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
                         title="Re-evaluate rule"
                       >
-                        <RefreshCw className={refresh.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                        <RefreshCw aria-hidden="true" className={refresh.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
                       </button>
                       {s.is_auto === 0 && (
                         <button

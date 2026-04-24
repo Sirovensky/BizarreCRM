@@ -718,8 +718,4 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=type-button+aria-label -->
 - [ ] SCAN-999. **Marketing campaigns uses `as any` for server data access — type safety lost.**
   <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:95-96; fix=type-query-return -->
-- [ ] SCAN-1000. **Segments page icon-only View/Refresh buttons use only `title` — not screen-reader friendly.**
-  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/SegmentsPage.tsx:149,157; fix=aria-label -->
-- [ ] SCAN-1002. **DepositCollectModal buttons missing `type="button"` — if nested in form, would submit parent.**
-  <!-- meta: scope=web/pages/billing; files=packages/web/src/pages/billing/DepositCollectModal.tsx:107; fix=add-type-button -->
 
