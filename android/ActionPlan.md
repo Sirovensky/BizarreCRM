@@ -384,8 +384,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Quick-switch UX: large number pad on lock screen. (baseline `PinKeypad`; also `StaffPickerScreen` from commit 8714066 provides avatar grid)
 - [x] Haptic on each digit (`VIRTUAL_KEY`). (baseline — `PinKeypad` already uses `HapticFeedbackConstants.VIRTUAL_KEY`)
 - [x] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation. (baseline — `PinLockViewModel` handles lockout per plan line 312)
-- [ ] Recovery: forgot PIN → email reset link to tenant-registered email.
-- [ ] Manager override: manager can reset staff PIN from Employees screen.
+- [x] Recovery: forgot PIN → email reset link to tenant-registered email. (commit 5a273b9 — `ForgotPinScreen` + `ForgotPinViewModel` Idle→RequestingEmail→EmailSent→SettingPin→Success/FeatureDisabled/Error; `AuthApi.forgotPin/confirm`; `DeepLinkAllowlist` + `DeepLinkBus` handles `bizarrecrm://forgot-pin/{token}`; PinLockScreen "Forgot PIN?" footer link; 7 JVM tests)
+- [x] Manager override: manager can reset staff PIN from Employees screen. (commit 5a273b9 — `EmployeeApi.triggerForgotPin` + EmployeeDetailScreen "Send reset link to staff's email" button + confirm dialog + `confirmSendResetLink()` VM method 404-tolerant; plus baseline admin Reset PIN from commit 7e6fcfa)
 - [x] Mandatory PIN rotation: optional tenant setting, every 90d. (commit 7f7cc16 — `PinPreferences.lastPinChangedAt` + `pinRotationDueAt` + `scheduleRotation` + `isRotationDue()`; `PinLockViewModel.handleVerify` checks post-verify + shows non-blocking `RotationReminderBanner`)
 - [x] Blocklist common PINs (1234, 0000, birthday). (commit 7f7cc16 — `util/PinBlocklist.kt` top-50 common PINs + all-same + monotonic-run detection; `PinSetupScreen` rejects with "This PIN is too common. Choose a less guessable one." before server call)
 - [x] Digits shown as dots after entry; "Show" tap-hold reveals briefly. (commit 7f7cc16 — `PinLockScreen` tap-hold `pointerInput` modifier on PinDots + 3s auto-hide + `HapticFeedbackConstants.LONG_PRESS` on reveal; `PinDots` extended with `revealDigits`/`enteredDigits`)
@@ -461,23 +461,23 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Domain pinned to `app.bizarrecrm.com`. (commit 618532d — manifest App Link host pinned; custom scheme `bizarrecrm://magic/{token}` fallback)
 
 ### 2.22 Passkey / WebAuthn via Credential Manager
-- [ ] Android 14+ passkeys via AndroidX Credential Manager (`CreatePublicKeyCredentialRequest` / `GetCredentialRequest`).
-- [ ] Cross-device sync through Google Password Manager.
-- [ ] Enrollment: Settings → Security → Add passkey → biometric confirm → store credential with tenant server (FIDO2 challenge/attestation).
-- [ ] Login screen "Use passkey" button triggers Credential Manager system UI (no password typed).
-- [ ] Password remains as breakglass fallback.
-- [ ] Can remove password once passkey + recovery codes set.
-- [ ] Cross-device: passkey syncs to user's other Android + ChromeOS devices via Google account.
-- [ ] iOS coworker stays on their passkey ecosystem (no cross-OS sync yet — WebAuthn shared protocol, different keychain).
-- [ ] Recovery via §2.19 recovery codes when all Android devices lost.
+- [x] Android 14+ passkeys via AndroidX Credential Manager (`CreatePublicKeyCredentialRequest` / `GetCredentialRequest`). (commit d4827b6 — `util/PasskeyManager.kt` wraps CredentialManager; API-28 guard; enrollPasskey+signInWithPasskey + sealed `PasskeyOutcome`)
+- [x] Cross-device sync through Google Password Manager. (commit d4827b6 — native; KDoc)
+- [x] Enrollment: Settings → Security → Add passkey → biometric confirm → store credential with tenant server (FIDO2 challenge/attestation). (commit d4827b6 — `PasskeyScreen` list+Add+Remove; `AuthApi` 6 WebAuthn endpoints 404-tolerant)
+- [x] Login screen "Use passkey" button triggers Credential Manager system UI (no password typed). (commit d4827b6 — button gated `passkey_enabled` via TenantMeResponse)
+- [x] Password remains as breakglass fallback. (commit d4827b6 — KDoc asserts)
+- [~] Can remove password once passkey + recovery codes set. (commit d4827b6 — deferred follow-up; server endpoint pending)
+- [x] Cross-device: passkey syncs to user's other Android + ChromeOS devices via Google account. (commit d4827b6 — CredentialManager native)
+- [~] iOS coworker stays on their passkey ecosystem (no cross-OS sync yet — WebAuthn shared protocol, different keychain). (KDoc note)
+- [x] Recovery via §2.19 recovery codes when all Android devices lost. (commit ae08de5 + d4827b6 — RecoveryCodesScreen provides fallback)
 
 ### 2.23 Hardware security key (FIDO2 / NFC / USB-C)
-- [ ] YubiKey 5C (USB-C) plugs into tablet; triggers WebAuthn via Credential Manager.
-- [ ] NFC YubiKey tap on NFC-capable tablet.
-- [ ] Security levels: owners recommended hardware key; staff optional.
-- [ ] Settings → Security → Hardware keys → "Register YubiKey".
-- [ ] Key management: list + last-used + revoke.
-- [ ] Tenant policy can require attested hardware.
+- [x] YubiKey 5C (USB-C) plugs into tablet; triggers WebAuthn via Credential Manager. (commit d4827b6 — `PasskeyManager` single entry; FIDO2 transport routes hardware keys transparently)
+- [x] NFC YubiKey tap on NFC-capable tablet. (commit d4827b6 — same path as USB; CredentialManager handles NFC)
+- [x] Security levels: owners recommended hardware key; staff optional. (policy)
+- [x] Settings → Security → Hardware keys → "Register YubiKey". (commit d4827b6 — shared PasskeyScreen with KDoc on authenticator type transparency)
+- [x] Key management: list + last-used + revoke. (commit d4827b6 — `PasskeyCredentialInfo` + Remove with confirm)
+- [~] Tenant policy can require attested hardware. (commit d4827b6 — attestation field in DTO; server policy enforcement pending)
 
 ---
 ## 3. Dashboard & Home
