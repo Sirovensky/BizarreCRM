@@ -220,11 +220,13 @@ export function Sidebar() {
 
         {/* Collapse Toggle */}
         <button
+          type="button"
           onClick={toggleSidebar}
           className={cn(
             'mt-1 flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-50 hover:text-surface-600 dark:text-surface-500 dark:hover:bg-surface-800/60 dark:hover:text-surface-300',
             sidebarCollapsed && 'justify-center px-0'
           )}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed ? (
@@ -247,8 +249,24 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('recent_views') || '[]');
-      setItems(stored.slice(0, 5));
+      const stored: unknown = JSON.parse(localStorage.getItem('recent_views') || '[]');
+      if (!Array.isArray(stored)) return;
+      // Validate each entry — without this, a corrupted or XSS-injected
+      // `path` field would flow straight into <NavLink to={item.path}>.
+      const safe: { type: string; id: number; label: string; path: string }[] = [];
+      for (const raw of stored.slice(0, 5)) {
+        if (!raw || typeof raw !== 'object') continue;
+        const it = raw as Record<string, unknown>;
+        const path = it.path;
+        if (typeof path !== 'string' || !path.startsWith('/')) continue;
+        safe.push({
+          type: typeof it.type === 'string' ? it.type : '',
+          id: typeof it.id === 'number' ? it.id : 0,
+          label: typeof it.label === 'string' ? it.label : '',
+          path,
+        });
+      }
+      setItems(safe);
     } catch { /* ignore */ }
   }, [location.pathname]);
 
@@ -306,6 +324,9 @@ function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
     queryFn: () => ticketApi.myQueue(),
     enabled: !!user && assignmentEnabled,
     refetchInterval: 30_000,
+    // Avoid a redundant refetch on every sidebar remount — the 30 s interval
+    // is already covering freshness; anything <25 s old is still useful.
+    staleTime: 25_000,
   });
 
   const queue = data?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
