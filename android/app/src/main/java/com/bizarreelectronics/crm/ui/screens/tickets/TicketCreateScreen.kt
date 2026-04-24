@@ -312,6 +312,24 @@ enum class TicketCreateStep(val label: String) {
     CART("Cart"),
 }
 
+/**
+ * Seven-step multi-step wizard sub-steps introduced in §4.3 L684-L708.
+ *
+ * These run in parallel with [TicketCreateStep] and power the new
+ * [com.bizarreelectronics.crm.ui.screens.tickets.create.steps] composables.
+ * Validation per step lives in
+ * [com.bizarreelectronics.crm.ui.screens.tickets.create.StepValidator].
+ */
+enum class TicketCreateSubStep(val label: String, val index: Int) {
+    CUSTOMER("Customer", 0),
+    DEVICE("Device", 1),
+    SERVICES("Services & Parts", 2),
+    DIAGNOSTIC("Diagnostic", 3),
+    PRICING("Pricing", 4),
+    ASSIGNEE("Assignee", 5),
+    REVIEW("Review", 6),
+}
+
 data class TicketCreateUiState(
     val currentStep: TicketCreateStep = TicketCreateStep.CUSTOMER,
 
@@ -375,6 +393,37 @@ data class TicketCreateUiState(
     // General
     val isSubmitting: Boolean = false,
     val error: String? = null,
+
+    // ── §4.3 multi-step sub-wizard state (L684-L708) ──────────────────
+    /** Active step in the 7-step multi-step create flow. */
+    val currentSubStep: TicketCreateSubStep = TicketCreateSubStep.CUSTOMER,
+    /** Set of sub-steps whose required fields are complete (drives check-marks). */
+    val completedSubSteps: Set<TicketCreateSubStep> = emptySet(),
+    /** Diagnostic / pre-conditions photos selected by the user (local URIs). */
+    val intakePhotoUris: List<String> = emptyList(),
+    /** Assignee employee id selected in step 6. */
+    val assigneeId: Long? = null,
+    /** Assignee display name (cached for Review step). */
+    val assigneeName: String? = null,
+    /** Urgency chip value for step 6. */
+    val urgency: String = "Normal",
+    /** Due date selected in step 6 (ISO-8601 date string, e.g. "2026-05-01"). */
+    val dueDate: String? = null,
+    /** Deposit amount the customer will pay at intake (0 = no deposit). */
+    val depositAmount: Double = 0.0,
+    /** Whether the deposit should be collected immediately via inline POS. */
+    val collectDepositNow: Boolean = false,
+    /** Cart-level discount: 0 means none. */
+    val cartDiscount: Double = 0.0,
+    /** Cart-level discount type: "percent" or "dollar". */
+    val cartDiscountType: String = "percent",
+    /** Reason required when discount > threshold (server enforces). */
+    val cartDiscountReason: String = "",
+    /** List of employees available for assignee step (loaded on demand). */
+    val employees: List<com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem> = emptyList(),
+    val isLoadingEmployees: Boolean = false,
+    /** Idempotency key for the create-ticket POST (generated once, reused on retry). */
+    val idempotencyKey: String = java.util.UUID.randomUUID().toString(),
 )
 
 // ===========================================================================================
@@ -1240,6 +1289,116 @@ class TicketCreateViewModel @Inject constructor(
 
     fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    // ── §4.3 Sub-step state machine (L684-L708) ──────────────────────
+
+    /**
+     * Navigate forward to the next sub-step, marking the current one complete.
+     * No-op when already on the last step.
+     */
+    fun goToNextSubStep() {
+        val current = _state.value.currentSubStep
+        val nextOrdinal = current.ordinal + 1
+        val steps = TicketCreateSubStep.entries
+        if (nextOrdinal >= steps.size) return
+        val next = steps[nextOrdinal]
+        _state.update { s ->
+            s.copy(
+                currentSubStep = next,
+                completedSubSteps = s.completedSubSteps + current,
+                error = null,
+            )
+        }
+        onFieldChanged()
+    }
+
+    /** Navigate backward one sub-step. Pops to caller when on CUSTOMER. */
+    fun goToPreviousSubStep(onExit: () -> Unit) {
+        val current = _state.value.currentSubStep
+        if (current.ordinal == 0) {
+            onExit()
+            return
+        }
+        val previous = TicketCreateSubStep.entries[current.ordinal - 1]
+        _state.update { it.copy(currentSubStep = previous, error = null) }
+    }
+
+    /** Jump directly to an arbitrary sub-step (Review edit-chip taps). */
+    fun goToSubStep(step: TicketCreateSubStep) {
+        _state.update { it.copy(currentSubStep = step, error = null) }
+    }
+
+    // ── Assignee step ─────────────────────────────────────────────────
+
+    /** Load employees list (cached after first successful fetch). */
+    fun loadEmployees() {
+        if (_state.value.employees.isNotEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingEmployees = true) }
+            try {
+                val response = settingsApi.getEmployees()
+                val list = if (response.success) response.data ?: emptyList() else emptyList()
+                _state.update { it.copy(employees = list, isLoadingEmployees = false) }
+            } catch (_: Exception) {
+                _state.update { it.copy(isLoadingEmployees = false) }
+            }
+        }
+    }
+
+    /** Select an assignee by employee id + display name. */
+    fun selectAssignee(id: Long?, name: String?) {
+        _state.update { it.copy(assigneeId = id, assigneeName = name) }
+        onFieldChanged()
+    }
+
+    /** Update urgency chip value. */
+    fun updateUrgency(value: String) {
+        _state.update { it.copy(urgency = value) }
+        onFieldChanged()
+    }
+
+    /** Update due date string (ISO-8601). */
+    fun updateDueDate(date: String?) {
+        _state.update { it.copy(dueDate = date) }
+        onFieldChanged()
+    }
+
+    // ── Diagnostic step ───────────────────────────────────────────────
+
+    /** Add intake photo URIs from PhotoPicker. Immutable append. */
+    fun addIntakePhotos(uris: List<String>) {
+        _state.update { it.copy(intakePhotoUris = it.intakePhotoUris + uris) }
+        onFieldChanged()
+    }
+
+    /** Remove an intake photo by URI. */
+    fun removeIntakePhoto(uri: String) {
+        _state.update { it.copy(intakePhotoUris = it.intakePhotoUris - uri) }
+        onFieldChanged()
+    }
+
+    /** Reorder intake photos (drag on tablet / long-press on phone). */
+    fun reorderIntakePhotos(newOrder: List<String>) {
+        _state.update { it.copy(intakePhotoUris = newOrder) }
+        onFieldChanged()
+    }
+
+    // ── Pricing step ──────────────────────────────────────────────────
+
+    fun updateCartDiscount(value: Double, type: String) {
+        _state.update { it.copy(cartDiscount = value, cartDiscountType = type) }
+        onFieldChanged()
+    }
+
+    fun updateCartDiscountReason(reason: String) {
+        _state.update { it.copy(cartDiscountReason = reason) }
+        onFieldChanged()
+    }
+
+    fun updateDeposit(amount: Double, collectNow: Boolean) {
+        _state.update { it.copy(depositAmount = amount, collectDepositNow = collectNow) }
+        onFieldChanged()
     }
 }
 
