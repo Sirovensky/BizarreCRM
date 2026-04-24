@@ -181,55 +181,67 @@ public struct GlobalSearchView: View {
     }
 
     // MARK: - iPad layout
+    //
+    // NOTE: GlobalSearchView is mounted in the *detail* column of the app-level
+    // NavigationSplitView (see RootView.iPadSplit).  iOS 17 crashes if a second
+    // NavigationSplitView is nested inside a NavigationSplitView detail column,
+    // so ipadLayout uses a plain HStack split instead of NavigationSplitView.
 
     private var ipadLayout: some View {
-        NavigationSplitView {
-            // Left column: filter chips + recent searches
+        NavigationStack {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 0) {
-                    entityFilterChipList
-                        .padding(BrandSpacing.base)
-                    if !recentQueries.isEmpty && queryText.isEmpty {
-                        Divider().padding(.horizontal, BrandSpacing.base)
-                        RecentSearchesView(
-                            queries: recentQueries,
-                            onSelect: { q in
-                                queryText = q
-                                vm.onChange(q)
-                            },
-                            onDelete: { q in
-                                Task {
-                                    await recentStore?.remove(q)
-                                    await loadRecent()
-                                }
+                HStack(spacing: 0) {
+                    // Left panel: filter chips + recent searches
+                    ZStack(alignment: .top) {
+                        Color.bizarreSurfaceBase.ignoresSafeArea()
+                        VStack(alignment: .leading, spacing: 0) {
+                            entityFilterChipList
+                                .padding(BrandSpacing.base)
+                            if !recentQueries.isEmpty && queryText.isEmpty {
+                                Divider().padding(.horizontal, BrandSpacing.base)
+                                RecentSearchesView(
+                                    queries: recentQueries,
+                                    onSelect: { q in
+                                        queryText = q
+                                        vm.onChange(q)
+                                    },
+                                    onDelete: { q in
+                                        Task {
+                                            await recentStore?.remove(q)
+                                            await loadRecent()
+                                        }
+                                    }
+                                )
+                                .padding(.top, BrandSpacing.sm)
                             }
-                        )
-                        .padding(.top, BrandSpacing.sm)
+                            Spacer()
+                        }
                     }
-                    Spacer()
+                    .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)
+
+                    Divider()
+
+                    // Right panel: results
+                    ZStack {
+                        Color.bizarreSurfaceBase.ignoresSafeArea()
+                        content
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .frame(minWidth: 240, idealWidth: 280, maxWidth: 320)
-        } detail: {
-            NavigationStack {
-                ZStack {
-                    Color.bizarreSurfaceBase.ignoresSafeArea()
-                    content
+            .navigationTitle("Search")
+            .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
+            .onChange(of: queryText) { _, new in vm.onChange(new) }
+            .onSubmit(of: .search) {
+                Task {
+                    await vm.submit()
+                    if !queryText.isEmpty { await recentStore?.add(queryText) }
                 }
-                .navigationTitle("Search")
-                .searchable(text: $queryText, prompt: "Find tickets, customers, items…")
-                .onChange(of: queryText) { _, new in vm.onChange(new) }
-                .onSubmit(of: .search) {
-                    Task {
-                        await vm.submit()
-                        if !queryText.isEmpty { await recentStore?.add(queryText) }
-                    }
-                }
-                .toolbar { toolbarItems }
-                .sheet(isPresented: $showingFilters) { filtersSheet }
-                .sheet(isPresented: $showingSaved) { savedSheet }
             }
+            .toolbar { toolbarItems }
+            .sheet(isPresented: $showingFilters) { filtersSheet }
+            .sheet(isPresented: $showingSaved) { savedSheet }
         }
         .task { await loadRecent() }
     }

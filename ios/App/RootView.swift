@@ -288,6 +288,10 @@ private struct iPhoneTabs: View {
 private struct iPadSplit: View {
     @Binding var selection: MainTab
     var onSignOut: (() -> Void)? = nil
+    /// POS gets the entire canvas so the Items + Cart columns are un-cramped.
+    /// Everything else keeps the sidebar visible by default; the user can still
+    /// collapse manually on any tab.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
         // GeometryReader gives us the container width so we can adapt
@@ -296,7 +300,7 @@ private struct iPadSplit: View {
             let category = SidebarWidthCalculator.width(for: geo.size.width)
             let rec = SidebarWidthCalculator.recommendedSidebarWidth(for: category)
 
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 List(selection: Binding<MainTab?>(
                     get: { selection },
                     set: { if let new = $0 { selection = new } }
@@ -338,6 +342,14 @@ private struct iPadSplit: View {
                 }
             }
             .navigationSplitViewStyle(.balanced)
+            .onChange(of: selection, initial: true) { _, new in
+                // POS auto-collapses the sidebar so the Items + Cart columns
+                // get the entire canvas. Switching to any other tab restores
+                // the default balanced visibility. The user can still manually
+                // pop the sidebar back out on POS via the standard sidebar
+                // toggle in the nav bar.
+                columnVisibility = (new == .pos) ? .detailOnly : .automatic
+            }
         }
     }
 }
