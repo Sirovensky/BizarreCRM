@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -977,7 +977,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     queryFn: () => ticketApi.list({ page: 1, pagesize: 10, sort_by: 'created_at', sort_order: 'desc' }),
     staleTime: 60000,
   });
-  const recentCustomers = (() => {
+  const recentCustomers = useMemo(() => {
     const tickets = recentTicketsData?.data?.data?.tickets || recentTicketsData?.data?.data || [];
     const seen = new Set<number>();
     const result: any[] = [];
@@ -989,7 +989,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
       if (result.length >= 5) break;
     }
     return result;
-  })();
+  }, [recentTicketsData]);
 
   useEffect(() => {
     if (query.length < 2) { setResults([]); setLoading(false); return; }
@@ -1000,7 +1000,13 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         const res = await customerApi.search(query);
         const data = res.data?.data;
         setResults(Array.isArray(data) ? data.slice(0, 8) : []);
-      } catch { setResults([]); }
+      } catch (err) {
+        // Surface the error so users know an empty list means "search failed"
+        // rather than "no matches" — silent failure used to lie to the cashier.
+        setResults([]);
+        console.warn('[POS customer search]', err);
+        toast.error('Customer search failed. Please try again.');
+      }
       finally { setLoading(false); }
     }, 300);
     return () => clearTimeout(debounceRef.current);
