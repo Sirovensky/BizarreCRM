@@ -52,8 +52,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
+import com.bizarreelectronics.crm.ui.screens.tickets.components.WarrantySlaBanner
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.ReduceMotion
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.bizarreelectronics.crm.util.UndoStack
@@ -494,6 +498,19 @@ fun TicketDetailScreen(
     var showNoteDialog by rememberSaveable { mutableStateOf(false) }
     var noteText by rememberSaveable { mutableStateOf("") }
     var showConvertConfirm by rememberSaveable { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    // Reduce-motion: read system setting without DI — ReduceMotion.decideReduceMotion is pure.
+    val reduceMotion = remember {
+        runCatching {
+            android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) == 0f
+        }.getOrDefault(false)
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -671,6 +688,28 @@ fun TicketDetailScreen(
                                 tint = if (detail?.isPinned == true) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        // Overflow menu — Copy Link
+                        Box {
+                            IconButton(onClick = { showOverflowMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Copy link") },
+                                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        ClipboardUtil.copy(context, "Ticket link", "bizarrecrm://tickets/$ticketId")
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Link copied")
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -858,14 +897,18 @@ fun TicketDetailScreen(
                     notes = state.notes,
                     history = state.history,
                     photos = state.photos,
+                    statuses = state.statuses,
+                    payments = state.ticketDetail?.payments ?: emptyList(),
+                    isActionInProgress = state.isActionInProgress,
+                    reduceMotion = reduceMotion,
                     padding = padding,
                     onNavigateToCustomer = onNavigateToCustomer,
                     onEditDevice = onEditDevice,
-                    // AND-20260414-M1: thread the add-photos callback into the
-                    // lazy list so the Photos section header can expose an
-                    // "Add Photo" TextButton.
                     onAddPhotos = onAddPhotos,
                     serverUrl = viewModel.serverUrl,
+                    onStatusSelected = { viewModel.changeStatus(it) },
+                    onAddNote = { viewModel.addNote(it) },
+                    onNavigateToSms = onNavigateToSms,
                 )
             }
         }
@@ -886,11 +929,18 @@ private fun TicketDetailContent(
     notes: List<TicketNote>,
     history: List<TicketHistory>,
     photos: List<TicketPhoto>,
+    statuses: List<com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem> = emptyList(),
+    payments: List<com.bizarreelectronics.crm.data.remote.dto.PaymentSummary> = emptyList(),
+    isActionInProgress: Boolean = false,
+    reduceMotion: Boolean = false,
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
     onEditDevice: (Long) -> Unit = {},
     onAddPhotos: ((ticketId: Long, deviceId: Long) -> Unit)? = null,
     serverUrl: String = "",
+    onStatusSelected: (Long) -> Unit = {},
+    onAddNote: (String) -> Unit = {},
+    onNavigateToSms: ((String) -> Unit)? = null,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -966,7 +1016,31 @@ private fun TicketDetailContent(
             }
         }
 
-        // Devices section
+        // Tab layout — Actions / Devices / Notes / Payments
+        item {
+            TicketDetailTabs(
+                ticket = ticket,
+                ticketDetail = ticketDetail,
+                devices = devices,
+                notes = notes,
+                history = history,
+                payments = payments,
+                statuses = statuses,
+                isActionInProgress = isActionInProgress,
+                reduceMotion = reduceMotion,
+                onStatusSelected = onStatusSelected,
+                onAddNote = onAddNote,
+                onEditDevice = onEditDevice,
+                onNavigateToSms = onNavigateToSms,
+            )
+        }
+
+        // -------------------------------------------------------------------
+        // Legacy sections below — kept for Photos and Total which are not
+        // yet in any tab. Devices/Notes/History are now in their tabs above.
+        // -------------------------------------------------------------------
+
+        // Devices section (legacy — still shown below tabs for now)
         item {
             Text("Devices", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         }
