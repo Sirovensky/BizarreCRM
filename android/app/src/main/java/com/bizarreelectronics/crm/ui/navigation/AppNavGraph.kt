@@ -77,6 +77,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
+import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.ClockDriftBanner
@@ -295,6 +296,12 @@ sealed class Screen(val route: String) {
 
     // §2.18 L420 — Manage 2FA factors screen (list enrolled, enroll TOTP/SMS; passkey/HW stubs).
     data object TwoFactorFactors : Screen("settings/security/2fa-factors")
+
+    // §2.10 [plan:L343] — 13-step first-run tenant onboarding wizard.
+    // Reachable from:
+    //   1. SetupStatusGateScreen when GET /auth/setup-status returns needsSetup=true.
+    //   2. Deep link bizarrecrm://setup (carries a setup token from a tenant-invite email).
+    data object Setup : Screen("setup/wizard")
 }
 
 data class BottomNavItem(
@@ -489,7 +496,9 @@ fun AppNavGraph(
             !currentRoute.startsWith("auth/reset-password/") &&
             currentRoute != Screen.BackupCodeRecovery.route &&
             // §2.1 — setup-status gate is a pre-auth transient screen
-            currentRoute != Screen.SetupStatusGate.route
+            currentRoute != Screen.SetupStatusGate.route &&
+            // §2.10 [plan:L343] — setup wizard hides the bottom bar (full-screen flow)
+            currentRoute != Screen.Setup.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -764,9 +773,8 @@ fun AppNavGraph(
             composable(Screen.SetupStatusGate.route) {
                 SetupStatusGateScreen(
                     onNeedsSetup = {
-                        // §2.10 not yet implemented — fall through to login which
-                        // will display the "contact admin" banner via its own probe.
-                        navController.navigate(Screen.Login.route) {
+                        // §2.10 [plan:L343] — route to the 13-step setup wizard.
+                        navController.navigate(Screen.Setup.route) {
                             popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
                         }
                     },
@@ -779,6 +787,22 @@ fun AppNavGraph(
                     onLogin = {
                         navController.navigate(Screen.Login.route) {
                             popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §2.10 [plan:L343] — 13-step first-run tenant onboarding wizard.
+            // Deep link: bizarrecrm://setup (invite token handled upstream).
+            composable(
+                route = Screen.Setup.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://setup" },
+                ),
+            ) {
+                SetupWizardScreen(
+                    onSetupComplete = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0) { inclusive = true }
                         }
                     },
                 )
