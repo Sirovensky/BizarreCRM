@@ -293,8 +293,17 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   }
 
-  // Check account lock
-  if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
+  // Check account lock — SCAN-740: use timestamp math to avoid fragile Date constructor
+  function isLockedOut(lockedUntil: string | null): boolean {
+    if (!lockedUntil) return false;
+    const ts = Date.parse(lockedUntil);
+    if (Number.isNaN(ts)) {
+      logger.warn('admin.locked_until unparseable', { raw: lockedUntil });
+      return false; // fail-open on malformed (don't lock out legitimate admin)
+    }
+    return ts > Date.now();
+  }
+  if (isLockedOut(admin.locked_until ?? null)) {
     auditLog('super_admin_login_locked', admin.id, ip);
     return res.status(423).json({ success: false, message: 'Account temporarily locked. Contact another super admin.' });
   }

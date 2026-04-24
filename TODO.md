@@ -1616,3 +1616,14 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-861. **auth.routes challenges Map sort() on every over-cap insert — O(n log n) at 10k+ size** — `packages/server/src/routes/auth.routes.ts:150-152`. Fix: FIFO eviction via Map iteration (keys().next() — insertion order guaranteed).
 - [ ] SCAN-863. **audit.ts audit-write failure logged to console.error not logger** — `packages/server/src/utils/audit.ts:42`. Fix: createLogger + structured.
 - [ ] SCAN-864. **tickets setTimeout at :2118 not via trackInterval** — `packages/server/src/routes/tickets.routes.ts:2118`. Fix: one-shot setTimeout is OK if caller tolerates no shutdown guarantee; verify.
+
+### Wave-35 scan-loop findings (2026-04-23)
+- [ ] SCAN-865. **[HIGH] 500 response leaks err.message at admin/super-admin 5 sites — file paths + DB errors + system details exposed** — `packages/server/src/routes/admin.routes.ts:359`, `super-admin.routes.ts:1673,1739,1800,1830`. Fix: route through errorHandler OR redact message.
+- [ ] SCAN-866. **[POSSIBLE HIGH] smsAutoResponderMatcher tenant_id query check needed in multi-tenant mode — verify req.db is per-tenant before confirming safe** — `packages/server/src/services/smsAutoResponderMatcher.ts`. Fix: audit; confirm caller passes per-tenant adb.
+- [ ] SCAN-867. **adminTokens + challenges Map cap attack risk — attacker floods legitimate tokens via insertion-order eviction** — `packages/server/src/routes/admin.routes.ts:30,40` + `super-admin.routes.ts:157,162`. Fix: rate-limit on token issuance + eviction-logger alert threshold.
+- [ ] SCAN-868. **receiptOcrCron setInterval(() => void tick()) swallows errors — next tick retries same bad row** — `packages/server/src/services/receiptOcrCron.ts:183`. Fix: track failed row IDs + exponential backoff.
+- [ ] SCAN-869. **index.ts JSON.parse on store_config.value + media rows at :1719,2781-2782 no try/catch** — `packages/server/src/index.ts`. Fix: wrap + log.warn + safe fallback.
+- [ ] SCAN-870. **recurringInvoicesCron subtotalCents/lineTotal no Number.isFinite — overflow to Infinity on malicious large qty/price** — `packages/server/src/services/recurringInvoicesCron.ts:146-177`. Fix: cap total + assert isFinite.
+- [ ] SCAN-871. **[LOW] super-admin failed-login audit includes username — enables enumeration if audit log accessible** — `packages/server/src/routes/super-admin.routes.ts:292`. Fix: mask to first-4 chars + hash tail.
+- [ ] SCAN-872. **index.ts mutable module state (isReady, shuttingDown)** — `packages/server/src/index.ts:348,3559`. Fix: ensure writers happen in one event-loop tick; readers tolerate transient stale.
+- [ ] SCAN-873. **slaBreachCron WS broadcast errors silently swallowed** — `packages/server/src/services/slaBreachCron.ts:117-131`. Fix: logger.warn already present; no action OR add metrics counter.

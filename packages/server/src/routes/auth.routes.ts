@@ -164,9 +164,13 @@ const MAX_CHALLENGES = 10000;
 
 function createChallenge(userId: number, tenantSlug?: string | null): string {
   // Evict oldest if over limit (DoS protection)
+  // SCAN-861: Map preserves insertion order; first key is oldest — O(1) vs O(n log n) sort.
   if (challenges.size >= MAX_CHALLENGES) {
-    const oldest = Array.from(challenges.entries()).sort((a, b) => a[1].expires - b[1].expires);
-    for (let i = 0; i < Math.min(100, oldest.length); i++) challenges.delete(oldest[i][0]);
+    const oldest = challenges.keys().next().value;
+    if (oldest !== undefined) {
+      challenges.delete(oldest);
+      logger.warn('challenges Map over cap; evicted oldest', { evicted_key_preview: String(oldest).slice(0, 8) });
+    }
   }
   const token = crypto.randomBytes(32).toString('hex');
   challenges.set(token, { userId, tenantSlug: tenantSlug || null, expires: Date.now() + CHALLENGE_TTL });

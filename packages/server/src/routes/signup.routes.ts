@@ -559,10 +559,12 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // by simply POSTing to /signup (even if captcha passes, the subdomain does
   // not exist until the email owner confirms).
   //
-  // Dev bypass: in non-production environments we skip the email step entirely
-  // and provision immediately so local testing does not require working SMTP.
-  if (config.nodeEnv !== 'production') {
-    logger.warn('[DEV] Email-verification bypass active — provisioning tenant immediately', { slug: normalizedSlug, email: normalizedEmail });
+  // Dev bypass: ONLY when SKIP_EMAIL_VERIFICATION=1 is explicitly set AND
+  // nodeEnv is not 'production'. Both conditions must hold to prevent accidental
+  // bypass if nodeEnv is misconfigured in production.
+  const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
+  if (skipEmailVerification) {
+    logger.warn('signup: skipping email verification (SKIP_EMAIL_VERIFICATION=1 in non-production)', { slug: normalizedSlug, email: normalizedEmail });
     const result = await provisionTenant({
       slug: normalizedSlug,
       name: String(shop_name).trim(),

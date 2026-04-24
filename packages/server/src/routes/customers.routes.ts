@@ -527,11 +527,13 @@ router.post(
       }
     }
     // Also add merge customer's main phone/mobile if not already present
-    if (mergeCustomer.phone && !keepPhoneSet.has(normalizePhone(mergeCustomer.phone))) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.phone), 'merged');
+    const normalizedMergePhone = mergeCustomer.phone ? normalizePhone(mergeCustomer.phone) : '';
+    if (normalizedMergePhone && !keepPhoneSet.has(normalizedMergePhone)) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergePhone, 'merged');
     }
-    if (mergeCustomer.mobile && !keepPhoneSet.has(normalizePhone(mergeCustomer.mobile))) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.mobile), 'merged');
+    const normalizedMergeMobile = mergeCustomer.mobile ? normalizePhone(mergeCustomer.mobile) : '';
+    if (normalizedMergeMobile && !keepPhoneSet.has(normalizedMergeMobile)) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergeMobile, 'merged');
     }
 
     // Merge email addresses (avoid duplicates)

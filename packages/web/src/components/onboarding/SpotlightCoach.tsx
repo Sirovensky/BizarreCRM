@@ -367,8 +367,10 @@ export function SpotlightCoach() {
     const nextIndex = stepIndex + 1;
     if (nextIndex >= steps.length) {
       // Last step — flow complete
-      Promise.resolve(handleTutorialComplete(flowId as TutorialFlowId, 'done', navigate))
-        .catch((err) => { console.error('[SpotlightCoach] handleTutorialComplete failed:', err); });
+      void (async () => {
+        try { await handleTutorialComplete(flowId as TutorialFlowId, 'done', navigate); }
+        catch (err) { console.warn('SpotlightCoach: tutorial complete handler failed', err); }
+      })();
       return;
     }
     const nextStep = steps[nextIndex];
@@ -405,14 +407,18 @@ export function SpotlightCoach() {
     if (!flowId) return;
     setFlowDismissed(flowId);
     setDismissed(true);
-    Promise.resolve(handleTutorialComplete(flowId as TutorialFlowId, 'skip', navigate))
-      .catch((err) => { console.error('[SpotlightCoach] handleTutorialComplete failed:', err); });
+    void (async () => {
+      try { await handleTutorialComplete(flowId as TutorialFlowId, 'skip', navigate); }
+      catch (err) { console.warn('SpotlightCoach: tutorial complete handler failed', err); }
+    })();
   }, [flowId, navigate]);
 
   const handleSkipAll = useCallback(() => {
     setDismissed(true);
-    Promise.resolve(dismissAllTutorials(navigate))
-      .catch((err) => { console.error('[SpotlightCoach] dismissAllTutorials failed:', err); });
+    void (async () => {
+      try { await dismissAllTutorials(navigate); }
+      catch (err) { console.warn('SpotlightCoach: dismissAllTutorials failed', err); }
+    })();
   }, [navigate]);
 
   // ── Keyboard: Escape = skip flow ─────────────────────────────────────────────

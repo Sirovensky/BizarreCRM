@@ -1234,7 +1234,12 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     entity_kind: 'ticket',
     entity_id: ticketId,
     action: 'created',
-  }).catch(() => {});
+  }).catch((err: unknown) => {
+    logger.warn('tickets: activity-log dispatch failed', {
+      err: err instanceof Error ? err.message : String(err),
+      ticket_id: ticketId,
+    });
+  });
 
   res.status(201).json({ success: true, data: createPayload });
 }));
@@ -1315,7 +1320,14 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  let days = parseInt(req.query.days as string) || 0;
+  const daysRaw = req.query.days;
+  let days = 0;
+  if (daysRaw !== undefined && daysRaw !== '') {
+    const n = Number(daysRaw);
+    if (Number.isFinite(n) && n >= 1 && n <= 365) {
+      days = Math.floor(n);
+    }
+  }
   if (!days) {
     const cfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'stall_alert_days'");
     days = cfg ? parseInt(cfg.value) || 3 : 3;
@@ -2076,7 +2088,12 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
     entity_id: ticketId,
     action: 'status_changed',
     metadata: { from: oldStatusId, to: resolvedNewStatusId },
-  }).catch(() => {});
+  }).catch((err: unknown) => {
+    logger.warn('tickets: status-change activity-log dispatch failed', {
+      err: err instanceof Error ? err.message : String(err),
+      ticket_id: ticketId,
+    });
+  });
 
   // Notification (HTTP-only: needs tenantSlug from req, and retry-queue fallback
   // that uses the sync db handle directly).
@@ -3921,7 +3938,7 @@ router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
 // SEC-H25: removing a ticket link modifies both tickets — gate behind tickets.edit.
 router.delete('/links/:linkId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const linkId = parseInt(req.params.linkId as string);
+  const linkId = validateId(req.params.linkId, 'linkId');
 
   const link = await adb.get<AnyRow>('SELECT * FROM ticket_links WHERE id = ?', linkId);
   if (!link) throw new AppError('Link not found', 404);
@@ -3939,7 +3956,7 @@ router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHan
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter and dynamic-import hooks below
   const userId = req.user!.id;
-  const sourceId = parseInt(req.params.id as string);
+  const sourceId = validateId(req.params.id, 'id');
 
   const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
   if (!source) throw new AppError('Source ticket not found', 404);

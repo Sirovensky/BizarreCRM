@@ -2476,6 +2476,17 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-843. **CommandPalette sessionStorage silent drop** — FIXED wave-34 via console.warn + clear corrupted entry.
 - [x] SCAN-844. **catalog validateId** — verified wave-34, already fixed in prior commit.
 - [x] SCAN-845. **inventory tenant-ownership check** — verified wave-34, per-tenant DB isolation prevents cross-tenant access; comment added.
+
+## Closed 2026-04-23 (wave-35)
+- [x] SCAN-858. **tickets parseInt 2 sites** — FIXED wave-35 via validateId at DELETE /links/:linkId + POST /:id/clone-warranty.
+- [x] SCAN-859. **tickets stalled parseInt(days)** — FIXED wave-35 via Number.isFinite + 1-365 clamp + silent default.
+- [x] SCAN-860. **tickets fire-and-forget catches** — FIXED wave-35, 2 remaining bare catches now log.warn with operation label.
+- [x] SCAN-861. **auth challenges Map sort O(n log n)** — FIXED wave-35 via Map.keys().next() O(1) oldest eviction.
+- [x] SCAN-863. **audit.ts console.error** — FIXED wave-35 via createLogger('audit') + logger.error.
+- [x] SCAN-740. **super-admin locked_until Date comparison** — FIXED wave-35 via isLockedOut() helper with Date.parse + NaN guard.
+- [x] SCAN-742. **customers normalizePhone empty vacuous** — FIXED wave-35 via empty-string short-circuit before keepPhoneSet check.
+- [x] SCAN-753. **signup dev-mode env gate** — FIXED wave-35 via SKIP_EMAIL_VERIFICATION=1 AND nodeEnv !== 'production' both required.
+- [x] SCAN-847. **SpotlightCoach Promise.resolve().catch()** — FIXED wave-35 via async/await + try/catch at 3 sites.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.
