@@ -297,6 +297,21 @@ CREATE INDEX IF NOT EXISTS idx_pl_snapshots_period
   ON pl_snapshots (period_from, period_to);
 
 -- ===========================================================================
+-- SCAN-1081: The standard SQLite "ALTER-via-rebuild" recipe calls for a
+-- `PRAGMA foreign_key_check;` immediately before COMMIT while FKs are OFF.
+-- Without it, an INSERT-SELECT copy that violated an FK (for example if
+-- `ops_checklist_instances_old.template_id` referenced an ops_checklist
+-- template row that had since been deleted) would silently land in the
+-- rebuilt table, and the trailing `PRAGMA foreign_keys = ON` would just
+-- re-arm enforcement for *future* writes. The pragma below causes SQLite
+-- to raise if any existing row in the rebuilt tables now violates an FK,
+-- so the migration aborts loudly instead of persisting orphans.
+--
+-- Note: for deployments that have already run this migration the check
+-- cannot retroactively run. Operators who want to verify the post-138
+-- state of an existing DB can run `PRAGMA foreign_key_check;` manually.
+PRAGMA foreign_key_check;
+
 COMMIT;
 
 PRAGMA foreign_keys = ON;

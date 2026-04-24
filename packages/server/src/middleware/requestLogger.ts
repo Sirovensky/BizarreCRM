@@ -73,7 +73,21 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   recordRequest();
 
   // SEC-NEW: Per-tenant request counting
-  const slug = (req as any).tenantSlug || 'bare-domain';
+  // SCAN-1079: previously every unresolvable host collapsed into a single
+  // `'bare-domain'` bucket, so a DDoS against `evil.example.com` looked
+  // identical on the ops dashboard to legitimate landing-page traffic.
+  // Fall back to `host:<hostname>` for unresolved tenants so attribution
+  // survives the tenant resolver returning null. Port is stripped so the
+  // bucket key is stable across proxies that add port suffixes.
+  const tenantSlug = (req as any).tenantSlug as string | undefined | null;
+  let slug: string;
+  if (tenantSlug) {
+    slug = tenantSlug;
+  } else {
+    const hostHeader = req.headers.host || '';
+    const hostname = String(hostHeader).split(':')[0].toLowerCase() || 'unknown';
+    slug = `host:${hostname}`;
+  }
   const now = Date.now();
   maybePruneTenantRequests(now);
   const entry = tenantRequests.get(slug);

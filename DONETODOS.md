@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-61 server/middleware + server/db — requestLogger attribution + mig-138 FK check)
+
+- [x] SCAN-1079. **`requestLogger` collapsed every unresolvable-host request into the single `'bare-domain'` bucket** — ops dashboards couldn't tell a DDoS against `evil.com` apart from legitimate landing-page traffic. Fallback now uses `host:<hostname>` (stripped of port, lowercased) when `tenantSlug` is null, so attribution survives tenant-resolver misses. Existing matched-tenant slugs are unchanged.
+- [x] SCAN-1081. **Migration 138 (FK rebuild) omitted `PRAGMA foreign_key_check;` before `COMMIT;` while FKs were OFF** — an INSERT-SELECT copy that violated an FK would silently persist, and the trailing `PRAGMA foreign_keys = ON` would only re-arm enforcement for future writes. Added the pragma + a note that for already-migrated DBs operators must run the check manually (the `_migrations` table is keyed on name only, so re-running isn't automatic).
+
 ## Closed 2026-04-23 (wave-61 crashGuard + uiStore cleanup)
 
 - [x] SCAN-1078. **`crashGuardMiddleware` keyed routeId on `req.path`** — every request for `/tickets/42` produced a fresh label that the crashTracker auto-disable logic never rolled up with `/tickets/67`. A genuinely broken handler never reached the disable threshold because consecutive crashes hit unique keys. `req.route` is unavailable at this middleware (routing hasn't run yet), so we added a cheap `normalizeRouteForAttribution` that collapses numeric ids, UUIDs, and 24-char hex tokens into `/:id`, `/:uuid`, `/:hex` pattern labels. Route shapes stay distinct; concrete ids fold together.

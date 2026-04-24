@@ -726,10 +726,32 @@ Verified working. Not TODOs.
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
+### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
+- [ ] SCAN-1085. **[MED] `useDraft` debounced-save timer may fire after unmount — setState warn + unreliable cleanup.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:49-67; fix=guard-setState-with-mounted-ref+null-timerRef -->
+- [ ] SCAN-1086. **[LOW] `useWebSocket` `data?.id` truthy-check skips id=0 / empty-string entities from per-entity invalidation.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useWebSocket.ts:281; fix=explicit-undefined-null-check -->
+- [ ] SCAN-1087. **[LOW] `useSettings.getSetting` not memoized — defeats downstream useEffect dep memoization.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:43-47; fix=useCallback-around-getSetting -->
+- [ ] SCAN-1088. **[MED] `useUndoableAction` unmount-fires destructive action without visibility check — tab-close during undo window silently commits.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:187-205; fix=gate-on-document.visibilityState -->
+- [ ] SCAN-1089. **[LOW] `useDefaultTaxRate` has dead `data.data.data` triple-envelope fallback + any shape.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDefaultTaxRate.ts:24-25; fix=drop-fallback+type-response -->
+- [ ] SCAN-1090. **[HIGH] `tenantResolver` trust-proxy check fails on IPv4-mapped IPv6 (`::ffff:10.0.0.1`) — proxy-listed IPs bypassed on dual-stack.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/tenantResolver.ts:68-81; fix=strip-ffff-prefix-before-includes -->
+- [ ] SCAN-1091. **[LOW] `idempotency.hashRequest` includes query string — `?_=cachebust` breaks replay.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/idempotency.ts:43-55; fix=hash-baseUrl+path-only -->
+- [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
+- [ ] SCAN-1093. **[MED] `stepUpTotp` replay Map keyed on current 30s window only — skew-accepted codes replayable at bucket boundary.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/stepUpTotp.ts:79-85; fix=claim-under-three-adjacent-buckets -->
+- [ ] SCAN-1094. **[LOW] `worker-pool.runWithTimeout` classifies any error containing "piscina" as 503 — swallows genuine worker crashes.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/worker-pool.ts:108-118; fix=tighten-match-to-exact-QUEUE_FULL -->
+- [ ] SCAN-1095. **[LOW] `snippets.routes.ts` no length/shape validation on `category` — 1MB strings can be stored per row.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/snippets.routes.ts:39,59,79,105; fix=validate-category-length<=64 -->
+- [ ] SCAN-1096. **[LOW] `tradeIns.routes.ts` `req.params.id` used raw in 7 handlers — malformed ids leak 500 instead of 400.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/tradeIns.routes.ts:106,175,237,356,367,370,373; fix=validateId-per-handler -->
+
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
-- [ ] SCAN-1079. **[LOW] `requestLogger` collapses all unresolvable-host traffic into `'bare-domain'` metric bucket.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/requestLogger.ts:76-83; fix=host-suffix-fallback -->
-- [ ] SCAN-1081. **[MED] Migration 138 omits `PRAGMA foreign_key_check` before COMMIT — orphan rows can survive rebuild-rename.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/138_fk_cascades_on_delete.sql:23-300; fix=add-foreign_key_check-before-commit -->
