@@ -696,7 +696,6 @@ Verified working. Not TODOs.
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
 ### Wave-50 scan-loop findings (2026-04-23) — web/pages
-- [ ] SCAN-961. **Ticket wizard still has ~18 FormLabel/input pairs in device + service sections without htmlFor wiring — needs full sweep.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-52 scan-loop findings (2026-04-23) — web/layout + web/auth

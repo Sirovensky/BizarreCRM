@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (a11y/LARGE — TicketWizard FormLabel htmlFor sweep)
+
+- [x] SCAN-961. **`TicketWizard` had ~18 `FormLabel`/input pairs in device + service + ticket-detail sections with no `htmlFor`/`id` wiring** — screen readers couldn't map labels to their inputs, click-on-label didn't focus, axe-core flagged every pair. Swept the file adding device-scoped ids (`tw-device-${device._key}-imei/serial/passcode/color/network/notes/location/price/line-discount`) and ticket-level ids (`tw-assigned-to`, `tw-labels`, `tw-due-date`, `tw-additional-discount`, `tw-discount-reason`, `tw-internal-notes`, `tw-source`, `tw-referred-by`, `tw-device-model-search`). One label ("Service Taxable") kept without htmlFor by design — it's a section header above a native `<label>` wrapping a checkbox — with an explicit comment.
+
 ## Closed 2026-04-24 (wave-65 LOW tail — tv/bench/deposits/search cleanup)
 
 - [x] SCAN-1125. **`deposits.routes` used `Number.isFinite(customerId)` / `Number.isFinite(ticketId)` against `number | null`** — worked by accident (`isFinite(null)` returns false) but semantically unclear. Switched to explicit `!== null`. `validateId` already guarantees a positive integer on the non-null branch, so the intent now matches the narrowing.
