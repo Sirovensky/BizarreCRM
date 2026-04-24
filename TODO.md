@@ -7,6 +7,10 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+### Wave-75 scan-loop findings (2026-04-24) — customer GDPR re-auth (blocked on user WIP)
+- [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/customers.routes.ts:1870-1890; fix=checkWindowRate('customer_gdpr_reauth',userId:ip,5,3600_000)+cap-password<=72+recordWindowFailure-on-mismatch; BLOCKED: file is user WIP (never touch per project rule) -->
+
 ## AUDIT CYCLE 2 — 2026-04-19 (deep-dive: reports/portal/print + WebSocket/Room/deep-links + Electron updater/windows)
 
 ### Web cycle 2 (packages/web) — 24 findings
