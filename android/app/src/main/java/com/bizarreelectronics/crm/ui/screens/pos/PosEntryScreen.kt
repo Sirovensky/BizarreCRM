@@ -112,24 +112,17 @@ fun PosEntryScreen(
                 results = state.searchResults,
                 isSearching = state.isSearching,
                 onCustomerSelected = { customer ->
-                    viewModel.attachExistingCustomer(
-                        com.bizarreelectronics.crm.data.remote.dto.CustomerListItem(
-                            id = customer.id,
-                            firstName = customer.name.substringBefore(" "),
-                            lastName = customer.name.substringAfter(" ", "").ifBlank { null },
-                            email = customer.email,
-                            phone = customer.phone,
-                            mobile = null,
-                            organization = null,
-                            city = null,
-                            state = null,
-                            customerGroupName = null,
-                            createdAt = null,
-                            ticketCount = customer.ticketCount,
-                        )
-                    )
+                    // Pass the search hit straight through — the old path
+                    // re-parsed display name back into firstName/lastName via
+                    // substringBefore/After which mangled compound surnames
+                    // like 'Mc Donald'. attachFromSearchResult preserves the
+                    // server-supplied fields verbatim.
+                    viewModel.attachFromSearchResult(customer)
                     searchExpanded = false
-                    onNavigateToCart()
+                    // Don't auto-navigate — user just attached a customer;
+                    // mockup PHONE 1 post-attach shows path picker first so
+                    // the cashier can choose Retail / Repair / Store credit.
+                    // (Walk-in still navigates straight to cart.)
                 },
             )
         }

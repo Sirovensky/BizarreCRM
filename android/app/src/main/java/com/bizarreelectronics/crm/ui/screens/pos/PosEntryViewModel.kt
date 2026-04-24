@@ -83,6 +83,33 @@ class PosEntryViewModel @Inject constructor(
         loadStoreCredit(c.id)
     }
 
+    /**
+     * Search-result tap path. Avoids re-parsing the display name back into
+     * firstName/lastName (which corrupted compound surnames like 'Mc Donald'
+     * — see commit 6926fb80 where the substringBefore/After split lost the
+     * second word). Builds the PosAttachedCustomer directly so the original
+     * server-supplied fields propagate verbatim.
+     */
+    fun attachFromSearchResult(result: CustomerResult) {
+        val attached = PosAttachedCustomer(
+            id = result.id,
+            name = result.name.ifBlank { "Customer #${result.id}" },
+            phone = result.phone,
+            email = result.email,
+            ticketCount = result.ticketCount,
+        )
+        coordinator.attachCustomer(attached)
+        _uiState.update {
+            it.copy(
+                attachedCustomer = attached,
+                searchQuery = "",
+                searchResults = SearchResultGroup(),
+            )
+        }
+        loadCustomerHistory(result.id)
+        loadStoreCredit(result.id)
+    }
+
     fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {
         viewModelScope.launch {
             runCatching {
