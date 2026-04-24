@@ -414,6 +414,13 @@ fun TicketListScreen(
                                 val isSelected = ticket.id in state.selectedIds
                                 val isPinned = ticket.id in state.pinnedTicketIds
 
+                                // M3 Expressive: animate row re-ordering on
+                                // filter / sort / status-change. Respects the
+                                // system reduce-motion flag via the row's own
+                                // `reduceMotion` path.
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier.animateItem(),
+                                ) {
                                 TicketSwipeRow(
                                     ticket = ticket,
                                     reduceMotion = reduceMotion,
@@ -461,6 +468,7 @@ fun TicketListScreen(
                                     )
                                 }
                                 BrandListItemDivider()
+                                } // animateItem Box close
                             }
 
                             // 4-state footer

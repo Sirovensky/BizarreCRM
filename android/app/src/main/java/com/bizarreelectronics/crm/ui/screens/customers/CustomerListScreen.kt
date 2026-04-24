@@ -395,27 +395,31 @@ private fun CustomerPagingList(
             val customer = lazyPagingItems[index] ?: return@items
             val isSelected = customer.id in state.selectedIds
 
-            CustomerSwipeRow(
-                customer = customer,
-                onSms = { onSms(customer.mobile ?: customer.phone ?: "") },
-                onCall = { onCall(customer.mobile ?: customer.phone ?: "") },
-                onMarkVip = { onMarkVip(customer.id) },
-                onArchive = { onArchive(customer.id) },
-            ) {
-                CustomerContextMenuRow(
+            // M3 Expressive: animate row re-order on filter / sort /
+            // archive-toggle using `Modifier.animateItem()`.
+            Box(modifier = Modifier.animateItem()) {
+                CustomerSwipeRow(
                     customer = customer,
-                    isSelected = isSelected,
-                    isBulkMode = state.isBulkMode,
-                    isTablet = isTablet,
-                    onClick = {
-                        if (state.isBulkMode) onToggleSelect(customer.id)
-                        else onCustomerClick(customer.id)
-                    },
-                    onLongPress = { onLongPress(customer.id) },
-                    onCreateTicket = { onCreateTicket(customer.id) },
-                )
+                    onSms = { onSms(customer.mobile ?: customer.phone ?: "") },
+                    onCall = { onCall(customer.mobile ?: customer.phone ?: "") },
+                    onMarkVip = { onMarkVip(customer.id) },
+                    onArchive = { onArchive(customer.id) },
+                ) {
+                    CustomerContextMenuRow(
+                        customer = customer,
+                        isSelected = isSelected,
+                        isBulkMode = state.isBulkMode,
+                        isTablet = isTablet,
+                        onClick = {
+                            if (state.isBulkMode) onToggleSelect(customer.id)
+                            else onCustomerClick(customer.id)
+                        },
+                        onLongPress = { onLongPress(customer.id) },
+                        onCreateTicket = { onCreateTicket(customer.id) },
+                    )
+                }
+                BrandListItemDivider()
             }
-            BrandListItemDivider()
         }
 
         // Append loading indicator
