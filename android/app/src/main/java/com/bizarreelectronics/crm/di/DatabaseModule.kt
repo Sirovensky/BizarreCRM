@@ -168,4 +168,5 @@ object DatabaseModule {
     @Provides fun provideDraftDao(db: BizarreDatabase): DraftDao = db.draftDao()
     @Provides fun provideAppliedMigrationDao(db: BizarreDatabase): AppliedMigrationDao = db.appliedMigrationDao()
     @Provides fun provideSyncStateDao(db: BizarreDatabase): SyncStateDao = db.syncStateDao()
+    @Provides fun provideParkedCartDao(db: BizarreDatabase): com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao = db.parkedCartDao()
 }

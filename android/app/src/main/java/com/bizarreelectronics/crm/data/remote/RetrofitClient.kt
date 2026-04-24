@@ -656,4 +656,15 @@ object RetrofitClient {
     @Provides @Singleton fun provideBenchApi(retrofit: Retrofit): BenchApi = retrofit.create(BenchApi::class.java)
     // §4.9 L762 — device templates CRUD; 404-tolerant
     @Provides @Singleton fun provideDeviceTemplateApi(retrofit: Retrofit): DeviceTemplateApi = retrofit.create(DeviceTemplateApi::class.java)
+    // Wave-35 + Wave-36 API providers — all 404-tolerant
+    @Provides @Singleton fun provideSlaApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SlaApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SlaApi::class.java)
+    @Provides @Singleton fun provideWarrantyApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.WarrantyApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.WarrantyApi::class.java)
+    @Provides @Singleton fun provideWaiverApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.WaiverApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.WaiverApi::class.java)
+    @Provides @Singleton fun providePrivacyApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PrivacyApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PrivacyApi::class.java)
+    @Provides @Singleton fun provideIntegrityApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.IntegrityApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.IntegrityApi::class.java)
+    @Provides @Singleton fun provideAppointmentApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.AppointmentApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.AppointmentApi::class.java)
+    @Provides @Singleton fun provideSyncApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SyncApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SyncApi::class.java)
+    @Provides @Singleton fun providePosApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PosApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PosApi::class.java)
+    @Provides @Singleton fun provideSetupApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SetupApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SetupApi::class.java)
+    @Provides @Singleton fun provideWorkManager(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context): androidx.work.WorkManager = androidx.work.WorkManager.getInstance(context)
 }

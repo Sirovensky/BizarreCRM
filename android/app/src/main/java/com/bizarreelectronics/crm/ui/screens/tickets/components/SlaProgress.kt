@@ -138,7 +138,8 @@ fun SlaProgress(
                     // This is a forward-compat placeholder; full Canvas rendering with
                     // exact pixel placement can be added when a Canvas composable is
                     // introduced for the track.
-                    val _ = clampedMarker // used in full implementation
+                    @Suppress("UNUSED_VARIABLE")
+                    val placeholder = clampedMarker // future Canvas marker
                 }
             }
         }
