@@ -42,6 +42,30 @@ function requireUserId(req: any): number {
   return Number(id);
 }
 
+/**
+ * SCAN-1109 [HIGH]: direct-message channels are named as two usernames
+ * joined by `--` (convention set by the POST /channels handler for
+ * `kind='direct'`). Enforce that the caller's username is one of them
+ * before allowing read or write. `general` and `ticket` kinds remain open
+ * to any authenticated user (team-wide and ticket-working respectively —
+ * that matches the UI's shared surfaces).
+ *
+ * The check is case-insensitive and matches on a word-boundary so
+ * "alice" doesn't match a channel named "alice2--bob". The channel name
+ * is split on `--` (the single documented separator) and each token is
+ * compared exactly to the caller's username.
+ */
+function assertChannelAccess(ch: ChannelRow, req: any): void {
+  if (ch.kind === 'general' || ch.kind === 'ticket') return;
+  if (ch.kind !== 'direct') return; // future kinds: explicit allow only
+  const callerUsername = String(req?.user?.username ?? '').toLowerCase();
+  if (!callerUsername) throw new AppError('Not a member of this channel', 403);
+  const participants = ch.name.split('--').map((s) => s.trim().toLowerCase());
+  if (!participants.includes(callerUsername)) {
+    throw new AppError('Not a member of this channel', 403);
+  }
+}
+
 function parseId(value: unknown, label = 'id'): number {
   const raw = Array.isArray(value) ? value[0] : value;
   const n = parseInt(String(raw ?? ''), 10);
@@ -89,8 +113,17 @@ router.get(
     const sql = kind
       ? `SELECT * FROM team_chat_channels WHERE kind = ? ORDER BY created_at DESC LIMIT 200`
       : `SELECT * FROM team_chat_channels ORDER BY created_at DESC LIMIT 200`;
-    const rows = kind ? await adb.all(sql, kind) : await adb.all(sql);
-    res.json({ success: true, data: rows });
+    const rows = (kind ? await adb.all<ChannelRow>(sql, kind) : await adb.all<ChannelRow>(sql));
+    // SCAN-1109 [HIGH]: filter direct channels client-side by the caller's
+    // membership so the list doesn't enumerate other users' DMs. Non-direct
+    // kinds (`general`, `ticket`) remain visible team-wide.
+    const callerUsername = String(req?.user?.username ?? '').toLowerCase();
+    const visible = rows.filter((r) => {
+      if (r.kind !== 'direct') return true;
+      if (!callerUsername) return false;
+      return r.name.split('--').map((s) => s.trim().toLowerCase()).includes(callerUsername);
+    });
+    res.json({ success: true, data: visible });
   }),
 );
 
@@ -148,6 +181,7 @@ router.delete(
   asyncHandler(async (req, res) => {
     if (req?.user?.role !== 'admin') throw new AppError('Admin role required', 403);
     const adb: AsyncDb = req.asyncDb;
+    const db = req.db;
     const id = parseId(req.params.id, 'channel id');
     // Refuse to nuke the seeded general channel.
     const ch = await adb.get<ChannelRow>('SELECT * FROM team_chat_channels WHERE id = ?', id);
@@ -155,8 +189,31 @@ router.delete(
     if (ch.kind === 'general' && ch.name === 'general') {
       throw new AppError('Cannot delete the default general channel', 400);
     }
-    await adb.run('DELETE FROM team_chat_messages WHERE channel_id = ?', id);
-    await adb.run('DELETE FROM team_chat_channels WHERE id = ?', id);
+    // SCAN-1116: refuse to delete the `ticket` channel while the owning
+    // ticket is still open — deleting the channel orphans the ticket's
+    // discussion history, which is useful to techs mid-repair and to
+    // after-the-fact audit. Admins can force-delete by closing the ticket
+    // first.
+    if (ch.kind === 'ticket' && ch.ticket_id !== null) {
+      const t = await adb.get<{ id: number; is_closed: number; is_deleted: number }>(
+        `SELECT t.id, ts.is_closed AS is_closed, t.is_deleted
+         FROM tickets t
+         LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+         WHERE t.id = ?`,
+        ch.ticket_id,
+      );
+      if (t && !t.is_deleted && !t.is_closed) {
+        throw new AppError('Close the ticket before deleting its chat channel', 400);
+      }
+    }
+    // SCAN-1116: previously the two DELETEs were separate awaited calls; a
+    // failure on the channel DELETE after the messages DELETE committed
+    // left a channel row with no messages. Wrap in a sync transaction so
+    // either both succeed or both roll back.
+    db.transaction(() => {
+      db.prepare('DELETE FROM team_chat_messages WHERE channel_id = ?').run(id);
+      db.prepare('DELETE FROM team_chat_channels WHERE id = ?').run(id);
+    })();
     audit(req.db, 'chat_channel_deleted', requireUserId(req), req.ip || 'unknown', { channel_id: id });
     res.json({ success: true, data: { id } });
   }),
@@ -173,9 +230,11 @@ router.get(
     const limit = parsePageSize(req.query.limit, 50);
 
     const ch = await adb.get<ChannelRow>(
-      'SELECT id FROM team_chat_channels WHERE id = ?', channelId,
+      'SELECT * FROM team_chat_channels WHERE id = ?', channelId,
     );
     if (!ch) throw new AppError('Channel not found', 404);
+    // SCAN-1109: block non-participants from reading direct-message history.
+    assertChannelAccess(ch, req);
 
     const rows = await adb.all(
       `SELECT m.*, u.first_name, u.last_name, u.username
@@ -197,8 +256,10 @@ router.post(
     const body = validateRequiredString(req.body?.body, 'body', 2000);
     const userId = requireUserId(req);
 
-    const ch = await adb.get<ChannelRow>('SELECT id FROM team_chat_channels WHERE id = ?', channelId);
+    const ch = await adb.get<ChannelRow>('SELECT * FROM team_chat_channels WHERE id = ?', channelId);
     if (!ch) throw new AppError('Channel not found', 404);
+    // SCAN-1109: block non-participants from posting to direct-message channels.
+    assertChannelAccess(ch, req);
 
     const result = await adb.run(
       `INSERT INTO team_chat_messages (channel_id, user_id, body) VALUES (?, ?, ?)`,

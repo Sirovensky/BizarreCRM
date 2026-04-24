@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-64 team-chat membership + delete tx)
+
+- [x] SCAN-1109 [HIGH]. **team-chat direct-message channels had no membership enforcement** — any authenticated user could list, read, and post to DMs they weren't party to. Added `assertChannelAccess(ch, req)` that checks the caller's username against the channel name's `--`-separated participant list for `kind='direct'` (case-insensitive, exact token match so `alice` doesn't leak into `alice2--bob`). `general` and `ticket` kinds remain team-wide by design. Wired into `GET /channels/:id/messages` and `POST /channels/:id/messages`; also filter `GET /channels` listing so DMs the caller isn't in don't appear. Future channel kinds fall through to "explicit allow only".
+- [x] SCAN-1116. **`DELETE /team-chat/channels/:id` ran two separate async DELETEs without a transaction** — a failure between message-delete and channel-delete left a ghost channel with no messages. Wrapped both statements in a sync `db.transaction(...)`. Also added a guard that refuses to delete a `ticket` channel while the owning ticket is still open (not closed + not deleted) — preserves the ticket's discussion history for mid-repair techs and post-hoc audit. Admins can force-delete by closing the ticket first.
+
 ## Closed 2026-04-24 (wave-64 automations type allowlist + per-ticket cap pre-check)
 
 - [x] SCAN-1110 [HIGH]. **`automations.routes` POST + PUT accepted any string for `trigger_type` / `action_type`** — a typo (`sms_send` vs `send_sms`) stored a dead rule that the UI showed as active but the engine silently never dispatched on. Sourced the allowlists from the engine itself (every `runAutomations(db, <trigger>, …)` call site; every `case` arm in the action executor switch), with `assertTriggerType` / `assertActionType` asserts that 400 on unknown values. POST validates both fields; PUT only validates fields actually present in the body (undefined leaves the stored value alone).

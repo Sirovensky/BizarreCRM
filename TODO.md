@@ -727,12 +727,8 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-64 scan-loop findings (2026-04-24) — team-chat + automations + roles + web components
-- [ ] SCAN-1109. **[HIGH] team-chat direct + general channels lack membership enforcement — any authed user can read/post.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/teamChat.routes.ts:77-95,167-253; fix=kind=direct-require-username-in-channel.name -->
 - [ ] SCAN-1114. **[MED] `recurringInvoicesCron` + `recurringInvoices.routes` month advance rolls Jan-31 → Mar 03.**
   <!-- meta: scope=server/services+routes; files=packages/server/src/services/recurringInvoicesCron.ts:61-71,packages/server/src/routes/recurringInvoices.routes.ts:96-105; fix=clamp-setUTCDate(0)-next-month-when-original-day-dropped -->
-- [ ] SCAN-1116. **[MED] `teamChat DELETE /channels/:id` cascades without transaction + no ticket-kind guard.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/teamChat.routes.ts:146-163; fix=db.transaction+refuse-open-ticket -->
 - [ ] SCAN-1117. **[LOW] `CommandPalette` debounced search has no reqSeq guard — late responses overwrite newer.**
   <!-- meta: scope=web/components; files=packages/web/src/components/shared/CommandPalette.tsx:162-189; fix=useRef-reqSeq-latest-wins -->
 - [ ] SCAN-1118. **[LOW] `SignatureCanvas` leaves `hasSignature=true` after size-cap rejection — UI/state mismatch.**
