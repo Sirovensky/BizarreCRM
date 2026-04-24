@@ -189,20 +189,17 @@ function markFirstResponseBreached(slug: string, db: Database.Database, ticket: 
 
   try {
     db.transaction(() => {
-      // Idempotent: only insert if no existing first_response entry
-      const existing = db.prepare(`
-        SELECT id FROM sla_breach_log
-        WHERE ticket_id = ? AND breach_type = 'first_response'
-        LIMIT 1
-      `).get(ticket.id);
-
-      if (existing) return;
-
-      db.prepare(`
-        INSERT INTO sla_breach_log
+      // Idempotent at the DB level via the UNIQUE index on
+      // (ticket_id, breach_type) added in migration 143. `INSERT OR IGNORE`
+      // collapses the SELECT+INSERT into one atomic statement so two
+      // concurrent workers can't both log the same breach.
+      const result = db.prepare(`
+        INSERT OR IGNORE INTO sla_breach_log
           (ticket_id, policy_id, breach_type, breached_at)
         VALUES (?, ?, 'first_response', ?)
       `).run(ticket.id, ticket.sla_policy_id ?? null, breachedAt);
+
+      if (result.changes === 0) return; // Already logged by another tick/worker.
 
       logger.info('sla-breach-cron: first_response breach logged', {
         slug,

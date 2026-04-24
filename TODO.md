@@ -748,8 +748,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/services; files=packages/server/src/services/email.ts; fix=sanitize-or-escape-on-send -->
 - [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**
   <!-- meta: scope=server/services; files=packages/server/src/services/backup.ts:971-998; fix=accept-getDb-factory -->
-- [ ] SCAN-1056. **slaBreachCron `markFirstResponseBreached` SELECT-then-INSERT needs UNIQUE index for concurrency safety.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/slaBreachCron.ts:193-205; fix=unique-index+insert-or-ignore -->
 - [ ] SCAN-1057. **retentionSweeper SQL interpolates table+column names from RULES — safe today, document invariant or allowlist.**
   <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:400-404,441; fix=allowlist-regex-assert -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
