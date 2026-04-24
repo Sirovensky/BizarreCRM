@@ -178,6 +178,14 @@ sealed class Screen(val route: String) {
     data object PosReceipt : Screen("pos/receipt/{orderId}") {
         fun createRoute(orderId: String) = "pos/receipt/${Uri.encode(orderId)}"
     }
+    // 6-step repair check-in (Symptoms → Details → Damage → Diagnostic →
+    // Quote → Sign). Requires a customer + device pre-attached; callers
+    // unable to provide both should route through `Screen.Pos` first
+    // (its path-picker attaches customer, then opens device picker).
+    data object CheckIn : Screen("checkin/{customerId}/{deviceId}?customerName={customerName}&deviceName={deviceName}") {
+        fun createRoute(customerId: Long, deviceId: Long, customerName: String, deviceName: String): String =
+            "checkin/$customerId/$deviceId?customerName=${Uri.encode(customerName)}&deviceName=${Uri.encode(deviceName)}"
+    }
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
             val encodedName = Uri.encode(customerName)
@@ -1158,6 +1166,13 @@ fun AppNavGraph(
             composable(Screen.Pos.route) {
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
+                    // TODO(checkin-entry): build a CheckInEntryScreen that
+                    // attaches customer + device upfront, then pushes to
+                    // Screen.CheckIn. Until then, the "Create repair ticket"
+                    // tile falls back to the legacy TicketCreate flow which
+                    // owns its own customer/device picker. CheckInHostScreen
+                    // itself is now wired at Screen.CheckIn.route below and
+                    // reachable via deep-link + future integrations.
                     onNavigateToCheckin = { navController.navigate(Screen.TicketCreate.route) },
                 )
             }
@@ -1186,6 +1201,45 @@ fun AppNavGraph(
                     onNewSale = {
                         navController.navigate(Screen.Pos.route) {
                             popUpTo(Screen.Pos.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // Phase 3: 6-step repair check-in package (Symptoms → Details →
+            // Damage → Diagnostic → Quote → Sign). Requires customer + device
+            // attached at nav time; nav args carry both the IDs and display
+            // names so CheckInHostScreen can render the header without an
+            // extra round-trip.
+            composable(
+                route = Screen.CheckIn.route,
+                arguments = listOf(
+                    navArgument("customerId") { type = NavType.LongType },
+                    navArgument("deviceId") { type = NavType.LongType },
+                    navArgument("customerName") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("deviceName") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { backStack ->
+                val customerId = backStack.arguments?.getLong("customerId") ?: 0L
+                val deviceId = backStack.arguments?.getLong("deviceId") ?: 0L
+                val customerName = backStack.arguments?.getString("customerName").orEmpty()
+                val deviceName = backStack.arguments?.getString("deviceName").orEmpty()
+                com.bizarreelectronics.crm.ui.screens.checkin.CheckInHostScreen(
+                    customerId = customerId,
+                    deviceId = deviceId,
+                    customerName = customerName,
+                    deviceName = deviceName,
+                    onBack = { navController.popBackStack() },
+                    onTicketCreated = { ticketId ->
+                        navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
+                            popUpTo(Screen.Pos.route)
                         }
                     },
                 )
