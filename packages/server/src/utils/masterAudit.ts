@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3';
 import { config } from '../config.js';
+import { createLogger } from './logger.js';
+
+const logger = createLogger('master-audit');
 
 let masterDb: Database.Database | null = null;
 
@@ -52,12 +55,27 @@ export function logTenantAuthEvent(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(tenantId, tenantSlug, safeEvent, userId, safeUsername, ip, ua, safeDetails);
 
-    // Check brute force thresholds on failure events
+    // SCAN-1069: brute-force check issues 2-4 synchronous COUNT/INSERT
+    // queries. Defer via setImmediate so a failed-login response is not
+    // gated on those extra round-trips. The check is best-effort monitoring
+    // — it's fine if the response has already flushed by the time it runs.
     if (safeEvent.includes('failed') || safeEvent.includes('locked')) {
-      checkBruteForce(ip, tenantId, tenantSlug);
+      setImmediate(() => {
+        try { checkBruteForce(ip, tenantId, tenantSlug); }
+        catch (err) {
+          logger.warn('brute-force check failed (async)', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
     }
-  } catch (err: any) {
-    console.warn('[MasterAudit] Failed to log:', err.message);
+  } catch (err: unknown) {
+    // SCAN-1061: structured logger (no more bare console.warn). Drops the
+    // unconditional PII-at-message interpolation — we now log the module +
+    // short error string as metadata so log shippers can mask / redact.
+    logger.warn('tenant auth event log failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -81,7 +99,7 @@ function checkBruteForce(ip: string, tenantId: number | null, tenantSlug: string
         masterDb.prepare(
           `INSERT INTO security_alerts (type, severity, ip_address, details) VALUES ('brute_force_ip', 'critical', ?, ?)`
         ).run(ip, JSON.stringify({ failure_count: ipFailures, window_minutes: 15 }));
-        console.warn(`[Security] ALERT: Brute force from IP ${ip} — ${ipFailures} failures in 15 min`);
+        logger.warn('brute_force_ip alert', { ip, failures: ipFailures, window_minutes: 15 });
       }
     }
 
@@ -99,12 +117,14 @@ function checkBruteForce(ip: string, tenantId: number | null, tenantSlug: string
           masterDb.prepare(
             `INSERT INTO security_alerts (type, severity, tenant_id, tenant_slug, details) VALUES ('brute_force_tenant', 'warning', ?, ?, ?)`
           ).run(tenantId, tenantSlug, JSON.stringify({ failure_count: tenantFailures, window_minutes: 15 }));
-          console.warn(`[Security] ALERT: Brute force on tenant ${tenantSlug} — ${tenantFailures} failures in 15 min`);
+          logger.warn('brute_force_tenant alert', { tenant_slug: tenantSlug, failures: tenantFailures, window_minutes: 15 });
         }
       }
     }
-  } catch (err: any) {
-    console.warn('[MasterAudit] Brute force check failed:', err.message);
+  } catch (err: unknown) {
+    logger.warn('brute-force check failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -135,11 +155,15 @@ export function logSecurityAlert(
     `).run(safeType, safeSeverity, tenantId, tenantSlug, ip, safeDetails);
 
     if (severity === 'critical') {
-      console.warn(`[Security] CRITICAL ALERT: ${type} - ${JSON.stringify(details)}`);
+      // Structured log instead of console.warn so PII in `details` flows
+      // through the logger's masking pipeline.
+      logger.error('CRITICAL security alert', { type, details });
     } else {
-      console.log(`[Security] Alert: ${type}`);
+      logger.info('security alert', { type, severity });
     }
-  } catch (err: any) {
-    console.warn('[MasterAudit] Failed to log security alert:', err.message);
+  } catch (err: unknown) {
+    logger.warn('security alert log failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

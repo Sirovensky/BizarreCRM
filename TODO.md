@@ -716,8 +716,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/communications; files=CommunicationPage.tsx; fix=type-per-response-interfaces -->
 
 ### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
-- [ ] SCAN-1061. **`masterAudit.ts` uses raw console.* instead of structured logger — critical-alert branch logs `JSON.stringify(details)` with potential PII.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:59,83,101,106,137,139,142; fix=createLogger -->
 - [ ] SCAN-1062. **`recordWindowFailure` deprecated but still imported by 15+ routes — `@deprecated` JSDoc ignored at compile time.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:43; fix=remove-or-tsdoc-deprecated -->
 - [ ] SCAN-1063. **[HIGH/SSRF] `fetchWithSsrfGuard` checks DNS then fetches original hostname — DNS rebinding window open.**
@@ -728,8 +726,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/ws; files=packages/server/src/ws/server.ts:640-675; fix=per-tenant-Map -->
 - [ ] SCAN-1068. **`scanFileForViruses` returns clean when CLAMAV_HOST set but integration unwired — operators think scanning is active.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/fileValidation.ts:204-232; fix=startup-env-check -->
-- [ ] SCAN-1069. **`logTenantAuthEvent` runs `checkBruteForce` synchronously on every failed login — 2-4 SQLite round-trips in auth hot path.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:54-56; fix=setImmediate-or-queue -->
 
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
