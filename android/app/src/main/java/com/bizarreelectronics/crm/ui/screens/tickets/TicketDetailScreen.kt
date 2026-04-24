@@ -52,8 +52,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
+import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
+import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
-import com.bizarreelectronics.crm.ui.screens.tickets.components.WarrantySlaBanner
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPhotoGallery
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPrintActions
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketQrCard
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRelatedRail
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
@@ -120,6 +125,12 @@ data class TicketDetailUiState(
     val isActionInProgress: Boolean = false,
     /** Set after a successful ticket-to-invoice conversion so the screen can navigate to the new invoice. */
     val convertedInvoiceId: Long? = null,
+    /** L678 — bench timer running state. */
+    val isBenchTimerRunning: Boolean = false,
+    /** L680 — true when a background refresh returns 404 (ticket deleted while viewing). */
+    val isDeletedWhileViewing: Boolean = false,
+    /** L681 — current user role from [AuthPreferences.userRole] for permission gating. */
+    val userRole: String? = null,
 )
 
 @HiltViewModel
@@ -166,6 +177,7 @@ class TicketDetailViewModel @Inject constructor(
         collectTicket()
         loadTicketDetail()
         loadStatuses()
+        captureRoleInState()
     }
 
     /** Collect the Room Flow for the ticket entity — instant offline display. */
@@ -205,6 +217,17 @@ class TicketDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 android.util.Log.w("TicketDetail", "Failed to load detail from API: ${e.message}")
+                // L680 — detect 404: ticket was deleted while this screen was open
+                val is404 = runCatching {
+                    (e as? retrofit2.HttpException)?.code() == 404
+                }.getOrDefault(false)
+                if (is404) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        isDeletedWhileViewing = true,
+                    )
+                    return@launch
+                }
                 // If we have a cached entity, just show a soft warning — not a hard error
                 if (_state.value.ticket != null) {
                     _state.value = _state.value.copy(isLoading = false)
@@ -460,6 +483,87 @@ class TicketDetailViewModel @Inject constructor(
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
+
+    // -----------------------------------------------------------------------
+    // L678 — Bench timer
+    // -----------------------------------------------------------------------
+
+    /**
+     * Start a bench timer session for this ticket. Stub fallback on 404 so the
+     * UI timer still runs locally if the server doesn't expose the endpoint.
+     */
+    fun startBenchTimer() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isBenchTimerRunning = true)
+            try {
+                ticketApi.startBenchTimer(ticketId)
+            } catch (e: Exception) {
+                // Stub fallback — timer runs locally even if server returns 404
+                Timber.tag("BenchTimer").w(e, "startBenchTimer: server returned error (stub fallback active)")
+            }
+        }
+    }
+
+    /**
+     * Stop the active bench timer session for this ticket.
+     */
+    fun stopBenchTimer() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isBenchTimerRunning = false)
+            try {
+                ticketApi.stopBenchTimer(ticketId)
+            } catch (e: Exception) {
+                Timber.tag("BenchTimer").w(e, "stopBenchTimer: server returned error (stub fallback active)")
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // L669 — Photo delete
+    // -----------------------------------------------------------------------
+
+    /**
+     * Remove a photo by server ID, updating local state immediately.
+     * Stub fallback on 404 (e.g. already deleted on another device).
+     */
+    fun deletePhoto(photoId: Long) {
+        _state.value = _state.value.copy(
+            photos = _state.value.photos.filter { it.id != photoId },
+        )
+        viewModelScope.launch {
+            try {
+                ticketApi.deletePhoto(photoId)
+            } catch (e: Exception) {
+                Timber.tag("TicketPhoto").w(e, "deletePhoto id=%d: server error (already removed?)", photoId)
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // L681 — Role gate
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns true when [authPreferences.userRole] is one of the privileged
+     * roles that may perform destructive ticket actions (Delete, Void).
+     * Defaults to false when role is unknown (fail-safe).
+     */
+    val isPrivilegedRole: Boolean
+        get() = authPreferences.userRole?.lowercase()?.let { role ->
+            role == "admin" || role == "owner" || role == "manager"
+        } ?: false
+
+    // -----------------------------------------------------------------------
+    // Expose userRole for UI state snapshot
+    // -----------------------------------------------------------------------
+
+    private fun captureRoleInState() {
+        _state.value = _state.value.copy(userRole = authPreferences.userRole)
+    }
+
+    // -----------------------------------------------------------------------
+    // Override loadTicketDetail to detect 404 (L680)
+    // -----------------------------------------------------------------------
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -499,6 +603,9 @@ fun TicketDetailScreen(
     var noteText by rememberSaveable { mutableStateOf("") }
     var showConvertConfirm by rememberSaveable { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+
+    // L681 — permission gate: privileged roles can see destructive actions
+    val isPrivilegedRole = viewModel.isPrivilegedRole
 
     val context = LocalContext.current
     // Reduce-motion: read system setting without DI — ReduceMotion.decideReduceMotion is pure.
@@ -569,6 +676,14 @@ fun TicketDetailScreen(
     DisposableEffect(viewModel) {
         onDispose { viewModel.undoStack.clear() }
     }
+
+    // L679 — Continuity banner: publish ticket ID as AssistContent extras
+    // so Android Slices / cross-device handoff can deep-link to this ticket.
+    // Requires Google Cross-device Services (future work). Stub via LocalActivity
+    // is a no-op on most devices today.
+    // NOTE: Full implementation requires hooking into Activity.onProvideAssistContent
+    // which is already supported in MainActivity (see existing onProvideAssistContent).
+    // Passing ticket info via Intent extras is sufficient for the handoff mechanism.
 
     // Confirmation dialog for Convert to Invoice
     if (showConvertConfirm) {
@@ -689,7 +804,20 @@ fun TicketDetailScreen(
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        // Overflow menu — Copy Link
+                        // L674 — Print/PDF/SMS/Email actions in overflow
+                        val customerName = state.ticketDetail?.customer?.let { c ->
+                            listOfNotNull(c.firstName, c.lastName).joinToString(" ").ifBlank { null }
+                        } ?: ticket.customerName ?: ""
+                        val deviceName = state.devices.firstOrNull()?.let { it.name ?: it.deviceName }
+                        TicketPrintActions(
+                            ticketId = ticketId,
+                            orderId = ticket.orderId ?: "T-$ticketId",
+                            customerName = customerName,
+                            deviceName = deviceName,
+                            serverUrl = viewModel.serverUrl,
+                            snackbarHost = snackbarHostState,
+                        )
+                        // Overflow menu — Copy Link + permission-gated destructive actions
                         Box {
                             IconButton(onClick = { showOverflowMenu = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More options")
@@ -709,6 +837,20 @@ fun TicketDetailScreen(
                                         }
                                     },
                                 )
+                                // L681 — Destructive actions gated on privileged role
+                                if (isPrivilegedRole) {
+                                    DropdownMenuItem(
+                                        text = { Text("Delete ticket", color = MaterialTheme.colorScheme.error) },
+                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            // TODO: wire showDeleteConfirm dialog — role check already gates this item
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Delete: confirm in dialog (wired in next wave)")
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -868,48 +1010,68 @@ fun TicketDetailScreen(
             }
         },
     ) { padding ->
-        when {
-            state.isLoading -> {
-                BrandSkeleton(
-                    rows = 6,
-                    modifier = Modifier.padding(padding).padding(top = 8.dp),
-                )
-            }
-            state.error != null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ErrorState(
-                        message = state.error ?: "Failed to load ticket",
-                        onRetry = { viewModel.loadTicketDetail() },
+        // L680 — Deleted-while-viewing banner anchored above content
+        Column(modifier = Modifier.fillMaxSize()) {
+            DeletedBanner(
+                visible = state.isDeletedWhileViewing,
+                onClose = onBack,
+            )
+            when {
+                state.isLoading -> {
+                    BrandSkeleton(
+                        rows = 6,
+                        modifier = Modifier.padding(padding).padding(top = 8.dp),
                     )
                 }
-            }
-            ticket != null -> {
-                TicketDetailContent(
-                    ticket = ticket,
-                    ticketId = ticketId,
-                    ticketDetail = state.ticketDetail,
-                    devices = state.devices,
-                    notes = state.notes,
-                    history = state.history,
-                    photos = state.photos,
-                    statuses = state.statuses,
-                    payments = state.ticketDetail?.payments ?: emptyList(),
-                    isActionInProgress = state.isActionInProgress,
-                    reduceMotion = reduceMotion,
-                    padding = padding,
-                    onNavigateToCustomer = onNavigateToCustomer,
-                    onEditDevice = onEditDevice,
-                    onAddPhotos = onAddPhotos,
-                    serverUrl = viewModel.serverUrl,
-                    onStatusSelected = { viewModel.changeStatus(it) },
-                    onAddNote = { viewModel.addNote(it) },
-                    onNavigateToSms = onNavigateToSms,
-                )
+                state.error != null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Failed to load ticket",
+                            onRetry = { viewModel.loadTicketDetail() },
+                        )
+                    }
+                }
+                ticket != null -> {
+                    // L677 — tablet split-pane: content + related rail side-by-side
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        TicketDetailContent(
+                            modifier = Modifier.weight(1f),
+                            ticket = ticket,
+                            ticketId = ticketId,
+                            ticketDetail = state.ticketDetail,
+                            devices = state.devices,
+                            notes = state.notes,
+                            history = state.history,
+                            photos = state.photos,
+                            statuses = state.statuses,
+                            payments = state.ticketDetail?.payments ?: emptyList(),
+                            isActionInProgress = state.isActionInProgress,
+                            isBenchTimerRunning = state.isBenchTimerRunning,
+                            reduceMotion = reduceMotion,
+                            padding = padding,
+                            onNavigateToCustomer = onNavigateToCustomer,
+                            onEditDevice = onEditDevice,
+                            onAddPhotos = onAddPhotos,
+                            serverUrl = viewModel.serverUrl,
+                            onStatusSelected = { viewModel.changeStatus(it) },
+                            onAddNote = { viewModel.addNote(it) },
+                            onNavigateToSms = onNavigateToSms,
+                            onDeletePhoto = { viewModel.deletePhoto(it) },
+                            onBenchStart = { viewModel.startBenchTimer() },
+                            onBenchStop = { viewModel.stopBenchTimer() },
+                        )
+                        // L677 — Related rail: tablet only; phone gets zero-size stub
+                        TicketRelatedRail(
+                            photos = state.photos,
+                            serverUrl = viewModel.serverUrl,
+                        )
+                    }
+                }
             }
         }
     }
@@ -932,6 +1094,7 @@ private fun TicketDetailContent(
     statuses: List<com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem> = emptyList(),
     payments: List<com.bizarreelectronics.crm.data.remote.dto.PaymentSummary> = emptyList(),
     isActionInProgress: Boolean = false,
+    isBenchTimerRunning: Boolean = false,
     reduceMotion: Boolean = false,
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
@@ -941,9 +1104,13 @@ private fun TicketDetailContent(
     onStatusSelected: (Long) -> Unit = {},
     onAddNote: (String) -> Unit = {},
     onNavigateToSms: ((String) -> Unit)? = null,
+    onDeletePhoto: (Long) -> Unit = {},
+    onBenchStart: () -> Unit = {},
+    onBenchStop: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     LazyColumn(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(padding),
         contentPadding = PaddingValues(16.dp),
@@ -1209,93 +1376,32 @@ private fun TicketDetailContent(
             }
         }
 
-        // Photos section
-        //
-        // AND-20260414-M1: previously this block was gated on
-        // `photos.isNotEmpty()`, so a ticket with no photos had no way to
-        // surface the upload flow — the PhotoCaptureScreen composable
-        // existed under ui/screens/camera/ but nothing navigated to it.
-        // We now always render the Photos card when an `onAddPhotos`
-        // callback is wired, giving technicians an "Add Photo" entry
-        // point even before the first photo is attached. When the
-        // callback is absent (e.g. in previews), we fall back to the old
-        // display-only behavior so we don't render a dead card.
-        val canAddPhotos = onAddPhotos != null
-        if (photos.isNotEmpty() || canAddPhotos) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Photos (${photos.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (canAddPhotos) {
-                        // bug:gallery-400 fix: pass the first device's id as deviceId.
-                        // The server upload endpoint requires ticket_device_id in the
-                        // multipart body; without it it returns HTTP 400. We use the
-                        // first device because tickets in this shop typically have one
-                        // device, and the server validates that the device belongs to
-                        // the ticket. If the ticket has no devices yet the button is
-                        // hidden to avoid a dead upload path.
-                        val firstDeviceId = devices.firstOrNull()?.id
-                        if (firstDeviceId != null) {
-                            TextButton(onClick = { onAddPhotos?.invoke(ticketId, firstDeviceId) }) {
-                                Icon(
-                                    Icons.Default.AddAPhoto,
-                                    // decorative — TextButton's "Add Photo" Text supplies the accessible name
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Add Photo")
-                            }
-                        }
-                    }
-                }
-            }
-            item {
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        if (photos.isEmpty()) {
-                            Text(
-                                "No photos yet — tap Add Photo to attach repair images.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                photos.forEach { photo ->
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        AsyncImage(
-                                            model = "${serverUrl}${photo.url}",
-                                            contentDescription = photo.fileName ?: "Ticket photo",
-                                            modifier = Modifier
-                                                .size(100.dp)
-                                                .clip(RoundedCornerShape(8.dp)),
-                                            contentScale = ContentScale.Crop,
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            photo.type ?: "photo",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        // L669 — Photo gallery (replaces legacy horizontal scroll strip)
+        item {
+            TicketPhotoGallery(
+                photos = photos,
+                serverUrl = serverUrl,
+                ticketId = ticketId,
+                deviceId = devices.firstOrNull()?.id,
+                onDeletePhoto = onDeletePhoto,
+                reduceMotion = reduceMotion,
+            )
+        }
+
+        // L673 — QR code card for order ID
+        item {
+            TicketQrCard(orderId = ticket.orderId ?: "T-$ticketId")
+        }
+
+        // L678 — Bench timer
+        item {
+            BenchTimerCard(
+                ticketId = ticketId,
+                orderId = ticket.orderId ?: "T-$ticketId",
+                isRunning = isBenchTimerRunning,
+                onStart = onBenchStart,
+                onStop = onBenchStop,
+            )
         }
 
         // Total

@@ -120,6 +120,24 @@ interface TicketApi {
     // @PATCH("tickets/{id}/star")
     // suspend fun toggleStar(@Path("id") id: Long): ApiResponse<TicketDetail>
 
+    // ─── Bench timer (§4.2 L678) ───
+    // Server endpoint: POST /tickets/:id/bench-start / /bench-stop
+    // Returns 404 stub fallback when the server doesn't expose the route yet.
+
+    /** Start a bench timer session for this ticket. */
+    @POST("tickets/{id}/bench-start")
+    suspend fun startBenchTimer(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    /** Stop the active bench timer session for this ticket. */
+    @POST("tickets/{id}/bench-stop")
+    suspend fun stopBenchTimer(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    // ─── Photo delete (§4.2 L669) ───
+
+    /** Delete a photo by its server-assigned ID. */
+    @DELETE("tickets/photos/{photoId}")
+    suspend fun deletePhoto(@Path("photoId") photoId: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
     // U3 fix: photo upload endpoint backing PhotoCaptureScreen's gallery picker.
     // Server matches on ticket-level photos (tickets.routes.ts POST /:id/photos).
     // Uses multipart field name "photos" per upload.array('photos', 20).
