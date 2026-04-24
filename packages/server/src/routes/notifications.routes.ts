@@ -6,6 +6,9 @@ import type { AsyncDb } from '../db/async-db.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { validateId } from '../utils/validate.js';
 import { audit } from '../utils/audit.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('notifications');
 
 function requireManagerOrAdmin(req: any): void {
   const role = req?.user?.role;
@@ -149,7 +152,14 @@ router.get(
     );
 
     // Return empty policies object when none stored — client builds its own defaults
-    const policies: unknown = row?.value ? JSON.parse(row.value) : { policies: [] };
+    let policies: unknown = { policies: [] };
+    if (row?.value) {
+      try {
+        policies = JSON.parse(row.value);
+      } catch {
+        logger.warn('[notifications] focus_policies JSON.parse failed for user', { userId });
+      }
+    }
     res.json({ success: true, data: policies });
   }),
 );
@@ -157,6 +167,7 @@ router.get(
 router.put(
   '/focus-policies',
   asyncHandler(async (req, res) => {
+    const db = req.db;
     const adb = req.asyncDb;
     const userId = req.user!.id;
     const body = req.body;
@@ -174,6 +185,8 @@ router.put(
       userId,
       json,
     );
+
+    audit(db, 'focus_policies_updated', userId, req.ip ?? '', { policies: body });
 
     res.json({ success: true, data: null });
   }),
