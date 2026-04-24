@@ -261,6 +261,7 @@ export function PaymentLinksPage() {
                     <button type="button"
                       className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
                       onClick={() => copyLink(row.token)}
+                      aria-label={`Copy payment link for ${row.token.slice(0, 8)}`}
                     >
                       Copy
                     </button>

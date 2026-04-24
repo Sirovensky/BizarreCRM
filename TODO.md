@@ -722,6 +722,4 @@ Verified working. Not TODOs.
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
-- [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
-  <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 

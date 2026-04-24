@@ -250,6 +250,7 @@ export function DunningPage() {
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })
                       }
                       disabled={toggleMutation.isPending && toggleMutation.variables?.id === seq.id}
+                      aria-label={`${seq.is_active ? 'Disable' : 'Enable'} dunning sequence ${seq.name}`}
                     >
                       {seq.is_active ? 'Disable' : 'Enable'}
                     </button>
