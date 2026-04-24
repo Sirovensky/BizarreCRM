@@ -2899,7 +2899,7 @@ Mirror to iOS §331 + Web §332.
 | Stylus annotation | n/a | planned (Pencil) | planned (S Pen / USI) | §17.9 |
 | Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
 | SSO | ✅ | planned | planned | §2.20 |
-| Audit log | ✅ | planned | planned | §52 |
+| Audit log | ✅ | planned | partial | §52 |
 | Data import wizard | ✅ | planned | planned | §50 |
 | Data export | ✅ | planned | planned | §51 |
 | Multi-location | ✅ | planned | planned | §63 |
@@ -3358,15 +3358,15 @@ _Server endpoints: `POST /exports/start`, `GET /exports/:id/download`._
 _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 
 ### 52.1 Feed
-- [ ] Reverse chronological list.
-- [ ] Columns: timestamp / actor / action / entity / diff preview.
+- [x] Reverse chronological list.
+- [x] Columns: timestamp / actor / action / entity / diff preview.
 
 ### 52.2 Filters
-- [ ] By actor, action type, entity, date range.
+- [x] By actor, action type, entity, date range.
 
 ### 52.3 Diff view
-- [ ] Field-level before/after with highlight.
-- [ ] Redacted fields still show "(redacted)" placeholder.
+- [x] Field-level before/after with highlight.
+- [~] Redacted fields still show "(redacted)" placeholder. (server concern; client shows raw diffJson)
 
 ### 52.4 Export
 - [ ] Filtered set → CSV via SAF.
@@ -3376,7 +3376,7 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 - [ ] Warning banner if chain broken.
 
 ### 52.6 Access
-- [ ] Admin + Owner roles only.
+- [x] Admin + Owner roles only.
 
 ---
 ## 53. Training Mode (sandbox)
@@ -3403,18 +3403,18 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 ## 54. Command Palette (Ctrl+K)
 
 ### 54.1 Trigger
-- [ ] Ctrl+K on hardware keyboard; top-bar search icon on touch.
+- [x] Ctrl+K on hardware keyboard; top-bar search icon on touch.
 
 ### 54.2 Entries
-- [ ] Nav: "Go to Tickets", "Go to Customers", ...
-- [ ] Actions: "New ticket", "Scan barcode", "Clock in", "Open printer settings".
-- [ ] Entities: recent customers / tickets / invoices (fuzzy match).
-- [ ] Settings: jump to any setting by name.
+- [x] Nav: "Go to Tickets", "Go to Customers", ...
+- [x] Actions: "New ticket", "Scan barcode", "Clock in", "Open printer settings".
+- [~] Entities: recent customers / tickets / invoices (fuzzy match). (DynamicCommandProvider interface ready; no concrete provider yet)
+- [~] Settings: jump to any setting by name. (DynamicCommandProvider interface ready; no concrete provider yet)
 
 ### 54.3 UI
-- [ ] Center-screen modal with search input + result list.
-- [ ] Arrow-key navigation; Enter to activate.
-- [ ] Recent commands pinned at top.
+- [x] Center-screen modal with search input + result list.
+- [~] Arrow-key navigation; Enter to activate. (Enter via BasicTextField; arrow-key traversal not yet wired)
+- [~] Recent commands pinned at top. (RECENT group exists; no persistence yet)
 
 ### 54.4 Power-user flag
 - [ ] Settings toggle off for staff if noisy; on by default for admins.
