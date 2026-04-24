@@ -46,6 +46,9 @@ import kotlinx.coroutines.launch
  *  - Offline verify: [PinLockViewModel] checks local PBKDF2 hash before hitting server.
  *  - Rotation banner: non-blocking info card shown after unlock when 90 days have elapsed.
  *  - Show-tap-hold: holding down on [PinDots] reveals the entered digits for up to 3 seconds.
+ *  - Forgot PIN? TextButton below keypad navigates to [onForgotPin] (§2.15 L387).
+ *    Kept above the destructive "Sign out" action so the self-service path is
+ *    preferred. Hard-lockout collapses to Sign-out-only (user must full-auth).
  *
  * Hosted by MainActivity when [com.bizarreelectronics.crm.data.local.prefs.PinPreferences.shouldLock]
  * returns true. The screen covers the nav graph so deep links and FCM taps
@@ -55,6 +58,7 @@ import kotlinx.coroutines.launch
 fun PinLockScreen(
     onUnlocked: () -> Unit,
     onSignOut: () -> Unit,
+    onForgotPin: (() -> Unit)? = null,
     viewModel: PinLockViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -82,12 +86,21 @@ fun PinLockScreen(
         rotationBanner = state.showRotationBanner,
         footer = {
             if (state.hardLockout) {
+                // Hard lockout: self-service reset won't help (too many wrong tries).
+                // Only show destructive sign-out.
                 OutlinedButton(onClick = onSignOut) {
                     Text("Sign out")
                 }
             } else {
+                // §2.15 L387 — "Forgot PIN?" first (self-service, non-destructive).
+                // "Sign out" second (destructive — clears session).
+                if (onForgotPin != null) {
+                    TextButton(onClick = onForgotPin) {
+                        Text("Forgot PIN?")
+                    }
+                }
                 TextButton(onClick = onSignOut) {
-                    Text("Forgot PIN? Sign out")
+                    Text("Sign out")
                 }
             }
         },

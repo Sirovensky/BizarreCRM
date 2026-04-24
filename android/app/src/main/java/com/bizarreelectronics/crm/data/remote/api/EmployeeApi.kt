@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.ForgotPinTriggerRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -58,6 +59,20 @@ interface EmployeeApi {
     suspend fun deactivate(
         @Path("id") employeeId: Long,
         @Body body: Map<String, String> = emptyMap(),
+    ): ApiResponse<@JvmSuppressWildcards Any>
+
+    /**
+     * §2.15 L388 — manager dispatches a PIN-reset email on behalf of a staff member.
+     *
+     * POST /employees/:id/forgot-pin/trigger
+     *   Server uses the employee's stored email address and dispatches the same
+     *   reset-token link that self-service sends. 404 tolerated — email server
+     *   may be absent on self-hosted tenants; callers guard with runCatching.
+     */
+    @POST("employees/{id}/forgot-pin/trigger")
+    suspend fun triggerForgotPin(
+        @Path("id") employeeId: Long,
+        @Body body: ForgotPinTriggerRequest = ForgotPinTriggerRequest(),
     ): ApiResponse<@JvmSuppressWildcards Any>
 
     // endregion

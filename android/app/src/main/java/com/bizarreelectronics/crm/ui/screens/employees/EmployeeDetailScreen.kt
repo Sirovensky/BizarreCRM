@@ -68,6 +68,8 @@ data class EmployeeDetailUiState(
     val actionMessage: String? = null,
     val showDeactivateDialog: Boolean = false,
     val showResetPinDialog: Boolean = false,
+    // §2.15 L388 — manager-triggered PIN reset email
+    val showSendResetLinkDialog: Boolean = false,
 )
 
 // endregion
@@ -213,6 +215,36 @@ class EmployeeDetailViewModel @Inject constructor(
         _state.value = _state.value.copy(actionMessage = null)
     }
 
+    // §2.15 L388 — manager sends a PIN-reset email on behalf of a staff member.
+
+    fun showSendResetLinkDialog() {
+        _state.value = _state.value.copy(showSendResetLinkDialog = true)
+    }
+
+    fun hideSendResetLinkDialog() {
+        _state.value = _state.value.copy(showSendResetLinkDialog = false)
+    }
+
+    fun confirmSendResetLink() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(showSendResetLinkDialog = false)
+            runCatching { employeeApi.triggerForgotPin(employeeId) }
+                .onSuccess {
+                    _state.value = _state.value.copy(
+                        actionMessage = "Reset link sent to the staff member's email.",
+                    )
+                }
+                .onFailure { t ->
+                    val msg = if (t is retrofit2.HttpException && t.code() == 404) {
+                        "Email reset is not enabled on this server. Reset the PIN directly instead."
+                    } else {
+                        t.message ?: "Failed to send reset link."
+                    }
+                    _state.value = _state.value.copy(actionMessage = msg)
+                }
+        }
+    }
+
     // endregion
 }
 
@@ -265,6 +297,26 @@ fun EmployeeDetailScreen(
         )
     }
 
+    // §2.15 L388 — Send PIN reset email on behalf of a staff member.
+    if (state.showSendResetLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.hideSendResetLinkDialog() },
+            title = { Text("Send reset link?") },
+            text = {
+                Text(
+                    "A PIN reset link will be sent to this staff member's email address. " +
+                        "The link expires in 15 minutes. Requires email to be configured on the server.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmSendResetLink() }) { Text("Send") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.hideSendResetLinkDialog() }) { Text("Cancel") }
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -298,6 +350,7 @@ fun EmployeeDetailScreen(
                     state = state,
                     onShowDeactivate = { viewModel.showDeactivateDialog() },
                     onShowResetPin = { viewModel.showResetPinDialog() },
+                    onShowSendResetLink = { viewModel.showSendResetLinkDialog() },
                     padding = padding,
                 )
             }
@@ -314,6 +367,7 @@ private fun EmployeeDetailBody(
     state: EmployeeDetailUiState,
     onShowDeactivate: () -> Unit,
     onShowResetPin: () -> Unit,
+    onShowSendResetLink: () -> Unit,
     padding: PaddingValues,
 ) {
     val employee = state.employee ?: return
@@ -491,6 +545,7 @@ private fun EmployeeDetailBody(
         }
 
         // ── §14.2 L1621/L1622 — Admin actions ───────────────────────────────
+        // ── §2.15 L388 adds "Send reset link to staff's email" alongside ───
         if (state.isAdmin) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -525,6 +580,20 @@ private fun EmployeeDetailBody(
                                 Spacer(Modifier.width(4.dp))
                                 Text("Deactivate")
                             }
+                        }
+                        // §2.15 L388 — send PIN-reset email on behalf of staff member.
+                        // 404 tolerated: ViewModel shows a graceful snackbar message.
+                        OutlinedButton(
+                            onClick = onShowSendResetLink,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                Icons.Default.Email,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Send reset link to staff's email")
                         }
                     }
                 }

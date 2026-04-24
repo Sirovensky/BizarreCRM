@@ -268,6 +268,16 @@ class MainActivity : FragmentActivity() {
                             authPreferences.clear()
                             pinGated = false
                         },
+                        // §2.15 L387 — "Forgot PIN?" lifts the PIN gate and
+                        // publishes the ForgotPin route into the nav bus so
+                        // AppNavGraph lands the user on the forgot-pin screen
+                        // immediately after the gate clears.
+                        onForgotPin = {
+                            pinGated = false
+                            deepLinkBus.publish(
+                                com.bizarreelectronics.crm.ui.navigation.Screen.ForgotPin.route,
+                            )
+                        },
                     )
                 } else {
                     // §13.2: prompt for POST_NOTIFICATIONS on first unlock
@@ -463,6 +473,17 @@ class MainActivity : FragmentActivity() {
                 .validateMagicToken(rawToken) ?: return null
             deepLinkBus.publishMagicLinkToken(token)
             return null // no nav route — VM handles the token via pendingMagicToken
+        }
+
+        // §2.15 L387-L388 — forgot-PIN reset link: bizarrecrm://forgot-pin/<token>
+        // Recognised before the generic whitelist. ForgotPinViewModel collects
+        // [DeepLinkBus.pendingForgotPinToken] and advances to the SettingPin state.
+        if (data.host == "forgot-pin") {
+            val rawToken = data.path?.trimStart('/').orEmpty()
+            val token = com.bizarreelectronics.crm.util.DeepLinkAllowlist
+                .validateForgotPinToken(rawToken) ?: return null
+            deepLinkBus.publishForgotPinToken(token)
+            return null // no nav route — ForgotPinViewModel handles via pendingForgotPinToken
         }
 
         // Normalise "bizarrecrm://ticket/new" → "ticket/new". We intentionally

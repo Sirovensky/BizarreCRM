@@ -81,6 +81,16 @@ object DeepLinkAllowlist {
             }
         }
 
+        // §2.15 L387-L388 — forgot-PIN reset link: "forgot-pin/<token>"
+        if (candidate.startsWith("forgot-pin/")) {
+            val token = candidate.removePrefix("forgot-pin/")
+            return if (SETUP_TOKEN_PATTERN.matches(token)) {
+                "forgot-pin/$token" // sentinel returned to MainActivity; not a nav route
+            } else {
+                null // invalid token — silent fallback
+            }
+        }
+
         return if (candidate in routes) candidate else null
     }
 
@@ -104,6 +114,18 @@ object DeepLinkAllowlist {
      *   - Custom scheme URIs:  bizarrecrm://magic/<token>
      */
     fun validateMagicToken(token: String?): String? {
+        if (token.isNullOrBlank()) return null
+        return if (SETUP_TOKEN_PATTERN.matches(token)) token else null
+    }
+
+    /**
+     * §2.15 L387-L388 — validates a raw forgot-PIN reset token string.
+     * Returns non-null only when [token] satisfies [SETUP_TOKEN_PATTERN]
+     * (same 20–128 URL-safe base64 character pattern as other tokens).
+     * Used by MainActivity to validate tokens extracted from:
+     *   - Custom scheme URIs: bizarrecrm://forgot-pin/<token>
+     */
+    fun validateForgotPinToken(token: String?): String? {
         if (token.isNullOrBlank()) return null
         return if (SETUP_TOKEN_PATTERN.matches(token)) token else null
     }

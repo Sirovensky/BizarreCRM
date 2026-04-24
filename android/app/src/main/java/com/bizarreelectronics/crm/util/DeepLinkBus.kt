@@ -106,4 +106,31 @@ class DeepLinkBus @Inject constructor() {
     fun consumeMagicToken() {
         _pendingMagicToken.value = null
     }
+
+    // §2.15 L387-L388 — Forgot-PIN reset-token bus.
+    //
+    // MainActivity.resolveDeepLink recognises:
+    //   bizarrecrm://forgot-pin/<token>
+    // After DeepLinkAllowlist validates the token shape, MainActivity calls
+    // [publishForgotPinToken] and returns null (no nav route — ForgotPinViewModel
+    // collects and advances to the SettingPin state).
+    // Consumers MUST call [consumeForgotPinToken] after processing.
+
+    private val _pendingForgotPinToken = MutableStateFlow<String?>(null)
+
+    /** Collected by ForgotPinViewModel to redeem the PIN-reset token. */
+    val pendingForgotPinToken: StateFlow<String?> = _pendingForgotPinToken.asStateFlow()
+
+    /**
+     * Called by MainActivity when a `bizarrecrm://forgot-pin/<token>` URI is received.
+     * [token] has already been validated by [DeepLinkAllowlist.validateForgotPinToken].
+     */
+    fun publishForgotPinToken(token: String) {
+        _pendingForgotPinToken.value = token
+    }
+
+    /** Called by ForgotPinViewModel after [pendingForgotPinToken] has been processed. */
+    fun consumeForgotPinToken() {
+        _pendingForgotPinToken.value = null
+    }
 }
