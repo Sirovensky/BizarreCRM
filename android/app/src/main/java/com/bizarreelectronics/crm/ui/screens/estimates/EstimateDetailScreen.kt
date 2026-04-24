@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.estimates
 
+import android.content.Context
+import android.print.PrintAttributes
+import android.print.PrintManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -8,153 +11,24 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
-import com.bizarreelectronics.crm.data.repository.EstimateRepository
+import com.bizarreelectronics.crm.data.remote.api.EstimateVersion
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
+import com.bizarreelectronics.crm.ui.screens.invoices.components.sendEmail
+import com.bizarreelectronics.crm.ui.screens.invoices.components.sendSms
 import com.bizarreelectronics.crm.util.formatAsMoney
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import javax.inject.Inject
-
-data class EstimateDetailUiState(
-    val estimate: EstimateEntity? = null,
-    val isLoading: Boolean = true,
-    val error: String? = null,
-    val actionMessage: String? = null,
-    val isActionInProgress: Boolean = false,
-    val convertedTicketId: Long? = null,
-    // AND-20260414-M7: bump after a successful delete so the screen can
-    // navigate back via a LaunchedEffect — keeps the click handler free of
-    // navigation side effects and mirrors how InvoiceDetail uses a counter
-    // to close its payment dialog.
-    val deletedCounter: Int = 0,
-)
-
-@HiltViewModel
-class EstimateDetailViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
-    private val estimateRepository: EstimateRepository,
-) : ViewModel() {
-
-    private val estimateId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
-
-    private val _state = MutableStateFlow(EstimateDetailUiState())
-    val state = _state.asStateFlow()
-
-    private var collectJob: Job? = null
-
-    init {
-        loadEstimate()
-    }
-
-    fun loadEstimate() {
-        collectJob?.cancel()
-        collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            estimateRepository.getEstimate(estimateId)
-                .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load estimate",
-                    )
-                }
-                .collectLatest { entity ->
-                    _state.value = _state.value.copy(
-                        estimate = entity,
-                        isLoading = false,
-                    )
-                }
-        }
-    }
-
-    fun convertToTicket() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                val ticketId = estimateRepository.convertEstimate(estimateId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = if (ticketId != null) "Converted to ticket #$ticketId" else "Estimate converted",
-                    convertedTicketId = ticketId,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to convert estimate. You must be online.",
-                )
-            }
-        }
-    }
-
-    fun sendViaSms() = send("sms")
-
-    fun sendViaEmail() = send("email")
-
-    private fun send(method: String) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                estimateRepository.sendEstimate(estimateId, method)
-                val label = if (method == "sms") "SMS" else "email"
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate sent via $label",
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to send estimate. You must be online.",
-                )
-            }
-        }
-    }
-
-    fun delete() {
-        if (_state.value.isActionInProgress) return
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                estimateRepository.deleteEstimate(estimateId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate deleted",
-                    deletedCounter = _state.value.deletedCounter + 1,
-                )
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to delete estimate",
-                )
-            }
-        }
-    }
-
-    fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
-    }
-
-    fun clearConvertedTicket() {
-        _state.value = _state.value.copy(convertedTicketId = null)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -169,10 +43,13 @@ fun EstimateDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val estimate = state.estimate
+    val context = LocalContext.current
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showSendSheet by remember { mutableStateOf(false) }
+    val sendSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { message ->
@@ -189,14 +66,55 @@ fun EstimateDetailScreen(
         }
     }
 
-    // AND-20260414-M7: navigate back once delete succeeds. Using a LaunchedEffect
-    // keyed on the counter (not a boolean) so repeated deletes are correctly
-    // observed; not that a second delete is possible from this screen, but the
-    // counter pattern is defensive and matches InvoiceDetail.
+    // AND-20260414-M7: navigate back once delete succeeds.
     LaunchedEffect(state.deletedCounter) {
         if (state.deletedCounter > 0) {
             onDeleted?.invoke() ?: onBack()
         }
+    }
+
+    // L1332 — reject dialog with required reason field
+    if (state.showRejectDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.onRejectDismissed() },
+            title = { Text("Reject Estimate") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Please provide a reason for rejection.")
+                    OutlinedTextField(
+                        value = state.rejectReason,
+                        onValueChange = { viewModel.onRejectReasonChanged(it) },
+                        label = { Text("Reason *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        isError = state.rejectReason.isBlank(),
+                        supportingText = {
+                            if (state.rejectReason.isBlank()) Text("Required")
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.rejectEstimate() },
+                    enabled = state.rejectReason.isNotBlank(),
+                ) { Text("Reject", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.onRejectDismissed() }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // L1331 — approve confirm dialog
+    if (state.showApproveConfirm) {
+        ConfirmDialog(
+            title = "Approve Estimate",
+            message = "Mark this estimate as approved?",
+            confirmLabel = "Approve",
+            onConfirm = { viewModel.approveEstimate() },
+            onDismiss = { viewModel.onApproveDismissed() },
+        )
     }
 
     if (showDeleteConfirm) {
@@ -213,6 +131,61 @@ fun EstimateDetailScreen(
         )
     }
 
+    // L1330 — send bottom sheet: SMS / Email with pre-filled body
+    if (showSendSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSendSheet = false },
+            sheetState = sendSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Send Estimate", style = MaterialTheme.typography.titleMedium)
+                HorizontalDivider()
+                val estimateNum = estimate?.orderId?.ifBlank { "EST-$estimateId" } ?: "EST-$estimateId"
+                val phone = estimate?.let { null } // customerPhone not on entity; intent helper handles null
+                val email = estimate?.let { null } // customerEmail not on entity; intent helper handles null
+                val estimateUrl = "Your estimate #$estimateNum from Bizarre Electronics"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            showSendSheet = false
+                            // API-side send
+                            viewModel.sendViaSms()
+                            // Also open native SMS composer pre-filled
+                            sendSms(context, phone, estimateNum, null)
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Sms, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("SMS")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showSendSheet = false
+                            viewModel.sendViaEmail()
+                            sendEmail(context, email, estimateNum, null)
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Email")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -220,10 +193,7 @@ fun EstimateDetailScreen(
                 title = estimate?.orderId?.ifBlank { "EST-$estimateId" } ?: "EST-$estimateId",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -236,42 +206,51 @@ fun EstimateDetailScreen(
                             onDismissRequest = { showMenu = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Send SMS") },
-                                // decorative — DropdownMenuItem's text Text supplies the accessible name
-                                leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.sendViaSms()
-                                },
+                                text = { Text("Send") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+                                onClick = { showMenu = false; showSendSheet = true },
                             )
                             DropdownMenuItem(
-                                text = { Text("Send Email") },
-                                // decorative — DropdownMenuItem's text Text supplies the accessible name
-                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.sendViaEmail()
-                                },
+                                text = { Text("Approve") },
+                                leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
+                                onClick = { showMenu = false; viewModel.onApproveRequested() },
                             )
                             DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "Delete",
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                },
+                                text = { Text("Reject") },
+                                leadingIcon = { Icon(Icons.Default.ThumbDown, contentDescription = null) },
+                                onClick = { showMenu = false; viewModel.onRejectRequested() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Convert to invoice") },
+                                leadingIcon = { Icon(Icons.Default.Receipt, contentDescription = null) },
+                                onClick = { showMenu = false; viewModel.convertToInvoice() },
+                            )
+                            // L1336 — print
+                            if (estimate != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Print / PDF") },
+                                    leadingIcon = { Icon(Icons.Default.Print, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        printEstimate(
+                                            context = context,
+                                            estimateNumber = estimate.orderId.ifBlank { "EST-${estimate.id}" },
+                                            customerName = estimate.customerName,
+                                            total = estimate.total,
+                                        )
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Default.Delete,
-                                        // decorative — DropdownMenuItem's "Delete" text Text supplies the accessible name
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.error,
                                     )
                                 },
-                                onClick = {
-                                    showMenu = false
-                                    showDeleteConfirm = true
-                                },
+                                onClick = { showMenu = false; showDeleteConfirm = true },
                             )
                         }
                     }
@@ -307,24 +286,35 @@ fun EstimateDetailScreen(
                 EstimateDetailContent(
                     estimate = estimate,
                     isActionInProgress = state.isActionInProgress,
+                    versions = state.versions,
+                    selectedVersionIndex = state.selectedVersionIndex,
                     padding = padding,
-                    onConvert = { viewModel.convertToTicket() },
-                    onSendSms = { viewModel.sendViaSms() },
-                    onSendEmail = { viewModel.sendViaEmail() },
+                    onConvertToTicket = { viewModel.convertToTicket() },
+                    onConvertToInvoice = { viewModel.convertToInvoice() },
+                    onSend = { showSendSheet = true },
+                    onApprove = { viewModel.onApproveRequested() },
+                    onReject = { viewModel.onRejectRequested() },
+                    onVersionSelected = { viewModel.onVersionSelected(it) },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EstimateDetailContent(
     estimate: EstimateEntity,
     isActionInProgress: Boolean,
+    versions: List<EstimateVersion>,
+    selectedVersionIndex: Int,
     padding: PaddingValues,
-    onConvert: () -> Unit,
-    onSendSms: () -> Unit,
-    onSendEmail: () -> Unit,
+    onConvertToTicket: () -> Unit,
+    onConvertToInvoice: () -> Unit,
+    onSend: () -> Unit,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onVersionSelected: (Int) -> Unit,
 ) {
     val alreadyConverted = estimate.convertedTicketId != null ||
         estimate.status.equals("converted", ignoreCase = true)
@@ -374,6 +364,17 @@ private fun EstimateDetailContent(
             }
         }
 
+        // L1335 — Version dropdown (only when server returns versions)
+        if (versions.isNotEmpty()) {
+            item {
+                VersionDropdown(
+                    versions = versions,
+                    selectedIndex = selectedVersionIndex,
+                    onVersionSelected = onVersionSelected,
+                )
+            }
+        }
+
         // Customer card
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
@@ -412,10 +413,7 @@ private fun EstimateDetailContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            estimate.subtotal.formatAsMoney(),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text(estimate.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                     }
                     if (estimate.discount > 0) {
                         Row(
@@ -434,10 +432,7 @@ private fun EstimateDetailContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("Tax", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            estimate.totalTax.formatAsMoney(),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text(estimate.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
                     }
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
@@ -476,10 +471,7 @@ private fun EstimateDetailContent(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text(
-                            estimate.validUntil.take(10),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                        Text(estimate.validUntil.take(10), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
@@ -498,75 +490,163 @@ private fun EstimateDetailContent(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text(
-                            estimate.notes,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text(estimate.notes, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
         }
 
-        // Convert to Ticket CTA — purple primary (positive terminal action)
+        // L1330 Send
         item {
-            Spacer(modifier = Modifier.height(4.dp))
-            Button(
-                onClick = onConvert,
+            OutlinedButton(
+                onClick = onSend,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isActionInProgress && !alreadyConverted,
+                enabled = !isActionInProgress,
             ) {
-                // decorative — Button's "Convert to Ticket" / "Already Converted" Text supplies the accessible name
-                Icon(
-                    Icons.Default.SwapHoriz,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (alreadyConverted) "Already Converted" else "Convert to Ticket")
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Send")
             }
         }
 
-        // Secondary send actions — teal text buttons (secondary importance)
+        // L1331/1332 Approve / Reject
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(
-                    onClick = onSendSms,
+                Button(
+                    onClick = onApprove,
                     modifier = Modifier.weight(1f),
-                    enabled = !isActionInProgress,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.secondary,
+                    enabled = !isActionInProgress && !estimate.status.equals("approved", ignoreCase = true),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
                     ),
                 ) {
-                    // decorative — TextButton's "Send SMS" Text supplies the accessible name
-                    Icon(
-                        Icons.Default.Sms,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Send SMS")
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Approve")
                 }
-                TextButton(
-                    onClick = onSendEmail,
+                OutlinedButton(
+                    onClick = onReject,
                     modifier = Modifier.weight(1f),
-                    enabled = !isActionInProgress,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.secondary,
+                    enabled = !isActionInProgress && !estimate.status.equals("rejected", ignoreCase = true),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    // decorative — TextButton's "Send Email" Text supplies the accessible name
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Send Email")
+                    Icon(Icons.Default.ThumbDown, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Reject")
                 }
             }
         }
+
+        // L1333 Convert to Ticket CTA — purple primary (positive terminal action)
+        item {
+            Button(
+                onClick = onConvertToTicket,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isActionInProgress && !alreadyConverted,
+            ) {
+                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (alreadyConverted) "Already Converted" else "Convert to Ticket")
+            }
+        }
+
+        // L1334 Convert to Invoice
+        item {
+            OutlinedButton(
+                onClick = onConvertToInvoice,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isActionInProgress,
+            ) {
+                Icon(Icons.Default.Receipt, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Convert to Invoice")
+            }
+        }
+    }
+}
+
+// ── L1335 Version dropdown ────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VersionDropdown(
+    versions: List<EstimateVersion>,
+    selectedIndex: Int,
+    onVersionSelected: (Int) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val selected = versions.getOrNull(selectedIndex)
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = selected?.let { "v${it.versionNumber} — ${it.createdAt.take(10)}" } ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Version") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            versions.forEachIndexed { index, version ->
+                DropdownMenuItem(
+                    text = { Text("v${version.versionNumber} — ${version.createdAt.take(10)} (${version.status})") },
+                    onClick = {
+                        onVersionSelected(index)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+// ── L1336 Print / PDF preview ─────────────────────────────────────────────────
+
+/**
+ * Opens the system [PrintManager] with an HTML estimate summary.
+ *
+ * Mirrors [printInvoice] from InvoiceSendActions (wave 15) — reuses the same
+ * WebViewPrintDocumentAdapter approach. Falls back gracefully if PrintManager
+ * or WebView is unavailable.
+ */
+fun printEstimate(
+    context: Context,
+    estimateNumber: String,
+    customerName: String?,
+    total: Long,
+) {
+    runCatching {
+        val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
+        val totalFormatted = "$%.2f".format(total / 100.0)
+        val html = buildString {
+            append("<html><body>")
+            append("<h1>Estimate #$estimateNumber</h1>")
+            append("<p>Bizarre Electronics</p>")
+            if (!customerName.isNullOrBlank()) append("<p>Customer: $customerName</p>")
+            append("<p>Total: $totalFormatted</p>")
+            append("</body></html>")
+        }
+        val adapter = android.webkit.WebView(context).let { wv ->
+            wv.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            wv.createPrintDocumentAdapter("Estimate_$estimateNumber")
+        }
+        printManager.print(
+            "Estimate_$estimateNumber",
+            adapter,
+            PrintAttributes.Builder().build(),
+        )
     }
 }

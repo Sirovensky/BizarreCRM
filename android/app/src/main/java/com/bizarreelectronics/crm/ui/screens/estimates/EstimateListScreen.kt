@@ -1,10 +1,10 @@
 package com.bizarreelectronics.crm.ui.screens.estimates
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,19 +13,16 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
-import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -34,127 +31,110 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.estimates.components.EstimateContextMenu
+import com.bizarreelectronics.crm.ui.screens.estimates.components.EstimateFilterSheet
+import com.bizarreelectronics.crm.ui.screens.estimates.components.EstimateFilterState
+import com.bizarreelectronics.crm.ui.screens.estimates.components.EstimateStatusTabs
+import com.bizarreelectronics.crm.ui.screens.estimates.components.ExpiringSoonChip
+import com.bizarreelectronics.crm.ui.screens.estimates.components.isExpiringSoon
 import com.bizarreelectronics.crm.util.formatAsMoney
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-data class EstimateListUiState(
-    val estimates: List<EstimateEntity> = emptyList(),
-    val isLoading: Boolean = true,
-    val isRefreshing: Boolean = false,
-    val error: String? = null,
-    val searchQuery: String = "",
-    val selectedStatus: String = "All",
-)
-
-@HiltViewModel
-class EstimateListViewModel @Inject constructor(
-    private val estimateRepository: EstimateRepository,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(EstimateListUiState())
-    val state = _state.asStateFlow()
-
-    private var searchJob: Job? = null
-    private var collectJob: Job? = null
-
-    init {
-        loadEstimates()
-    }
-
-    fun loadEstimates() {
-        collectJob?.cancel()
-        collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.estimates.isEmpty(), error = null)
-            val query = _state.value.searchQuery.trim()
-            val statusFilter = _state.value.selectedStatus
-
-            val flow = if (query.isNotEmpty()) {
-                estimateRepository.searchEstimates(query)
-            } else {
-                estimateRepository.getEstimates()
-            }
-
-            flow
-                .map { estimates ->
-                    if (statusFilter == "All") {
-                        estimates
-                    } else {
-                        estimates.filter { it.status.equals(statusFilter, ignoreCase = true) }
-                    }
-                }
-                .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load estimates. Check your connection and try again.",
-                    )
-                }
-                .collectLatest { estimates ->
-                    _state.value = _state.value.copy(
-                        estimates = estimates,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
-                }
-        }
-    }
-
-    fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
-        loadEstimates()
-    }
-
-    fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(300)
-            loadEstimates()
-        }
-    }
-
-    fun onStatusChanged(status: String) {
-        _state.value = _state.value.copy(selectedStatus = status)
-        loadEstimates()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun EstimateListScreen(
     onEstimateClick: (Long) -> Unit,
     viewModel: EstimateListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val statuses = listOf("All", "Draft", "Sent", "Approved", "Rejected", "Converted")
+    val snackbarHostState = remember { SnackbarHostState() }
+    val clipboardManager = LocalClipboardManager.current
+
+    var showFilterSheet by remember { mutableStateOf(false) }
+    var showBulkDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Context-menu state — which estimate is the target
+    var contextMenuEstimate by remember { mutableStateOf<EstimateEntity?>(null) }
+
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearActionMessage()
+        }
+    }
+
+    if (showBulkDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBulkDeleteConfirm = false },
+            title = { Text("Delete ${state.selectedIds.size} estimates?") },
+            text = { Text("This will delete all selected estimates. This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBulkDeleteConfirm = false
+                    viewModel.bulkDelete()
+                }) { Text("Delete All", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // L1321 — filter sheet
+    if (showFilterSheet) {
+        EstimateFilterSheet(
+            initial = state.activeFilters,
+            onApply = { filters ->
+                showFilterSheet = false
+                viewModel.onFiltersApplied(filters)
+            },
+            onDismiss = { showFilterSheet = false },
+        )
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
-            // placement for every list screen.
             Column {
-                BrandTopAppBar(
-                    title = "Estimates",
-                    actions = {
-                        IconButton(onClick = { viewModel.loadEstimates() }) {
-                            // a11y: "Refresh estimates" is more specific than generic "Refresh"
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh estimates",
-                            )
-                        }
-                    },
-                )
+                if (state.isBulkMode) {
+                    // L1322 — bulk top bar
+                    BulkTopBar(
+                        selectedCount = state.selectedIds.size,
+                        totalCount = state.estimates.size,
+                        onSelectAll = { viewModel.selectAll() },
+                        onClose = { viewModel.exitBulkMode() },
+                    )
+                } else {
+                    BrandTopAppBar(
+                        title = "Estimates",
+                        actions = {
+                            // Filter icon — highlighted when filters are active
+                            IconButton(onClick = { showFilterSheet = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = "Filter estimates",
+                                    tint = if (state.activeFilters.isActive)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            IconButton(onClick = { viewModel.loadEstimates() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh estimates")
+                            }
+                        },
+                    )
+                }
                 WaveDivider()
+            }
+        },
+        bottomBar = {
+            // L1322 — BulkActionBar
+            if (state.isBulkMode) {
+                EstimateBulkActionBar(
+                    selectedCount = state.selectedIds.size,
+                    onSend = { viewModel.bulkSend() },
+                    onDelete = { showBulkDeleteConfirm = true },
+                )
             }
         },
     ) { padding ->
@@ -171,46 +151,15 @@ fun EstimateListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            // a11y: "Status filter" heading so TalkBack can navigate directly to this section
-            Text(
-                "Status filter",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .semantics { heading() },
+            // L1320 — Status tabs (ScrollableTabRow)
+            EstimateStatusTabs(
+                selectedStatus = state.selectedStatus,
+                onStatusSelected = { viewModel.onStatusChanged(it) },
             )
-
-            LazyRow(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(statuses, key = { it }) { status ->
-                    val isSelected = state.selectedStatus == status
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { viewModel.onStatusChanged(status) },
-                        label = { Text(status) },
-                        // a11y: Role.Tab + selection state announcement; the chip's
-                        // selected param already flips the chip visually; the
-                        // semantics here make TalkBack say "<status> filter, selected/not selected"
-                        modifier = Modifier.semantics {
-                            role = Role.Tab
-                            contentDescription = if (isSelected) {
-                                "$status filter, selected"
-                            } else {
-                                "$status filter, not selected"
-                            }
-                        },
-                    )
-                }
-            }
 
             if (!state.isLoading && state.estimates.isNotEmpty()) {
                 val estimateCount = state.estimates.size
                 val countLabel = "$estimateCount ${if (estimateCount == 1) "estimate" else "estimates"}"
-                // a11y: liveRegion=Polite so TalkBack announces when the count changes
-                // after a filter switch, without interrupting the user mid-sentence.
                 Text(
                     countLabel,
                     modifier = Modifier
@@ -228,29 +177,19 @@ fun EstimateListScreen(
 
             when {
                 state.isLoading -> {
-                    // a11y: mergeDescendants + contentDescription so TalkBack announces
-                    // "Loading estimates" on a single focus stop rather than reading
-                    // each shimmer box individually.
                     Box(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             contentDescription = "Loading estimates"
                         },
                     ) {
-                        BrandSkeleton(
-                            rows = 6,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        BrandSkeleton(rows = 6, modifier = Modifier.fillMaxSize())
                     }
                 }
                 state.error != null -> {
-                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
-                    // user is not left wondering why the list is empty after a network failure.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .semantics {
-                                liveRegion = LiveRegionMode.Assertive
-                            },
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
                         contentAlignment = Alignment.Center,
                     ) {
                         ErrorState(
@@ -260,8 +199,6 @@ fun EstimateListScreen(
                     }
                 }
                 state.estimates.isEmpty() -> {
-                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                    // into one TalkBack node so the empty state reads as a single announcement.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -271,12 +208,8 @@ fun EstimateListScreen(
                         EmptyState(
                             icon = Icons.Default.Description,
                             title = "No estimates found",
-                            // CROSS43: give users context on where estimates come from.
-                            // Android doesn't have a standalone create-estimate flow yet
-                            // (web only) — estimates appear here after a tech converts a
-                            // ticket via the web ticket detail page.
-                            subtitle = if (state.searchQuery.isNotEmpty()) {
-                                "Try a different search term"
+                            subtitle = if (state.searchQuery.isNotEmpty() || state.activeFilters.isActive) {
+                                "Try different search terms or clear filters"
                             } else {
                                 "Estimates appear here when created from a ticket."
                             },
@@ -290,8 +223,6 @@ fun EstimateListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
-                            // CROSS16-ext: bottom inset so the last row can
-                            // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
@@ -301,10 +232,65 @@ fun EstimateListScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.estimates, key = { it.id }) { estimate ->
-                                EstimateCard(
-                                    estimate = estimate,
-                                    onClick = { onEstimateClick(estimate.id) },
-                                )
+                                val isSelected = state.selectedIds.contains(estimate.id)
+                                var showContextMenu by remember { mutableStateOf(false) }
+
+                                Box {
+                                    EstimateCard(
+                                        estimate = estimate,
+                                        isSelected = isSelected,
+                                        isBulkMode = state.isBulkMode,
+                                        onClick = {
+                                            if (state.isBulkMode) {
+                                                viewModel.toggleSelection(estimate.id)
+                                            } else {
+                                                onEstimateClick(estimate.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (state.isBulkMode) {
+                                                viewModel.toggleSelection(estimate.id)
+                                            } else {
+                                                showContextMenu = true
+                                            }
+                                        },
+                                    )
+
+                                    // L1324 — context menu
+                                    EstimateContextMenu(
+                                        estimateNumber = estimate.orderId.ifBlank { "EST-${estimate.id}" },
+                                        expanded = showContextMenu,
+                                        onDismiss = { showContextMenu = false },
+                                        onOpen = { onEstimateClick(estimate.id) },
+                                        onCopyNumber = {
+                                            clipboardManager.setText(
+                                                AnnotatedString(estimate.orderId.ifBlank { "EST-${estimate.id}" })
+                                            )
+                                            viewModel.clearActionMessage() // clear stale
+                                        },
+                                        onSend = {
+                                            // route through detail for send sheet; just trigger list-level no-op
+                                            onEstimateClick(estimate.id)
+                                        },
+                                        onApprove = {
+                                            // navigate to detail to perform approve with confirm
+                                            onEstimateClick(estimate.id)
+                                        },
+                                        onReject = {
+                                            onEstimateClick(estimate.id)
+                                        },
+                                        onConvertToTicket = {
+                                            onEstimateClick(estimate.id)
+                                        },
+                                        onConvertToInvoice = {
+                                            onEstimateClick(estimate.id)
+                                        },
+                                        onDelete = {
+                                            viewModel.onLongPress(estimate.id)
+                                            showBulkDeleteConfirm = true
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -314,12 +300,17 @@ fun EstimateListScreen(
     }
 }
 
+// ── Card ──────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
-    // a11y: build the full announcement string once so it can be used in semantics.
-    // BrandCard(onClick) carries Material 3 Card Role.Button; we add contentDescription
-    // on the BrandCard modifier so TalkBack announces a single coherent sentence
-    // instead of reading each child Text node individually.
+private fun EstimateCard(
+    estimate: EstimateEntity,
+    isSelected: Boolean,
+    isBulkMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val estimateNumber = estimate.orderId.ifBlank { "EST-${estimate.id}" }
     val a11yDesc = buildString {
         append("Estimate #$estimateNumber")
@@ -328,20 +319,32 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
         val statusLabel = estimate.status.replaceFirstChar { it.uppercase() }
         append(", $statusLabel")
         val dateStr = estimate.validUntil?.take(10)?.takeIf { it.isNotBlank() }
-        if (dateStr != null) {
-            append(", dated $dateStr")
-        }
+        if (dateStr != null) append(", valid until $dateStr")
         append(". Tap to open.")
     }
 
+    // Days remaining for expiring chip
+    val expiringSoon = isExpiringSoon(estimate.validUntil)
+    val daysRemaining: Int = if (expiringSoon && !estimate.validUntil.isNullOrBlank()) {
+        runCatching {
+            val parts = estimate.validUntil.take(10).split("-")
+            val cal = java.util.Calendar.getInstance()
+            val today = java.util.Calendar.getInstance()
+            cal.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+            val diff = (cal.timeInMillis - today.timeInMillis) / (1000 * 60 * 60 * 24)
+            diff.toInt()
+        }.getOrDefault(0)
+    } else 0
+
     BrandCard(
-        // a11y: contentDescription overrides merged child-text reading; 48dp floor
-        // ensures the row meets the Material 3 minimum touch target.
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .semantics { contentDescription = a11yDesc },
-        onClick = onClick,
+        onClick = null, // handled by combinedClickable above
     ) {
         Row(
             modifier = Modifier
@@ -350,14 +353,31 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    estimate.orderId.ifBlank { "EST-${estimate.id}" },
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface,
+            // L1322 — checkbox in bulk mode
+            if (isBulkMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = null, // handled by card click
+                    modifier = Modifier.padding(end = 8.dp),
                 )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        estimateNumber,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    // L1323 — expiring-soon chip
+                    if (expiringSoon) {
+                        ExpiringSoonChip(daysRemaining = daysRemaining)
+                    }
+                }
                 Text(
                     estimate.customerName ?: "Unknown",
                     style = MaterialTheme.typography.bodyMedium,
@@ -382,6 +402,69 @@ private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
+            }
+        }
+    }
+}
+
+// ── Bulk UI components ────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BulkTopBar(
+    selectedCount: Int,
+    totalCount: Int,
+    onSelectAll: () -> Unit,
+    onClose: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text("$selectedCount selected") },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Exit selection mode")
+            }
+        },
+        actions = {
+            TextButton(onClick = onSelectAll) {
+                Text("All ($totalCount)")
+            }
+        },
+    )
+}
+
+@Composable
+private fun EstimateBulkActionBar(
+    selectedCount: Int,
+    onSend: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    BottomAppBar {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onSend,
+                modifier = Modifier.weight(1f),
+                enabled = selectedCount > 0,
+            ) {
+                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Send ($selectedCount)")
+            }
+            Button(
+                onClick = onDelete,
+                modifier = Modifier.weight(1f),
+                enabled = selectedCount > 0,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Delete ($selectedCount)")
             }
         }
     }
