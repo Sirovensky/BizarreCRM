@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-62 server/middleware — fileUploadValidator quota TOCTOU)
+
+- [x] SCAN-1092. **`fileUploadValidator` pre-checked `currentCount + incoming > quota` OUTSIDE `withCounterLock`, then later incremented INSIDE the lock** — two concurrent uploaders could both observe `count=N`, both pass the pre-check, both reach `adjustFileCounter`, and both bump — admitting up to 2× past the cap per racing pair. Added an optional `quota` parameter to `adjustFileCounter` so the definitive read-check-write happens atomically inside the lock, plus a dedicated `FileCountQuotaExceededError` the middleware catches to return 403 and clean up uploaded files. The fast-fail pre-check is kept so obviously-over-cap requests don't waste magic-byte + virus scan work first — but the authoritative admission decision is now under the lock.
+
 ## Closed 2026-04-24 (wave-62 server/inventory — PO line-item validation)
 
 - [x] SCAN-1075. **`POST /inventory/purchase-orders` accepted line-items with no quantity/price/id validation** — `(item.quantity_ordered || 0) * (item.cost_price || 0)` coerced non-numeric strings to NaN and poisoned the stored `subtotal`/`total`; a missing `inventory_item_id` passed straight through to the FK INSERT producing either an orphan row (when the column was nullable) or a 500. Added an upfront `validItems` map that runs every raw item through `validateId` / `validateIntegerQuantity` / `validatePrice` — subtotal now arithmetic only on validated numbers, rounded to 2 decimal places, and the downstream INSERT loop uses the typed `validItems` shape instead of re-reading the raw payload. Supplier id now also runs through `validateId`.

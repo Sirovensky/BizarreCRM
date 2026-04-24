@@ -727,7 +727,5 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
-- [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores

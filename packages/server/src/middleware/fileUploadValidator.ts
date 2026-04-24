@@ -176,13 +176,49 @@ function countExistingFiles(dir: string): number {
   return total;
 }
 
-/** Atomically bump the counter by `delta` (may be negative on rollback). */
-async function adjustFileCounter(tenantDir: string, delta: number): Promise<void> {
+/**
+ * SCAN-1092: thrown by `adjustFileCounter` when an upper-bound `quota`
+ * check is supplied and the post-lock read + delta would exceed it. The
+ * middleware catches this, cleans up the files multer already wrote, and
+ * returns 403. Dedicated class so the catch block doesn't have to string-
+ * match an error message.
+ */
+class FileCountQuotaExceededError extends Error {
+  readonly currentCount: number;
+  readonly quota: number;
+  readonly requested: number;
+  constructor(currentCount: number, quota: number, requested: number) {
+    super(`File count quota exceeded (current=${currentCount}, requested=${requested}, quota=${quota})`);
+    this.name = 'FileCountQuotaExceededError';
+    this.currentCount = currentCount;
+    this.quota = quota;
+    this.requested = requested;
+  }
+}
+
+/**
+ * Atomically bump the counter by `delta` (may be negative on rollback).
+ *
+ * SCAN-1092: when a positive `delta` is combined with an explicit `quota`,
+ * the read-check-write sequence happens entirely inside `withCounterLock`
+ * so two concurrent uploaders cannot both observe `count < quota` and both
+ * admit past the cap. `quota` is optional — negative deltas (rollback) and
+ * internal callers that don't want a ceiling pass `undefined` and keep the
+ * legacy behaviour.
+ */
+async function adjustFileCounter(
+  tenantDir: string,
+  delta: number,
+  quota?: number,
+): Promise<void> {
   return withCounterLock(tenantDir, async () => {
     try {
       if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
       const counterPath = path.join(tenantDir, COUNTER_FILENAME);
       const current = readFileCounter(tenantDir);
+      if (quota !== undefined && delta > 0 && current + delta > quota) {
+        throw new FileCountQuotaExceededError(current, quota, delta);
+      }
       const nextCount = Math.max(0, current + delta);
       // DA-2: tmp+rename instead of direct writeFileSync. A power failure or
       // native abort mid-write would otherwise leave a 0-byte counter file and
@@ -192,6 +228,7 @@ async function adjustFileCounter(tenantDir: string, delta: number): Promise<void
       fs.writeFileSync(tmpPath, String(nextCount), 'utf8');
       fs.renameSync(tmpPath, counterPath);
     } catch (err) {
+      if (err instanceof FileCountQuotaExceededError) throw err;
       logger.error('Failed to adjust file counter', {
         tenantDir,
         delta,
@@ -320,7 +357,31 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
     }
 
     // Everything passed — bump the counter and hand off to the route handler.
-    await adjustFileCounter(tenantDir, files.length);
+    // SCAN-1092: pass `quota` so the final read-check-write happens inside
+    // the counter lock. Two concurrent uploaders can no longer both observe
+    // count < quota at the pre-check (line ~238) and both commit the
+    // increment. The pre-check is kept as a fast-fail for clearly-over-cap
+    // requests so we don't waste magic-byte + virus work first.
+    try {
+      await adjustFileCounter(tenantDir, files.length, quota);
+    } catch (err) {
+      if (err instanceof FileCountQuotaExceededError) {
+        for (const f of files) safeUnlink(f.path);
+        logger.warn('File count quota exceeded under lock', {
+          tenantSlug: req.tenantSlug,
+          currentCount: err.currentCount,
+          requested: err.requested,
+          quota: err.quota,
+        });
+        res.status(403).json({
+          success: false,
+          error: 'File count quota exceeded',
+          message: `File count quota (${err.quota}) exceeded. Delete unused files or upgrade your plan.`,
+        });
+        return;
+      }
+      throw err;
+    }
     next();
   };
 }
