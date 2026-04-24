@@ -189,6 +189,12 @@ function estimateSmsParts(body: string): number {
  * Insert a failed notification into the retry queue with exponential backoff.
  * First retry in 5 minutes, then 25 min, then 125 min (5^retryCount minutes).
  */
+// Caps on queued notification fields. Without these a runaway template could
+// write megabytes per row and bloat notification_retry_queue over time.
+const RETRY_MESSAGE_MAX = 1600; // 10 SMS segments — above any real use case.
+const RETRY_PHONE_MAX = 32;     // E.164 is ≤15; pad for leading 00 + formatting.
+const RETRY_ERROR_MAX = 500;
+
 export function enqueueRetry(
   db: any,
   phone: string,
@@ -199,10 +205,13 @@ export function enqueueRetry(
   errorMsg: string,
 ): void {
   try {
+    const cappedPhone = typeof phone === 'string' ? phone.slice(0, RETRY_PHONE_MAX) : '';
+    const cappedMessage = typeof message === 'string' ? message.slice(0, RETRY_MESSAGE_MAX) : '';
+    const cappedError = typeof errorMsg === 'string' ? errorMsg.slice(0, RETRY_ERROR_MAX) : '';
     db.prepare(`
       INSERT INTO notification_retry_queue (recipient_phone, message, entity_type, entity_id, tenant_slug, retry_count, max_retries, next_retry_at, last_error)
       VALUES (?, ?, ?, ?, ?, 0, 3, datetime('now', '+5 minutes'), ?)
-    `).run(phone, message, entityType, entityId, tenantSlug, errorMsg);
+    `).run(cappedPhone, cappedMessage, entityType, entityId, tenantSlug, cappedError);
   } catch (err) {
     logger.error('Failed to enqueue retry', {
       phone,

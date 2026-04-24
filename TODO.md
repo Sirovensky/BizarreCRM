@@ -758,8 +758,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/services; files=packages/server/src/services/slaBreachCron.ts:193-205; fix=unique-index+insert-or-ignore -->
 - [ ] SCAN-1057. **retentionSweeper SQL interpolates table+column names from RULES — safe today, document invariant or allowlist.**
   <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:400-404,441; fix=allowlist-regex-assert -->
-- [ ] SCAN-1058. **notifications.ts `enqueueRetry` writes phone+message without length bounds — DB bloat risk.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/notifications.ts:193-214; fix=truncate-1600-chars -->
 - [ ] SCAN-1059. **AutomationsTab `err: any` in create/update mutation onError handlers.**
   <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:541,553; fix=err-unknown+narrow -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
