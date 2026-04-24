@@ -443,7 +443,13 @@ public struct PosView: View {
                     .accessibilityLabel("Add custom line")
             }
             // §16.3 — overflow "⋯" menu. Keeps the toolbar from crowding.
-            ToolbarItem(placement: .secondaryAction) {
+            // Uses `.topBarTrailing` (not `.secondaryAction`) because on iPad
+            // SwiftUI wraps `.secondaryAction` items in its own auto-generated
+            // "⋯" button — pairing that with a `Menu` here produced a nested
+            // double-ellipsis (tap once → opens a menu whose only entry is
+            // another ellipsis). `.topBarTrailing` places our Menu directly
+            // in the bar so a single tap reveals the sections.
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     // §16.14 — payment shortcut
                     Section("Checkout") {
