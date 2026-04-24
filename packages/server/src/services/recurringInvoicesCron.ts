@@ -60,12 +60,34 @@ interface LineItemInput {
 
 function advanceNextRunAt(current: string, kind: string, count: number): string {
   const d = new Date(current);
+  // SCAN-1114: `setUTCMonth(m + count)` rolls Jan-31 into Mar-03 because
+  // February has no 31st and JS overflows the day. Same with Mar-31 → May-01
+  // via April. For the monthly and yearly kinds we clamp the day to the
+  // last valid day of the target month when the original day was dropped.
+  const originalDay = d.getUTCDate();
   switch (kind) {
     case 'daily':   d.setUTCDate(d.getUTCDate() + count); break;
     case 'weekly':  d.setUTCDate(d.getUTCDate() + 7 * count); break;
-    case 'monthly': d.setUTCMonth(d.getUTCMonth() + count); break;
-    case 'yearly':  d.setUTCFullYear(d.getUTCFullYear() + count); break;
-    default:        d.setUTCMonth(d.getUTCMonth() + 1); break;
+    case 'monthly': {
+      d.setUTCMonth(d.getUTCMonth() + count);
+      if (d.getUTCDate() !== originalDay) {
+        // Day overflowed into the next month — roll back to the last day
+        // of the intended target month via setUTCDate(0).
+        d.setUTCDate(0);
+      }
+      break;
+    }
+    case 'yearly': {
+      d.setUTCFullYear(d.getUTCFullYear() + count);
+      // Feb-29 → Mar-01 under non-leap years; same clamp trick.
+      if (d.getUTCDate() !== originalDay) d.setUTCDate(0);
+      break;
+    }
+    default: {
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      if (d.getUTCDate() !== originalDay) d.setUTCDate(0);
+      break;
+    }
   }
   return d.toISOString().replace('T', ' ').slice(0, 19);
 }

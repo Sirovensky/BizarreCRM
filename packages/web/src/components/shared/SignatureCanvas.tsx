@@ -122,6 +122,11 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     ctx.stroke();
   }, [isDrawing, getPos]);
 
+  // SCAN-1118: `clear` is defined below but endDraw needs to call it on the
+  // size-cap rejection path. Use a ref so endDraw can reach the callback
+  // without listing it as a dependency (and without hitting TDZ).
+  const clearRef = useRef<() => void>(() => {});
+
   const endDraw = useCallback(() => {
     if (!isDrawing) return;
     setIsDrawing(false);
@@ -137,6 +142,11 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     }
     if (dataUrl.length > SIGNATURE_MAX_BYTES) {
       toast.error('Signature is too large to save. Please try a simpler signature.');
+      // SCAN-1118: previously `hasSignature` stayed `true` after a size-cap
+      // rejection — ink on screen with nothing actually saved, so the "Save"
+      // button stayed enabled and the parent form could believe a signature
+      // was captured. Reset the canvas + flag so UI state matches saved state.
+      clearRef.current();
       return;
     }
     onSave(dataUrl);
@@ -166,6 +176,13 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     setHasSignature(false);
     onSave('');
   }, [height, width, onSave, resolvedPenColor]);
+
+  // SCAN-1118: keep the ref pointing at the latest `clear` so endDraw's
+  // size-cap rejection branch invokes the current version even across
+  // re-renders where deps change.
+  useEffect(() => {
+    clearRef.current = clear;
+  }, [clear]);
 
   return (
     <div className="space-y-2">

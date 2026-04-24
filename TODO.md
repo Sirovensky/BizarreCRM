@@ -727,12 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-64 scan-loop findings (2026-04-24) — team-chat + automations + roles + web components
-- [ ] SCAN-1114. **[MED] `recurringInvoicesCron` + `recurringInvoices.routes` month advance rolls Jan-31 → Mar 03.**
-  <!-- meta: scope=server/services+routes; files=packages/server/src/services/recurringInvoicesCron.ts:61-71,packages/server/src/routes/recurringInvoices.routes.ts:96-105; fix=clamp-setUTCDate(0)-next-month-when-original-day-dropped -->
-- [ ] SCAN-1117. **[LOW] `CommandPalette` debounced search has no reqSeq guard — late responses overwrite newer.**
-  <!-- meta: scope=web/components; files=packages/web/src/components/shared/CommandPalette.tsx:162-189; fix=useRef-reqSeq-latest-wins -->
-- [ ] SCAN-1118. **[LOW] `SignatureCanvas` leaves `hasSignature=true` after size-cap rejection — UI/state mismatch.**
-  <!-- meta: scope=web/components; files=packages/web/src/components/shared/SignatureCanvas.tsx:125-143; fix=clear()-before-return -->
 - [ ] SCAN-1119. **[LOW] `bookingPublic /availability` minNotice uses UTC hours vs local open/close — wrong boundary per tz.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/bookingPublic.routes.ts:351-357; fix=use-tenant-store_timezone-Intl.DateTimeFormat -->
 

@@ -118,6 +118,10 @@ export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen } = useUiStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // SCAN-1117: monotonically increasing request id so a slow prior search
+  // response can't overwrite a newer one if the user types faster than the
+  // network round-trip.
+  const reqSeq = useRef(0);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GroupedResults | null>(null);
@@ -167,21 +171,26 @@ export function CommandPalette() {
     }
 
     const timer = setTimeout(async () => {
+      // SCAN-1117: capture the request id BEFORE awaiting so late responses
+      // from a stale query can be discarded when they resolve.
+      const myReqId = ++reqSeq.current;
       setLoading(true);
       setSearchError(false);
       try {
         const res = await searchApi.global(query.trim());
+        if (myReqId !== reqSeq.current) return; // stale — a newer search is in flight
         const data = res.data.data as GroupedResults;
         setResults(data);
         setSelectedIndex(0);
       } catch (err) {
+        if (myReqId !== reqSeq.current) return;
         // Surface the failure as an explicit error state so the palette shows
         // "Search unavailable" instead of a misleading "No results found".
         console.error('[CommandPalette] search failed', err);
         setResults({ tickets: [], customers: [], inventory: [], invoices: [] });
         setSearchError(true);
       } finally {
-        setLoading(false);
+        if (myReqId === reqSeq.current) setLoading(false);
       }
     }, 300);
 

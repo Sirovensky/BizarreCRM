@@ -95,11 +95,22 @@ function validateLineItems(items: unknown): object[] {
  */
 function advanceNextRunAt(current: string, kind: string, count: number): string {
   const d = new Date(current);
+  // SCAN-1114: mirror the clamp applied in services/recurringInvoicesCron.ts.
+  // `setUTCMonth(m + count)` rolls Jan-31 → Mar-03 (overflowing Feb); same
+  // issue for yearly Feb-29 under non-leap years. Clamp to the last valid
+  // day of the target month when the original day was dropped.
+  const originalDay = d.getUTCDate();
   switch (kind) {
     case 'daily':   d.setUTCDate(d.getUTCDate() + count); break;
     case 'weekly':  d.setUTCDate(d.getUTCDate() + 7 * count); break;
-    case 'monthly': d.setUTCMonth(d.getUTCMonth() + count); break;
-    case 'yearly':  d.setUTCFullYear(d.getUTCFullYear() + count); break;
+    case 'monthly':
+      d.setUTCMonth(d.getUTCMonth() + count);
+      if (d.getUTCDate() !== originalDay) d.setUTCDate(0);
+      break;
+    case 'yearly':
+      d.setUTCFullYear(d.getUTCFullYear() + count);
+      if (d.getUTCDate() !== originalDay) d.setUTCDate(0);
+      break;
   }
   return d.toISOString().replace('T', ' ').slice(0, 19);
 }
