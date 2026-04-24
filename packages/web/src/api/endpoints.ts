@@ -1197,7 +1197,15 @@ export const campaignsApi = {
 // client.ts) so the public axios instance stays decoupled from the
 // auth-aware client.
 const PUBLIC_API_BASE = '/api/v1';
-const publicApi = axios.create({ baseURL: PUBLIC_API_BASE, headers: { 'Content-Type': 'application/json' } });
+// SCAN-1152: add a request timeout so SignupPage's spinner can't hang
+// indefinitely against a slow or unreachable server — the user needs a
+// failure path they can recover from. 15s matches the conservative budget
+// for the authenticated client.
+const publicApi = axios.create({
+  baseURL: PUBLIC_API_BASE,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15_000,
+});
 
 export const signupApi = {
   checkSlug: (slug: string) =>

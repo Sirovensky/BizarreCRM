@@ -484,6 +484,10 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
 router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
+  // SCAN-1149: prevent CDN / reverse-proxy caching of setup-status — after
+  // first-run completes, we don't want a stale `needsSetup:true` response
+  // redirecting other browsers back to the wizard.
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     success: true,
     data: {
@@ -520,12 +524,21 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
     res.status(429).json({ success: false, message: 'Too many setup attempts. Try again later.' });
     return;
   }
-  recordWindowFailure(db, 'setup', ip, 3600_000);
+  // SCAN-1144: only record against the rate-limit window on FAILED attempts.
+  // Previously this ran before any validation, so a successful one-shot
+  // bootstrap burned a window slot — a shop owner re-running the wizard
+  // after cancelling got 429'd with only 2 attempts left. `failSetup`
+  // wraps the record + response-send into a single call used by every
+  // validation branch below.
+  const failSetup = (status: number, body: Record<string, unknown>): void => {
+    recordWindowFailure(db, 'setup', ip, 3600_000);
+    res.status(status).json(body);
+  };
   const adb = req.asyncDb;
   // Only allow if no active users exist
   const countRow = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
   if (countRow!.c > 0) {
-    res.status(400).json({ success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Shop is already set up' });
+    failSetup(400, { success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Shop is already set up' });
     return;
   }
 
@@ -546,7 +559,7 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
   let tokenRow: { id: number; expires_at: string; consumed_at: string | null } | undefined;
   if (!isSingleTenant) {
     if (!setup_token || typeof setup_token !== 'string' || setup_token.length === 0) {
-      res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid setup link. Request a new one from your administrator.' });
+      failSetup(403, { success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid setup link. Request a new one from your administrator.' });
       return;
     }
     const suppliedTokenHash = crypto.createHash('sha256').update(setup_token).digest('hex');
@@ -555,17 +568,17 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
       suppliedTokenHash
     );
     if (!tokenRow || tokenRow.consumed_at || new Date(tokenRow.expires_at) <= new Date()) {
-      res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
+      failSetup(403, { success: false, code: ERROR_CODES.ERR_AUTH_SETUP_LINK_INVALID, message: 'Invalid or expired setup link. Request a new one from your administrator.' });
       return;
     }
   }
 
   if (!username || typeof username !== 'string' || username.trim().length < 3) {
-    res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
+    failSetup(400, { success: false, message: 'Username must be at least 3 characters' });
     return;
   }
   if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
-    res.status(400).json({ success: false, message: 'Password must be 8 to 128 characters' });
+    failSetup(400, { success: false, message: 'Password must be 8 to 128 characters' });
     return;
   }
 
@@ -575,7 +588,7 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
     validatedEmail = validateEmail(email, 'email', isSingleTenant);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid email';
-    res.status(400).json({ success: false, message });
+    failSetup(400, { success: false, message });
     return;
   }
   const resolvedEmail = validatedEmail || `${username.trim()}@shop.local`;
@@ -585,11 +598,11 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
   const rawFirst = typeof first_name === 'string' ? first_name.trim() : '';
   const rawLast = typeof last_name === 'string' ? last_name.trim() : '';
   if (isSingleTenant && (!rawFirst || !rawLast)) {
-    res.status(400).json({ success: false, message: 'First name and last name are required' });
+    failSetup(400, { success: false, message: 'First name and last name are required' });
     return;
   }
   if (rawFirst.length > 100 || rawLast.length > 100) {
-    res.status(400).json({ success: false, message: 'Name fields must be 100 characters or less' });
+    failSetup(400, { success: false, message: 'Name fields must be 100 characters or less' });
     return;
   }
 
@@ -640,7 +653,7 @@ router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
       error: err instanceof Error ? err.message : String(err),
       mode: isSingleTenant ? 'single' : 'multi',
     });
-    res.status(500).json({ success: false, message: 'Failed to create admin account. Please try again.' });
+    failSetup(500, { success: false, message: 'Failed to create admin account. Please try again.' });
     return;
   }
 

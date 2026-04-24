@@ -726,22 +726,14 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-67 scan-loop findings (2026-04-24) — auth/layout/migrations/public-api
-- [ ] SCAN-1144. **[LOW] `/setup` rate-limit records failure on success path — first-run wizard burns attempts.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/auth.routes.ts:519-523; fix=record-only-on-error -->
 - [ ] SCAN-1146. **[LOW] `AppShell` focus handler fires `fetchPlan` unbounded — no debounce.**
   <!-- meta: scope=web/components; files=packages/web/src/components/layout/AppShell.tsx:44-46; fix=30s-guard -->
 - [ ] SCAN-1147. **[LOW] AppShell + Header both register `?` global key — two modals stack.**
   <!-- meta: scope=web/components; files=packages/web/src/components/layout/AppShell.tsx:85-98,Header.tsx:230-241; fix=remove-AppShell-case -->
 - [ ] SCAN-1148. **[LOW] Migrations 139-142 hardcode `location_id=1` backfill — breaks if Main Store id != 1.**
   <!-- meta: scope=server/db; files=packages/server/src/db/migrations/139-142; fix=SELECT-FROM-locations-WHERE-is_default=1 -->
-- [ ] SCAN-1149. **[LOW] `/auth/setup-status` missing `Cache-Control: no-store` — CDN-stale setup redirect.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/auth.routes.ts:484-494; fix=no-store-header -->
 - [ ] SCAN-1150. **[LOW] `localhostOnly` misses some IPv6 loopback forms (Docker WSL2) — 404 on super-admin from host.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/localhostOnly.ts:14-30; fix=also-accept-0:0:0:0:0:0:0:1+::ffff:127.0.0.1 -->
-- [ ] SCAN-1151. **[LOW] `enforceUploadQuota` parseInt accepts malformed Content-Length (`1.5e20` → 1).**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/uploadQuota.ts:90-94; fix=regex-digit-only -->
-- [ ] SCAN-1152. **[LOW] `publicApi` axios instance has no timeout — Signup spinner hangs on slow server.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/endpoints.ts:1200; fix=timeout:15000 -->
 
 ### Wave-66 scan-loop findings (2026-04-24) — reports/locations/retention/autoreorder/webhooks/notifications/sla/dunning/tenantExport/worker-pool
 

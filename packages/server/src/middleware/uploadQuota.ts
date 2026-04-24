@@ -87,7 +87,18 @@ export async function enforceUploadQuota(
     next();
     return;
   }
-  const contentLength = parseInt(rawCL, 10);
+  // SCAN-1151: parseInt accepts `1.5e20` and returns 1, bypassing the
+  // pre-check while the actual body can balloon past the quota via
+  // chunked transfer. Reject any Content-Length whose string form isn't
+  // a pure decimal integer before parsing. Whitespace-trim first since
+  // Node splits on CRLF but can preserve surrounding whitespace in
+  // malformed peers.
+  const clStr = String(rawCL).trim();
+  if (!/^\d+$/.test(clStr)) {
+    next();
+    return;
+  }
+  const contentLength = parseInt(clStr, 10);
   if (!Number.isFinite(contentLength) || contentLength <= 0) {
     next();
     return;

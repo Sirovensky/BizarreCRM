@@ -1,4 +1,11 @@
 
+## Closed 2026-04-24 (wave-67 setup rate fairness + cache header + quota integer guard + public timeout)
+
+- [x] SCAN-1144. **`/auth/setup` called `recordWindowFailure` BEFORE any validation** — a successful first-run burned a window slot, so a shop owner re-running the wizard after cancelling got 429'd with only 2 attempts. Introduced a local `failSetup(status, body)` helper that records + sends in one call; swapped every validation branch (already-set-up, invalid token, short username, bad password, invalid email, missing names, tx failure) to use it. Successful setups no longer consume the window.
+- [x] SCAN-1149. **`GET /auth/setup-status` missing `Cache-Control: no-store`** — a CDN / reverse proxy could cache the `needsSetup:true` response and serve it to other browsers after first-run completed, redirecting legit admins back to the wizard. Added `res.setHeader('Cache-Control', 'no-store')` before the json send.
+- [x] SCAN-1151. **`enforceUploadQuota` used `parseInt(rawCL, 10)` directly** — accepted `'1.5e20'` (→ 1) and other malformed Content-Length headers, letting a client bypass the pre-check while actually sending a multipart body that ballooned past the quota. Added `/^\d+$/.test(clStr)` gate (post-trim) before parseInt; only the digits-only path falls through to the size compare.
+- [x] SCAN-1152. **`publicApi` axios instance had no timeout** — SignupPage spinner could hang forever against a slow/unreachable server with no recovery except page refresh. Added `timeout: 15_000` to the `axios.create({...})` options — matches the authenticated client budget.
+
 ## Closed 2026-04-24 (wave-67 auth hardening + manager settings visibility)
 
 - [x] SCAN-1142. **`authMiddleware` called raw `JSON.parse(user.permissions)`** — a corrupt row (manual DB edit, truncated import) threw inside `.catch()` and the user got a misleading 401 "Invalid token" instead of being logged in with null permissions. Wrapped in try/catch with shape-guard (`raw && typeof === 'object' && !isArray`) so valid permission maps type-narrow to `Record<string, boolean>`, malformed ones fall back to `null` with a warn log for operator visibility.
