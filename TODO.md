@@ -740,6 +740,32 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/crm.routes.ts:222-239; fix=strip-path-or-signed-url -->
 - [ ] SCAN-1047. **deposits GET /: LIMIT 500 hardcoded, no pagination — silently drops older deposits for completeness-assuming clients.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/deposits.routes.ts:79-89; fix=parsePage+pagination-envelope -->
+
+### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
+- [ ] SCAN-1048. **Several server services still use `db: any` parameter — type safety gone.**
+  <!-- meta: scope=server/services; files=notifications.ts:168,backup.ts:382,catalogScraper.ts:348,dunningScheduler.ts:661; fix=use-Database-type -->
+- [ ] SCAN-1049. **[HIGH] Catalog scraper stores supplier `imageUrl` without SSRF/domain-allowlist check.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:279-285; fix=assertPublicUrl-or-proxy -->
+- [ ] SCAN-1050. **Catalog `liveSearchSupplier` has no rate limit — unbounded outbound HTTP per caller.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:815-829; fix=consumeWindowRate -->
+- [ ] SCAN-1051. **[HIGH/XSS] AutomationsTab email-body textarea stores raw HTML with no size cap + no server sanitization.**
+  <!-- meta: scope=web/pages/settings,server/services; files=AutomationsTab.tsx:208-214,email.ts; fix=maxLength+server-sanitize -->
+- [ ] SCAN-1052. **AutomationsTab rule name input has no client-side length cap.**
+  <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:386-392; fix=maxLength-255 -->
+- [ ] SCAN-1053. **[HIGH/XSS] dunningScheduler `renderTemplate` substitutes unescaped customer_name into HTML email body.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/dunningScheduler.ts:517-525,735-738; fix=escapeHtml-on-vars -->
+- [ ] SCAN-1054. **dunningScheduler SMS templates skip `stripSmsControlChars` on customer-controlled vars.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/dunningScheduler.ts:651-655; fix=strip-control-chars -->
+- [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/backup.ts:971-998; fix=accept-getDb-factory -->
+- [ ] SCAN-1056. **slaBreachCron `markFirstResponseBreached` SELECT-then-INSERT needs UNIQUE index for concurrency safety.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/slaBreachCron.ts:193-205; fix=unique-index+insert-or-ignore -->
+- [ ] SCAN-1057. **retentionSweeper SQL interpolates table+column names from RULES — safe today, document invariant or allowlist.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:400-404,441; fix=allowlist-regex-assert -->
+- [ ] SCAN-1058. **notifications.ts `enqueueRetry` writes phone+message without length bounds — DB bloat risk.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/notifications.ts:193-214; fix=truncate-1600-chars -->
+- [ ] SCAN-1059. **AutomationsTab `err: any` in create/update mutation onError handlers.**
+  <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:541,553; fix=err-unknown+narrow -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 
