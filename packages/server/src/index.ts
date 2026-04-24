@@ -289,6 +289,9 @@ seedDeviceModels(db);
 
 // SEC-H38: populate gift_cards.code_hash for any rows that predate
 // migration 104. Idempotent — only updates rows where code_hash IS NULL.
+// Backfill runs once at boot against the single-tenant legacy DB (the top-level
+// `db` opened above). Multi-tenant pool connections are per-tenant and do not
+// collide with this path. Safe to use the already-open direct connection here.
 try {
   backfillGiftCardCodeHashes(db);
 } catch (err) {

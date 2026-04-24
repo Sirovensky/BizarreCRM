@@ -380,6 +380,9 @@ export function setupWebSocket(wss: WebSocketServer): void {
           userId: ws.userId ?? null,
           tenantSlug: ws.tenantSlug ?? null,
         });
+        // SEC (WS4): Clear the auth timer so it cannot fire on a malformed-drop
+        // path, which otherwise leaves a dangling timeout on the socket.
+        clearAuthTimeout();
         return;
       }
 

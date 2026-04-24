@@ -4,6 +4,9 @@ import { config } from '../config.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('auth-middleware');
 
 // SEC (A6/A10): Centralize JWT signing & verification options so both
 // auth.routes.ts and middleware/auth.ts use the exact same algorithm,
@@ -152,7 +155,9 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       // Best-effort — failure doesn't block the request.
       req.asyncDb
         .run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId)
-        .catch(() => { /* ignore */ });
+        .catch((err: unknown) => {
+          logger.warn('auth: last_active update failed', { err: err instanceof Error ? err.message : String(err) });
+        });
 
       // AUD-H2: if a custom_roles row is assigned, load its allowed=1 keys
       // and cap at the active-role check. Inactive custom_roles are ignored

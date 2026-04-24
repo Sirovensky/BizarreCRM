@@ -1591,3 +1591,15 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-702. **tenantResolver skipped on /api/v1/signup — signup must not assume `req.tenantSlug` exists** — `packages/server/src/routes/signup.routes.ts + index.ts:1410`. Fix: verify signup handler guards req.tenantSlug access.
 - [ ] SCAN-703. **[LOW] stepUpTotp replay check uses `Date.now() / 30_000` bucket — clock skew + leap second drift; otplib window-tolerance handles verify but not replay bucket** — `packages/server/src/middleware/stepUpTotp.ts:80`. Fix: accept otplib's validation as sufficient OR add skew tolerance.
 - [ ] SCAN-704. **[LOW] giftCardCodeHashes backfill opens direct Database() at boot — races lazy tenant-pool opens** — `packages/server/src/index.ts:410-477`. Fix: use getTenantDb() not direct connection.
+
+### Wave-24 scan-loop findings (2026-04-23)
+- [ ] SCAN-705. **admin.routes.ts `AnyRow = Record<string, any>` throughout — type safety lost on admin panel queries** — `packages/server/src/routes/admin.routes.ts:27`. Fix: swap `any` to `unknown` OR typed interface per query.
+- [ ] SCAN-706. **shared/types/automation.ts trigger + action configs use `Record<string, unknown>` permissively — runtime validation needed** — `packages/shared/src/types/automation.ts:6,8`. Fix: Zod schemas per trigger/action type.
+- [ ] SCAN-707. **[LOW] authStore.ts access token persisted to localStorage without encryption — XSS exposure** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: sessionStorage OR in-memory only; refresh via httpOnly cookie only.
+- [ ] SCAN-708. **admin file browser symlink traversal — fs.realpathSync after path.resolve blocked-check; symlink in user-writable dir evades check** — `packages/server/src/routes/admin.routes.ts:276,288-289`. Fix: realpath FIRST, then check.
+- [ ] SCAN-709. **admin backup download Content-Disposition unquoted filename — special chars break header parsing** — `packages/server/src/routes/admin.routes.ts:381`. Fix: quote + escape filename per RFC 5987.
+- [ ] SCAN-710. **repairDeskImport `RdResponse<T = any>` — third-party API shape unvalidated, silent type confusion risk** — `packages/server/src/services/repairDeskImport.ts:130`. Fix: Zod schema + parse at boundary.
+- [ ] SCAN-711. **[POSSIBLE LOW] email.ts subject passed to nodemailer without \r\n sanitization — header injection if future caller supplies user input** — `packages/server/src/services/email.ts:161`. Fix: strip \r\n from subject prophylactically.
+- [ ] SCAN-712. **email.ts html→text fallback `.replace(/<[^>]+>/g, '')` — malformed tags leak script fragments** — `packages/server/src/services/email.ts:161`. Fix: html-to-text parser library.
+- [ ] SCAN-713. **[INFO] useWebSocket.ts `localStorage.getItem('accessToken')` — silent fail if token missing; no retry after login** — `packages/web/src/hooks/useWebSocket.ts:202`. Fix: subscribe to auth store + reconnect on token change.
+- [ ] SCAN-714. **db-worker.mjs LRU eviction close errors silently warned but not metrics-tracked — cache counter drift leaks handles** — `packages/server/src/db/db-worker.mjs:68-76`. Fix: increment metrics counter on eviction failure.
