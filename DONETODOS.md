@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-71 — logout deviceTrust + forgot-password rate fairness)
+
+- [x] SCAN-1176. **`/auth/logout` cleared `refreshToken` + `csrf_token` but NOT `deviceTrust`** — after an explicit logout on a shared device, the 90-day trust cookie remained valid so the next login from that browser skipped 2FA, defeating the logout semantic. `/account/2fa/disable` and the failed-trust branches already cleared the cookie correctly; logout was the missing parity case. Added `res.clearCookie('deviceTrust', { path: '/' });`.
+- [x] SCAN-1177. **`/auth/forgot-password` called `recordWindowFailure` unconditionally after the check** — same anti-pattern SCAN-1144 fixed for `/setup`. Three legitimate resets in an hour from the same NAT'd IP burned the cap. Moved the recordWindowFailure to the two real failure branches (bad email shape, user-not-found enumeration probe). The non-enumerability response stays identical; captcha threshold still triggers on failure bursts.
+
 ## Closed 2026-04-24 (SCAN-1148 — location_id repair migration)
 
 - [x] SCAN-1148. **Migrations 139-142 hardcoded `location_id = 1` in their backfill UPDATEs, assuming the seeded "Main Store" row from migration 132 would always live at id=1** — any tenant that deleted + re-created locations before running 139 ended up with orphan FK values pointing at a non-existent row. FK SET NULL semantics don't apply because the row never existed to trigger a DELETE. Added migration 148 — idempotent repair pass that re-points every orphan `location_id` (NOT EXISTS a matching locations row) to the current `is_default = 1` location across invoices, inventory_items, users.home_location_id, tickets, expenses, clock_entries, shift_schedules, appointments. If no default exists the column lands on NULL, matching the FK's SET NULL semantics + UI fallbacks. Safe to re-run — each UPDATE only matches still-orphan rows.

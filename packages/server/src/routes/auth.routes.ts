@@ -1389,6 +1389,12 @@ router.post('/logout', authMiddleware, asyncHandler(async (req: Request, res: Re
   res.clearCookie('refreshToken', { path: '/' });
   // SEC-H89: Clear csrf_token alongside refreshToken on logout.
   res.clearCookie('csrf_token', { path: '/' });
+  // SCAN-1176: also clear the deviceTrust cookie on explicit logout. A
+  // shared-kiosk user clicking "Logout" otherwise left the 90-day trust
+  // cookie intact on the machine, so the next login on that browser
+  // skipped 2FA. Matches the behaviour already in place for the 2fa/
+  // disable and failed-trust branches.
+  res.clearCookie('deviceTrust', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
 }));
 
@@ -1614,7 +1620,12 @@ router.post('/forgot-password', asyncHandler(async (req: Request, res: Response)
     res.status(429).json({ success: false, message: 'Too many reset attempts. Try again later.' });
     return;
   }
-  recordWindowFailure(db, 'forgot_password', ip, 3600_000);
+  // SCAN-1177: don't record unconditionally — see SCAN-1144 pattern. Attempts
+  // that fail validation (bad email shape) or resolve to a non-existent
+  // user DO count; successful reset dispatches for a real user do not. The
+  // captcha threshold below still picks up the failure-burst shape, and the
+  // email-enumeration protection is unaffected (the response body is still
+  // a generic success regardless).
 
   // SEC-H85: captcha gate — after threshold attempts from this IP within the
   // rate-limit window, require a valid hCaptcha token. countRateLimitAttempts
@@ -1634,6 +1645,8 @@ router.post('/forgot-password', asyncHandler(async (req: Request, res: Response)
 
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {
+    // SCAN-1177: bad email shape — counts toward the hourly cap.
+    recordWindowFailure(db, 'forgot_password', ip, 3600_000);
     res.status(400).json({ success: false, message: 'Valid email is required' });
     return;
   }
@@ -1649,6 +1662,13 @@ router.post('/forgot-password', asyncHandler(async (req: Request, res: Response)
   );
 
   if (!user) {
+    // SCAN-1177: unknown email counts toward the hourly cap — this is the
+    // enumeration-probe path that the rate limit is actually defending
+    // against. Record BEFORE the dummy-bcrypt timing sink so a caller who
+    // exhausts the cap sees 429 on the NEXT call rather than silently
+    // succeeding on this one (the response body is still the generic
+    // success to preserve non-enumerability).
+    recordWindowFailure(dbSync, 'forgot_password', ip, 3600_000);
     // Don't reveal whether the email exists. Do not persist the attacker-
     // supplied email either — it can be used to pollute audit logs with
     // arbitrary strings (SEC-L43).
