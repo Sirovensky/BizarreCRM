@@ -111,8 +111,13 @@ authedRouter.get('/', asyncHandler(async (req: Request, res: Response) => {
 /** GET /:id — one link with full details (admin/manager only). */
 authedRouter.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   requireManagerOrAdmin(req);
+  // SCAN-1115: `Number.isFinite(parseInt('0'))` is true, `parseInt('-1')` is
+  // also finite. A negative or zero id reached the `WHERE id = ?` lookup and
+  // always returned 404, but it still consumed a DB round-trip and allowed
+  // enumeration probing. Tighten to positive-integer, matching the id check
+  // used on sibling routes.
   const id = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid id', 400);
   const row = await req.asyncDb.get<Row>('SELECT * FROM payment_links WHERE id = ?', id);
   if (!row) throw new AppError('Payment link not found', 404);
   res.json({ success: true, data: row });

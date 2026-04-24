@@ -97,6 +97,11 @@ function parseId(value: unknown, label = 'id'): number {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    // SCAN-1113: role list was visible to any authenticated user — the role
+    // names + descriptions are admin-surface metadata that should not leak
+    // to cashier/technician-tier users. Matches the adminOnly gating on all
+    // write sibling handlers.
+    requireAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     await ensureDefaultPermsSeeded(adb);
     const rows = await adb.all<RoleRow>(
@@ -202,6 +207,8 @@ router.delete(
 router.get(
   '/:id/permissions',
   asyncHandler(async (req, res) => {
+    // SCAN-1113: permission matrix is admin-only surface (settings page).
+    requireAdmin(req);
     const adb: AsyncDb = req.asyncDb;
     await ensureDefaultPermsSeeded(adb);
     const id = parseId(req.params.id, 'role id');
@@ -225,6 +232,7 @@ router.put(
   asyncHandler(async (req, res) => {
     requireAdmin(req);
     const adb: AsyncDb = req.asyncDb;
+    const db = req.db;
     const id = parseId(req.params.id, 'role id');
     const role = await adb.get<RoleRow>('SELECT * FROM custom_roles WHERE id = ?', id);
     if (!role) throw new AppError('Role not found', 404);
@@ -235,23 +243,40 @@ router.put(
     if (updates.length === 0) throw new AppError('updates array is required', 400);
     if (updates.length > PERMISSION_KEYS.length) throw new AppError('updates exceeds permission count', 400);
 
-    let applied = 0;
+    // Pre-validate every entry before any write so we don't half-apply a
+    // matrix update that had a bad key halfway through.
     for (const u of updates) {
       if (typeof u?.key !== 'string' || !PERMISSION_KEYS.includes(u.key)) {
         throw new AppError(`Unknown permission key: ${u?.key}`, 400);
       }
-      // Refuse to change admin.full on the 'admin' role — protects against lockout.
+      // Refuse to revoke admin.full on the 'admin' role — protects against lockout.
+      // (The shared permission model uses ROLE_PERMISSIONS.admin = Object.values;
+      // lockout protection via the explicit admin.full key stays valid even
+      // after SCAN-1099 because admin keeps every key.)
       if (role.name === 'admin' && u.key === 'admin.full' && !u.allowed) {
         throw new AppError('Cannot revoke admin.full from the admin role', 400);
       }
-      await adb.run(
+    }
+
+    // SCAN-1112: previously each upsert was a separate awaited adb.run, so
+    // a failure at entry N left 0..N-1 applied and the admin saw a partial
+    // matrix. Wrap the whole batch in a sync transaction via `db` so any
+    // mid-loop failure rolls back every prior change.
+    const applyTx = db.transaction((): number => {
+      const stmt = db.prepare(
         `INSERT INTO role_permissions (role_id, permission_key, allowed)
          VALUES (?, ?, ?)
          ON CONFLICT(role_id, permission_key) DO UPDATE SET allowed = excluded.allowed`,
-        id, u.key, u.allowed ? 1 : 0,
       );
-      applied++;
-    }
+      let n = 0;
+      for (const u of updates) {
+        stmt.run(id, u.key, u.allowed ? 1 : 0);
+        n++;
+      }
+      return n;
+    });
+    const applied = applyTx();
+
     audit(req.db, 'role_permissions_updated', req.user!.id, req.ip || 'unknown', {
       role_id: id, count: applied,
     });

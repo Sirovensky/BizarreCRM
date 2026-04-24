@@ -726,6 +726,24 @@ Verified working. Not TODOs.
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
+### Wave-64 scan-loop findings (2026-04-24) — team-chat + automations + roles + web components
+- [ ] SCAN-1109. **[HIGH] team-chat direct + general channels lack membership enforcement — any authed user can read/post.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/teamChat.routes.ts:77-95,167-253; fix=kind=direct-require-username-in-channel.name -->
+- [ ] SCAN-1110. **[HIGH] `automations.routes` POST/PUT accept arbitrary trigger_type/action_type — mismatched values silently never fire.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/automations.routes.ts:76-112,117-156; fix=ALLOWED_TRIGGERS+ALLOWED_ACTIONS-sets -->
+- [ ] SCAN-1111. **[MED] `services/automations.ts` hourly cap runs AFTER action fires — cap overrun every hour.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/automations.ts:597-681; fix=move-cap-check-before-switch -->
+- [ ] SCAN-1114. **[MED] `recurringInvoicesCron` + `recurringInvoices.routes` month advance rolls Jan-31 → Mar 03.**
+  <!-- meta: scope=server/services+routes; files=packages/server/src/services/recurringInvoicesCron.ts:61-71,packages/server/src/routes/recurringInvoices.routes.ts:96-105; fix=clamp-setUTCDate(0)-next-month-when-original-day-dropped -->
+- [ ] SCAN-1116. **[MED] `teamChat DELETE /channels/:id` cascades without transaction + no ticket-kind guard.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/teamChat.routes.ts:146-163; fix=db.transaction+refuse-open-ticket -->
+- [ ] SCAN-1117. **[LOW] `CommandPalette` debounced search has no reqSeq guard — late responses overwrite newer.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/CommandPalette.tsx:162-189; fix=useRef-reqSeq-latest-wins -->
+- [ ] SCAN-1118. **[LOW] `SignatureCanvas` leaves `hasSignature=true` after size-cap rejection — UI/state mismatch.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/SignatureCanvas.tsx:125-143; fix=clear()-before-return -->
+- [ ] SCAN-1119. **[LOW] `bookingPublic /availability` minNotice uses UTC hours vs local open/close — wrong boundary per tz.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/bookingPublic.routes.ts:351-357; fix=use-tenant-store_timezone-Intl.DateTimeFormat -->
+
 ### Wave-63 scan-loop findings (2026-04-24) — routes + services + authStore
 
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
