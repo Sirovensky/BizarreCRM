@@ -312,4 +312,25 @@ class AppPreferences @Inject constructor(
     var lastFcmTokenRefreshAtMs: Long
         get() = prefs.getLong("last_fcm_token_refresh_at_ms", 0L)
         set(value) = prefs.edit().putLong("last_fcm_token_refresh_at_ms", value).apply()
+
+    // --- plan:L644 — ticket list view mode (list vs kanban) -----------------
+
+    /**
+     * Persisted ticket-list view mode. Values: "list" (default) | "kanban".
+     * Read and written by [TicketListViewModel] on toggle; the Kanban option
+     * renders a placeholder until full Kanban is implemented.
+     */
+    var ticketListViewMode: String
+        get() = prefs.getString("ticket_list_view_mode", "list") ?: "list"
+        set(value) = prefs.edit().putString("ticket_list_view_mode", value).apply()
+
+    // --- plan:L645 — ticket list saved view ---------------------------------
+
+    /**
+     * Persisted saved-view selection for the ticket list. Stored as the
+     * [TicketSavedView.name] enum literal. Defaults to "None" (no preset).
+     */
+    var ticketListSavedView: String
+        get() = prefs.getString("ticket_list_saved_view", "None") ?: "None"
+        set(value) = prefs.edit().putString("ticket_list_saved_view", value).apply()
 }
