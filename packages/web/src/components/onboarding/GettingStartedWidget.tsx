@@ -139,7 +139,9 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
   }, [state]);
 
   // Track the trackable (server-checked) steps only for the progress %.
-  const trackableCount = STEPS.filter((s) => s.doneKey).length;
+  // STEPS is a module-level constant, so this filter is deterministic — memo
+  // with an empty-deps guard keeps it from recomputing on every render.
+  const trackableCount = useMemo(() => STEPS.filter((s) => s.doneKey).length, []);
   const progressPct = Math.round((completedCount / trackableCount) * 100);
   const allDone = completedCount === trackableCount;
 
