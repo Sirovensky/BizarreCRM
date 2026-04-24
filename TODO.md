@@ -740,16 +740,12 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 - [ ] SCAN-1048. **Several server services still use `db: any` parameter — type safety gone.**
   <!-- meta: scope=server/services; files=notifications.ts:168,backup.ts:382,catalogScraper.ts:348,dunningScheduler.ts:661; fix=use-Database-type -->
-- [ ] SCAN-1049. **[HIGH] Catalog scraper stores supplier `imageUrl` without SSRF/domain-allowlist check.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:279-285; fix=assertPublicUrl-or-proxy -->
 - [ ] SCAN-1050. **Catalog `liveSearchSupplier` has no rate limit — unbounded outbound HTTP per caller.**
   <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:815-829; fix=consumeWindowRate -->
 - [ ] SCAN-1051b. **[HIGH/XSS] AutomationsTab email body — client 10KB cap shipped; server-side HTML sanitize/escape still pending.**
   <!-- meta: scope=server/services; files=packages/server/src/services/email.ts; fix=sanitize-or-escape-on-send -->
 - [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**
   <!-- meta: scope=server/services; files=packages/server/src/services/backup.ts:971-998; fix=accept-getDb-factory -->
-- [ ] SCAN-1057. **retentionSweeper SQL interpolates table+column names from RULES — safe today, document invariant or allowlist.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:400-404,441; fix=allowlist-regex-assert -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 

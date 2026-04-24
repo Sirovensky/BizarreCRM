@@ -391,8 +391,24 @@ function writeRetentionAudit(
  * Returns the number of rows deleted, or 0 if the table doesn't exist / the
  * rule failed (failures are logged, not thrown).
  */
+// Defense-in-depth allowlist: every SQL identifier we splice into a retention
+// query must match this pattern. The RULES array is static today but adding
+// the assert here means a future maintainer who sources rule config from
+// elsewhere can't accidentally open a SQL-injection vector via table/column
+// name interpolation.
+const SQL_IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+function assertSqlIdent(name: string, field: string): void {
+  if (!SQL_IDENT_RE.test(name)) {
+    throw new Error(`retentionSweeper: rejected non-identifier ${field}: ${name}`);
+  }
+}
+
 function applyRule(db: Database, rule: SweepRule): number {
   if (!tableExists(db, rule.table)) return 0;
+
+  // Identifier allowlist (SCAN-1057) — see comment on assertSqlIdent.
+  assertSqlIdent(rule.table, 'table');
+  assertSqlIdent(rule.dateColumn, 'dateColumn');
 
   // `retentionDays` is an integer baked into the RULES array — never user
   // input — so interpolating it into the SQL is safe. SQLite requires the
@@ -416,6 +432,11 @@ function applyRule(db: Database, rule: SweepRule): number {
  */
 function applyPiiRule(db: Database, rule: PiiRule): number {
   if (!tableExists(db, rule.table)) return 0;
+
+  // Identifier allowlist (SCAN-1057).
+  assertSqlIdent(rule.table, 'table');
+  assertSqlIdent(rule.dateColumn, 'dateColumn');
+  if (rule.redactColumn) assertSqlIdent(rule.redactColumn, 'redactColumn');
 
   const months = readPiiRetentionMonths(db, rule.configKey);
   // `months` is already validated + clamped by readPiiRetentionMonths, so

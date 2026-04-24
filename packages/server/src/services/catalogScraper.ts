@@ -283,6 +283,25 @@ export function parseProductsFromHtml(html: string, baseUrl: string, supplier: s
     }
     if (imageUrl && imageUrl.startsWith('//')) imageUrl = `https:${imageUrl}`;
     if (imageUrl && imageUrl.startsWith('/') && !imageUrl.startsWith('//')) imageUrl = `${baseUrl}${imageUrl}`;
+    // SCAN-1049: only persist http/https image URLs. A supplier page with a
+    // poisoned data-src / src attribute (e.g. `javascript:…`, or an IP-literal
+    // SSRF target like `http://169.254.169.254/…`) would otherwise flow
+    // directly into the `supplier_catalog.image_url` column and later into
+    // `<img src>` tags on the client.
+    if (imageUrl) {
+      try {
+        const parsed = new URL(imageUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          imageUrl = null;
+        } else if (/^(10\.|127\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|localhost$|\[?::1\]?)/i.test(parsed.hostname)) {
+          // Block private/loopback/link-local hosts — supplier scraper has
+          // no business fetching or later proxying them.
+          imageUrl = null;
+        }
+      } catch {
+        imageUrl = null;
+      }
+    }
 
     // ── SKU ──
     const skuFromAttr = $el.attr('data-sku')?.trim()
