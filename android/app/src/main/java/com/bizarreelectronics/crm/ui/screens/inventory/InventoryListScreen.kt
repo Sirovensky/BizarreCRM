@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +15,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -19,10 +23,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -30,127 +33,29 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryContextMenu
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilter
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilterSheet
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySortDropdown
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryStockBadge
+import com.bizarreelectronics.crm.ui.screens.inventory.components.QuickStockAdjust
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
-// @audit-fixed: Section 33 / D1 — costPrice / retailPrice are now top-level
-// extension shims that read from the cents columns. Explicit import required.
+import com.bizarreelectronics.crm.data.local.db.entities.costPrice
 import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
-import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.util.CurrencyFormatter
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import javax.inject.Inject
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
-data class InventoryListUiState(
-    val items: List<InventoryItemEntity> = emptyList(),
-    val isLoading: Boolean = true,
-    val isRefreshing: Boolean = false,
-    val error: String? = null,
-    val searchQuery: String = "",
-    val selectedType: String = "All",
-    val barcodeLookupId: Long? = null,
-    val barcodeLookupError: String? = null,
-)
+// ─── Role-gating stub ──────────────────────────────────────────────────────
+// TODO(role-gate): Session.currentUserRole is not yet exposed as a ViewModel
+// observable. Until that API lands, cost price is hidden by this local stub
+// which defaults to non-admin (safest default). Replace with real session
+// role read (e.g. from AuthViewModel / SessionManager) once the Session
+// compositionLocal or StateFlow is available.
+private val LocalIsAdmin = androidx.compose.runtime.staticCompositionLocalOf { false }
 
-@HiltViewModel
-class InventoryListViewModel @Inject constructor(
-    private val inventoryRepository: InventoryRepository,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(InventoryListUiState())
-    val state = _state.asStateFlow()
-    private var searchJob: Job? = null
-    private var collectJob: Job? = null
-
-    init {
-        loadItems()
-    }
-
-    fun loadItems() {
-        collectJob?.cancel()
-        collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            val query = _state.value.searchQuery.trim()
-            val typeFilter = _state.value.selectedType
-
-            val flow = if (query.isNotEmpty()) {
-                inventoryRepository.searchItems(query)
-            } else {
-                inventoryRepository.getItems()
-            }
-
-            flow
-                .map { items ->
-                    if (typeFilter != "All") {
-                        items.filter { it.itemType.equals(typeFilter, ignoreCase = true) }
-                    } else {
-                        items
-                    }
-                }
-                .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load inventory. Check your connection and try again.",
-                    )
-                }
-                .collectLatest { items ->
-                    _state.value = _state.value.copy(
-                        items = items,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
-                }
-        }
-    }
-
-    fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
-        loadItems()
-    }
-
-    fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(300)
-            loadItems()
-        }
-    }
-
-    fun onTypeChanged(type: String) {
-        _state.value = _state.value.copy(selectedType = type)
-        loadItems()
-    }
-
-    fun lookupBarcode(code: String) {
-        viewModelScope.launch {
-            try {
-                val entity = inventoryRepository.lookupBarcode(code)
-                if (entity != null) {
-                    _state.value = _state.value.copy(barcodeLookupId = entity.id, barcodeLookupError = null)
-                } else {
-                    _state.value = _state.value.copy(barcodeLookupError = "No item found for barcode: $code")
-                }
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(barcodeLookupError = "Barcode lookup failed: ${e.message}")
-            }
-        }
-    }
-
-    fun clearBarcodeLookup() {
-        _state.value = _state.value.copy(barcodeLookupId = null, barcodeLookupError = null)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun InventoryListScreen(
     onItemClick: (Long) -> Unit,
@@ -162,12 +67,13 @@ fun InventoryListScreen(
     viewModel: InventoryListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    // CROSS3: "Service" removed from inventory type tabs — services are
-    // non-stockable labor and live in the `repair_services` table, not the
-    // `inventory_items` table. Ticket-wizard / POS service picker still
-    // works via the repair_services path.
     val types = listOf("All", "Product", "Part")
     val snackbarHostState = remember { SnackbarHostState() }
+    val isAdmin = LocalIsAdmin.current
+    val isTablet = isMediumOrExpandedWidth()
+    val clipboardManager = LocalClipboardManager.current
+
+    var showFilterSheet by remember { mutableStateOf(false) }
 
     // Trigger barcode lookup when a scanned barcode arrives
     LaunchedEffect(scannedBarcode) {
@@ -192,34 +98,77 @@ fun InventoryListScreen(
         onBarcodeLookupConsumed()
     }
 
+    if (showFilterSheet) {
+        InventoryFilterSheet(
+            current = state.currentFilter,
+            onApply = { filter ->
+                viewModel.onFilterChanged(filter)
+                showFilterSheet = false
+            },
+            onDismiss = { showFilterSheet = false },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        // AND-20260414-M2: Inventory Add FAB — routes to InventoryCreateScreen.
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddClick,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                // a11y: §26 spec — "Add inventory item" (imperative, screen-specific)
-                Icon(Icons.Default.Add, contentDescription = "Add inventory item")
+            // Hide FAB during bulk selection to avoid accidental add
+            if (!state.isSelectionMode) {
+                FloatingActionButton(
+                    onClick = onAddClick,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add inventory item")
+                }
             }
         },
         topBar = {
             BrandTopAppBar(
                 title = "Inventory",
                 actions = {
+                    // Filter icon with badge showing active filter count
+                    val filterCount = state.currentFilter.activeCount
+                    BadgedBox(
+                        badge = {
+                            if (filterCount > 0) {
+                                Badge { Text("$filterCount") }
+                            }
+                        },
+                    ) {
+                        IconButton(onClick = { showFilterSheet = true }) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = "Filter inventory" +
+                                    if (filterCount > 0) " ($filterCount active)" else "",
+                            )
+                        }
+                    }
+                    // Sort dropdown
+                    InventorySortDropdown(
+                        currentSort = state.currentSort,
+                        onSortSelected = { viewModel.onSortChanged(it) },
+                    )
                     IconButton(onClick = onScanClick) {
-                        // a11y: barcode scan action — screen-specific label distinguishes
-                        // from other scan buttons elsewhere in the app
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode to find item")
                     }
                     IconButton(onClick = { viewModel.loadItems() }) {
-                        // a11y: screen-specific label mirrors "Refresh tickets" / "Refresh expenses" pattern
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh inventory")
                     }
                 },
             )
+        },
+        // Bulk-action bar docked at bottom when in selection mode (tablet-gated)
+        bottomBar = {
+            if (state.isSelectionMode && isTablet) {
+                BulkActionBar(
+                    selectedCount = state.selectedIds.size,
+                    onBulkAdjust = { /* TODO: open bulk-adjust sheet */ },
+                    onBulkExport = { /* TODO: export CSV */ },
+                    onDelete = { /* TODO: confirm + delete */ },
+                    onClearSelection = { viewModel.clearSelection() },
+                )
+            }
         },
     ) { padding ->
         Column(
@@ -228,9 +177,6 @@ fun InventoryListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            // a11y: contentDescription on the wrapper gives TalkBack a screen-specific label
-            // ("Search inventory") so it's distinguished from other search bars in the app.
-            // The underlying TextField inside SearchBar handles the EditText role automatically.
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
@@ -240,8 +186,6 @@ fun InventoryListScreen(
                     .semantics { contentDescription = "Search inventory" },
             )
 
-            // a11y: "Type filter" heading so TalkBack heading-navigation (swipe with two fingers)
-            // can jump directly to the filter row; heading() marks it in the a11y tree.
             Text(
                 "Type filter",
                 style = MaterialTheme.typography.labelSmall,
@@ -261,15 +205,9 @@ fun InventoryListScreen(
                         selected = isSelected,
                         onClick = { viewModel.onTypeChanged(type) },
                         label = { Text(type) },
-                        // a11y: Role.Tab + selection state so TalkBack announces
-                        // "<type> tab, selected/not selected"
                         modifier = Modifier.semantics {
                             role = Role.Tab
-                            contentDescription = if (isSelected) {
-                                "$type tab, selected"
-                            } else {
-                                "$type tab, not selected"
-                            }
+                            contentDescription = if (isSelected) "$type tab, selected" else "$type tab, not selected"
                         },
                     )
                 }
@@ -279,24 +217,16 @@ fun InventoryListScreen(
 
             when {
                 state.isLoading -> {
-                    // a11y: mergeDescendants + contentDescription so TalkBack announces
-                    // "Loading inventory" on a single focus stop rather than each shimmer
-                    // box individually.
                     Box(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             contentDescription = "Loading inventory"
                         },
                     ) {
-                        // Skeleton rows: replaces bare spinner for list loading
-                        BrandSkeleton(
-                            rows = 6,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                        BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
+
                 state.error != null -> {
-                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
-                    // informs the user about the error rather than leaving them in silence.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -309,38 +239,86 @@ fun InventoryListScreen(
                         )
                     }
                 }
+
                 state.items.isEmpty() -> {
-                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                    // into one TalkBack node so the empty state reads as a single announcement.
+                    // §6.1 L1067 — filter-aware empty state
+                    val hasActiveFilter = state.currentFilter != InventoryFilter.Empty ||
+                        state.searchQuery.isNotEmpty()
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .semantics(mergeDescendants = true) {},
                         contentAlignment = Alignment.Center,
                     ) {
-                        EmptyState(
-                            icon = Icons.Default.Inventory2,
-                            title = "No items found",
-                            subtitle = if (state.searchQuery.isNotEmpty()) {
-                                "Try a different search term"
-                            } else {
-                                "Add inventory items to get started"
-                            },
-                        )
+                        if (hasActiveFilter) {
+                            EmptyState(
+                                icon = Icons.Default.SearchOff,
+                                title = "No items match",
+                                subtitle = "No items match these filters. Adjust filters or import items.",
+                                action = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.onFilterChanged(InventoryFilter.Empty)
+                                                viewModel.onSearchChanged("")
+                                            },
+                                        ) { Text("Clear filters") }
+                                        Button(onClick = { /* TODO: import CSV stub */ }) {
+                                            Text("Import CSV")
+                                        }
+                                    }
+                                },
+                            )
+                        } else {
+                            EmptyState(
+                                icon = Icons.Default.Inventory2,
+                                title = "No items found",
+                                subtitle = "Add inventory items to get started",
+                            )
+                        }
                     }
                 }
+
                 else -> {
                     PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
                     ) {
                         LazyColumn(
-                            // CROSS16-ext: bottom inset so the last row can
-                            // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                         ) {
                             items(state.items, key = { it.id }) { item ->
-                                InventoryListRow(item = item, onClick = { onItemClick(item.id) })
+                                val isSelected = item.id in state.selectedIds
+                                InventoryListRow(
+                                    item = item,
+                                    isAdmin = isAdmin,
+                                    isTablet = isTablet,
+                                    isSelected = isSelected,
+                                    isSelectionMode = state.isSelectionMode,
+                                    onClick = {
+                                        if (state.isSelectionMode) {
+                                            viewModel.toggleSelection(item.id)
+                                        } else {
+                                            onItemClick(item.id)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (isTablet) viewModel.enterSelectionMode(item.id)
+                                        // Context menu also triggered via overflow "…"
+                                    },
+                                    onAdjust = { delta, type, reason ->
+                                        viewModel.adjustStockBy(item.id, delta, type, reason)
+                                    },
+                                    onCopySku = {
+                                        clipboardManager.setText(AnnotatedString(item.sku ?: ""))
+                                    },
+                                    onOpenItem = { onItemClick(item.id) },
+                                    onPrintLabel = {
+                                        android.util.Log.i("InventoryListScreen", "TODO: print label for item ${item.id}")
+                                    },
+                                    onDuplicate = { /* TODO: duplicate item */ },
+                                    onDeactivate = { /* TODO: deactivate item */ },
+                                )
                                 BrandListItemDivider()
                             }
                         }
@@ -351,15 +329,31 @@ fun InventoryListScreen(
     }
 }
 
-@Composable
-private fun InventoryListRow(item: InventoryItemEntity, onClick: () -> Unit) {
-    val isLowStock = item.inStock <= item.reorderLevel && item.reorderLevel > 0
+// ─── Row ───────────────────────────────────────────────────────────────────
 
-    // a11y: build the row announcement string. Prefix with "LOW STOCK" when applicable
-    // so that TalkBack users immediately know the stock status before the rest of the info.
-    // Format: "[LOW STOCK. ]ITEM_NAME[, SKU][, quantity X in stock], $PRICE[, CATEGORY]. Tap to open."
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun InventoryListRow(
+    item: InventoryItemEntity,
+    isAdmin: Boolean,
+    isTablet: Boolean,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onAdjust: (delta: Int, type: String, reason: String?) -> Unit,
+    onCopySku: () -> Unit,
+    onOpenItem: () -> Unit,
+    onPrintLabel: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDeactivate: () -> Unit,
+) {
+    val isLowStock = item.inStock in 1 until item.reorderLevel && item.reorderLevel > 0
+    val isOutOfStock = item.inStock == 0
+
     val rowA11yDesc = buildString {
-        if (isLowStock) append("LOW STOCK. ")
+        if (isOutOfStock) append("OUT OF STOCK. ")
+        else if (isLowStock) append("LOW STOCK. ")
         append(item.name.ifBlank { "Unnamed" })
         if (!item.sku.isNullOrBlank()) append(", SKU ${item.sku}")
         append(", quantity ${item.inStock} in stock")
@@ -368,50 +362,173 @@ private fun InventoryListRow(item: InventoryItemEntity, onClick: () -> Unit) {
         append(". Tap to open.")
     }
 
-    BrandListItem(
-        onClick = onClick,
-        // a11y: BrandListItem already applies semantics(mergeDescendants=true) + Role.Button
-        // when onClick != null (§26.1 in BrandListItem.kt). We only add the contentDescription
-        // here so TalkBack reads the full structured announcement rather than concatenating
-        // the individual Text composables inside the row.
-        modifier = Modifier.semantics { contentDescription = rowA11yDesc },
-        headline = {
+    // Context-menu state — driven by overflow "…" button
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box {
+        BrandListItem(
+            modifier = Modifier
+                .semantics { contentDescription = rowA11yDesc }
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        if (isTablet) {
+                            onLongClick()
+                        } else {
+                            showMenu = true
+                        }
+                    },
+                )
+                .then(
+                    if (isSelected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                    else Modifier
+                ),
+            // headline + support + trailing provided explicitly — no onClick param to BrandListItem
+            // since we handle click via Modifier.combinedClickable above.
+            headline = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (isSelectionMode) {
+                        Checkbox(checked = isSelected, onCheckedChange = null)
+                    }
+                    Text(
+                        item.name.ifBlank { "Unnamed" },
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+            },
+            support = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (!item.sku.isNullOrBlank()) {
+                        Text(
+                            "SKU: ${item.sku}",
+                            style = BrandMono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (!item.itemType.isNullOrBlank()) {
+                        Text(
+                            item.itemType.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    // §6.1 L1058 — stock badge
+                    InventoryStockBadge(stockQty = item.inStock, reorderLevel = item.reorderLevel)
+                }
+            },
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            CurrencyFormatter.format(item.retailPrice),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        // §6.1 L1066 — hide cost from non-admin
+                        if (isAdmin) {
+                            Text(
+                                "Cost: ${CurrencyFormatter.format(item.costPrice)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        val stockColor = when {
+                            isOutOfStock -> MaterialTheme.colorScheme.error
+                            isLowStock -> MaterialTheme.colorScheme.error
+                            else -> SuccessGreen
+                        }
+                        Text(
+                            when {
+                                isOutOfStock -> "Out · 0"
+                                isLowStock -> "Low · ${item.inStock}"
+                                else -> "Stock: ${item.inStock}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = stockColor,
+                        )
+                    }
+
+                    // §6.1 L1059 — inline +/- stepper (tablet only)
+                    if (isTablet) {
+                        QuickStockAdjust(
+                            stockQty = item.inStock,
+                            onAdjust = onAdjust,
+                        )
+                    }
+
+                    // Overflow "…" → context menu
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options for ${item.name}",
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        InventoryContextMenu(
+                            expanded = showMenu,
+                            onDismiss = { showMenu = false },
+                            onOpen = onOpenItem,
+                            onCopySku = onCopySku,
+                            onAdjustStock = { /* open QuickStockAdjust sheet via long-press stub */ },
+                            onPrintLabel = onPrintLabel,
+                            onDuplicate = onDuplicate,
+                            onDeactivate = onDeactivate,
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
+// ─── Bulk Action Bar ───────────────────────────────────────────────────────
+
+@Composable
+private fun BulkActionBar(
+    selectedCount: Int,
+    onBulkAdjust: () -> Unit,
+    onBulkExport: () -> Unit,
+    onDelete: () -> Unit,
+    onClearSelection: () -> Unit,
+) {
+    Surface(
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                item.name.ifBlank { "Unnamed" },
+                "$selectedCount selected",
                 style = MaterialTheme.typography.titleSmall,
             )
-        },
-        support = {
-            if (!item.sku.isNullOrBlank()) {
-                Text(
-                    "SKU: ${item.sku}",
-                    // BrandMono for SKU strings per todo rule
-                    style = BrandMono,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (!item.itemType.isNullOrBlank()) {
-                Text(
-                    item.itemType.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onBulkAdjust) { Text("Adjust") }
+                TextButton(onClick = onBulkExport) { Text("Export") }
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Delete") }
+                IconButton(onClick = onClearSelection) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                }
             }
-        },
-        trailing = {
-            Column(horizontalAlignment = Alignment.End) {
-                // @audit-fixed: was String.format("$%.2f", ...) — see original.
-                Text(
-                    CurrencyFormatter.format(item.retailPrice),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                val stockColor = if (isLowStock) MaterialTheme.colorScheme.error else SuccessGreen
-                Text(
-                    if (isLowStock) "Low · ${item.inStock}" else "Stock: ${item.inStock}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = stockColor,
-                )
-            }
-        },
-    )
+        }
+    }
 }
+
