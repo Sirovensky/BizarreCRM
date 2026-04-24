@@ -153,6 +153,23 @@ public final class Cart {
         items = items + [item]
     }
 
+    /// Atomically append multiple lines in a single array replacement.
+    /// Used by the bundle resolver so service + children land as one undo unit.
+    public func addLines(_ newLines: [CartItem]) {
+        guard !newLines.isEmpty else { return }
+        items = items + newLines
+    }
+
+    /// Remove all lines whose `notes` field equals `tag`.
+    /// Returns the number of lines removed.
+    /// Used by the bundle remove flow (`Cart+addBundle.swift`).
+    @discardableResult
+    public func removeLines(withNotesTag tag: String) -> Int {
+        let before = items.count
+        items = items.filter { $0.notes != tag }
+        return before - items.count
+    }
+
     /// Remove a line from the cart. Retained for callsites predating §16.11
     /// that don't need audit logging (e.g. internal state reset, test helpers).
     @available(*, deprecated, message: "Use removeLine(id:reason:managerId:) to emit an audit event.")
