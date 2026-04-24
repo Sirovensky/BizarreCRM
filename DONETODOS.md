@@ -1,4 +1,8 @@
 
+## Closed 2026-04-23 (wave-61 server/services — catalogSync type safety)
+
+- [x] SCAN-1077. **`catalogSync.ts` typed `tenantDb` as `any` + cast three row-sets to `any[]`** — flipped to `Database.Database` + three narrow row interfaces (`SupplierCatalogRow`, `CompatRow`, `CatalogLookupRow`). Also swapped `console.log`/`console.warn` for the project's structured `logger` so catalog-sync events land in the same pipeline as the other services. `getTemplateCatalogCount` now narrows the count row to `{ c: number } | undefined` and returns `0` on a missing row. Matches the SCAN-1048/1048b/1058 pattern already applied to `notifications.ts`, `backup.ts`, and `catalogScraper.ts`.
+
 ## Closed 2026-04-23 (wave-61 server/routes — tickets detail auth gap)
 
 - [x] SCAN-1074. **`GET /tickets/:id` was missing `requirePermission('tickets.view')`** — permission is defined in `roles.routes.ts` but `tickets.routes.ts` only enforced it on writes. A role stripped of `tickets.view` could still read any single ticket by iterating ids. Gated the detail handler. Intentionally did NOT expand to the list/filter/export/stalled/kanban/etc GETs in this commit — atomic per SCAN id. Broader sweep is a follow-up (similar gap across the other 16 GET handlers in the file).

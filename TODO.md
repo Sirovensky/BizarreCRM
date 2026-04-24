@@ -733,8 +733,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
 - [ ] SCAN-1076. **[LOW] `GET /inventory/purchase-orders/list` accepts arbitrary `status` query — no domain allowlist.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1320-1330; fix=allowlist=['draft','ordered','partial','received','cancelled'] -->
-- [ ] SCAN-1077. **[LOW] `catalogSync.ts` tenantDb typed as `any` + row casts — mirrors SCAN-1048/1048b pattern.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/catalogSync.ts:8,25,26; fix=import-Database-type -->
 - [ ] SCAN-1078. **[MED] `crashGuardMiddleware` routeId uses `req.path` (with IDs) — crash-attribution never trips auto-disable.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/crashResiliency.ts:34; fix=use-req.route?.path -->
 - [ ] SCAN-1079. **[LOW] `requestLogger` collapses all unresolvable-host traffic into `'bare-domain'` metric bucket.**
