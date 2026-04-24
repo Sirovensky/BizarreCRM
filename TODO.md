@@ -1471,8 +1471,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
   <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
-- [ ] SCAN-944. **Impersonation banner exit button is a clickable div without keyboard handler — keyboard users cannot exit impersonation.**
-  <!-- meta: scope=web/components; files=packages/web/src/components/ImpersonationBanner.tsx:82-86; fix=use-real-button -->
 - [ ] SCAN-948. **DataTable clickable rows + sortable headers have no keyboard handlers — keyboard users can't click into rows or sort columns.**
   <!-- meta: scope=web/components; files=packages/web/src/components/shared/DataTable.tsx:169-188,197-206; fix=onKeyDown-enter-space -->
 - [ ] SCAN-950. **Several onError callbacks in team/inventory components type the error as `any` — bypasses safe narrowing.**
