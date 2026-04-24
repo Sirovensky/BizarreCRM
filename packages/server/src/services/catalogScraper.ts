@@ -831,11 +831,34 @@ export async function scrapeCatalog(
  * Returns first page only (up to ~36 items). Results are also upserted into
  * supplier_catalog so future local searches will find them.
  */
+// SCAN-1050: live search makes an outbound HTTP call to a supplier on every
+// invocation. Without this guard any authenticated user could burn through
+// supplier rate limits (or get the tenant IP banned) with a tight loop.
+// Process-level bucket is fine — the scrape is global, not per-tenant.
+const LIVE_SEARCH_MAX = 30;
+const LIVE_SEARCH_WINDOW_MS = 60_000;
+const liveSearchCounts = new Map<string, { count: number; resetAt: number }>();
+function rateLimitLiveSearch(source: CatalogSource): void {
+  const now = Date.now();
+  const bucket = liveSearchCounts.get(source);
+  if (!bucket || bucket.resetAt <= now) {
+    liveSearchCounts.set(source, { count: 1, resetAt: now + LIVE_SEARCH_WINDOW_MS });
+    return;
+  }
+  if (bucket.count >= LIVE_SEARCH_MAX) {
+    const err = new Error(`Live search rate limit exceeded for ${source} — try again in ${Math.ceil((bucket.resetAt - now) / 1000)}s`);
+    (err as unknown as { status?: number }).status = 429;
+    throw err;
+  }
+  bucket.count += 1;
+}
+
 export async function liveSearchSupplier(
   db: any,
   source: CatalogSource,
   query: string,
 ): Promise<ScrapedProduct[]> {
+  rateLimitLiveSearch(source);
   const { products } = await fetchSearchPage(source, query, 1);
 
   if (products.length > 0) {
