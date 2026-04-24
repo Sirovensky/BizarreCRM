@@ -12,6 +12,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -156,9 +161,11 @@ fun NotificationSettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // a11y: section heading — TalkBack "heading" navigation gesture lands here
                     Text(
                         "Delivery channels",
                         style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.semantics { heading() },
                     )
                     NotificationToggleRow(
                         icon = Icons.Default.Email,
@@ -194,7 +201,12 @@ fun NotificationSettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Quiet hours", style = MaterialTheme.typography.titleSmall)
+                    // a11y: section heading
+                    Text(
+                        "Quiet hours",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     NotificationToggleRow(
                         icon = Icons.Default.Bedtime,
                         title = "Enable quiet hours",
@@ -225,9 +237,11 @@ fun NotificationSettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // a11y: section heading
                     Text(
                         "Categories",
                         style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.semantics { heading() },
                     )
                     NotificationToggleRow(
                         icon = Icons.Default.Inventory,
@@ -271,13 +285,23 @@ private fun NotificationToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val onOffLabel = if (checked) "on" else "off"
+    // a11y: mergeDescendants collapses icon + text + Switch into one node;
+    // contentDescription gives TalkBack "<title>, notifications <on/off>. <subtitle>."
+    // Role.Switch mirrors the underlying M3 Switch role so swipe-to-toggle works.
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title, notifications $onOffLabel. $subtitle."
+                role = Role.Switch
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // decorative — merged Row contentDescription supplies the announcement
         Icon(
             icon,
-            contentDescription = title,
+            contentDescription = null,
             modifier = Modifier.size(20.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -321,14 +345,28 @@ private fun QuietHourRow(
     var showPicker by remember { mutableStateOf(false) }
     val color = if (enabled) MaterialTheme.colorScheme.onSurface
         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val formattedTime = formatHHmm(minutes)
+
+    // a11y: Row is the interactive target; describe its current value and affordance.
+    // When disabled, note that quiet hours must be enabled first.
+    val rowContentDescription = if (enabled) {
+        "$label time: $formattedTime. Tap to change."
+    } else {
+        "$label time: $formattedTime. Enable quiet hours to change."
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) { showPicker = true }
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = rowContentDescription
+                role = Role.Button
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // decorative — merged Row contentDescription supplies the announcement
         Icon(
             Icons.Default.Schedule,
             contentDescription = null,
@@ -339,7 +377,7 @@ private fun QuietHourRow(
         Spacer(Modifier.width(12.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, color = color, modifier = Modifier.weight(1f))
         Text(
-            text = formatHHmm(minutes),
+            text = formattedTime,
             style = MaterialTheme.typography.bodyLarge,
             color = color,
         )
@@ -354,13 +392,27 @@ private fun QuietHourRow(
         AlertDialog(
             onDismissRequest = { showPicker = false },
             confirmButton = {
-                TextButton(onClick = {
-                    onPicked(pickerState.hour * 60 + pickerState.minute)
-                    showPicker = false
-                }) { Text("Set") }
+                // a11y: confirm sets the chosen time
+                TextButton(
+                    onClick = {
+                        onPicked(pickerState.hour * 60 + pickerState.minute)
+                        showPicker = false
+                    },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Set $label time"
+                        role = Role.Button
+                    },
+                ) { Text("Set") }
             },
             dismissButton = {
-                TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+                // a11y: dismiss cancels without saving
+                TextButton(
+                    onClick = { showPicker = false },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Cancel $label time change"
+                        role = Role.Button
+                    },
+                ) { Text("Cancel") }
             },
             title = { Text(label) },
             text = { TimePicker(state = pickerState) },
