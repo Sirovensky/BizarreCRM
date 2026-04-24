@@ -360,9 +360,11 @@ router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
 });
 
 // GET /invoices/:id
-router.get('/:id', async (req, res) => {
+// SCAN-1072: sibling list/stats routes are gated on invoices.view; this handler
+// was left open, letting any authenticated user enumerate any invoice by id.
+router.get('/:id', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
-  const invoice = await getInvoiceDetail(adb, req.params.id);
+  const invoice = await getInvoiceDetail(adb, req.params.id as string);
   if (!invoice) throw new AppError('Invoice not found', 404);
   res.json({ success: true, data: invoice });
 });

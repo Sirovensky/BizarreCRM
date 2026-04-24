@@ -726,3 +726,29 @@ Verified working. Not TODOs.
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
+### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
+- [ ] SCAN-1073. **[HIGH] `GET /tickets/export` missing permission guard + rate limit — any authenticated user can exfiltrate + DoS.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/tickets.routes.ts:1613; fix=requirePermission('tickets.export')+consumeWindowRate -->
+- [ ] SCAN-1074. **[MED] `GET /tickets/:id` missing `requirePermission('tickets.view')` — sibling writes are gated.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/tickets.routes.ts:1835; fix=add-requirePermission -->
+- [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
+- [ ] SCAN-1076. **[LOW] `GET /inventory/purchase-orders/list` accepts arbitrary `status` query — no domain allowlist.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1320-1330; fix=allowlist=['draft','ordered','partial','received','cancelled'] -->
+- [ ] SCAN-1077. **[LOW] `catalogSync.ts` tenantDb typed as `any` + row casts — mirrors SCAN-1048/1048b pattern.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/catalogSync.ts:8,25,26; fix=import-Database-type -->
+- [ ] SCAN-1078. **[MED] `crashGuardMiddleware` routeId uses `req.path` (with IDs) — crash-attribution never trips auto-disable.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/crashResiliency.ts:34; fix=use-req.route?.path -->
+- [ ] SCAN-1079. **[LOW] `requestLogger` collapses all unresolvable-host traffic into `'bare-domain'` metric bucket.**
+  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/requestLogger.ts:76-83; fix=host-suffix-fallback -->
+- [ ] SCAN-1080. **[LOW] `audit_logs` lacks composite `(user_id, created_at)` index — every per-user audit page scans + sorts.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/022_audit_logs.sql:9-11; fix=new-migration-add-composite-index -->
+- [ ] SCAN-1081. **[MED] Migration 138 omits `PRAGMA foreign_key_check` before COMMIT — orphan rows can survive rebuild-rename.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/138_fk_cascades_on_delete.sql:23-300; fix=add-foreign_key_check-before-commit -->
+- [ ] SCAN-1082. **[LOW] `supplier_catalog.UNIQUE(source, external_id)` treats NULLs as distinct — duplicate scrape rows on PDPs without ID.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/002_device_models_supplier_catalog.sql:38-56; fix=partial-unique-index-WHERE-external_id-IS-NOT-NULL -->
+- [ ] SCAN-1083. **[LOW] `uiStore.matchMedia` listener never detached — stacks under HMR + jsdom.**
+  <!-- meta: scope=web/stores; files=packages/web/src/stores/uiStore.ts:88-96; fix=document-or-hoist-handler -->
+- [ ] SCAN-1084. **[MED] `scheduleTokenRefresh` on decode-fail removes token but doesn't flip auth store — stale "authenticated" UI until next 401.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:114-124; fix=forceLogout('refresh-failed')-in-catch -->
+

@@ -1,4 +1,8 @@
 
+## Closed 2026-04-23 (wave-61 server/routes — invoices detail auth gap)
+
+- [x] SCAN-1072. **`GET /invoices/:id` was missing `requirePermission('invoices.view')`** — sibling list + stats routes were already gated. Any authenticated user (including custom roles with `invoices.view` stripped) could enumerate every invoice by iterating ids. Added the guard; kept the existing `getInvoiceDetail` call signature (cast `req.params.id as string` to match the two other call sites in the same file).
+
 ## Closed 2026-04-23 (wave-60 server/utils — SSRF rebind closure)
 
 - [x] SCAN-1063. **`fetchWithSsrfGuard` left a DNS-rebinding window between guard-time lookup and connect-time resolution** — fixed by installing a per-request undici `Agent` with a custom `connect.lookup` that short-circuits to the IP `assertPublicUrl` already validated. OS resolver is never consulted again at connect time. TLS SNI + HTTP `Host` continue to use the original hostname so cert verification + virtual hosting are preserved. JSDoc on the module + on `fetchWithSsrfGuard` rewritten to describe the actual guarantee.
