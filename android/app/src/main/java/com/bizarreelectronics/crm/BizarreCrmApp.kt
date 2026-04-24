@@ -288,6 +288,16 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                 description = "Backup results, crash reports, diagnostic logs."
                 setShowBadge(false)
             },
+
+            // §1.7 L245 — silent SMS dedup: badge only, no sound/vibration.
+            // Created here alongside all other channels so the user sees it in
+            // Settings → Notifications → Bizarre CRM → SMS (silent dedup).
+            NotificationChannel(CH_SMS_SILENT, "SMS — silent (conversation open)", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Badge-only update when a new SMS arrives for a thread you are currently viewing."
+                setShowBadge(true)
+                setSound(null, null)
+                enableVibration(false)
+            },
         )
 
         channels.forEach { manager.createNotificationChannel(it) }
@@ -322,5 +332,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         const val CH_DAILY_SUMMARY = "daily_summary"
         const val CH_SYNC = "sync"
         const val CH_BACKUP_REPORT = "backup_report"
+
+        // §1.7 L245 — silent dedup channel for SMS while the thread is open.
+        // IMPORTANCE_LOW: updates the shade badge without sound or vibration.
+        const val CH_SMS_SILENT = "sms_silent"
     }
 }

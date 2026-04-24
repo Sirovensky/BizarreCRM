@@ -1,13 +1,9 @@
 package com.bizarreelectronics.crm.service
 
-import android.app.PendingIntent
-import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.bizarreelectronics.crm.BizarreCrmApp
 import com.bizarreelectronics.crm.BuildConfig
-import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -19,7 +15,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -34,8 +29,6 @@ class FcmService : FirebaseMessagingService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
-        private val notificationIdCounter = AtomicInteger(0)
-
         /**
          * Whitelist of entity types that can be passed via push notifications.
          * Prevents deep-link injection — a malicious FCM payload cannot navigate
@@ -99,101 +92,63 @@ class FcmService : FirebaseMessagingService() {
             return
         }
 
-        val title = message.notification?.title ?: message.data["title"] ?: "Bizarre CRM"
-        val body = message.notification?.body ?: message.data["body"] ?: ""
-        val entityType = message.data["entity_type"]
-        val entityId = message.data["entity_id"]
-
-        // §13.2: route to the granular channels declared in
-        // [BizarreCrmApp.createNotificationChannels]. New event types map to
-        // the closest fit; unknown types fall through to CH_SYNC so the user
-        // can still silence via Settings rather than being stuck with a
-        // default-importance surprise.
-        val channelId = when (type) {
-            "sms_received", "sms" -> BizarreCrmApp.CH_SMS_INBOUND
-            "ticket_assigned" -> BizarreCrmApp.CH_TICKET_ASSIGNED
-            "ticket_updated", "customer_message" -> BizarreCrmApp.CH_TICKET_STATUS
-            "appointment_reminder" -> BizarreCrmApp.CH_APPOINTMENT_REMINDER
-            "sla_breach", "sla_amber", "sla_red" -> BizarreCrmApp.CH_SLA_BREACH
-            "security_event", "session_revoked", "password_changed" -> BizarreCrmApp.CH_SECURITY_EVENT
-            "payment_received", "invoice_paid", "deposit_received" -> BizarreCrmApp.CH_PAYMENT_RECEIVED
-            "mention", "mentioned" -> BizarreCrmApp.CH_MENTION
-            "low_stock", "inventory_low" -> BizarreCrmApp.CH_LOW_STOCK
-            "daily_summary", "end_of_day" -> BizarreCrmApp.CH_DAILY_SUMMARY
-            "backup_report", "backup_failed", "diagnostics" -> BizarreCrmApp.CH_BACKUP_REPORT
-            else -> BizarreCrmApp.CH_SYNC
-        }
-
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            // Deep link data — validate entityType against whitelist to prevent injection.
-            // entityId must also be a valid number.
-            if (entityType != null && entityType in ALLOWED_ENTITY_TYPES &&
-                entityId != null && entityId.toLongOrNull() != null
-            ) {
-                putExtra("navigate_to", entityType)
-                putExtra("entity_id", entityId)
-            } else if (entityType != null && BuildConfig.DEBUG) {
-                Log.w("FCM", "Rejected unknown entity_type from FCM: $entityType")
+        // §1.7 L244 — Route notification-carrying payloads through NotificationController.
+        // Controller parses type, entity_id, navigate_to, title, body, thread_phone and
+        // returns a fully-built Notification with action buttons (Reply / Mark as read).
+        // Quiet-hours and badge count are applied below after the controller returns.
+        val data = buildMap<String, String> {
+            // Merge RemoteMessage notification fields into the data map so the
+            // controller has a single source of truth regardless of whether the
+            // server sent a notification block or a pure data message.
+            message.notification?.title?.let { put("title", it) }
+            message.notification?.body?.let { put("body", it) }
+            putAll(message.data)
+            // Validate entity_type against whitelist — reject unknown types to
+            // prevent deep-link injection attacks (same guard as old inline code).
+            val entityType = message.data["entity_type"]
+            val entityId = message.data["entity_id"]
+            if (entityType != null && entityType !in ALLOWED_ENTITY_TYPES) {
+                remove("entity_type")
+                remove("entity_id")
+                remove("navigate_to")
+                if (BuildConfig.DEBUG) {
+                    Log.w("FCM", "Rejected unknown entity_type from FCM: $entityType")
+                }
+            } else if (entityId != null && entityId.toLongOrNull() == null) {
+                // entity_id is present but not a valid Long — strip both.
+                remove("entity_id")
+                if (BuildConfig.DEBUG) {
+                    Log.w("FCM", "Rejected non-numeric entity_id from FCM: $entityId")
+                }
             }
         }
 
-        // AUDIT-AND-027: consume a single id from the counter and reuse it for
-        // both the PendingIntent requestCode AND notify(). The old code called
-        // .get() for PendingIntent and .getAndIncrement() for notify() — two
-        // separate reads from the AtomicInteger — so a concurrent FCM message
-        // received between those two calls could cause the PendingIntent to
-        // point at the wrong notification slot or overwrite a sibling notification.
-        val id = notificationIdCounter.getAndIncrement()
+        // §13.2 quiet hours: decide silence before building so the controller stamps
+        // the right priority from the start. Re-derive channel from data to avoid
+        // inspecting the not-yet-built Notification.
+        val quietChannelId = when (val t = data["type"] ?: "system") {
+            "sms_inbound", "sms" -> BizarreCrmApp.CH_SMS_INBOUND
+            "ticket_assigned" -> BizarreCrmApp.CH_TICKET_ASSIGNED
+            "ticket_updated", "customer_message" -> BizarreCrmApp.CH_TICKET_STATUS
+            "appointment_reminder" -> BizarreCrmApp.CH_APPOINTMENT_REMINDER
+            else -> if (t.startsWith("sla_")) BizarreCrmApp.CH_SLA_BREACH else BizarreCrmApp.CH_SYNC
+        }
+        val silenced = quietHours.shouldSilence(quietChannelId)
 
-        val pendingIntent = PendingIntent.getActivity(
-            this, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        // M1 fix: don't leak customer names, ticket numbers, or SMS bodies to
-        // the lock screen. VISIBILITY_PRIVATE shows a generic "Bizarre CRM"
-        // line on the lock screen and the full content only after unlock.
-        // We also set a public alternate so the lock screen has something
-        // sensible to render.
-        val publicNotification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Bizarre CRM")
-            .setContentText("New notification")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-
-        // §13.2 quiet hours: silence non-critical channels during the user's
-        // configured window. We keep the notification visible (still posts +
-        // increments badge) but drop priority + clear sound/vibration so it
-        // doesn't wake them. SLA breaches + security alerts ignore this and
-        // keep priority HIGH per QuietHours.shouldSilence's allowlist.
-        val silenced = quietHours.shouldSilence(channelId)
-        // §13.4: launcher dot count — Samsung One UI + a few skins read
-        // setNumber as the badge integer. Pass total active app
-        // notifications + 1 (this one) so the dot stays accurate.
+        // §13.4: launcher dot count — Samsung One UI + a few skins read setNumber.
         val activeBefore = runCatching {
             (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
                 .activeNotifications.size
         }.getOrDefault(0)
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(if (silenced) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
-            .apply {
-                if (silenced) {
-                    setSilent(true)
-                    setDefaults(0)
-                }
-            }
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .setNumber(activeBefore + 1)
-            // M1 fix: keep the full payload off the lock screen.
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicNotification)
-            .build()
+
+        // Pass quiet-hours and badge hints to the controller so it builds a single,
+        // fully-correct Notification without requiring FcmService to re-wrap it.
+        val enriched = data.toMutableMap().apply {
+            if (silenced) put("_quiet_override", "true")
+            put("_badge_count", (activeBefore + 1).toString())
+        }
+
+        val (id, notification) = NotificationController.handle(this, enriched)
 
         try {
             NotificationManagerCompat.from(this).notify(id, notification)
