@@ -726,8 +726,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:18-36; fix=use-consumeWindowRate-or-tx -->
 - [ ] SCAN-1066. **WS broadcast iterates global allClients set per event — O(totalSockets), not O(tenantSockets).**
   <!-- meta: scope=server/ws; files=packages/server/src/ws/server.ts:640-675; fix=per-tenant-Map -->
-- [ ] SCAN-1067. **`validateTextLength` silently coerces missing required field to empty string — no throw.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/validate.ts:65-69; fix=add-required-flag -->
 - [ ] SCAN-1068. **`scanFileForViruses` returns clean when CLAMAV_HOST set but integration unwired — operators think scanning is active.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/fileValidation.ts:204-232; fix=startup-env-check -->
 - [ ] SCAN-1069. **`logTenantAuthEvent` runs `checkBruteForce` synchronously on every failed login — 2-4 SQLite round-trips in auth hot path.**

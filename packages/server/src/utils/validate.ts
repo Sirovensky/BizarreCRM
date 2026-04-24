@@ -62,8 +62,16 @@ export function validateIntegerQuantity(value: unknown, fieldName = 'quantity'):
   return raw;
 }
 
-export function validateTextLength(value: string | undefined, maxLength: number, fieldName = 'text'): string {
-  if (!value) return '';
+export function validateTextLength(
+  value: string | undefined | null,
+  maxLength: number,
+  fieldName = 'text',
+  required = false,
+): string {
+  if (!value) {
+    if (required) throw new AppError(`${fieldName} is required`, 400);
+    return '';
+  }
   if (value.length > maxLength) throw new AppError(`${fieldName} exceeds ${maxLength} characters`, 400);
   return value;
 }
