@@ -707,3 +707,29 @@ Verified working. Not TODOs.
 - [ ] SCAN-984. **Estimate convert mutation navigates away while concurrent send/approve mutations may still be pending — race condition.**
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
 
+### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
+- [ ] SCAN-991. **[HIGH] Catalog page renders unsanitized server `product_url` into `href` — `javascript:` / `data:` XSS vector.**
+  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:477; fix=protocol-check -->
+- [ ] SCAN-992. **Catalog page: `jobs`, `items`, `modelResults` typed as `any[]` — server payload unchecked.**
+  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:75,86,91; fix=define-Job-Item-Model-interfaces -->
+- [ ] SCAN-993. **Catalog device-model search catches errors silently — 401/network failure invisible.**
+  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:98; fix=log-and-show-error -->
+- [ ] SCAN-994. **Catalog stats/jobs queries missing `staleTime` — remounts re-fetch every 3-5 s interval.**
+  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:63,70; fix=staleTime -->
+- [ ] SCAN-995. **Employees page buttons missing `type="button"` — parent form submit risk.**
+  <!-- meta: scope=web/pages/employees; files=packages/web/src/pages/employees/EmployeeListPage.tsx:161-170,526; fix=add-type-button -->
+- [ ] SCAN-996. **EmployeeRow `getWeekRange()` called at render — unmemoized, can drift across rows same render.**
+  <!-- meta: scope=web/pages/employees; files=packages/web/src/pages/employees/EmployeeListPage.tsx:456-465; fix=useMemo-or-module-const -->
+- [ ] SCAN-997. **Billing icon buttons missing `type="button"` + aria-label across aging/dunning/payment-links.**
+  <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=type-button+aria-label -->
+- [ ] SCAN-998. **Marketing campaigns + segments list queries missing `staleTime`.**
+  <!-- meta: scope=web/pages/marketing; files=CampaignsPage.tsx:79,SegmentsPage.tsx:63; fix=staleTime-30000 -->
+- [ ] SCAN-999. **Marketing campaigns uses `as any` for server data access — type safety lost.**
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:95-96; fix=type-query-return -->
+- [ ] SCAN-1000. **Segments page icon-only View/Refresh buttons use only `title` — not screen-reader friendly.**
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/SegmentsPage.tsx:149,157; fix=aria-label -->
+- [ ] SCAN-1001. **GiftCardDetailPage query missing `staleTime`.**
+  <!-- meta: scope=web/pages/gift-cards; files=packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:153; fix=staleTime-30000 -->
+- [ ] SCAN-1002. **DepositCollectModal buttons missing `type="button"` — if nested in form, would submit parent.**
+  <!-- meta: scope=web/pages/billing; files=packages/web/src/pages/billing/DepositCollectModal.tsx:107; fix=add-type-button -->
+
