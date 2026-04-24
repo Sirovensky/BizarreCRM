@@ -12,7 +12,7 @@ import com.bizarreelectronics.crm.data.remote.dto.PhotoListData
 import com.bizarreelectronics.crm.data.remote.dto.PriceHistoryData
 import com.bizarreelectronics.crm.data.remote.dto.SalesHistoryData
 import com.bizarreelectronics.crm.data.remote.dto.SupplierDetailData
-import com.bizarreelectronics.crm.data.remote.dto.TaxClassOptionsData
+import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.remote.dto.TicketUsageData
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -89,8 +89,11 @@ interface InventoryApi {
     ): ApiResponse<TicketUsageData>
 
     // ── L1082: Tax classes ───────────────────────────────────────────────────
-    @GET("tax-classes")
-    suspend fun getTaxClasses(): ApiResponse<TaxClassOptionsData>
+    // Server mounts the tax-classes route under /api/v1/settings
+    // (see packages/server/src/routes/settings.routes.ts:657). The previous
+    // bare 'tax-classes' path 404s; corrected to 'settings/tax-classes'.
+    @GET("settings/tax-classes")
+    suspend fun getTaxClasses(): ApiResponse<List<TaxClassOption>>
 
     // ── L1083: Photos ────────────────────────────────────────────────────────
     @GET("inventory/{id}/photos")

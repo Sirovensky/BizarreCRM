@@ -247,6 +247,8 @@ data class TaxClassOption(
     val id: Long,
     val name: String,
     val rate: Double,
+    @SerializedName("is_default")
+    val isDefault: Int? = null,
 )
 
 data class TaxClassOptionsData(

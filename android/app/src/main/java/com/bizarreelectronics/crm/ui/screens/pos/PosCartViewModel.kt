@@ -53,6 +53,20 @@ class PosCartViewModel @Inject constructor(
                 }
             }
         }
+        // POS-TAX-001: load the default tax class rate from
+        // /api/v1/settings/tax-classes so cart totals show real tax (mockup
+        // PHONE 3 'Tax · 8.5%'). Falls back to 0.0 on a missing default
+        // row so the cart still renders without a tax line in dev DBs.
+        viewModelScope.launch {
+            runCatching { inventoryApi.getTaxClasses() }
+                .onSuccess { resp ->
+                    val classes = resp.data.orEmpty()
+                    val rate = classes.firstOrNull { it.isDefault == 1 }?.rate
+                        ?: classes.firstOrNull()?.rate
+                        ?: 0.0
+                    _uiState.update { it.copy(taxRate = rate) }
+                }
+        }
     }
 
     fun addMiscItem(name: String, unitPriceCents: Long) {
@@ -70,8 +84,12 @@ class PosCartViewModel @Inject constructor(
         name: String,
         unitPriceCents: Long,
         sku: String? = null,
-        taxRate: Double = 0.0,
+        taxRate: Double? = null,
     ) {
+        // Use the per-item tax rate if the caller supplied one (e.g. an
+        // inventory item with a non-default tax class); otherwise inherit the
+        // cart's loaded default rate so the totals row picks up real tax math.
+        val effectiveRate = taxRate ?: _uiState.value.taxRate
         val existing = _uiState.value.lines.indexOfFirst { it.itemId == itemId && it.type == "inventory" }
         val updated = if (existing >= 0) {
             _uiState.value.lines.mapIndexed { i, l ->
@@ -84,7 +102,7 @@ class PosCartViewModel @Inject constructor(
                 name = name,
                 sku = sku,
                 unitPriceCents = unitPriceCents,
-                taxRate = taxRate,
+                taxRate = effectiveRate,
             )
         }
         pushLines(updated)
