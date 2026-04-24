@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -36,12 +37,37 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun PosCartScreen(
     onNavigateToTender: () -> Unit,
     onBack: () -> Unit,
+    onScanBarcode: () -> Unit = {},
+    scannedBarcodeFlow: kotlinx.coroutines.flow.Flow<String?>? = null,
+    onScannedBarcodeConsumed: () -> Unit = {},
     viewModel: PosCartViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     var showDetachConfirm by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Consume scan-result handoff from the scanner screen. AppNavGraph
+    // writes the scanned code onto this entry's savedStateHandle and pops
+    // back; we read it here, push it through the VM, and clear it so a
+    // recompose-only event doesn't re-add the same line.
+    val scannedBarcode by (scannedBarcodeFlow ?: kotlinx.coroutines.flow.flowOf(null as String?))
+        .collectAsState(initial = null)
+    LaunchedEffect(scannedBarcode) {
+        scannedBarcode?.takeIf { it.isNotBlank() }?.let {
+            viewModel.scanBarcode(it)
+            onScannedBarcodeConsumed()
+        }
+    }
+    // Flash the scan result / error as a snackbar + clear the VM state.
+    LaunchedEffect(state.scanMessage) {
+        state.scanMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearScanMessage()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -70,6 +96,9 @@ fun PosCartScreen(
                     } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
                 },
                 actions = {
+                    IconButton(onClick = onScanBarcode) {
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
+                    }
                     IconButton(onClick = {}) {
                         Icon(Icons.Outlined.Person, contentDescription = "Attach customer")
                     }

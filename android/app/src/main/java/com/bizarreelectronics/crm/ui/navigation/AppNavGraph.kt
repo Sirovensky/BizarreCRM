@@ -1170,10 +1170,20 @@ fun AppNavGraph(
                     onNavigateToCheckin = { navController.navigate(Screen.CheckInEntry.route) },
                 )
             }
-            composable(Screen.PosCart.route) {
+            composable(Screen.PosCart.route) { backStack ->
+                // Scanner screen hands the result back via this entry's
+                // savedStateHandle["scanned_barcode"]. Expose it as a Flow
+                // the cart screen consumes + clears after adding to cart.
+                val scannedFlow = backStack.savedStateHandle
+                    .getStateFlow<String?>("scanned_barcode", null)
                 PosCartScreen(
                     onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
                     onBack = { navController.popBackStack() },
+                    onScanBarcode = { navController.navigate(Screen.Scanner.route) },
+                    scannedBarcodeFlow = scannedFlow,
+                    onScannedBarcodeConsumed = {
+                        backStack.savedStateHandle["scanned_barcode"] = null
+                    },
                 )
             }
             composable(Screen.PosTender.route) {
