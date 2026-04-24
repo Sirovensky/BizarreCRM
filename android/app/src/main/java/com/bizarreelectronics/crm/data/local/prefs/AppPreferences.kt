@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -259,4 +260,56 @@ class AppPreferences @Inject constructor(
     fun clearRecentSearches() {
         prefs.edit().remove("recent_searches").apply()
     }
+
+    // --- §1.7 line 239 — screen-capture prevention pref -----------------------
+    //
+    // When true, MainActivity applies FLAG_SECURE + setRecentsScreenshotEnabled(false)
+    // to prevent PII leaking via Recents thumbnails, MediaProjection, or adb screencap.
+    // Defaults TRUE so all release installs are protected out of the box (GDPR Art 32 /
+    // PCI-DSS 3.4). The Settings toggle UI is owned by a separate agent (Wave 3).
+    //
+    // BuildConfig.DEBUG callers bypass FLAG_SECURE regardless of this pref so QA can
+    // take screenshots — see MainActivity.onCreate.
+
+    private val _screenCapturePreventionFlow = MutableStateFlow(
+        prefs.getBoolean("screen_capture_prevention_enabled", true),
+    )
+
+    /**
+     * §1.7 line 239 — observable screen-capture prevention preference.
+     *
+     * Collect in MainActivity via [collectAsState] to reactively add/clear
+     * [android.view.WindowManager.LayoutParams.FLAG_SECURE] without an activity
+     * recreate. Defaults TRUE (enabled).
+     */
+    val screenCapturePreventionFlow: Flow<Boolean> = _screenCapturePreventionFlow.asStateFlow()
+
+    /**
+     * §1.7 line 239 — screen-capture prevention toggle.
+     *
+     * Writing this pref causes [screenCapturePreventionFlow] to emit immediately so
+     * MainActivity can react within the same Compose recomposition cycle.
+     * DO NOT add a Settings UI toggle here — that is owned by the Wave-3 Settings agent.
+     */
+    var screenCapturePreventionEnabled: Boolean
+        get() = prefs.getBoolean("screen_capture_prevention_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("screen_capture_prevention_enabled", value).apply()
+            _screenCapturePreventionFlow.value = value
+        }
+
+    // --- §1.7 line 238 — FCM token refresh timestamp --------------------------
+    //
+    // Epoch-ms of the last successful FCM token registration with the server.
+    // FcmTokenRefresher.refreshIfStale() reads this to gate the 24-hour refresh
+    // window. Stored in plain prefs (not encrypted) — the timestamp itself is not
+    // sensitive; the token value is in encryptedPrefs.
+
+    /**
+     * §1.7 line 238 — epoch-ms when the FCM token was last successfully refreshed
+     * and posted to the server. Zero on a fresh install.
+     */
+    var lastFcmTokenRefreshAtMs: Long
+        get() = prefs.getLong("last_fcm_token_refresh_at_ms", 0L)
+        set(value) = prefs.edit().putLong("last_fcm_token_refresh_at_ms", value).apply()
 }

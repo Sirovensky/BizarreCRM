@@ -11,10 +11,12 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import coil3.SingletonImageLoader
+import com.bizarreelectronics.crm.data.drafts.DraftStore
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
+import com.bizarreelectronics.crm.util.FcmTokenRefresher
 import com.bizarreelectronics.crm.util.RedactorTree
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
@@ -52,6 +54,12 @@ class BizarreCrmApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var sessionTimeout: SessionTimeout
+
+    @Inject
+    lateinit var fcmTokenRefresher: FcmTokenRefresher
+
+    @Inject
+    lateinit var draftStore: DraftStore
 
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
@@ -113,6 +121,10 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                         if (!webSocketService.isConnected) {
                             webSocketService.connect()
                         }
+                        // §1.7 line 238 — refresh FCM push token if > 24 h stale.
+                        // Runs on appScope (Dispatchers.Default → IO inside the helper)
+                        // so the lifecycle callback returns immediately.
+                        appScope.launch { fcmTokenRefresher.refreshIfStale() }
                     }
                     // §2.16 — resume the session-timeout ticker on foreground.
                     sessionTimeout.onAppForeground()
@@ -136,14 +148,15 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                     com.bizarreelectronics.crm.util.ClipboardUtil
                         .clearSensitiveIfPresent(this@BizarreCrmApp)
 
-                    // Draft persistence: no draft system exists yet.
-                    // TODO: flush unsaved form drafts to DataStore here once
-                    //   the draft subsystem ships (plan §1.6 lines 260–266).
+                    // §1.7 line 239 — flush any buffered draft writes before the
+                    // process may be killed by the OEM task manager. DraftStore
+                    // is currently write-through so this is a no-op; the call-site
+                    // is wired now so no BizarreCrmApp change is needed when
+                    // buffering is introduced (plan §1.6 lines 260-266).
+                    appScope.launch { draftStore.flushPending() }
 
-                    // FLAG_SECURE: window flags must be set at the Activity
-                    // level, not here. An Application observer has no window
-                    // reference. TODO: integrate via MainActivity once the
-                    //   screen-capture privacy setting is wired (plan §1.6).
+                    // FLAG_SECURE: wired reactively in MainActivity via
+                    // AppPreferences.screenCapturePreventionFlow (plan §1.7 L239).
 
                     // §2.16 — background time counts toward inactivity window.
                     sessionTimeout.onAppBackground()
