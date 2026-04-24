@@ -2376,3 +2376,21 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-711. **email subject \r\n sanitization** — FIXED wave-26 via sanitizeSubject() helper at email.ts:131-133 + applied at email.ts:158.
 - [x] SCAN-712. **email html→text fallback leaks script fragments** — FIXED wave-26 via script/style block strip before generic tag strip at email.ts:160-166.
 - [x] SCAN-695. **worker-pool queue-full substring brittle** — FIXED wave-26 via extended check (Piscina substring + TimeoutError/AbortError name) at worker-pool.ts:103-112.
+
+## Closed 2026-04-23 (wave-27 + wave-28)
+- [x] SCAN-715. **voice dev callback URL http://** — FIXED wave-27 via unconditional https:// at voice.routes.ts:125-132.
+- [x] SCAN-716. **smsAutoResponders ReDoS** — FIXED wave-27 via validateMatchPattern() helper with nested-quantifier + excessive-alternation rejection at smsAutoResponders.routes.ts:64-95.
+- [x] SCAN-719. **voice /voice/call missing rate-limit** — FIXED wave-27, 10/min/user at voice.routes.ts:85-90.
+- [x] SCAN-720. **portal idle-timeout fragile parse** — FIXED wave-27 via parseLastUsed() helper at portal.routes.ts:129-148.
+- [x] SCAN-721. **voice recording redirect missing revalidation** — FIXED wave-27 via validateRecordingUrl call before redirect at voice.routes.ts:263-268.
+- [x] SCAN-722. **smsAutoResponders regex bound not ReDoS-safe** — FIXED wave-27 (covered by SCAN-716 single helper).
+- [x] SCAN-723. **estimates rate-limit AFTER tier check** — FIXED wave-28 via reorder at estimates.routes.ts:717-725.
+- [x] SCAN-724. **estimate converting-state no rollback** — FIXED wave-28 via try/catch restore prior status at estimates.routes.ts:774-859.
+- [x] SCAN-725. **automations dry-run PII enumeration** — FIXED wave-28 (scan misattributed to leads.routes.ts; actual in automations.routes.ts) — role gate upgraded from requireAdmin to requireManagerOrAdmin.
+- [x] SCAN-727. **automations dry-run no rate-limit** — FIXED wave-28 via checkWindowRate 20/min/user.
+- [x] SCAN-728. **validateId accepts "123abc"** — FIXED wave-28 via /^\d+$/ pre-check at validate.ts:326-339.
+- [x] SCAN-729. **estimate constantTimeEquals type mismatch** — FIXED wave-28 via SHA-256 hash of token arg at estimates.routes.ts:32-40.
+- [x] SCAN-636. **dunning GET /sequences no role gate** — verified wave-28, requireAdmin already present at dunning.routes.ts:50.
+- [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
+- [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
+- [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

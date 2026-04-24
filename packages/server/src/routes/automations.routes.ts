@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { isFeatureAllowed } from '@bizarre-crm/shared';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { validateId } from '../utils/validate.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 
 const router = Router();
 
@@ -17,6 +18,15 @@ const router = Router();
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
     throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
+}
+
+// SCAN-725: dry-run reads customer PII — restrict to manager+ so plain techs
+// cannot enumerate the customer directory via repeated dry-run calls.
+function requireManagerOrAdmin(req: Request): void {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
   }
 }
 
@@ -205,7 +215,13 @@ router.post(
   '/:id/dry-run',
   asyncHandler(async (req, res) => {
     requireAutomationsFeature(req);
-    requireAdmin(req);
+    requireManagerOrAdmin(req);
+    // SCAN-727: rate-limit dry-run to prevent rule-config enumeration
+    const userId = req.user!.id;
+    if (!checkWindowRate(req.db, 'automation_dry_run', String(userId), 20, 60_000)) {
+      throw new AppError('Too many dry-run attempts', 429);
+    }
+    recordWindowAttempt(req.db, 'automation_dry_run', String(userId), 60_000);
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
     const automation = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;

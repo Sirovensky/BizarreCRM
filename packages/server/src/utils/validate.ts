@@ -324,9 +324,16 @@ export function validatePaginationOffset(value: unknown, fieldName = 'offset'): 
  * strings, propagating NULL into SQL queries and producing unexpected results.
  */
 export function validateId(value: unknown, fieldName = 'id'): number {
-  const raw = typeof value === 'number' ? value : parseInt(String(value), 10);
-  if (isNaN(raw) || !isFinite(raw) || raw < 1) {
-    throw new AppError(`Invalid ${fieldName}`, 400);
+  if (value === undefined || value === null || value === '') {
+    throw new AppError(`${fieldName} is required`, 400);
   }
-  return raw;
+  const str = String(value);
+  if (!/^\d+$/.test(str)) {
+    throw new AppError(`Invalid ${fieldName}: must be positive integer`, 400);
+  }
+  const n = Number(str);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new AppError(`Invalid ${fieldName}: must be positive integer`, 400);
+  }
+  return n;
 }

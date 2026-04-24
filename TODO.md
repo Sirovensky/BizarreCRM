@@ -1530,3 +1530,25 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-735. **[LOW] estimate_versions snapshot no shape validation — generic JSON parse accepts any payload** — `packages/server/src/routes/estimates.routes.ts:543-546`. Fix: Zod schema for estimate shape.
 - [ ] SCAN-736. **[LOW] leads addMonthsClamped doesn't document DST skip/repeat behavior** — `packages/server/src/routes/leads.routes.ts:559-566`. Fix: comment OR migrate to date-fns.
 - [ ] SCAN-737. **[LOW] email SMTP transporter cache 5-min TTL — password change in store_config silently fails auth vs stale transporter** — `packages/server/src/services/email.ts:115-126`. Fix: invalidate on store_config write OR shorten TTL.
+
+### Wave-28 scan-loop findings (2026-04-23)
+- [ ] SCAN-738. **invoices `new Date(inv.created_at)` no null guard — throws on NULL created_at** — `packages/server/src/routes/invoices.routes.ts:173`. Fix: null-check before Date().
+- [ ] SCAN-739. **customers FTS5 fallback silently swallows exceptions — hides parser bugs** — `packages/server/src/routes/customers.routes.ts:141-148`. Fix: logger.warn in catch.
+- [ ] SCAN-740. **[LOW] signup `new Date(admin.locked_until) > new Date()` assumes ISO — comparison fragile** — `packages/server/src/routes/signup.routes.ts:290`. Fix: timestamp math via Date.parse.
+- [ ] SCAN-741. **invoices `Number(req.body.customer_id)` deeply nested no null guard — throws** — `packages/server/src/routes/invoices.routes.ts:539`. Fix: upstream validate OR use validateId.
+- [ ] SCAN-742. **[LOW] customers mergeCustomer normalizePhone() can return empty — !keepPhoneSet.has('') passes vacuously** — `packages/server/src/routes/customers.routes.ts:530-535`. Fix: skip empty values.
+- [ ] SCAN-743. **signup pendingSignups Map in-memory — process restart loses tokens; no DB backup** — `packages/server/src/routes/signup.routes.ts:584`. Fix: pending_signups table + TTL.
+- [ ] SCAN-744. **super-admin challenges Map capped 1000 FIFO-evict — concurrent 2FA setups silently lose entries** — `packages/server/src/routes/super-admin.routes.ts:177`. Fix: DB-backed with TTL.
+- [ ] SCAN-745. **invoices void stock_movement INSERT no FK pre-check — orphaned SKU hangs on constraint** — `packages/server/src/routes/invoices.routes.ts:821`. Fix: validate inventory_item_id EXISTS first.
+- [ ] SCAN-746. **[LOW] customers tags JSON.parse fallback [] — schema drift silently loses data on merge** — `packages/server/src/routes/customers.routes.ts:557-562`. Fix: logger.warn on parse fail.
+- [ ] SCAN-747. **signup validateSlug passes but reserved-names collide — unclear provisioning error** — `packages/server/src/routes/signup.routes.ts:522-523`. Fix: reject reserved slugs (admin, api, www, master, root) in validateSlug.
+- [ ] SCAN-748. **invoices PATCH line-items doesn't re-check sum against INVOICE_TOTAL_CAP — cap bypass** — `packages/server/src/routes/invoices.routes.ts:367-385`. Fix: recompute subtotal + enforce cap.
+- [ ] SCAN-749. **customers bulk-SMS O(N) adb.get per ID — timeout risk at 1000 IDs** — `packages/server/src/routes/customers.routes.ts:764-766`. Fix: single WHERE id IN (?, ?, ...) batch.
+- [ ] SCAN-750. **[LOW] super-admin session expires_at uses ISO string — SQLite datetime('now') compares string-wise; tz drift risk** — `packages/server/src/routes/super-admin.routes.ts:196-200`. Fix: use UTC ISO + match SQLite format.
+- [ ] SCAN-751. **invoices commission write swallows non-AppError — partial payment committed, commission lost silently** — `packages/server/src/routes/invoices.routes.ts:615-670`. Fix: re-throw non-constraint errors OR log + alert.
+- [ ] SCAN-752. **[LOW] customers bulk-tag JSON.parse fallback silently drops malformed — merge data loss** — `packages/server/src/routes/customers.routes.ts:637-639`. Fix: logger.warn on parse fail.
+- [ ] SCAN-753. **signup dev-mode skip email verification based on nodeEnv — misconfig bypasses gate** — `packages/server/src/routes/signup.routes.ts:456-580`. Fix: explicit SKIP_EMAIL_VERIFICATION env var.
+- [ ] SCAN-754. **invoices void state machine no atomic lock — concurrent voids both pass WHERE clause** — `packages/server/src/routes/invoices.routes.ts:799-808`. Fix: conditional UPDATE + check changes (SCAN-673 pattern).
+- [ ] SCAN-755. **customers bulk-tag silently skips invalid IDs — caller gets no feedback** — `packages/server/src/routes/customers.routes.ts:625-646`. Fix: return array of invalid IDs.
+- [ ] SCAN-756. **[LOW] super-admin failed-login count UPDATE + lock UPDATE not atomic — crash between = locked_until NULL + count > 7** — `packages/server/src/routes/super-admin.routes.ts:304-307`. Fix: single UPDATE with both fields.
+- [ ] SCAN-757. **invoices totalPaidRaw SUM unvalidated — NaN/Infinity corrupt row poisons total** — `packages/server/src/routes/invoices.routes.ts:584-586`. Fix: CASE WHEN IS NUMERIC AND amount >= 0.

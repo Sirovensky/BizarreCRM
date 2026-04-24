@@ -29,12 +29,14 @@ import { parsePageSize, parsePage } from '../utils/pagination.js';
  * Returns false on any length mismatch (without calling timingSafeEqual,
  * which would throw) so the caller sees a single boolean result.
  */
-function constantTimeEquals(a: string, b: string): boolean {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+function constantTimeEquals(token: string, storedHash: string): boolean {
+  // Both sides must be same-length hex digests for crypto.timingSafeEqual.
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  if (tokenHash.length !== storedHash.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(tokenHash, 'utf8'),
+    Buffer.from(storedHash, 'utf8'),
+  );
 }
 
 const router = Router();
@@ -43,6 +45,10 @@ const logger = createLogger('estimates');
 // SEC-H10: Rate limit constants for estimate approval (10 attempts per minute per IP)
 const APPROVAL_RATE_LIMIT = 10;
 const APPROVAL_RATE_WINDOW = 60_000; // 1 minute
+
+// SCAN-723: Rate limit constants for estimate conversion (5 per minute per user)
+const CONVERT_RATE_LIMIT = 5;
+const CONVERT_RATE_WINDOW = 60_000; // 1 minute
 
 // SC4: Approval token lifetime (24 hours from send)
 const APPROVAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -708,6 +714,16 @@ router.post(
     if (originalStatusRow.status === 'converted') throw new AppError('Estimate already converted', 400);
     if (originalStatusRow.status === 'cancelled') throw new AppError('Estimate was cancelled', 400);
 
+    // SCAN-723: Rate-limit BEFORE tier-quota check so concurrent requests are
+    // throttled at the gate rather than both passing the tier read+reserve
+    // before either is blocked. Keyed per user so staff can't flood the counter
+    // from shared IPs.
+    const convertRateKey = `user:${req.user!.id}`;
+    if (!checkWindowRate(req.db, 'estimate_convert', convertRateKey, CONVERT_RATE_LIMIT, CONVERT_RATE_WINDOW)) {
+      throw new AppError('Too many conversion requests. Please try again later.', 429);
+    }
+    recordWindowFailure(req.db, 'estimate_convert', convertRateKey, CONVERT_RATE_WINDOW);
+
     // SCAN-590 (Option A): Tier limit check moved BEFORE the status lock so a
     // 403 rejection never leaves the estimate stuck in 'converting'. The check
     // is a pure read + atomic counter increment that does not depend on the
@@ -755,6 +771,8 @@ router.post(
     }
     void tierReservationCommitted;
 
+    const priorStatus = originalStatusRow.status;
+
     const lockResult = await adb.run(
       "UPDATE estimates SET status = 'converting', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('converted', 'cancelled', 'converting')",
       id,
@@ -766,66 +784,79 @@ router.post(
       throw new AppError('Estimate is already being converted. Try again in a moment.', 409);
     }
 
-    const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
-    if (!estimate) throw new AppError('Estimate not found', 404);
-    // status was flipped to 'converting' above — double-check for safety.
-    if (estimate.status !== 'converting') throw new AppError('Estimate state conflict', 500);
+    // SCAN-724: try/finally so any throw after the 'converting' lock reverts the
+    // estimate back to its prior status instead of leaving it stranded.
+    try {
+      const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
+      if (!estimate) throw new AppError('Estimate not found', 404);
+      // status was flipped to 'converting' above — double-check for safety.
+      if (estimate.status !== 'converting') throw new AppError('Estimate state conflict', 500);
 
-    // Get default (open) status
-    const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
-    const statusId = defaultStatus?.id ?? 1;
+      // Get default (open) status
+      const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+      const statusId = defaultStatus?.id ?? 1;
 
-    // Create ticket
-    const ticketResult = await adb.run(`
-      INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
-        source, created_by)
-      VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
-    `,
-      estimate.customer_id, statusId, id,
-      estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
-      req.user!.id,
-    );
-
-    const ticketId = ticketResult.lastInsertRowid;
-    const ticketOrderId = generateOrderId('T', ticketId);
-    await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
-
-    // Copy line items as ticket devices
-    const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
-    for (const item of lineItems) {
-      await adb.run(`
-        INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+      // Create ticket
+      const ticketResult = await adb.run(`
+        INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
+          source, created_by)
+        VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
       `,
-        ticketId,
-        item.description || 'From Estimate',
-        item.inventory_item_id,
-        item.unit_price * item.quantity,
-        item.tax_amount,
-        item.total,
-        null,
+        estimate.customer_id, statusId, id,
+        estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
+        req.user!.id,
       );
-    }
 
-    // Carry estimate notes over as the first ticket note so they aren't lost.
-    if (estimate.notes) {
+      const ticketId = ticketResult.lastInsertRowid;
+      const ticketOrderId = generateOrderId('T', ticketId);
+      await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
+
+      // Copy line items as ticket devices
+      const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
+      for (const item of lineItems) {
+        await adb.run(`
+          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+          ticketId,
+          item.description || 'From Estimate',
+          item.inventory_item_id,
+          item.unit_price * item.quantity,
+          item.tax_amount,
+          item.total,
+          null,
+        );
+      }
+
+      // Carry estimate notes over as the first ticket note so they aren't lost.
+      if (estimate.notes) {
+        await adb.run(
+          `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
+           VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+          ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+        );
+      }
+
+      // Update estimate status (success path — advances to 'converted')
+      await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
+        ticketId, id);
+
+      const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
+
+      res.status(201).json({
+        success: true,
+        data: { ticket, message: 'Estimate converted to ticket' },
+      });
+    } catch (err) {
+      // SCAN-724: Restore prior status so the estimate is not stranded in
+      // 'converting'. Only revert if still in 'converting' — if it somehow
+      // advanced (race win by another process) leave it alone.
       await adb.run(
-        `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
-         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
-        ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+        "UPDATE estimates SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'converting'",
+        priorStatus, id,
       );
+      throw err;
     }
-
-    // Update estimate status
-    await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
-      ticketId, id);
-
-    const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
-
-    res.status(201).json({
-      success: true,
-      data: { ticket, message: 'Estimate converted to ticket' },
-    });
   }),
 );
 
@@ -996,12 +1027,17 @@ router.post(
       const inboundHash = hashEstimateApprovalToken(token);
       const hashMatch =
         !!estimate.approval_token_hash &&
-        constantTimeEquals(estimate.approval_token_hash, inboundHash);
+        constantTimeEquals(token, estimate.approval_token_hash);
       if (!hashMatch) {
         // Legacy path: row predates migration 107, still carries plaintext.
         // Accept once + hash-migrate so the consume-UPDATE below finds the
         // freshly written hash via `WHERE approval_token_hash = ?`.
-        if (estimate.approval_token && constantTimeEquals(estimate.approval_token, token)) {
+        if (estimate.approval_token && (() => {
+          // Legacy plaintext-to-plaintext compare; both sides are raw tokens of equal length.
+          const bufA = Buffer.from(estimate.approval_token, 'utf8');
+          const bufB = Buffer.from(token, 'utf8');
+          return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+        })()) {
           await adb.run(
             'UPDATE estimates SET approval_token_hash = ?, approval_token = NULL WHERE id = ? AND approval_token_hash IS NULL',
             inboundHash,
