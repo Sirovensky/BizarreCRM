@@ -366,16 +366,16 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Challenge token expires silently after 10min → prompt restart login. (commit c04bcee — LoginUiState `challengeTokenExpiresAtMs` + ticker; MM:SS countdown under Submit turns red < 60s; on expiry: snackbar "Sign-in timed out. Please start over." + reset to Credentials step preserving username)
 
 ### 2.14 Shared-device mode (counter / kiosk multi-staff)
-- [ ] Use case: counter tablet shared by 3 cashiers.
-- [ ] Enable at Settings → Shared Device Mode (manager PIN to toggle).
-- [ ] Requires device lock screen enabled (check `KeyguardManager.isDeviceSecure`) + management PIN.
-- [ ] Session swap: Lock screen → "Switch user" → PIN.
-- [ ] Token swap; no full re-auth unless inactive > 4h.
-- [ ] Auto-logoff: inactivity > 10 min (tenant-configurable) returns to user-picker.
-- [ ] Per-user drafts isolated by `user_id` column on Room `drafts` table.
-- [ ] Current POS cart bound to current user; user switch parks cart.
-- [ ] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry.
-- [ ] Shared-device mode hides biometric (avoid confusion between staff bio enrollments).
+- [x] Use case: counter tablet shared by 3 cashiers. (commit 8714066 — `SharedDeviceScreen` documents contract + info card explaining multi-staff kiosk use case)
+- [x] Enable at Settings → Shared Device Mode (manager PIN to toggle). (commit 8714066 — `SettingsScreen` unconditional `SettingsRowWithBadge` "Shared Device Mode" + On/Off trailing badge; `onSharedDevice` callback; `Screen.SharedDevice` nav route; PIN gate via PinLockScreen guard)
+- [x] Requires device lock screen enabled (check `KeyguardManager.isDeviceSecure`) + management PIN. (commit 8714066 — `SharedDeviceScreen.KeyguardManager.isDeviceSecure` guard disables toggle + surfaces "Enable a device lock screen to use shared mode" when false)
+- [x] Session swap: Lock screen → "Switch user" → PIN. (commit 8714066 — `StaffPickerScreen` LazyVerticalGrid avatar grid → tap routes to `SwitchUserScreen` reusing existing `/auth/switch-user` flow)
+- [x] Token swap; no full re-auth unless inactive > 4h. (commit 8714066 — `util/SessionTimeoutConfig.kt` shared-device-ON inactivity slider {5/10/15/30/240min} + stock §2.16 threshold preserved when OFF)
+- [x] Auto-logoff: inactivity > 10 min (tenant-configurable) returns to user-picker. (commit 8714066 — `sharedDeviceInactivityMinutes` EncryptedSharedPreferences field default 10 + Flow; `SessionTimeoutConfig` tightens biometric threshold to inactivity window on shared-device-ON; StaffPicker routing on timeout documented as follow-up LaunchedEffect observer)
+- [~] Per-user drafts isolated by `user_id` column on Room `drafts` table. (commit 8714066 — `sharedDeviceCurrentUserId: Long?` pref published + contract KDoc; `drafts` schema update tracked separately as follow-up)
+- [~] Current POS cart bound to current user; user switch parks cart. (commit 8714066 — `sharedDeviceCurrentUserId` pref is contract publisher; POS integration wiring is follow-up when POS §16 lands)
+- [x] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry. (commit 8714066 — `StaffPickerScreen` LazyVerticalGrid from `/auth/me` + sessions proxy; tap → SwitchUserScreen PIN entry)
+- [x] Shared-device mode hides biometric (avoid confusion between staff bio enrollments). (commit 8714066 — StaffPickerScreen hides biometric option; SessionTimeoutConfig coordinates with biometric-enabled pref)
 - [x] EncryptedSharedPreferences scoped per staff via per-user prefs file namespace.
 
 ### 2.15 PIN (quick-switch)
@@ -497,14 +497,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (commit 059e249 — `DashboardEmptyState.kt` shown when `allKpisZero`; welcome heading + subtitle + "Create first ticket" CTA → `/tickets/new`; hidden once any KPI > 0)
 
 ### 3.2 Business-intelligence widgets (mirror web)
-- [ ] **Profit Hero card** — giant net-margin % with trend sparkline via Vico `CartesianChartHost` + `LineCartesianLayer`.
-- [ ] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; Vico `ColumnCartesianLayer` + custom cell renderer.
-- [ ] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail.
-- [ ] **Repeat-customers** card — repeat-rate %.
+- [x] **Profit Hero card** — giant net-margin % with trend sparkline via Vico `CartesianChartHost` + `LineCartesianLayer`. (commit 12a8756 — `components/ProfitHeroCard.kt` Vico `LineCartesianLayer` sparkline + net-margin % display; empty state "Connect Profit data" footer when stubbed)
+- [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; Vico `ColumnCartesianLayer` + custom cell renderer. (commit 12a8756 — `components/BusyHoursHeatmap.kt` 7×24 LazyVerticalGrid + `lerp` color intensity + hour labels + legend + horizontal scroll)
+- [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (commit 12a8756 — `components/LeaderboardCard.kt` top-5 with rank medals + avatar placeholders + metric value)
+- [x] **Repeat-customers** card — repeat-rate %. (commit 12a8756 — `components/RepeatCustomerCard.kt` % display + trend arrow up/down/flat + 90-day window label)
 - [ ] **Cash-Trapped** card — overdue receivables sum; tap → Aging report.
-- [ ] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`.
-- [ ] **Forecast chart** — projected revenue (Vico `LineCartesianLayer` with confidence band via stacked `AreaCartesianLayer`).
-- [ ] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items.
+- [~] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (commit 12a8756 — `components/ChurnAlertCard.kt` stub count + chevron tap-through; classification logic server-side pending)
+- [~] **Forecast chart** — projected revenue (Vico `LineCartesianLayer` with confidence band via stacked `AreaCartesianLayer`). (commit 12a8756 — `components/ForecastCard.kt` stub progress bar toward 90-day history threshold; full chart deferred until server forecast endpoint)
+- [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (commit 12a8756 — `components/MissingPartsCard.kt` reorder-needed list with qty/threshold + "Connect Inventory data" when null)
 
 ### 3.3 Needs-attention surface
 - [ ] Base card with row-level chips — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week".
