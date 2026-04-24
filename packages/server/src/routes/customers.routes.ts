@@ -2308,4 +2308,35 @@ router.post(
   }),
 );
 
+// DELETE /:id/notes/:noteId — hard-delete a single customer note.
+// SEC-H25: deleting a customer note is a write — gate behind customers.edit.
+// Used by the Android undo compensatingSync to roll back an accidental postNote.
+router.delete(
+  '/:id/notes/:noteId',
+  requirePermission('customers.edit'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerId = validateId(req.params.id, 'customerId');
+    const noteId = validateId(req.params.noteId, 'noteId');
+
+    // Confirm the customer exists and is not soft-deleted.
+    const customer = await adb.get<AnyRow>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customerId,
+    );
+    if (!customer) throw new AppError('Customer not found', 404);
+
+    // Confirm the note belongs to this customer before deleting.
+    const note = await adb.get<AnyRow>(
+      'SELECT id FROM customer_notes WHERE id = ? AND customer_id = ?',
+      noteId, customerId,
+    );
+    if (!note) throw new AppError('Note not found', 404);
+
+    await adb.run('DELETE FROM customer_notes WHERE id = ?', noteId);
+
+    res.json({ success: true, data: null });
+  }),
+);
+
 export default router;
