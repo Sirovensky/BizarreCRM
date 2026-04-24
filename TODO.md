@@ -714,8 +714,6 @@ Verified working. Not TODOs.
 ### Wave-55 scan-loop findings (2026-04-23) — web/pages communications+reviews+expenses + shared API types
 - [ ] SCAN-1003. **Communications page: pervasive `(x.data as any)?.data?...` chains — server response shapes unchecked across SMS/customer/voice queries.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:958; fix=type-response-interfaces -->
-- [ ] SCAN-1009. **Communications `sendMutation` closure captures `selectedPhone` — mid-flight conversation switch invalidates wrong thread cache.**
-  <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:1085; fix=pass-phone-in-mutation-variables -->
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**

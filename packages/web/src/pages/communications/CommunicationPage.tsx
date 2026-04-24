@@ -1094,7 +1094,11 @@ export function CommunicationPage() {
     onError: () => toast.error('Failed to update archive status'),
   });
 
-  // Send message mutation
+  // Send message mutation. `selectedPhone` is captured into `variables.to` so
+  // the onSuccess invalidation keys off the phone that was ACTUALLY sent to,
+  // not whatever conversation the user has open by the time the mutation
+  // resolves. Previously a user switching conversation mid-send would
+  // invalidate the wrong thread's cache.
   const sendMutation = useMutation({
     mutationFn: (data: { to: string; message: string; send_at?: string }) => smsApi.send(data),
     onSuccess: (_data, variables) => {
@@ -1105,7 +1109,7 @@ export function CommunicationPage() {
       if (composeRef.current) {
         composeRef.current.style.height = 'auto';
       }
-      queryClient.invalidateQueries({ queryKey: ['sms-messages', selectedPhone] });
+      queryClient.invalidateQueries({ queryKey: ['sms-messages', variables.to] });
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
       toast.success(variables.send_at ? 'Message scheduled' : 'Message sent');
     },
