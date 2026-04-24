@@ -722,22 +722,22 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged. (commit 181e486 — `components/TicketHandoffDialog.kt` + `loadHandoffEmployees` + `transferTicket` 404-fallback)
 - [x] **Transfer to another store / location** (multi-location tenants). (commit 181e486 — location picker slot in TicketHandoffDialog active when locations non-empty)
 - [x] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive / bulk tag. (commit 181e486 — `components/TicketBulkActionBar.kt` extracted; Assign/Status/Archive/Tag wired via `TicketApi.bulkAction` + 20 JVM tests)
-- [ ] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`.
-- [ ] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer.
-- [ ] **Star / pin** to dashboard.
+- [x] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`. (commit 7f84969 — `components/TicketWarrantyDialog.kt` + `TicketApi.warrantyLookup` + `WarrantyResult` DTO)
+- [x] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer. (commit 7f84969 — `components/DeviceHistorySheet.kt` ModalBottomSheet + `TicketApi.getDeviceHistory`)
+- [x] **Star / pin** to dashboard. (commit 7f84969 — overflow "Pin to dashboard" + `TicketApi.pinToDashboard` + AppPreferences local fallback)
 
 ### 4.6 Notes & mentions
-- [ ] **Compose** — multiline `OutlinedTextField`, type picker (internal / customer / diagnostic / sms / email), flag toggle.
-- [ ] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token via `AnnotatedString` + `SpanStyle`.
-- [ ] **Mention push** — server sends FCM to mentioned employee.
-- [ ] **Markdown-lite** — bold / italic / bullet lists / inline code rendered via `AnnotatedString` + custom parser (no WebView).
-- [ ] **Link detection** — phone / email / URL auto-tappable via `LinkAnnotation`.
-- [ ] **Attachment** — add image from camera / PhotoPicker → inline preview; stored as note attachment.
+- [x] **Compose** — multiline `OutlinedTextField`, type picker (internal / customer / diagnostic / sms / email), flag toggle. (commit 7f84969 — `components/TicketNoteCompose.kt` SegmentedButton type picker + flag Switch)
+- [x] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token via `AnnotatedString` + `SpanStyle`. (commit 7f84969 — `util/MentionPicker.kt` + `SettingsApi.searchEmployees` debounced; 11 JVM tests)
+- [~] **Mention push** — server sends FCM to mentioned employee. (commit 7f84969 — Android sends `[@mention:userId]` tokens; server-side FCM dispatch out-of-scope)
+- [x] **Markdown-lite** — bold / italic / bullet lists / inline code rendered via `AnnotatedString` + custom parser (no WebView). (commit 7f84969 — `util/MarkdownLiteParser.kt` bold/italic/code/bullet/link; 14 JVM tests; no WebView)
+- [x] **Link detection** — phone / email / URL auto-tappable via `LinkAnnotation`. (commit 7f84969 — MarkdownLiteParser regex scans + LinkAnnotation → ACTION_DIAL/ACTION_SENDTO/ACTION_VIEW)
+- [x] **Attachment** — add image from camera / PhotoPicker → inline preview; stored as note attachment. (commit 7f84969 — PhotoPicker + Coil preview + submit via MultipartUploadWorker)
 
 ### 4.7 Statuses & transitions
-- [ ] **Fetch taxonomy** `GET /settings/statuses` — drives picker; no hardcoded statuses.
-- [ ] **Color chip** from server hex.
-- [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
+- [x] **Fetch taxonomy** `GET /settings/statuses` — drives picker; no hardcoded statuses. (commit 7f84969 — `SettingsApi` + `TicketStatusItem` DTO with `transitionRequirements`/`group`)
+- [x] **Color chip** from server hex. (commit 7f84969 — status picker renders via `Color(parseColor(hex))`)
+- [x] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates. (commit 7f84969 — `TicketStatusItem.transitionRequirements` checked client-side; Snackbar error surfacing; server re-validates)
 - [ ] **QC sign-off modal** — signature capture via custom Compose `Canvas` + `detectDragGestures`, comments, "Work complete" confirm.
 - [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
 
@@ -1812,50 +1812,50 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [x] **Idempotency-Key** required on POST /pos/sales. (commit 002cdf6 — UUID header)
 
 ### 16.5 Tax engine
-- [ ] Per-line tax class; cart-level tax override (tenant admin).
-- [ ] Tax-exempt customer flag honored.
-- [ ] Multi-jurisdiction: tenant configures rules; client displays breakdown.
-- [ ] Tax rounding per tenant rule.
+- [x] Per-line tax class; cart-level tax override (tenant admin). (commit 6f70f16 — `PosTaxCalculator.kt`)
+- [x] Tax-exempt customer flag honored. (commit 6f70f16 — overloaded calculate method)
+- [x] Multi-jurisdiction: tenant configures rules; client displays breakdown. (commit 6f70f16 — per-jurisdiction aggregation)
+- [x] Tax rounding per tenant rule. (commit 6f70f16 — banker's / half-up / half-down via BigDecimal; 12 JVM tests)
 
 ### 16.6 Receipt
-- [ ] Print via Bluetooth thermal printer (ESC/POS via `BluetoothSocket` SPP) OR Mopria via Android Print Framework OR USB printer via UsbManager.
-- [ ] Email via `Intent(ACTION_SENDTO, mailto:)` with PDF attachment.
-- [ ] SMS link via `POST /sms/send`.
-- [ ] Download PDF via SAF.
-- [ ] Gift receipt option — hides prices, shows item names only.
-- [ ] Reprint flow — Sales history → "Reprint" action.
+- [x] Print via Bluetooth thermal printer (ESC/POS via `BluetoothSocket` SPP) OR Mopria via Android Print Framework OR USB printer via UsbManager. (commit 6f70f16 — `CashDrawerController.printReceipt` BT thermal + Mopria fallback)
+- [x] Email via `Intent(ACTION_SENDTO, mailto:)` with PDF attachment. (commit 6f70f16 — `PosReceiptActions`)
+- [x] SMS link via `POST /sms/send`. (commit 6f70f16 — onSmsSend callback)
+- [x] Download PDF via SAF. (commit 6f70f16 — ACTION_CREATE_DOCUMENT)
+- [x] Gift receipt option — hides prices, shows item names only. (commit 6f70f16 — gift receipt toggle)
+- [x] Reprint flow — Sales history → "Reprint" action. (commit 6f70f16 — isReprint label)
 
 ### 16.7 Sale types
-- [ ] Retail sale (inventory only).
-- [ ] Service sale (labor + parts).
-- [ ] Mixed (repair ticket completion).
-- [ ] Deposit collection (partial — from ticket).
-- [ ] Refund (see §7.7).
-- [ ] Trade-in (negative line item, feeds used-stock).
-- [ ] Layaway (deposit now, balance later).
+- [x] Retail sale (inventory only). (commit 6f70f16 — `flows/RetailSaleFlow.kt`)
+- [x] Service sale (labor + parts). (commit 6f70f16 — `flows/ServiceSaleFlow.kt`)
+- [x] Mixed (repair ticket completion). (commit 6f70f16 — ServiceSaleFlow handles ticket completion)
+- [x] Deposit collection (partial — from ticket). (commit 6f70f16 — existing ticket path)
+- [x] Refund (see §7.7). (commit 6f70f16 — references /refunds flow from commit 2c17758)
+- [x] Trade-in (negative line item, feeds used-stock). (commit 6f70f16 — `flows/TradeInFlow.kt`)
+- [x] Layaway (deposit now, balance later). (commit 6f70f16 — `flows/LayawayFlow.kt` min 20% deposit)
 
 ### 16.8 Sale success
-- [ ] Full-screen confetti-lite animation (respects Reduce Motion) + big total.
-- [ ] Big buttons: Print / Email / SMS / New Sale.
-- [ ] Auto-dismiss after 10s or staff taps New Sale.
+- [x] Full-screen confetti-lite animation (respects Reduce Motion) + big total. (commit 6f70f16 — `PosSuccessScreen.kt` 30-particle Canvas + ReduceMotion static 🎉)
+- [x] Big buttons: Print / Email / SMS / New Sale. (commit 6f70f16 — via PosReceiptActions)
+- [x] Auto-dismiss after 10s or staff taps New Sale. (commit 6f70f16 — LaunchedEffect)
 
 ### 16.9 Offline POS
-- [ ] Full POS operational offline: read catalog from Room, queue sale in `sync_queue` with idempotency key.
-- [ ] BlockChyp terminal also supports offline/standalone: card processed, voucher printed; txn reconciles on reconnect.
-- [ ] Cash sales: no network dependency.
-- [ ] Offline indicator banner at top of POS while disconnected.
-- [ ] Drain-worker resolves sales on reconnect; failures go to Dead-Letter queue (§20.7).
+- [x] Full POS operational offline: read catalog from Room, queue sale in `sync_queue` with idempotency key. (commit 6f70f16 — PosViewModel.queueOfflineSale + SyncQueueEntity)
+- [~] BlockChyp terminal also supports offline/standalone: card processed, voucher printed; txn reconciles on reconnect. (deferred pending BlockChyp SDK integration)
+- [x] Cash sales: no network dependency. (commit 002cdf6 — PosCashKeypad)
+- [x] Offline indicator banner at top of POS while disconnected. (commit 6f70f16 — `PosOfflineBanner.kt` AnimatedVisibility + NetworkMonitor + pending count)
+- [x] Drain-worker resolves sales on reconnect; failures go to Dead-Letter queue (§20.7). (existing SyncWorker infrastructure)
 
 ### 16.10 Cash drawer trigger
-- [ ] Bluetooth / RJ11-via-printer drawer opens on tender via ESC/POS cash-drawer kick command.
-- [ ] Manual open button role-gated (reason required, audit logged).
+- [x] Bluetooth / RJ11-via-printer drawer opens on tender via ESC/POS cash-drawer kick command. (commit 6f70f16 — `CashDrawerController.openDrawer()` sends `1B 70 00 19 FA` via BluetoothSocket SPP; 2s timeout)
+- [x] Manual open button role-gated (reason required, audit logged). (commit 6f70f16 — `manualOpen(reason, adminUserId)` writes audit entry to SyncQueue)
 
 ### 16.11 Customer-facing display (optional)
-- [ ] Secondary display via `DisplayManager` + `Presentation` Activity mirroring cart + totals + ads.
-- [ ] Signature capture when tablet flipped to customer.
+- [x] Secondary display via `DisplayManager` + `Presentation` Activity mirroring cart + totals + ads. (commit 6f70f16 — `CustomerDisplayManager.kt` + `PosCustomerDisplayPresentation`)
+- [~] Signature capture when tablet flipped to customer. (commit 6f70f16 — `PosSignatureCaptureScreen` stub composable; full capture deferred)
 
 ### 16.12 POS keyboard shortcuts (tablet/ChromeOS)
-- [ ] F1 new sale, F2 scan, F3 customer search, F4 discount, F5 tender, F6 park, F7 print, F8 refund; Ctrl+F focus search.
+- [x] F1 new sale, F2 scan, F3 customer search, F4 discount, F5 tender, F6 park, F7 print, F8 refund; Ctrl+F focus search. (commit 6f70f16 — `onPreviewKeyEvent` root handler)
 
 ---
 ## 17. Hardware Integrations
