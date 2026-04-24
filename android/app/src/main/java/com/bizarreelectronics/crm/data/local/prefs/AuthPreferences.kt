@@ -2,12 +2,16 @@ package com.bizarreelectronics.crm.data.local.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.security.SecureRandom
 import java.util.UUID
 import javax.crypto.Mac
@@ -206,6 +210,53 @@ class AuthPreferences @Inject constructor(
 
     // endregion
 
+    // region — biometric credential store helpers
+
+    /**
+     * Whether the user has enabled biometric-gated credential auto-fill.
+     * Default: false — opt-in only.
+     *
+     * Settings screen / LoginScreen toggle this flag; the actual credential stashing
+     * is wired in [BiometricCredentialStore] + the login/settings screens (separate agents).
+     */
+    private val _biometricCredentialsEnabled =
+        MutableStateFlow(prefs.getBoolean(KEY_BIO_CREDS_ENABLED, false))
+
+    val biometricCredentialsEnabledFlow: StateFlow<Boolean> =
+        _biometricCredentialsEnabled.asStateFlow()
+
+    var biometricCredentialsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIO_CREDS_ENABLED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_BIO_CREDS_ENABLED, value).apply()
+            _biometricCredentialsEnabled.value = value
+        }
+
+    /**
+     * Retrieves the AES-GCM IV used to encrypt the stored biometric credentials,
+     * or `null` if no credentials have been stored yet.
+     *
+     * The IV is persisted as a Base64 string and is NOT sensitive on its own —
+     * the ciphertext is separately stored in [BiometricCredentialStore]'s own prefs.
+     */
+    fun getStoredCredentialsIv(): ByteArray? {
+        val b64 = prefs.getString(KEY_BIO_IV, null) ?: return null
+        return runCatching { Base64.decode(b64, Base64.NO_WRAP) }.getOrNull()
+    }
+
+    /**
+     * Persists [iv] as Base64, or removes the entry when [iv] is null (credential wipe).
+     */
+    fun setStoredCredentialsIv(iv: ByteArray?) {
+        if (iv == null) {
+            prefs.edit().remove(KEY_BIO_IV).apply()
+        } else {
+            prefs.edit().putString(KEY_BIO_IV, Base64.encodeToString(iv, Base64.NO_WRAP)).apply()
+        }
+    }
+
+    // endregion
+
     val isLoggedIn: Boolean
         get() = accessToken != null
 
@@ -214,6 +265,12 @@ class AuthPreferences @Inject constructor(
      * [serverUrl] (and its HMAC), [installationId] and [installationSecret]
      * so that after logout the user can log straight back in without
      * reconfiguring the server or breaking telemetry continuity.
+     *
+     * Biometric credential IV and enabled flag are preserved across server-forced
+     * clears (so the same user can re-authenticate with biometrics) but wiped on
+     * explicit [ClearReason.UserLogout] because a different user may log in next.
+     * The ciphertext itself lives in [BiometricCredentialStore]'s own prefs file —
+     * callers are responsible for calling [BiometricCredentialStore.clear] on UserLogout.
      */
     fun clear(reason: ClearReason = ClearReason.UserLogout) {
         val preservedUrl = prefs.getString(KEY_SERVER_URL, null)
@@ -229,6 +286,18 @@ class AuthPreferences @Inject constructor(
         } else {
             null
         }
+        // Preserve biometric IV + enabled flag across session-revoke / refresh-fail
+        // so the user can log back in with biometrics. Wipe on explicit logout.
+        val preservedBioEnabled = if (reason != ClearReason.UserLogout) {
+            prefs.getBoolean(KEY_BIO_CREDS_ENABLED, false)
+        } else {
+            null
+        }
+        val preservedBioIv = if (reason != ClearReason.UserLogout) {
+            prefs.getString(KEY_BIO_IV, null)
+        } else {
+            null
+        }
 
         prefs.edit().clear().apply()
 
@@ -238,6 +307,8 @@ class AuthPreferences @Inject constructor(
         if (preservedInstallId != null) restore.putString(KEY_INSTALL_ID, preservedInstallId)
         if (preservedInstallSecret != null) restore.putString(KEY_INSTALL_SECRET, preservedInstallSecret)
         if (preservedUsername != null) restore.putString(KEY_USERNAME, preservedUsername)
+        if (preservedBioEnabled != null) restore.putBoolean(KEY_BIO_CREDS_ENABLED, preservedBioEnabled)
+        if (preservedBioIv != null) restore.putString(KEY_BIO_IV, preservedBioIv)
         restore.apply()
 
         _authCleared.tryEmit(reason)
@@ -276,6 +347,10 @@ class AuthPreferences @Inject constructor(
         private const val KEY_SERVER_URL_SIG = "server_url_sig"
         private const val KEY_INSTALL_SECRET = "install_hmac_secret"
         private const val KEY_INSTALL_ID = "install_id"
+
+        // Biometric credential store
+        private const val KEY_BIO_CREDS_ENABLED = "bio_creds_enabled"
+        private const val KEY_BIO_IV = "bio_creds_iv"
 
         private const val HMAC_ALGORITHM = "HmacSHA256"
         private const val INSTALL_SECRET_BYTES = 32

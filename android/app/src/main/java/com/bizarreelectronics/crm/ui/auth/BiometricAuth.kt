@@ -11,8 +11,11 @@ import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.suspendCancellableCoroutine
+import javax.crypto.Cipher
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 /**
  * Biometric quick-unlock helper. Wraps AndroidX BiometricPrompt so the CRM can
@@ -27,6 +30,9 @@ import javax.inject.Singleton
  *  - Feature is OFF by default and must be enabled in Settings. The caller
  *    is responsible for reading the preference and deciding whether to call
  *    [showPrompt].
+ *  - [encryptWithBiometric] / [decryptWithBiometric] use a CryptoObject-bound
+ *    prompt so that Keystore key usage is hardware-attested to a live biometric
+ *    event.  The returned [Cipher] is unwrapped from the AuthenticationResult.
  *
  * Injected as a @Singleton via Hilt so the existing DI graph can use it.
  */
@@ -47,7 +53,12 @@ class BiometricAuth @Inject constructor() {
 
     /**
      * Shows the system biometric prompt. Runs [onSuccess] if the user
-     * authenticates, [onError] with a human-readable message otherwise.
+     * authenticates, [onError] with a typed [BiometricFailure] otherwise.
+     *
+     * Gracefully handles `ERROR_NO_BIOMETRICS` and `ERROR_HW_UNAVAILABLE` by
+     * delivering [BiometricFailure.Disabled] instead of a generic error string,
+     * allowing callers to silently skip the biometric path without user-visible
+     * noise.
      *
      * The callbacks never mutate state themselves — they fire on the main
      * thread so the caller is free to update Compose state, navigate, or
@@ -58,7 +69,7 @@ class BiometricAuth @Inject constructor() {
         title: String = "Unlock BizarreCRM",
         subtitle: String = "Use your fingerprint or face to continue",
         onSuccess: () -> Unit,
-        onError: (String) -> Unit,
+        onError: (BiometricFailure) -> Unit,
     ) {
         val executor = ContextCompat.getMainExecutor(activity)
         val callback = object : BiometricPrompt.AuthenticationCallback() {
@@ -67,9 +78,19 @@ class BiometricAuth @Inject constructor() {
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                // Treat user cancellation as a soft error — the UI layer can
-                // decide whether to exit the app or fall back to password.
-                onError(errString.toString())
+                val failure = when (errorCode) {
+                    BiometricPrompt.ERROR_NO_BIOMETRICS,
+                    BiometricPrompt.ERROR_HW_UNAVAILABLE,
+                    BiometricPrompt.ERROR_HW_NOT_PRESENT,
+                    -> BiometricFailure.Disabled
+
+                    BiometricPrompt.ERROR_USER_CANCELED,
+                    BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                    -> BiometricFailure.UserCancelled
+
+                    else -> BiometricFailure.SystemError(errorCode, errString.toString())
+                }
+                onError(failure)
             }
 
             override fun onAuthenticationFailed() {
@@ -85,4 +106,94 @@ class BiometricAuth @Inject constructor() {
             .build()
         prompt.authenticate(info)
     }
+
+    /**
+     * Shows a BiometricPrompt with [cipher] (ENCRYPT_MODE) as a [CryptoObject] and returns
+     * the authenticated [Cipher] on success, or `null` if the user cancelled or biometry is
+     * unavailable. The returned cipher has already been used for one encrypt operation by the
+     * OS; pass it directly to [BiometricCredentialStore.store].
+     *
+     * Coroutine-friendly — suspends until the prompt is dismissed.
+     */
+    suspend fun encryptWithBiometric(
+        activity: FragmentActivity,
+        cipher: Cipher,
+        title: String = "Save login with biometrics",
+        subtitle: String = "Confirm identity to store your credentials securely",
+    ): Cipher? = suspendCancellableCoroutine { cont ->
+        val executor = ContextCompat.getMainExecutor(activity)
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                cont.resume(result.cryptoObject?.cipher)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                cont.resume(null)
+            }
+
+            override fun onAuthenticationFailed() {
+                // Non-matching scan — prompt remains open; no resume yet.
+            }
+        }
+        val prompt = BiometricPrompt(activity, executor, callback)
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setAllowedAuthenticators(BIOMETRIC_STRONG)
+            .setNegativeButtonText("Cancel")
+            .build()
+        prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+    }
+
+    /**
+     * Shows a BiometricPrompt with [cipher] (DECRYPT_MODE, initialised with [iv]) as a
+     * [CryptoObject] and returns the authenticated [Cipher] on success, or `null` on
+     * user-cancel / hardware unavailability.
+     *
+     * Coroutine-friendly — suspends until the prompt is dismissed.
+     */
+    suspend fun decryptWithBiometric(
+        activity: FragmentActivity,
+        cipher: Cipher,
+        iv: ByteArray,
+        title: String = "Sign in with biometrics",
+        subtitle: String = "Confirm your identity to retrieve stored credentials",
+    ): Cipher? = suspendCancellableCoroutine { cont ->
+        val executor = ContextCompat.getMainExecutor(activity)
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                cont.resume(result.cryptoObject?.cipher)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                cont.resume(null)
+            }
+
+            override fun onAuthenticationFailed() {
+                // Non-matching scan — prompt remains open.
+            }
+        }
+        val prompt = BiometricPrompt(activity, executor, callback)
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setAllowedAuthenticators(BIOMETRIC_STRONG)
+            .setNegativeButtonText("Use password instead")
+            .build()
+        prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+    }
+}
+
+/**
+ * Typed failure discriminant for [BiometricAuth.showPrompt].
+ *
+ *  - [Disabled] — hardware missing or no enrolled biometrics. Callers should silently skip
+ *    the biometric path and fall back to password entry without displaying an error.
+ *  - [UserCancelled] — user tapped Cancel / negative button. Show no banner; let them proceed.
+ *  - [SystemError] — unexpected OS error. May be shown to the user as a transient message.
+ */
+sealed class BiometricFailure {
+    data object Disabled : BiometricFailure()
+    data object UserCancelled : BiometricFailure()
+    data class SystemError(val code: Int, val message: String) : BiometricFailure()
 }
