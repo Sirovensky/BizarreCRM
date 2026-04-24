@@ -7,6 +7,7 @@ import {
   validateIsoDate,
   validateJsonPayload,
   validateIntegerQuantity,
+  validateId,
   roundCents,
   toCents,
 } from '../utils/validate.js';
@@ -170,8 +171,11 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
   // Compute aging fields for each invoice
   const nowMs = Date.now();
   const invoices = rawInvoices.map((inv: any) => {
-    const createdMs = new Date(inv.created_at).getTime();
-    const ageDays = Math.max(0, Math.floor((nowMs - createdMs) / 86_400_000));
+    const createdMs = inv.created_at ? Date.parse(inv.created_at) : NaN;
+    if (Number.isNaN(createdMs)) {
+      logger.warn('invoice has unparseable created_at', { id: inv.id });
+    }
+    const ageDays = Number.isNaN(createdMs) ? 0 : Math.max(0, Math.floor((nowMs - createdMs) / 86_400_000));
     let agingBucket: string;
     if (ageDays < 30) agingBucket = 'current';
     else if (ageDays < 60) agingBucket = '30_days';
@@ -364,6 +368,9 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
 
   const invoiceId = result.lastInsertRowid;
 
+  // SCAN-748: Re-check total cap after per-item re-validation to prevent
+  // multi-pass small-item accumulation from breaching INVOICE_TOTAL_CAP.
+  let revalidatedTotal = 0;
   for (const item of line_items) {
     // SEC-M12: Destructure only allowed fields (prevents mass assignment)
     const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
@@ -376,12 +383,16 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
     if (typeof description === 'string' && description.length > 500) throw new AppError('Line item description exceeds 500 characters', 400);
     if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
     const lineTotal = roundCents((safeQty * safeUnitPrice) - safeLineDiscount + safeLineTax);
+    revalidatedTotal = roundCents(revalidatedTotal + lineTotal);
     await adb.run(`
       INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, invoiceId, inventory_item_id || null, description || '', safeQty,
       safeUnitPrice, safeLineDiscount, safeLineTax, tax_class_id || null,
       lineTotal, itemNotes || null);
+  }
+  if (!isAdmin && revalidatedTotal > INVOICE_TOTAL_CAP) {
+    throw new AppError(`Invoice total exceeds cap (${INVOICE_TOTAL_CAP})`, 400);
   }
 
   // Link ticket to invoice if provided
@@ -536,10 +547,7 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   // (wrong screen state), a forged request, or an account-mixing attack that
   // shifts credit onto the wrong ledger.
   if (req.body?.customer_id !== undefined && req.body.customer_id !== null) {
-    const bodyCustomerId = Number(req.body.customer_id);
-    if (!Number.isInteger(bodyCustomerId) || bodyCustomerId <= 0) {
-      throw new AppError('customer_id must be a positive integer', 400);
-    }
+    const bodyCustomerId = validateId(req.body.customer_id, 'customer_id');
     if (bodyCustomerId !== invoice.customer_id) {
       throw new AppError('customer_id does not match invoice.customer_id', 400);
     }
@@ -581,7 +589,9 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     transaction_id || null, notes || null, payment_type, req.user!.id);
   const paymentId = paymentResult.lastInsertRowid as number;
 
-  const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(amount) as t FROM payments WHERE invoice_id = ?', req.params.id);
+  // SCAN-757: CASE WHEN filters out NULL/negative rows so corrupt payment rows
+  // cannot propagate NaN or negative values into the running total.
+  const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 THEN amount ELSE 0 END) as t FROM payments WHERE invoice_id = ?', req.params.id);
   const totalPaidRaw = totalPaidRow?.t || 0;
   const totalPaid = roundCents(totalPaidRaw);
   const rawAmountDue = roundCents(invoice.total - totalPaid);
@@ -679,10 +689,16 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT') {
         // No-op: commission already recorded by a concurrent request.
       } else {
-        logger.warn(
+        logger.error(
           `[invoices] failed to write commission for payment on invoice ${req.params.id}`,
-          { err },
+          {
+            err: err instanceof Error ? err.message : String(err),
+            invoice_id: req.params.id,
+            amount,
+            user_id: req.user?.id,
+          },
         );
+        throw err;
       }
     }
   }
@@ -790,22 +806,19 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
     throw new AppError('Can only void one invoice per minute', 429);
   }
 
-  // SEC-H113: fetch current status and assert transition is legal before writing
-  const toVoid = await adb.get<{ status: string }>('SELECT status FROM invoices WHERE id = ?', req.params.id);
-  if (!toVoid) throw new AppError('Invoice not found', 404);
-  assertInvoiceTransition(toVoid.status, 'void');
-
-  // Atomic void: UPDATE with WHERE status != 'void' prevents TOCTOU race condition
+  // SCAN-754: Atomic state-machine void — single conditional UPDATE eliminates
+  // the TOCTOU window between the prior SELECT-then-UPDATE pattern. The WHERE
+  // clause is the authoritative state guard; 'void' is the only terminal state
+  // that must be blocked here (paid→void is a legal transition per the map).
   const voidResult = await adb.run(
     "UPDATE invoices SET status = 'void', amount_paid = 0, amount_due = 0, updated_at = datetime('now') WHERE id = ? AND status != 'void'",
     req.params.id,
   );
 
   if (voidResult.changes === 0) {
-    // Either not found or already voided — check which
-    const exists = await adb.get<any>('SELECT status FROM invoices WHERE id = ?', req.params.id);
-    if (!exists) throw new AppError('Invoice not found', 404);
-    throw new AppError('Already voided', 400);
+    const existing = await adb.get<{ status: string }>('SELECT status FROM invoices WHERE id = ?', req.params.id);
+    if (!existing) throw new AppError('Invoice not found', 404);
+    throw new AppError(`cannot void invoice in ${existing.status} status`, 409);
   }
 
   // S7: Restore stock for EVERY voided invoice with inventory line items,
@@ -817,6 +830,14 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
     req.params.id,
   );
   for (const li of lineItems) {
+    const itemExists = await adb.get<{ id: number }>(
+      'SELECT id FROM inventory_items WHERE id = ?',
+      li.inventory_item_id,
+    );
+    if (!itemExists) {
+      logger.warn('void: stock movement skipped — inventory_item not found', { id: li.inventory_item_id });
+      continue;
+    }
     await adb.run(
       "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
       li.quantity, li.inventory_item_id,

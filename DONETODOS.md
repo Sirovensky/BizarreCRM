@@ -2391,6 +2391,25 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-728. **validateId accepts "123abc"** — FIXED wave-28 via /^\d+$/ pre-check at validate.ts:326-339.
 - [x] SCAN-729. **estimate constantTimeEquals type mismatch** — FIXED wave-28 via SHA-256 hash of token arg at estimates.routes.ts:32-40.
 - [x] SCAN-636. **dunning GET /sequences no role gate** — verified wave-28, requireAdmin already present at dunning.routes.ts:50.
+
+## Closed 2026-04-23 (wave-29)
+- [x] SCAN-738. **invoices new Date(created_at) null guard** — FIXED wave-29 via Date.parse + NaN guard + logger.warn fallback ageDays=0 at invoices.routes.ts:173.
+- [x] SCAN-739. **customers FTS fallback swallow** — FIXED wave-29 via log.warn in catch at customers.routes.ts:141-148.
+- [x] SCAN-741. **invoices Number(req.body.customer_id) no guard** — FIXED wave-29 via validateId helper.
+- [x] SCAN-743. **signup pendingSignups in-memory** — DOCUMENTED wave-29 via logger.info on creation + doc comment (DB migration deferred).
+- [x] SCAN-744. **super-admin challenges Map eviction** — FIXED wave-29 via logger.warn in addWithCap.
+- [x] SCAN-745. **invoices void stock_movement FK pre-check** — FIXED wave-29 via SELECT EXISTS + skip/log.
+- [x] SCAN-746. **customers tags JSON.parse silent** — FIXED wave-29 via log.warn + customer_id context.
+- [x] SCAN-747. **signup reserved slugs** — FIXED wave-29 via RESERVED_SLUGS Set at signup.routes.ts:79.
+- [x] SCAN-748. **invoices PATCH line-items cap bypass** — FIXED wave-29 via revalidatedTotal + INVOICE_TOTAL_CAP guard.
+- [x] SCAN-749. **customers bulk-SMS O(N)** — FIXED wave-29 via single WHERE id IN (...) + Map lookup.
+- [x] SCAN-750. **super-admin expires_at format** — FIXED wave-29 via SQLite-compatible YYYY-MM-DD HH:MM:SS format.
+- [x] SCAN-751. **invoices commission swallow non-AppError** — FIXED wave-29 via logger.error + re-throw unexpected errors.
+- [x] SCAN-752. **customers bulk-tag JSON.parse silent** — FIXED wave-29 via log.warn.
+- [x] SCAN-754. **invoices void no atomic lock** — FIXED wave-29 via conditional UPDATE + changes check + 404/409 distinction.
+- [x] SCAN-755. **customers bulk-tag invalid IDs silent** — FIXED wave-29 via invalid_ids array in response.
+- [x] SCAN-756. **super-admin failed-login count + lock non-atomic** — FIXED wave-29 via single UPDATE with CASE WHEN.
+- [x] SCAN-757. **invoices totalPaidRaw SUM unvalidated** — FIXED wave-29 via CASE WHEN amount IS NOT NULL AND amount >= 0.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

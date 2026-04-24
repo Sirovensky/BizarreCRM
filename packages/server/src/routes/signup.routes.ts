@@ -76,6 +76,15 @@ function consumeEmailSignupQuota(rawEmail: string): boolean {
 // response body itself does not become an enumeration oracle.
 const SLUG_CHECK_MIN_INTERVAL_MS = 10 * 1000;
 
+// ─── Reserved slugs ───────────────────────────────────────────────
+// SCAN-747: slugs that conflict with route prefixes or admin paths.
+const RESERVED_SLUGS = new Set([
+  'admin', 'api', 'www', 'app', 'master', 'root', 'super',
+  'system', 'auth', 'login', 'logout', 'signup', 'register',
+  'billing', 'public', 'static', 'assets', 'dev', 'staging',
+  'test', 'localhost', 'internal', 'support', 'help',
+]);
+
 // ─── Pending signup store (in-memory with TTL) ─────────────────────
 // R5: Signup no longer immediately provisions a tenant. Instead we stash the
 // proposed tenant info keyed by a random verification token and email the
@@ -86,6 +95,12 @@ const SLUG_CHECK_MIN_INTERVAL_MS = 10 * 1000;
 //     cheap to re-try.
 //   - Single-process server (see CLAUDE.md).
 //   - We don't want to persist unverified email addresses longer than needed.
+//
+// SCAN-743 (by-design tradeoff): A process restart clears all pending signups.
+// The user must re-submit the signup form. No data is lost — the tenant was
+// never provisioned. logger.info at creation (below) gives operators the
+// token+email in logs so they can recover if SMTP delivered but the process
+// restarted before the user clicked.
 const PENDING_SIGNUP_TTL_MS = 60 * 60 * 1000; // 1 hour
 const pendingSignups = new Map<string, {
   slug: string;
@@ -526,6 +541,12 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
     return;
   }
+  // SCAN-747: reject reserved slugs that conflict with route prefixes / admin paths.
+  if (RESERVED_SLUGS.has(normalizedSlug)) {
+    logger.warn('signup rejected: reserved slug', { slug: normalizedSlug });
+    res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
+    return;
+  }
   if (!isSlugAvailable(normalizedSlug)) {
     logger.warn('signup rejected: slug taken', { slug: normalizedSlug });
     res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
@@ -592,6 +613,9 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     createdAt: Date.now(),
     ipAddress: ip,
   });
+  // SCAN-743: log token prefix so operators can re-send the email if the process
+  // restarts between here and the user clicking the verification link.
+  logger.info('pending signup created', { slug: normalizedSlug, email: normalizedEmail, tokenPrefix: verifyToken.slice(0, 8) });
 
   const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
   if (!emailSent) {

@@ -306,8 +306,8 @@ router.get(
                AND (c.code IS NULL OR c.code != 'WALK-IN')
              LIMIT 10`,
           matchExpr);
-      } catch {
-        // FTS can fail on odd characters – fall back to LIKE
+      } catch (err) {
+        log.warn('customers FTS fallback triggered', { err: err instanceof Error ? err.message : String(err), queryLen: q.length });
         results = await likeSearch(adb, q);
       }
     } else {
@@ -554,15 +554,18 @@ router.post(
     // Merge tags (combine, deduplicate)
     // @audit-fixed: parseTags helper — JSON.parse without try/catch used to crash
     // the merge for any customer whose tags column held legacy non-JSON content.
-    const parseTags = (raw: unknown): string[] => {
+    const parseTags = (raw: unknown, customer_id?: number): string[] => {
       if (!raw) return [];
       try {
         const v = JSON.parse(String(raw));
         return Array.isArray(v) ? v.filter((t) => typeof t === 'string') : [];
-      } catch { return []; }
+      } catch (err) {
+        log.warn('customer tags JSON.parse failed, dropping', { customer_id, raw_len: String(raw).length, err: err instanceof Error ? err.message : String(err) });
+        return [];
+      }
     };
-    const keepTags = parseTags(keepCustomer.tags);
-    const mergeTags = parseTags(mergeCustomer.tags);
+    const keepTags = parseTags(keepCustomer.tags, kid);
+    const mergeTags = parseTags(mergeCustomer.tags, mid);
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
     await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
@@ -621,12 +624,16 @@ router.post(
 
     const trimmedTag = tag.trim();
     let updated = 0;
+    const invalidIds: unknown[] = [];
 
-    for (const id of customer_ids) {
+    for (const rawId of customer_ids) {
       // @audit-fixed: validate id and skip non-numeric entries silently rather
       // than letting Number("abc") = NaN flow into SQL.
-      const cid = Number(id);
-      if (!Number.isInteger(cid) || cid <= 0) continue;
+      const cid = Number(rawId);
+      if (!Number.isInteger(cid) || cid <= 0) {
+        invalidIds.push(rawId);
+        continue;
+      }
       const customer = await adb.get<AnyRow>('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0', cid);
       if (!customer) continue;
 
@@ -636,7 +643,10 @@ router.post(
       try {
         const parsed = JSON.parse(customer.tags || '[]');
         currentTags = Array.isArray(parsed) ? parsed.filter((t: unknown) => typeof t === 'string') : [];
-      } catch { currentTags = []; }
+      } catch (err) {
+        log.warn('customer tags JSON.parse failed, dropping', { customer_id: cid, raw_len: String(customer.tags).length, err: err instanceof Error ? err.message : String(err) });
+        currentTags = [];
+      }
       if (currentTags.includes(trimmedTag)) continue;
 
       const newTags = [...currentTags, trimmedTag];
@@ -647,7 +657,7 @@ router.post(
 
     res.json({
       success: true,
-      data: { updated, tag: trimmedTag, total_requested: customer_ids.length },
+      data: { updated, tag: trimmedTag, total_requested: customer_ids.length, invalid_ids: invalidIds },
     });
   }),
 );
@@ -760,10 +770,22 @@ router.post(
       sent: 0, failed: 0, skipped: 0, errors: [],
     };
 
+    // Batch-fetch all customers in a single query instead of N round-trips (SCAN-749)
+    const customerIds = customer_ids.map((id: unknown) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0);
+    if (customerIds.length === 0) {
+      return void res.json({ success: true, data: results });
+    }
+    const placeholders = customerIds.map(() => '?').join(',');
+    const fetchedRows = await adb.all<{ id: number; first_name: string; last_name: string; phone: string | null; mobile: string | null; sms_opt_in: number; sms_consent_marketing: number }>(
+      `SELECT id, first_name, last_name, phone, mobile, sms_opt_in, sms_consent_marketing FROM customers WHERE id IN (${placeholders}) AND is_deleted = 0`,
+      ...customerIds,
+    );
+    const byId = new Map(fetchedRows.map((r) => [r.id, r]));
+    const missingCount = customer_ids.length - customerIds.length;
+    if (missingCount > 0) log.warn('bulk-sms: skipped non-numeric customer_ids', { count: missingCount });
+
     for (const id of customer_ids) {
-      const customer = await adb.get<AnyRow>(
-        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in, sms_consent_marketing FROM customers WHERE id = ? AND is_deleted = 0',
-        Number(id));
+      const customer = byId.get(Number(id));
 
       if (!customer) {
         results.skipped++;

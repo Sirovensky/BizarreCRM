@@ -162,7 +162,11 @@ const CHALLENGES_CAP = 1000;
 function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
   if (map.size >= cap && !map.has(key)) {
     const firstKey = map.keys().next().value;
-    if (firstKey !== undefined) map.delete(firstKey);
+    if (firstKey !== undefined) {
+      // SCAN-744: warn operators when Map is at capacity so evictions are visible.
+      logger.warn('super-admin challenge Map at capacity; evicting oldest entry', { evicted: firstKey });
+      map.delete(firstKey);
+    }
   }
   map.delete(key); // re-insert to bump to most-recent
   map.set(key, value);
@@ -193,7 +197,10 @@ function createSession(masterDb: any, adminId: number, ip: string, userAgent: st
   // SEC-H20: session TTL aligned to JWT TTL (30m). Previously 4h, which
   // allowed session lookups to succeed long after the JWT had expired —
   // defeating the short-lived-token guarantee added by SEC-H20.
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+  // SCAN-750: use SQLite-compatible "YYYY-MM-DD HH:MM:SS" format so that
+  // datetime('now') comparisons work correctly (ISO-8601 "T" separator breaks
+  // SQLite string comparison because "T" > " ").
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
   masterDb.prepare(
     'INSERT INTO super_admin_sessions (id, super_admin_id, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, adminId, ip, userAgent?.substring(0, 200) || '', expiresAt);
@@ -295,17 +302,18 @@ router.post('/login', async (req: Request, res: Response) => {
   const valid = await bcrypt.compare(password, admin.password_hash);
   if (!valid) {
     recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
+    // SCAN-756: single atomic UPDATE avoids count > 7 with locked_until NULL on crash between two statements.
+    masterDb.prepare(
+      `UPDATE super_admins
+       SET failed_login_count = failed_login_count + 1,
+           locked_until = CASE WHEN failed_login_count + 1 >= 7
+                          THEN datetime('now', '+30 minutes')
+                          ELSE locked_until
+                          END
+       WHERE id = ?`
+    ).run(admin.id);
     const fails = (admin.failed_login_count || 0) + 1;
-    const updates: any[] = [fails];
-    let lockUntil: string | null = null;
-    if (fails >= 7) {
-      lockUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // Lock 30 minutes
-      updates.push(lockUntil);
-      masterDb.prepare('UPDATE super_admins SET failed_login_count = ?, locked_until = ? WHERE id = ?').run(fails, lockUntil, admin.id);
-    } else {
-      masterDb.prepare('UPDATE super_admins SET failed_login_count = ? WHERE id = ?').run(fails, admin.id);
-    }
-    auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: !!lockUntil });
+    auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: fails >= 7 });
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   }
 
