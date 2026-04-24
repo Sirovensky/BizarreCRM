@@ -201,6 +201,9 @@ dependencies {
     // ML Kit (Barcode scanning)
     implementation(libs.mlkit.barcode.scanning)
 
+    // ML Kit (Text recognition — on-device receipt OCR, no Firebase)
+    implementation(libs.mlkit.text.recognition)
+
     // Firebase (Push notifications)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)

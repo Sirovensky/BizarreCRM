@@ -1,10 +1,16 @@
 package com.bizarreelectronics.crm.ui.screens.expenses
 
 // @audit-fixed: removed clickable import — ExpenseCard no longer has a click target
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,27 +35,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.ExpenseEntity
-import com.bizarreelectronics.crm.data.repository.ExpenseRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSortDropdown
 import com.bizarreelectronics.crm.util.formatAsMoney
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 val EXPENSE_CATEGORIES = listOf(
     "Rent",
@@ -72,43 +68,43 @@ data class ExpenseListUiState(
     val expenses: List<ExpenseEntity> = emptyList(),
     /** Total of all expenses shown in the list, in **cents**. */
     val totalAmount: Long = 0L,
+    /** Sum of reimbursable=true + status=pending expenses, in **cents** (stub — 0 until column exists). */
+    val reimbursablePendingAmount: Long = 0L,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
     val selectedCategory: String = "All",
+    val currentSort: ExpenseSort = ExpenseSort.DATE,
     /** Pre-grouped slices for the pie chart; empty = no data for this period. */
     val categorySlices: List<ExpenseSlice> = emptyList(),
 )
 
-// Cycling palette for pie slices. Color(Long) is Compose's recommended pattern for
-// compile-time color literals; the 0xFF prefix encodes alpha=FF (fully opaque).
+// Cycling palette for pie slices.
 private val SLICE_COLORS = listOf(
-    Color(0xFF6750A4), // primary purple
-    Color(0xFF625B71), // secondary
-    Color(0xFF7D5260), // tertiary
-    Color(0xFF4CAF50), // green
-    Color(0xFF2196F3), // blue
-    Color(0xFFFF9800), // amber
-    Color(0xFFF44336), // red
-    Color(0xFF9C27B0), // purple
-    Color(0xFF00BCD4), // cyan
-    Color(0xFFFF5722), // deep-orange
-    Color(0xFF607D8B), // blue-grey
-    Color(0xFF8BC34A), // light-green
-    Color(0xFFE91E63), // pink
-    Color(0xFF795548), // brown
+    Color(0xFF6750A4),
+    Color(0xFF625B71),
+    Color(0xFF7D5260),
+    Color(0xFF4CAF50),
+    Color(0xFF2196F3),
+    Color(0xFFFF9800),
+    Color(0xFFF44336),
+    Color(0xFF9C27B0),
+    Color(0xFF00BCD4),
+    Color(0xFFFF5722),
+    Color(0xFF607D8B),
+    Color(0xFF8BC34A),
+    Color(0xFFE91E63),
+    Color(0xFF795548),
 )
 
 /** Build [ExpenseSlice] list from raw entity list. Pure — safe to call from any thread. */
 internal fun buildCategorySlices(expenses: List<ExpenseEntity>): List<ExpenseSlice> {
     if (expenses.isEmpty()) return emptyList()
-    // Group and sum, preserving insertion order of first occurrence
     val grouped = linkedMapOf<String, Long>()
     expenses.forEach { e ->
         grouped[e.category] = (grouped[e.category] ?: 0L) + e.amount
     }
-    // Sort descending by total so largest slice comes first
     val sorted = grouped.entries.sortedByDescending { it.value }
     return sorted.mapIndexed { idx, entry ->
         ExpenseSlice(
@@ -119,94 +115,20 @@ internal fun buildCategorySlices(expenses: List<ExpenseEntity>): List<ExpenseSli
     }
 }
 
-@HiltViewModel
-class ExpenseListViewModel @Inject constructor(
-    private val expenseRepository: ExpenseRepository,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(ExpenseListUiState())
-    val state = _state.asStateFlow()
-
-    private var searchJob: Job? = null
-    private var collectJob: Job? = null
-
-    init {
-        loadExpenses()
-    }
-
-    fun loadExpenses() {
-        collectJob?.cancel()
-        collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.expenses.isEmpty(), error = null)
-            val query = _state.value.searchQuery.trim()
-            val categoryFilter = _state.value.selectedCategory
-
-            val flow = when {
-                query.isNotEmpty() -> expenseRepository.searchExpenses(query)
-                categoryFilter != "All" -> expenseRepository.getByCategory(categoryFilter)
-                else -> expenseRepository.getExpenses()
-            }
-
-            flow
-                .map { expenses ->
-                    // If searching AND a category is selected, narrow further in-memory
-                    if (query.isNotEmpty() && categoryFilter != "All") {
-                        expenses.filter { it.category.equals(categoryFilter, ignoreCase = true) }
-                    } else {
-                        expenses
-                    }
-                }
-                .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load expenses. Check your connection and try again.",
-                    )
-                }
-                .collectLatest { expenses ->
-                    _state.value = _state.value.copy(
-                        expenses = expenses,
-                        totalAmount = expenses.sumOf { it.amount },
-                        categorySlices = buildCategorySlices(expenses),
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
-                }
-        }
-    }
-
-    fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
-        loadExpenses()
-    }
-
-    fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(300)
-            loadExpenses()
-        }
-    }
-
-    fun onCategoryChanged(category: String) {
-        _state.value = _state.value.copy(selectedCategory = category)
-        loadExpenses()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ExpenseListScreen(
     onCreateClick: () -> Unit,
+    onDetailClick: (Long) -> Unit = {},
     viewModel: ExpenseListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val categories = listOf("All") + EXPENSE_CATEGORIES
+    val categories = listOf("All") + EXPENSE_CATEGORIES + listOf(FILTER_PENDING_APPROVAL)
     var chartExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    // ReduceMotion: read once per composition — no AppPreferences injection needed here;
-    // fall back to the system animator scale check only (in-app toggle not wired at this level).
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     val reduceMotion = remember(context) {
         android.provider.Settings.Global.getFloat(
             context.contentResolver,
@@ -215,17 +137,54 @@ fun ExpenseListScreen(
         ) == 0f
     }
 
+    // SAF launcher for CSV export
+    val csvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.data
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        val csv = viewModel.buildCsvContent()
+                        context.contentResolver.openOutputStream(uri)?.use { os ->
+                            os.write(csv.toByteArray(Charsets.UTF_8))
+                        }
+                        snackbarHostState.showSnackbar("CSV exported")
+                    } catch (e: Exception) {
+                        snackbarHostState.showSnackbar("Export failed: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             BrandTopAppBar(
                 title = "Expenses",
                 actions = {
+                    // Sort dropdown
+                    ExpenseSortDropdown(
+                        currentSort = state.currentSort,
+                        onSortSelected = { viewModel.onSortChanged(it) },
+                    )
+                    // Export CSV
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "text/csv"
+                                putExtra(Intent.EXTRA_TITLE, "expenses.csv")
+                            }
+                            csvLauncher.launch(intent)
+                        },
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "Export expenses as CSV")
+                    }
                     IconButton(onClick = { viewModel.loadExpenses() }) {
-                        // a11y: screen-specific label — mirrors "Refresh tickets" / "Refresh customers" pattern
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh expenses",
-                        )
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh expenses")
                     }
                 },
             )
@@ -235,7 +194,6 @@ fun ExpenseListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                // a11y: §26 spec — "Add expense" (imperative)
                 Icon(Icons.Default.Add, contentDescription = "Add expense")
             }
         },
@@ -246,7 +204,6 @@ fun ExpenseListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            // Brand search bar: filled surface2, 16dp radius, teal leading icon
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
@@ -254,7 +211,6 @@ fun ExpenseListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            // a11y: "Category filter" heading so TalkBack can navigate directly to this section
             Text(
                 "Category filter",
                 style = MaterialTheme.typography.labelSmall,
@@ -270,19 +226,14 @@ fun ExpenseListScreen(
             ) {
                 items(categories, key = { it }) { category ->
                     val isSelected = state.selectedCategory == category
+                    val label = if (category == FILTER_PENDING_APPROVAL) "Pending approval" else category
                     FilterChip(
                         selected = isSelected,
                         onClick = { viewModel.onCategoryChanged(category) },
-                        label = { Text(category) },
-                        // a11y: Role.Tab + selection state so TalkBack announces
-                        // "<category> filter, selected/not selected"
+                        label = { Text(label) },
                         modifier = Modifier.semantics {
                             role = Role.Tab
-                            contentDescription = if (isSelected) {
-                                "$category filter, selected"
-                            } else {
-                                "$category filter, not selected"
-                            }
+                            contentDescription = if (isSelected) "$label filter, selected" else "$label filter, not selected"
                         },
                     )
                 }
@@ -290,15 +241,12 @@ fun ExpenseListScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Summary card — sanctioned highlight usage of primaryContainer
+            // Summary tiles
             if (!state.isLoading) {
-                // a11y: liveRegion=Polite so TalkBack announces the updated totals when the
-                // category filter changes; contentDescription gives a single coherent sentence
-                // rather than reading "Total", the amount, "Count", the number separately.
-                val summaryPeriodLabel = if (state.selectedCategory == "All") {
-                    "All expenses"
-                } else {
-                    "${state.selectedCategory} expenses"
+                val summaryPeriodLabel = when (state.selectedCategory) {
+                    "All" -> "All expenses"
+                    FILTER_PENDING_APPROVAL -> "Pending approval expenses"
+                    else -> "${state.selectedCategory} expenses"
                 }
                 val summaryA11yDesc = "$summaryPeriodLabel: ${state.totalAmount.formatAsMoney()}, " +
                     "${state.expenses.size} items"
@@ -327,9 +275,21 @@ fun ExpenseListScreen(
                             Text(
                                 state.totalAmount.formatAsMoney(),
                                 style = MaterialTheme.typography.headlineSmall,
-                                // BrandMono via fontFamily copy — amount is a financial figure
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Reimbursable pending",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                state.reimbursablePendingAmount.formatAsMoney(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.tertiary,
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -349,7 +309,7 @@ fun ExpenseListScreen(
                 }
             }
 
-            // Collapsible "By category" section — shows pie chart when expanded
+            // Collapsible "By category" section
             if (!state.isLoading && state.error == null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 BrandCard(
@@ -358,10 +318,6 @@ fun ExpenseListScreen(
                         .padding(horizontal = 16.dp),
                 ) {
                     Column {
-                        // Header row — tap to toggle
-                        // a11y: Role.Button + contentDescription announce the section name and
-                        // current expanded/collapsed state as a single focus stop. The trailing
-                        // chevron icon's contentDescription is set to null to avoid double-announcement.
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -384,20 +340,13 @@ fun ExpenseListScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
-                            // a11y: null contentDescription — the parent Row already announces
-                            // the expanded/collapsed state; chevron is purely decorative here.
                             Icon(
-                                imageVector = if (chartExpanded) {
-                                    Icons.Default.KeyboardArrowUp
-                                } else {
-                                    Icons.Default.KeyboardArrowDown
-                                },
+                                imageVector = if (chartExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
 
-                        // Animated chart content
                         AnimatedVisibility(
                             visible = chartExpanded,
                             enter = expandVertically(),
@@ -405,11 +354,7 @@ fun ExpenseListScreen(
                         ) {
                             ExpenseCategoryPieChart(
                                 slices = state.categorySlices,
-                                modifier = Modifier.padding(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    bottom = 16.dp,
-                                ),
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                                 reduceMotion = reduceMotion,
                             )
                         }
@@ -421,21 +366,15 @@ fun ExpenseListScreen(
 
             when {
                 state.isLoading -> {
-                    // a11y: mergeDescendants + contentDescription so TalkBack announces
-                    // "Loading expenses" on a single focus stop rather than each shimmer
-                    // box individually.
                     Box(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             contentDescription = "Loading expenses"
                         },
                     ) {
-                        // Skeleton rows while data loads — replaces bare CircularProgressIndicator
                         BrandSkeleton(rows = 6, modifier = Modifier.fillMaxWidth())
                     }
                 }
                 state.error != null -> {
-                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
-                    // tells the user about the error rather than leaving them in silence.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -449,8 +388,6 @@ fun ExpenseListScreen(
                     }
                 }
                 state.expenses.isEmpty() -> {
-                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
-                    // into one TalkBack node so the empty state reads as a single announcement.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -475,8 +412,6 @@ fun ExpenseListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
-                            // CROSS16-ext: bottom inset so the last row can
-                            // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
@@ -485,12 +420,15 @@ fun ExpenseListScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            // @audit-fixed: ExpenseCard previously had an empty onClick {}
-                            // which left every row with a dead Modifier.clickable that
-                            // produced ripples but did nothing. There is no expense detail
-                            // screen yet, so the rows now use a non-clickable card variant.
                             items(state.expenses, key = { it.id }) { expense ->
-                                ExpenseCard(expense = expense)
+                                SwipeableExpenseCard(
+                                    expense = expense,
+                                    onClick = { onDetailClick(expense.id) },
+                                    onApprove = { /* stub: only in detail screen */ },
+                                    onReject = { /* stub: only in detail screen */ },
+                                    onDelete = { viewModel.deleteExpense(expense.id) },
+                                    onDuplicate = { viewModel.duplicateExpense(expense) },
+                                )
                             }
                         }
                     }
@@ -500,11 +438,131 @@ fun ExpenseListScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun ExpenseCard(expense: ExpenseEntity) {
-    // a11y: build the announcement string once. BrandCard is non-clickable (no detail
-    // screen yet), so Role.Button is intentionally omitted — mergeDescendants collapses
-    // category chip + description + date + vendor into one TalkBack focus stop.
+private fun SwipeableExpenseCard(
+    expense: ExpenseEntity,
+    onClick: () -> Unit,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onDelete: () -> Unit,
+    onDuplicate: () -> Unit,
+) {
+    var showContextMenu by remember { mutableStateOf(false) }
+
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    onApprove()
+                    false // Don't dismiss — approval is handled by approval bar in detail
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    onReject()
+                    false
+                }
+                else -> false
+            }
+        },
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    // Approve background (green)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 2.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Surface(
+                            color = Color(0xFF4CAF50).copy(alpha = 0.15f),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {}
+                        Row(
+                            modifier = Modifier.padding(start = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF4CAF50))
+                            Text("Approve", color = Color(0xFF4CAF50), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    // Reject background (red)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 2.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {}
+                        Row(
+                            modifier = Modifier.padding(end = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Text("Reject", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+                else -> {}
+            }
+        },
+    ) {
+        Box {
+            ExpenseCard(
+                expense = expense,
+                modifier = Modifier.combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { showContextMenu = true },
+                ),
+            )
+            // Long-press context menu
+            DropdownMenu(
+                expanded = showContextMenu,
+                onDismissRequest = { showContextMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Open") },
+                    onClick = { showContextMenu = false; onClick() },
+                    leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text("Duplicate") },
+                    onClick = { showContextMenu = false; onDuplicate() },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = { showContextMenu = false; onDelete() },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpenseCard(
+    expense: ExpenseEntity,
+    modifier: Modifier = Modifier,
+) {
     val vendorOrNote = expense.description?.takeIf { it.isNotBlank() } ?: ""
     val expenseA11yDesc = buildString {
         append("Expense ${expense.amount.formatAsMoney()}")
@@ -515,7 +573,7 @@ private fun ExpenseCard(expense: ExpenseEntity) {
         append(".")
     }
     BrandCard(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
                 contentDescription = expenseA11yDesc
@@ -535,10 +593,7 @@ private fun ExpenseCard(expense: ExpenseEntity) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 if (!expense.description.isNullOrBlank()) {
-                    Text(
-                        expense.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Text(expense.description, style = MaterialTheme.typography.bodyMedium)
                 }
                 Text(
                     expense.date.take(10),
@@ -553,7 +608,6 @@ private fun ExpenseCard(expense: ExpenseEntity) {
                     )
                 }
             }
-            // Amount: right-aligned, labelLarge, primary purple — brand money value treatment
             Text(
                 expense.amount.formatAsMoney(),
                 style = MaterialTheme.typography.labelLarge,

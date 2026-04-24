@@ -29,4 +29,18 @@ interface ExpenseApi {
 
     @DELETE("expenses/{id}")
     suspend fun deleteExpense(@Path("id") id: Long): ApiResponse<Unit>
+
+    /** Approve an expense. 404 is tolerated when the server endpoint is not yet deployed. */
+    @POST("expenses/{id}/approve")
+    suspend fun approveExpense(
+        @Path("id") id: Long,
+        @Body comment: String? = null,
+    ): ApiResponse<Unit>
+
+    /** Reject an expense. 404 is tolerated when the server endpoint is not yet deployed. */
+    @POST("expenses/{id}/reject")
+    suspend fun rejectExpense(
+        @Path("id") id: Long,
+        @Body comment: String? = null,
+    ): ApiResponse<Unit>
 }

@@ -195,6 +195,9 @@ sealed class Screen(val route: String) {
     // Expenses
     data object Expenses : Screen("expenses")
     data object ExpenseCreate : Screen("expense-create")
+    data object ExpenseDetail : Screen("expenses/{id}") {
+        fun createRoute(id: Long) = "expenses/$id"
+    }
 
     // Inventory CRUD
     data object InventoryCreate : Screen("inventory-create")
@@ -1528,12 +1531,26 @@ fun AppNavGraph(
             composable(Screen.Expenses.route) {
                 com.bizarreelectronics.crm.ui.screens.expenses.ExpenseListScreen(
                     onCreateClick = { navController.navigate(Screen.ExpenseCreate.route) },
+                    onDetailClick = { id -> navController.navigate(Screen.ExpenseDetail.createRoute(id)) },
                 )
             }
             composable(Screen.ExpenseCreate.route) {
                 com.bizarreelectronics.crm.ui.screens.expenses.ExpenseCreateScreen(
                     onBack = { navController.popBackStack() },
                     onCreated = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.ExpenseDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.expenses.ExpenseDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onEdit = { id ->
+                        // Navigate to create in edit mode — edit mode not yet wired,
+                        // popBackStack to list as fallback until edit-mode route exists.
+                        navController.popBackStack()
+                    },
                 )
             }
 

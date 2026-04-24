@@ -21,6 +21,7 @@ work-runtime-ktx = "2.10.0"
 metrics-performance = "1.0.0-beta02"
 camerax = "1.4.1"
 mlkit-barcode = "17.3.0"
+mlkit-text-recognition = "16.0.0"
 firebase-bom = "33.8.0"
 coil3 = "3.1.0"
 vico = "2.0.1"
@@ -95,6 +96,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 
 # ML Kit
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkit-barcode" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkit-text-recognition" }
 
 # Firebase BOM + messaging (version managed by BOM)
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }

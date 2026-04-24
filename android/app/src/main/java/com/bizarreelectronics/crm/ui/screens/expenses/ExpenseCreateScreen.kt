@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.expenses
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,6 +28,8 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
 import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ReceiptOcrScanner
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ReceiptPhotoPicker
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -49,6 +53,12 @@ data class ExpenseCreateUiState(
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val createdId: Long? = null,
+    /** URI of the receipt photo chosen from the photo picker (local, not yet uploaded). */
+    val receiptUri: Uri? = null,
+    /** True while ML Kit OCR is running on the picked image. */
+    val isOcrRunning: Boolean = false,
+    /** Non-null when OCR runs but finds no useful fields. */
+    val ocrToast: String? = null,
 )
 
 @HiltViewModel
@@ -106,13 +116,49 @@ class ExpenseCreateViewModel @Inject constructor(
         _state.value = _state.value.copy(error = null)
     }
 
-    // ── Draft autosave ────────────────────────────────────────────────
+    fun clearOcrToast() {
+        _state.value = _state.value.copy(ocrToast = null)
+    }
+
+    fun clearReceiptUri() {
+        _state.value = _state.value.copy(receiptUri = null)
+    }
 
     /**
-     * Call after every user-driven field change.
-     * Cancels the previous pending autosave and starts a fresh 2-second
-     * countdown before persisting the current form to DraftStore.
+     * Called when a receipt image is picked via PhotoPicker.
+     * Stores the URI then triggers ML Kit OCR to auto-fill form fields.
      */
+    fun onReceiptPicked(context: android.content.Context, uri: Uri) {
+        _state.value = _state.value.copy(receiptUri = uri, isOcrRunning = true, ocrToast = null)
+        viewModelScope.launch {
+            try {
+                val result = ReceiptOcrScanner.scanReceipt(context, uri)
+                val hasUsefulData = result.total != null || result.vendor != null || result.date != null
+                if (hasUsefulData) {
+                    val current = _state.value
+                    _state.value = current.copy(
+                        isOcrRunning = false,
+                        amount = result.total?.takeIf { current.amount.isBlank() } ?: current.amount,
+                        description = result.vendor?.takeIf { current.description.isBlank() } ?: current.description,
+                        date = result.date?.takeIf { current.date.isBlank() } ?: current.date,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isOcrRunning = false,
+                        ocrToast = "OCR found no data — please fill in manually",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isOcrRunning = false,
+                    ocrToast = "Receipt scan failed — please fill in manually",
+                )
+            }
+        }
+    }
+
+    // ── Draft autosave ────────────────────────────────────────────────
+
     fun onFieldChanged() {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
@@ -122,7 +168,6 @@ class ExpenseCreateViewModel @Inject constructor(
         }
     }
 
-    /** Serialise the expense form fields for draft persistence. */
     private fun serializeCurrentForm(): String {
         val s = _state.value
         val obj = JsonObject()
@@ -133,10 +178,6 @@ class ExpenseCreateViewModel @Inject constructor(
         return gson.toJson(obj)
     }
 
-    /**
-     * Restore form state from a persisted draft.
-     * All fields are plain text — no secondary API calls required.
-     */
     fun resumeDraft(draft: DraftStore.Draft) {
         _pendingDraft.value = null
         val obj = try {
@@ -157,7 +198,6 @@ class ExpenseCreateViewModel @Inject constructor(
         )
     }
 
-    /** Permanently discard the pending draft and clear the recovery prompt. */
     fun discardDraft() {
         _pendingDraft.value = null
         viewModelScope.launch {
@@ -187,7 +227,6 @@ class ExpenseCreateViewModel @Inject constructor(
                     date = current.date.trim().ifBlank { null },
                 )
                 val createdId = expenseRepository.createExpense(request)
-                // Expense created successfully — draft is no longer needed.
                 discardDraft()
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -203,15 +242,6 @@ class ExpenseCreateViewModel @Inject constructor(
     }
 }
 
-/**
- * Build a short, human-readable preview string from an expense draft payload JSON.
- * Used by [DraftRecoveryPrompt] so the user can identify the draft at a glance.
- *
- * Example outputs:
- *   "Expense $45.00 for Parts on 2026-04-23"
- *   "$12.50 for Shipping"
- *   "New expense (no details)"
- */
 private fun buildExpenseDraftPreview(json: String): String {
     return try {
         val obj = JsonParser.parseString(json).asJsonObject
@@ -244,11 +274,9 @@ fun ExpenseCreateScreen(
     val state by viewModel.state.collectAsState()
     val pendingDraft by viewModel.pendingDraft.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    // U7 fix: dropdown state saved across rotation.
     var showCategoryDropdown by rememberSaveable { mutableStateOf(false) }
-    // D5-6: IME actions — Next moves focus, Done clears focus and triggers
-    // the same save flow the toolbar action uses.
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
     val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
     val onDoneSave = KeyboardActions(
         onDone = {
@@ -259,9 +287,7 @@ fun ExpenseCreateScreen(
 
     LaunchedEffect(state.createdId) {
         val id = state.createdId
-        if (id != null) {
-            onCreated(id)
-        }
+        if (id != null) onCreated(id)
     }
 
     LaunchedEffect(state.error) {
@@ -272,13 +298,18 @@ fun ExpenseCreateScreen(
         }
     }
 
+    LaunchedEffect(state.ocrToast) {
+        val toast = state.ocrToast
+        if (toast != null) {
+            snackbarHostState.showSnackbar(toast)
+            viewModel.clearOcrToast()
+        }
+    }
+
     val canSave = state.category.isNotBlank() &&
         (state.amount.toDoubleOrNull()?.let { it > 0 } == true)
 
-    // Draft recovery prompt — surfaces as a modal bottom sheet when a previously
-    // saved draft exists and the form is currently empty (no in-progress entry).
-    val isFormEmpty = state.category.isBlank() && state.amount.isBlank() &&
-        state.description.isBlank()
+    val isFormEmpty = state.category.isBlank() && state.amount.isBlank() && state.description.isBlank()
     if (pendingDraft != null && isFormEmpty) {
         DraftRecoveryPrompt(
             draft = pendingDraft!!,
@@ -300,7 +331,6 @@ fun ExpenseCreateScreen(
                 },
                 actions = {
                     if (state.isSubmitting) {
-                        // In-toolbar spinner — keep bare spinner per spec (not skeleton)
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
@@ -332,7 +362,16 @@ fun ExpenseCreateScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Category dropdown — OutlinedTextField inherits purple focus ring from theme
+            // Receipt photo picker + OCR
+            ReceiptPhotoPicker(
+                selectedUri = state.receiptUri,
+                isOcrRunning = state.isOcrRunning,
+                onImagePicked = { uri -> viewModel.onReceiptPicked(context, uri) },
+                onClear = { viewModel.clearReceiptUri() },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Category dropdown
             Box {
                 OutlinedTextField(
                     value = state.category,
@@ -362,20 +401,13 @@ fun ExpenseCreateScreen(
                 }
             }
 
-            // Amount — orange focus ring via theme.
-            // CROSS32-ext: unified money-input affordance — $ leadingIcon
-            // + "0.00" placeholder to match ticket wizard / inventory /
-            // invoice-payment sites.
             OutlinedTextField(
                 value = state.amount,
                 onValueChange = viewModel::updateAmount,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Amount *") },
                 leadingIcon = {
-                    Text(
-                        "$",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 },
                 placeholder = { Text("0.00") },
                 singleLine = true,
@@ -390,7 +422,7 @@ fun ExpenseCreateScreen(
                 value = state.description,
                 onValueChange = viewModel::updateDescription,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Description") },
+                label = { Text("Description / Vendor") },
                 singleLine = false,
                 minLines = 2,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
