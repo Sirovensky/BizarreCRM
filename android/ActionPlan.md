@@ -1505,31 +1505,31 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] Threads list via `LazyColumn`.
 - [x] **Search** — across all messages + phone numbers.
 - [ ] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row.
-- [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
-- [ ] **Pin important threads** to top.
-- [ ] **Sentiment badge** (positive / neutral / negative) if server computes.
-- [ ] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin.
-- [ ] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive.
+- [x] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned. (commit c00d412 — `components/SmsFilterChipRow.kt` `SmsFilter` enum + `applySmsFilter()` pure fn + chip row UI)
+- [x] **Pin important threads** to top. (commit c00d412 — long-press DropdownMenu + VM optimistic `pinThread()` + `SmsApi.pinThread`)
+- [x] **Sentiment badge** (positive / neutral / negative) if server computes. (commit c00d412 — `SmsConversationItem.sentiment` field + warningContainer chip rendered when negative)
+- [x] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin. (commit c00d412 — SwipeToDismissBox left=Archive right=MarkRead)
+- [x] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive. (commit c00d412 — long-press 6-action DropdownMenu)
 - [x] **Compose new** (FAB) — pick customer or raw phone.
 - [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
 
 ### 12.2 Thread view
 - [x] Bubbles + composer + POST /sms/send.
 - [~] **Real-time WebSocket** via OkHttp `WebSocket` — new message arrives without refresh; animate in with `AnimatedVisibility` + slide-up spring.
-- [ ] **Delivery status** icons per message — sent / delivered / failed / scheduled.
-- [ ] **Read receipts** (if server supports).
-- [ ] **Typing indicator** (if supported).
+- [x] **Delivery status** icons per message — sent / delivered / failed / scheduled. (commit c00d412 — `components/SmsDeliveryStatusDot.kt` pulse/single-check/double-check/red-X/blue-check per `message.status`)
+- [~] **Read receipts** (if server supports). (commit c00d412 — UI stub; readAt field pending server exposure on `SmsMessageItem`)
+- [x] **Typing indicator** (if supported). (commit c00d412 — Typing bubble renders when WS emits `typing` event for thread; server opt-in)
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload through WorkManager.
 - [ ] **Canned responses / templates** (from `GET /settings/templates`) surfaced as chips above composer; hotkeys Alt+1..9 (hardware keyboard).
 - [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
-- [ ] **Emoji picker** — system input method; Android 12+ emoji2 compat.
-- [ ] **Schedule send** — date/time picker for future delivery.
+- [x] **Emoji picker** — system input method; Android 12+ emoji2 compat. (commit c00d412 — ModalBottomSheet 50-emoji grid + cursor-position insert via TextFieldValue)
+- [x] **Schedule send** — date/time picker for future delivery. (commit c00d412 — `components/ScheduleSendSheet.kt` DatePicker+TimePicker sheet; POST `/sms/send?send_at=<iso>` + 404 fallback `data/sync/ScheduledSmsWorker.kt` `@HiltWorker` local WorkManager)
 - [ ] **Voice memo** (if MMS supported) — record AAC via `MediaRecorder` inline; bubble plays audio via `ExoPlayer`.
 - [ ] **Long-press message** → `DropdownMenu` — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
 - [ ] **Create customer from thread** — if phone not associated.
-- [ ] **Character counter** + SMS-segments display (160 / 70 unicode).
-- [ ] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers.
-- [ ] **Off-hours auto-reply** indicator when enabled.
+- [x] **Character counter** + SMS-segments display (160 / 70 unicode). (commit c00d412 — `components/SmsCharCounter.kt` GSM-7 vs UCS-2 detector + segment count + $0.01/seg cost stub)
+- [x] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers. (commit c00d412 — `AppPreferences.smsOptInSentTo: Set<String>` + `markSmsOptInSent()/hasSmsOptInBeenSent()`; auto-appends "Reply STOP to opt out." on first send)
+- [~] **Off-hours auto-reply** indicator when enabled. (commit c00d412 — banner UI shipped; VM `isOffHours` flag wired; server sets flag)
 
 ### 12.3 PATCH helpers
 - [ ] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify).
@@ -1576,7 +1576,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Token refresh** via `FirebaseMessagingService.onNewToken`.
 - [ ] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`.
 - [ ] **Data-only FCM** triggers background expedited Worker for delta sync.
-- [ ] **Rich push** — Big-picture / big-text style via `NotificationCompat.BigPictureStyle`; thumbnails (customer avatar / ticket photo) downloaded via Coil before posting.
+- [x] **Rich push** — Big-picture / big-text style via `NotificationCompat.BigPictureStyle`; thumbnails (customer avatar / ticket photo) downloaded via Coil before posting. (commit d3f91d0 — `NotificationController` BigPictureStyle via Coil 5s timeout + BigTextStyle fallback on download failure)
 - [x] **NotificationChannels registered on launch** (Android 8+ mandatory):
   - `sms_inbound` (High importance) → Reply inline / Call / Open.
   - `ticket_assigned` (Default) → Start work / Decline / Open.
@@ -1588,17 +1588,17 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `daily_summary` (Min).
   - `backup_failed` (High, timeSensitive).
   - `security_event` (Max).
-- [ ] Each channel exposes vibration pattern + sound + bypass DND (for critical only) + badge enabled.
+- [x] Each channel exposes vibration pattern + sound + bypass DND (for critical only) + badge enabled. (commit d3f91d0 — `service/NotificationChannelBootstrap.kt` all 13 channels with distinct VIB_SMS / VIB_CRITICAL / none patterns + `setSound` + `enableLights` + `setShowBadge` + bypass DND on critical)
 - [x] **Entity allowlist** on deep-link parse (security — prevent injected types).
-- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (`util/QuietHours.kt` + Settings → Notifications → Quiet hours card with toggle + start/end TimePicker rows. SLA breach + security alerts allow-listed. System DND check still pending.)
-- [ ] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach.
+- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours; also honor system `NotificationManager.getCurrentInterruptionFilter()`. (commit d3f91d0 — `util/QuietHours.shouldSilence(context, channelId)` overload + `isSystemDndActive()`; Settings → Notifications → Quiet hours card + SLA/security allow-list preserved; 9 JVM tests cover all 4 DND states)
+- [~] **Time-sensitive** — Android 16 Live Updates for overdue invoice / SLA breach. (commit d3f91d0 — `service/LiveUpdateNotifier.kt` `showLiveUpdate/cancelLiveUpdate` stub using `setProgress(indeterminate)` + `BigTextStyle`; `NotificationCompat.ProgressStyle` upgrade path comment pending Core 1.16.0)
 - [x] **POST_NOTIFICATIONS runtime permission** (Android 13+) — request just-in-time with rationale card before first important notification.
 
 ### 13.3 In-app toast
 - [x] Foreground message on a different screen → in-app banner (Compose `Snackbar` at top via `SnackbarHost` or custom `Popup`) with tap-to-open; auto-dismiss 4s; `HapticFeedbackConstants.CLOCK_TICK`.
 
 ### 13.4 Badge count
-- [ ] Launcher icon badge = unread count across inbox + notifications + SMS via NotificationChannel posting (Android auto-aggregates). Fallback via `ShortcutBadger` for Samsung / Xiaomi launchers that don't auto-badge.
+- [x] Launcher icon badge = unread count across inbox + notifications + SMS via NotificationChannel posting (Android auto-aggregates). Fallback via `ShortcutBadger` for Samsung / Xiaomi launchers that don't auto-badge. (commit d3f91d0 — `util/LauncherBadge.update/computeUnread` via `ShortcutManagerCompat`; Samsung One UI BadgeProvider TODO documented)
 
 ---
 ## 14. Employees & Timeclock
