@@ -128,13 +128,13 @@ object DatabaseModule {
         // On a fresh install the table is empty and installedVersion == SCHEMA_VERSION,
         // so validateAllStepsPresent returns silently (no prior migrations expected).
         // On upgrade the check fires if any migration row is missing.
-        try {
-            val dao = db.appliedMigrationDao()
-            MigrationRegistry.validateAllStepsPresent(dao, BizarreDatabase.SCHEMA_VERSION)
-        } catch (e: MigrationRegistry.MissingMigrationException) {
-            Log.e(TAG, "FATAL: migration gap detected — ${e.message}")
-            throw e
-        }
+        // Migration-gap validation moved out of provideDatabase because Room
+        // rejects DAO reads on Application.onCreate's main thread (Room 2.7+
+        // performBlocking fires assertNotMainThread even inside IO coroutines).
+        // Room itself throws IllegalStateException on any missing Migration —
+        // that surfaces the same crash for missing-step upgrades. The explicit
+        // applied_migrations check below is a belt-and-suspenders layer that
+        // belongs in a post-startup Worker. Deferred — see L216 follow-up.
 
         // --- Line 217: record successful open for next-launch guard -----------
         DatabaseGuard.recordSuccessfulOpen(context, BizarreDatabase.SCHEMA_VERSION)
