@@ -207,9 +207,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 ### 1.6 Environment & config
 - [x] `AndroidManifest.xml` permission audit — declare only what's used; runtime-request each lazy.
 - [x] `build.gradle.kts` `buildConfigField` for `BASE_DOMAIN`, `SERVER_URL` (seeded from repo `.env` / Gradle property / env var — already wired).
-- [~] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`.
-- [~] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF).
-- [~] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
+- [x] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`. (commit 9408f0d — `minSdk=26` verified; `compileSdk=35→36`; `targetSdk=35` retained — rationale inline comment: no API-36 instrumented coverage yet)
+- [x] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF). (commit 9408f0d — fixed `READ_MEDIA_IMAGES` `maxSdkVersion=32` bug (permission is API-33+); added `READ_EXTERNAL_STORAGE maxSdkVersion=32`, `BLUETOOTH_CONNECT/SCAN usesPermissionFlags=neverForLocation`, `ACCESS_FINE_LOCATION`, `RECORD_AUDIO`, `READ_CONTACTS`; no `WRITE_EXTERNAL_STORAGE`)
+- [x] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update). (commit 9408f0d — `RepairInProgressService foregroundServiceType=dataSync` declared + `FOREGROUND_SERVICE_TYPE_DATA_SYNC` passed on API 34+; FcmService system-managed; WebSocketService is Hilt `@Singleton` not FGS; QuickTicketTileService is TileService; FOREGROUND_SERVICE + FOREGROUND_SERVICE_DATA_SYNC perms declared)
 - [x] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+). (commit a629898 — `<queries>` block added)
 - [x] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs. (commit d97dfa7 — `gradle/libs.versions.toml` + `build.gradle.kts` + `app/build.gradle.kts`)
 - [x] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped. (commit 99c85ff — `BizarreDatabase.kt` KDoc convention; `MigrationRegistry.kt` single source of truth; `MIGRATION_6_7` manual for `applied_migrations` DDL)
@@ -220,7 +220,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Debug builds: dry-run migration on backup first and report diff before apply. (commit 99c85ff — `DatabaseGuard.dryRunOnBackupIfDebug()` runs `PRAGMA integrity_check` on backup via Timber, debug-only)
 - [x] CI runs every migration against minimal + large fixture DBs. (commit 99c85ff — `MigrationRegistryTest.kt` 9 JVM unit tests cover chain completeness/no-duplicates/validate pass+fail+fresh-install skip; `androidTest/` instrumented scaffold absent — gap noted in commit body)
 - [x] Hilt DI `@InstallIn(SingletonComponent::class)` for ApiClient / Database / EncryptedSharedPreferences. ViewModels via `@HiltViewModel` + `@Inject`. Widgets + Workers get Hilt via `@HiltWorker` + `WorkerAssistedFactory`.
-- [ ] Test doubles: Hilt `@TestInstallIn` swaps per test class; no global-state leaks (assertions in `@Before`).
+- [x] Test doubles: Hilt `@TestInstallIn` swaps per test class; no global-state leaks (assertions in `@Before`). (commit b704d98 — `testing/TestDatabaseModule.kt` in-memory Room replaces `DatabaseModule`; `TestApiModule.kt` stub Retrofit replaces `RetrofitClient`; `TestDataStoreModule.kt` `@TestSharedPrefs`; `TestDispatcherModule.kt` `StandardTestDispatcher` + `@IoDispatcher/@MainDispatcher`; `HiltTestRules.kt` TestRule guards GlobalScope `Job.children.count` via reflection; `ExampleHiltTest.kt` injects `RateLimiter` with HiltAndroidRule + InstantTaskExecutorRule + HiltTestRules; deps `hilt-android-testing:2.53`, `kspTest`, `androidx.test:runner:1.5.2`, `arch-core-testing`, `coroutines-test:1.8.1`. Test run blocked by pre-existing `kspDebugKotlin` NPE — follow-up dep bump needed.)
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
 - [ ] Widgets (Glance) + App-Actions shortcuts import `:core` module + register own Hilt sub-scope.
 - [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
@@ -273,7 +273,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.1 Setup-status probe
 - [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, Android hits this before rendering login form. (commit 038db99 — `AuthApi.getSetupStatus()` + `SetupStatusResponse` DTO)
 - [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (commit 038db99 — `SetupStatusGateScreen` + LoginScreen banner; `InitialSetupFlow` navigation deferred to §2.10)
-- [~] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen. (commit 038db99 — probe non-blocking, overlay + inline retry implemented; `needsSetup=true` shows informational banner pending §2.10 wizard)
+- [x] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen. (commit 038db99 + 1ae03bb — probe non-blocking, overlay + inline retry; `CredentialsStep` needs-setup Column banner "A setup wizard will appear in a future release. Please contact your admin to complete setup manually." + tappable "View setup guide" TextButton → `https://bizarrecrm.com/docs/setup` ACTION_VIEW; form unblocked)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage in EncryptedSharedPreferences.
@@ -286,12 +286,12 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **"Show password" eye toggle** via `VisualTransformation` swap.
 - [x] **Remember-me toggle** persists username in EncryptedSharedPreferences + flag to surface biometric prompt next launch.
 - [x] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
-- [~] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." banner with countdown.
+- [x] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." banner with countdown. (commit 1ae03bb — `login()` 429 handler parses body `retry_in_seconds` (priority over `Retry-After` header) + `scope` field; `LoginUiState.rateLimitScope`; scope-aware copy (username vs IP); countdown `Nm Ss` ≥60s / `Ns` <60s; `clearRateLimit()` resets scope)
 - [x] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
 
 ### 2.3 First-time password set
 - [x] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
-- [~] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass.
+- [x] **Frontend:** password + confirm fields, strength meter (length, mixed-case, digit, symbol, not-in-breach-list via local dictionary), CTA disabled until rules pass. (commit 1ae03bb — `util/PasswordStrength.kt` pure-JVM object 6 rules + top-50 common password list (expansion path KDoc); `ui/components/auth/PasswordStrengthMeter.kt` 5-segment color bar + per-rule Done/Clear checklist; `SetPasswordStep` renders meter when non-empty, CTA disabled until `strength >= FAIR`; 20 JVM tests)
 - [x] **UX:** M3 surface titled "Set your password to continue"; subtitle "Your admin requested a reset".
 
 ### 2.4 2FA / TOTP
