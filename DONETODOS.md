@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-62 server/inventory — PO line-item validation)
+
+- [x] SCAN-1075. **`POST /inventory/purchase-orders` accepted line-items with no quantity/price/id validation** — `(item.quantity_ordered || 0) * (item.cost_price || 0)` coerced non-numeric strings to NaN and poisoned the stored `subtotal`/`total`; a missing `inventory_item_id` passed straight through to the FK INSERT producing either an orphan row (when the column was nullable) or a 500. Added an upfront `validItems` map that runs every raw item through `validateId` / `validateIntegerQuantity` / `validatePrice` — subtotal now arithmetic only on validated numbers, rounded to 2 decimal places, and the downstream INSERT loop uses the typed `validItems` shape instead of re-reading the raw payload. Supplier id now also runs through `validateId`.
+
 ## Closed 2026-04-24 (wave-62 web/useDraft + server/stepUpTotp replay)
 
 - [x] SCAN-1085. **`useDraft` debounced-save timer could fire after the host component unmounted** — `setHasDraft` would then run against an unmounted component (React warning) and the pending `timerRef` reference lived past teardown. Added a `mountedRef` guard around every `setHasDraft` call, plus a dedicated mount/unmount `useEffect` that clears the timer + nulls the ref on teardown. Existing cleanup in the debounce effect also clears `timerRef.current` after the timer fires so a re-render doesn't see a stale handle.

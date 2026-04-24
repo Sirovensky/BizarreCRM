@@ -8,7 +8,7 @@ import { createCanvas } from 'canvas';
 import JsBarcode from 'jsbarcode';
 import { AppError } from '../middleware/errorHandler.js';
 import { broadcast } from '../ws/server.js';
-import { validatePrice, validateIntegerQuantity } from '../utils/validate.js';
+import { validatePrice, validateIntegerQuantity, validateId } from '../utils/validate.js';
 import { allocateCounter, formatPoNumber } from '../utils/counters.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
@@ -1361,28 +1361,61 @@ router.post('/purchase-orders', requirePermission('inventory.create'), async (re
   const db = req.db;
   const { supplier_id, notes, expected_date, items = [] } = req.body;
   if (!supplier_id) throw new AppError('Supplier is required', 400);
+  const supplierId = validateId(supplier_id, 'supplier_id');
+  if (!Array.isArray(items)) throw new AppError('items must be an array', 400);
+
+  // SCAN-1075: line items previously accumulated into `subtotal` using
+  // `(item.quantity_ordered || 0) * (item.cost_price || 0)`. Non-numeric
+  // values coerced to NaN and poisoned the total; missing/malformed
+  // inventory_item_id passed straight through to the FK INSERT, producing
+  // either an orphan row (where the FK was nullable) or a generic 500.
+  // Validate every field up front against the same helpers the rest of
+  // the file uses (validateQuantity / validatePrice / validateId). After
+  // this loop, `validItems` holds only well-typed rows — the insert pass
+  // below reuses them instead of re-accessing the untrusted `items`.
+  interface ValidatedPoItem {
+    inventory_item_id: number;
+    quantity_ordered: number;
+    cost_price: number;
+  }
+  const validItems: ValidatedPoItem[] = items.map((raw: unknown, idx: number): ValidatedPoItem => {
+    if (!raw || typeof raw !== 'object') {
+      throw new AppError(`items[${idx}] must be an object`, 400);
+    }
+    const r = raw as Record<string, unknown>;
+    return {
+      inventory_item_id: validateId(r.inventory_item_id, `items[${idx}].inventory_item_id`),
+      quantity_ordered: validateIntegerQuantity(r.quantity_ordered, `items[${idx}].quantity_ordered`),
+      cost_price: validatePrice(r.cost_price ?? 0, `items[${idx}].cost_price`),
+    };
+  });
 
   // I6: allocate PO number from the atomic counter (seeded by migration 072).
   const nextPoSeq = allocateCounter(db, 'po_number');
   const orderId = formatPoNumber(nextPoSeq);
 
   let subtotal = 0;
-  for (const item of items) { subtotal += (item.quantity_ordered || 0) * (item.cost_price || 0); }
+  for (const item of validItems) {
+    subtotal += item.quantity_ordered * item.cost_price;
+  }
+  // Defence in depth: after all items pass validate*, subtotal is a finite
+  // number — the individual validators already reject NaN/Infinity.
+  subtotal = Math.round(subtotal * 100) / 100;
 
   const result = await adb.run(`
     INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, orderId, supplier_id, subtotal, subtotal, notes || null, expected_date || null, req.user!.id);
+  `, orderId, supplierId, subtotal, subtotal, notes || null, expected_date || null, req.user!.id);
 
-  for (const item of items) {
+  for (const item of validItems) {
     await adb.run(`
       INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
       VALUES (?, ?, ?, ?)
-    `, result.lastInsertRowid, item.inventory_item_id, item.quantity_ordered, item.cost_price || 0);
+    `, result.lastInsertRowid, item.inventory_item_id, item.quantity_ordered, item.cost_price);
   }
 
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
-  audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id, total: subtotal });
+  audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id: supplierId, total: subtotal });
   res.status(201).json({ success: true, data: po });
 });
 

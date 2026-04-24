@@ -731,5 +731,3 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
-- [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
