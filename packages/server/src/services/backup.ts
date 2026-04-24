@@ -968,17 +968,30 @@ export function listDrives(): { path: string; label: string; free: number; total
 // Cron management
 let cronTask: cron.ScheduledTask | null = null;
 
-export function scheduleBackup(db: Database.Database) {
+/**
+ * Schedule the main-DB backup cron.
+ *
+ * Accepts either a `Database.Database` handle for backwards compatibility or
+ * a `getDb: () => Database.Database` factory. SCAN-1055: the old signature
+ * captured the handle at registration time, so after a restore/reconnect the
+ * cron kept writing against a stale (possibly closed) connection. Pass a
+ * factory for robust long-running processes.
+ */
+export function scheduleBackup(dbOrFactory: Database.Database | (() => Database.Database)) {
+  const getDb: () => Database.Database =
+    typeof dbOrFactory === 'function' ? dbOrFactory : () => dbOrFactory;
   if (cronTask) { cronTask.stop(); cronTask = null; }
-  const schedule = getConfig(db, 'backup_schedule', '0 3 * * *');
-  const backupPath = getConfig(db, 'backup_path', '');
+  const initialDb = getDb();
+  const schedule = getConfig(initialDb, 'backup_schedule', '0 3 * * *');
+  const backupPath = getConfig(initialDb, 'backup_path', '');
   if (!backupPath || !cron.validate(schedule)) return;
 
   // BG5 fix: wrap the async call so errors are caught and logged instead of swallowed.
   cronTask = cron.schedule(schedule, () => {
     (async () => {
       try {
-        const result = await runBackup(db);
+        // Resolve the handle on every tick so a restore/reopen picks up cleanly.
+        const result = await runBackup(getDb());
         if (!result.success) {
           logger.error('Scheduled backup failed', { module: 'backup', message: result.message });
         }
