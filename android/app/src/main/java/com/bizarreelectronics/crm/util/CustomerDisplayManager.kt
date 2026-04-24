@@ -19,7 +19,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bizarreelectronics.crm.ui.screens.pos.PosCartState
+import com.bizarreelectronics.crm.ui.screens.pos.PrintableReceipt
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -50,7 +50,7 @@ class CustomerDisplayManager @Inject constructor(
 ) {
 
     private var presentation: PosCustomerDisplayPresentation? = null
-    private var _currentCart: PosCartState? = null
+    private var _currentCart: PrintableReceipt? = null
 
     /** Attach to the first available external display. No-op if API < 17 or no display. */
     fun attach(activity: Activity) {
@@ -79,7 +79,7 @@ class CustomerDisplayManager @Inject constructor(
     }
 
     /** Update cart data on the secondary display. Safe to call when no display is attached. */
-    fun updateCart(cart: PosCartState) {
+    fun updateCart(cart: PrintableReceipt) {
         _currentCart = cart
         presentation?.updateCart(cart)
     }
@@ -104,13 +104,13 @@ class PosCustomerDisplayPresentation(
     display: Display,
 ) : Presentation(context, display) {
 
-    private var cartState = mutableStateOf<PosCartState?>(null)
+    private var cartState = mutableStateOf<PrintableReceipt?>(null)
 
-    fun setInitialCart(cart: PosCartState) {
+    fun setInitialCart(cart: PrintableReceipt) {
         cartState.value = cart
     }
 
-    fun updateCart(cart: PosCartState) {
+    fun updateCart(cart: PrintableReceipt) {
         cartState.value = cart
     }
 
@@ -131,7 +131,7 @@ class PosCustomerDisplayPresentation(
 // ─── Customer display composable ─────────────────────────────────────────────
 
 @Composable
-private fun CustomerDisplayContent(cart: PosCartState?) {
+private fun CustomerDisplayContent(cart: PrintableReceipt?) {
     Box(
         modifier = Modifier
             .fillMaxSize()

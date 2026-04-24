@@ -9,10 +9,9 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
-import coil3.disk.DiskCache
-import coil3.memory.MemoryCache
-import okio.Path.Companion.toOkioPath
 import com.bizarreelectronics.crm.data.drafts.DraftStore
+import com.bizarreelectronics.crm.util.EncryptedCoilCache
+import com.bizarreelectronics.crm.util.StrictModeInit
 import com.bizarreelectronics.crm.service.NotificationChannelBootstrap
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
@@ -75,32 +74,16 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
             .build()
 
     /**
-     * L752 — Thumbnail cache: configure Coil's disk cache at 100 MB so photo
-     * thumbnails are cached across app sessions. Memory cache defaults to 25 %
-     * of available heap. Full-size images are fetched lazily on gallery tap.
-     *
-     * Implements [SingletonImageLoader.Factory] so Coil picks this up
-     * automatically without requiring a manual `SingletonImageLoader.setUnsafe`.
+     * §28 L2480 — Encrypted Coil disk cache: thumbnail images are stored in
+     * [noBackupFilesDir] (excluded from Auto-Backup) using AES-GCM encryption
+     * via [EncryptedCoilCache]. Memory cache retains 25 % of available heap.
      */
-    override fun newImageLoader(context: android.content.Context): ImageLoader {
-        val cacheDir = java.io.File(cacheDir, "coil_image_cache")
-        return ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(cacheDir.toOkioPath())
-                    .maxSizeBytes(100L * 1024 * 1024) // 100 MB
-                    .build()
-            }
-            .build()
-    }
+    override fun newImageLoader(context: android.content.Context): ImageLoader =
+        EncryptedCoilCache.buildImageLoader(context)
 
     override fun onCreate() {
         System.loadLibrary("sqlcipher")
+        StrictModeInit.init() // §28 L2505 — DEBUG-only thread + VM policy logging
         super.onCreate()
         // §1 L228 / §28 L64 — plant Timber with a RedactorTree so all
         // Timber calls are sanitised before reaching Logcat or the delegate

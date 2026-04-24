@@ -279,6 +279,19 @@ dependencies {
     // Note: the catalog alias `androidx-credentials-play-services-auth` maps to
     // libs.androidx.credentials.play.services.auth in the Kotlin DSL accessor.
 
+    // §28 L2532 — Play Integrity API (device attestation, non-blocking on non-GMS)
+    implementation(libs.play.integrity)
+
+    // Phase 4 — BlockChyp Android SDK decision:
+    // BlockChyp does not publish a standalone Android AAR on Maven Central.
+    // The Java SDK (com.blockchyp:blockchyp-java) is a pure-Java library that
+    // technically works on Android but pulls in a large set of transitive deps
+    // (Apache HttpClient, Bouncy Castle) that conflict with OkHttp + the
+    // Android TLS stack and add 3+ MB to the APK. The server side already has
+    // the full SDK (packages/server/src/services/blockchyp.ts). The Android
+    // app is a thin client that proxies all terminal calls through the CRM
+    // server via BlockChypApi (Retrofit) + BlockChypClient. No SDK dep needed.
+
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 

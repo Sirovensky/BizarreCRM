@@ -263,6 +263,12 @@ fun SettingsScreen(
     onAppearance: (() -> Unit)? = null,
     // §17.4/17.5 — opens the Hardware sub-screen (printers + BlockChyp terminal).
     onHardware: (() -> Unit)? = null,
+    // §38 — opens the Memberships / Loyalty screen.
+    onMemberships: (() -> Unit)? = null,
+    // §39 — opens the Cash Register / Z-Report screen.
+    onCashRegister: (() -> Unit)? = null,
+    // §40 — opens the Gift Cards / Store Credit screen.
+    onGiftCards: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -363,6 +369,33 @@ fun SettingsScreen(
                     icon = Icons.Default.Print,
                     title = "Hardware",
                     onClick = onHardware,
+                )
+            }
+
+            // §38 — Memberships / Loyalty.
+            if (onMemberships != null) {
+                SettingsRow(
+                    icon = Icons.Default.CardMembership,
+                    title = "Memberships",
+                    onClick = onMemberships,
+                )
+            }
+
+            // §39 — Cash Register / Z-Report.
+            if (onCashRegister != null) {
+                SettingsRow(
+                    icon = Icons.Default.PointOfSale,
+                    title = "Cash Register",
+                    onClick = onCashRegister,
+                )
+            }
+
+            // §40 — Gift Cards / Store Credit.
+            if (onGiftCards != null) {
+                SettingsRow(
+                    icon = Icons.Default.CardGiftcard,
+                    title = "Gift Cards",
+                    onClick = onGiftCards,
                 )
             }
 

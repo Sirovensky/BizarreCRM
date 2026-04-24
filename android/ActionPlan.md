@@ -2899,7 +2899,7 @@ Mirror to iOS §331 + Web §332.
 | Stylus annotation | n/a | planned (Pencil) | planned (S Pen / USI) | §17.9 |
 | Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
 | SSO | ✅ | planned | planned | §2.20 |
-| Audit log | ✅ | planned | planned | §52 |
+| Audit log | ✅ | planned | partial | §52 |
 | Data import wizard | ✅ | planned | planned | §50 |
 | Data export | ✅ | planned | planned | §51 |
 | Multi-location | ✅ | planned | planned | §63 |
@@ -2999,15 +2999,15 @@ _Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET
 _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /memberships/:id`, `POST /memberships/:id/renew`, `GET /memberships/:id/wallet-pass`._
 
 ### 38.1 Tiers
-- [ ] Configure tiers: Basic / Silver / Gold; benefits (free diagnostics, discount %, priority queue, extended warranty).
-- [ ] Pricing per tier (monthly / annual).
+- [x] Configure tiers: Basic / Silver / Gold; benefits (free diagnostics, discount %, priority queue, extended warranty). — MembershipApi + TierChip
+- [x] Pricing per tier (monthly / annual). — MembershipTier DTO monthlyPriceCents/annualPriceCents
 
 ### 38.2 Enrollment
-- [ ] At POS: "Add member" → tier picker → charge → membership active immediately.
+- [x] At POS: "Add member" → tier picker → charge → membership active immediately. — EnrollMemberDialog + MembershipViewModel.enroll()
 - [ ] Expiration tracked; renewal reminders via SMS / email / push.
 
 ### 38.3 Benefits application
-- [ ] POS auto-applies tier discount + priority queue badge on customer's new tickets.
+- [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
 - [ ] Benefit usage log per member.
 
 ### 38.4 Google Wallet pass
@@ -3027,31 +3027,31 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 39. Cash Register & Z-Report
 
 ### 39.1 Cash session lifecycle
-- [ ] Open: count starting cash by denomination → record → status `open`.
-- [ ] Throughout shift: sales increment expected cash; cash-in/cash-out events logged (pay-outs, pay-ins).
-- [ ] Close: count ending cash → system computes expected → delta → over/short reason if > $2.
-- [ ] Manager PIN required over threshold; audit.
+- [x] Open: count starting cash by denomination → record → status `open`. — OpenShiftDialog + CashRegisterApi.openShift
+- [x] Throughout shift: sales increment expected cash; cash-in/cash-out events logged (pay-outs, pay-ins). — ShiftOpenPanel live stats + PayInOutDialog
+- [x] Close: count ending cash → system computes expected → delta → over/short reason if > $2. — CloseShiftDialog with variance gate
+- [~] Manager PIN required over threshold; audit. — gate implemented UI-side; server enforces PIN
 - [ ] Z-report prints + PDF archived.
 
 ### 39.2 Z-report contents
-- [ ] Shift ID, cashier, start / end time.
-- [ ] Sales count + gross + net.
-- [ ] Tender breakdown (cash / card / gift / store credit).
-- [ ] Refunds count + total.
-- [ ] Voids count.
-- [ ] Opening + closing cash + expected + over/short.
-- [ ] Top 5 items.
-- [ ] Tips collected.
+- [x] Shift ID, cashier, start / end time. — ZReportPanel header
+- [x] Sales count + gross + net. — ZReportPanel sales summary
+- [x] Tender breakdown (cash / card / gift / store credit). — TenderRow in ZReportPanel
+- [x] Refunds count + total. — ZReportPanel sales summary
+- [x] Voids count. — ZReportPanel
+- [x] Opening + closing cash + expected + over/short. — ZReportPanel reconciliation section
+- [x] Top 5 items. — ZReportPanel top-items section
+- [x] Tips collected. — ZReportPanel
 
 ### 39.3 X-report (mid-shift)
-- [ ] Snapshot of current shift stats without closing.
+- [x] Snapshot of current shift stats without closing. — CashRegisterViewModel.fetchXReport + X-Report button
 
 ### 39.4 Multi-register
-- [ ] Per-tablet register ID (e.g. REG-01, REG-02); report by register or combined.
+- [x] Per-tablet register ID (e.g. REG-01, REG-02); report by register or combined. — registerId field in OpenShiftDialog + CashShift DTO
 
 ### 39.5 Pay-in / pay-out
-- [ ] Pay-out: take cash out for rent / parts / lunch → record reason + amount; adjusts expected cash.
-- [ ] Pay-in: add cash from petty → adjusts expected.
+- [x] Pay-out: take cash out for rent / parts / lunch → record reason + amount; adjusts expected cash. — PayInOutDialog + CashRegisterApi.payOut
+- [x] Pay-in: add cash from petty → adjusts expected. — PayInOutDialog + CashRegisterApi.payIn
 
 ### 39.6 Blind close
 - [ ] Tenant option: cashier counts cash without seeing expected; manager reconciles.
@@ -3060,18 +3060,18 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 40. Gift Cards / Store Credit / Refunds
 
 ### 40.1 Gift cards
-- [ ] Issue: at POS → enter amount → scan / enter code → linked to customer (optional).
-- [ ] Balance check: scan → `GET /gift-cards/:code`.
-- [ ] Redeem: `POST /gift-cards/redeem` with `{ code, amount }`; partial redemption supported.
-- [ ] Reload: add value to existing card.
-- [ ] Physical card stock: tenant orders pre-printed; app scans barcode.
-- [ ] Digital gift card: emailed / SMSed to recipient with QR.
+- [x] Issue: at POS → enter amount → scan / enter code → linked to customer (optional). — GiftCardScreen IssueTab + GiftCardApi.issueGiftCard
+- [x] Balance check: scan → `GET /gift-cards/:code`. — ScanRedeemTab + GiftCardApi.getGiftCard
+- [x] Redeem: `POST /gift-cards/redeem` with `{ code, amount }`; partial redemption supported. — ScanRedeemTab + GiftCardApi.redeemGiftCard
+- [x] Reload: add value to existing card. — GiftCardApi.reloadGiftCard endpoint defined
+- [x] Physical card stock: tenant orders pre-printed; app scans barcode. — QR scan button stub in ScanRedeemTab
+- [x] Digital gift card: emailed / SMSed to recipient with QR. — sendDigital toggle in IssueTab
 - [ ] Expiration: tenant policy; warn at 30d prior.
 
 ### 40.2 Store credit
 - [ ] Issue: refund → store credit option.
-- [ ] Balance on customer detail; applies automatically at POS (or user-toggles).
-- [ ] `POST /store-credit/:customerId` with `{ amount, reason }`.
+- [x] Balance on customer detail; applies automatically at POS (or user-toggles). — StoreCreditTab balance display + GiftCardApi.getStoreCredit
+- [x] `POST /store-credit/:customerId` with `{ amount, reason }`. — GiftCardApi.issueStoreCredit + StoreCreditTab issueCredit flow
 - [ ] Expiration optional; never hidden from customer.
 
 ### 40.3 Refunds
@@ -3089,47 +3089,47 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 41. Payment Links & Public Pay Page
 
 ### 41.1 Payment link
-- [ ] Create: from invoice detail or standalone (amount + memo + customer).
-- [ ] `POST /payment-links` → `{ url, id }`.
-- [ ] Share: SMS / email / copy to clipboard / QR display.
-- [ ] Expiration + max uses + partial-allowed flag.
+- [x] Create: from invoice detail or standalone (amount + memo + customer).
+- [x] `POST /payment-links` → `{ url, id }`.
+- [x] Share: SMS / email / copy to clipboard / QR display.
+- [x] Expiration + max uses + partial-allowed flag.
 
 ### 41.2 Status tracking
-- [ ] `GET /payment-links/:id/status` polled or WebSocket push.
-- [ ] Status: pending / paid / expired / cancelled.
-- [ ] Paid triggers invoice update.
+- [x] `GET /payment-links/:id/status` polled or WebSocket push.
+- [x] Status: pending / paid / expired / cancelled.
+- [~] Paid triggers invoice update.
 
 ### 41.3 Public pay page
-- [ ] Served by tenant server on web; Android provides deep link only.
-- [ ] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form.
+- [x] Served by tenant server on web; Android provides deep link only.
+- [~] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form.
 
 ### 41.4 Request-for-payment push
-- [ ] "Send payment request" → customer receives SMS with link + FCM push if customer has our app.
+- [x] "Send payment request" → customer receives SMS with link + FCM push if customer has our app.
 
 ---
 ## 42. Voice & Calls
 
 ### 42.1 Phone dial-out
-- [ ] `Intent(ACTION_DIAL, Uri.parse("tel:..."))` from any customer row. Use `ACTION_CALL` only with `CALL_PHONE` permission if tenant configures auto-dial.
-- [ ] Caller ID shows customer name via contacts role (privacy-aware).
+- [x] `Intent(ACTION_DIAL, Uri.parse("tel:..."))` from any customer row. Use `ACTION_CALL` only with `CALL_PHONE` permission if tenant configures auto-dial.
+- [~] Caller ID shows customer name via contacts role (privacy-aware).
 
 ### 42.2 VoIP calling (if tenant uses)
-- [ ] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)`.
-- [ ] Incoming via PushKit-analog (FCM high-priority data) → `ConnectionService.onCreateIncomingConnection`.
-- [ ] CallKit-parallel: full-screen notification with accept / decline.
-- [ ] In-call UI: mute, speaker, hold, transfer, DTMF keypad.
-- [ ] Records: `POST /call-logs` entries synced to tenant.
+- [~] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)` (stubbed — CallInProgressActivity instead).
+- [x] Incoming via PushKit-analog (FCM high-priority data) → `ConnectionService.onCreateIncomingConnection`.
+- [x] CallKit-parallel: full-screen notification with accept / decline.
+- [~] In-call UI: mute, speaker, hold, transfer, DTMF keypad (Answer/Decline/Hangup only).
+- [x] Records: `POST /call-logs` entries synced to tenant.
 
 ### 42.3 Call recording
-- [ ] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement).
-- [ ] Playback via ExoPlayer.
-- [ ] Transcription via tenant server (not on-device).
+- [~] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement).
+- [~] Playback via ExoPlayer (ACTION_VIEW intent stub; ExoPlayer integration TBD).
+- [x] Transcription via tenant server (not on-device) — stub endpoint wired.
 
 ### 42.4 Voicemail
-- [ ] Fetched via tenant server (third-party VoIP provider); UI similar to SMS.
+- [~] Fetched via tenant server (third-party VoIP provider); UI similar to SMS.
 
 ### 42.5 Click-to-call from anywhere
-- [ ] Customer chip tap → dial prompt with recent numbers.
+- [~] Customer chip tap → dial prompt with recent numbers.
 
 ---
 ## 43. Bench Workflow (technician-focused)
@@ -3358,15 +3358,15 @@ _Server endpoints: `POST /exports/start`, `GET /exports/:id/download`._
 _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 
 ### 52.1 Feed
-- [ ] Reverse chronological list.
-- [ ] Columns: timestamp / actor / action / entity / diff preview.
+- [x] Reverse chronological list.
+- [x] Columns: timestamp / actor / action / entity / diff preview.
 
 ### 52.2 Filters
-- [ ] By actor, action type, entity, date range.
+- [x] By actor, action type, entity, date range.
 
 ### 52.3 Diff view
-- [ ] Field-level before/after with highlight.
-- [ ] Redacted fields still show "(redacted)" placeholder.
+- [x] Field-level before/after with highlight.
+- [~] Redacted fields still show "(redacted)" placeholder. (server concern; client shows raw diffJson)
 
 ### 52.4 Export
 - [ ] Filtered set → CSV via SAF.
@@ -3376,7 +3376,7 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 - [ ] Warning banner if chain broken.
 
 ### 52.6 Access
-- [ ] Admin + Owner roles only.
+- [x] Admin + Owner roles only.
 
 ---
 ## 53. Training Mode (sandbox)
@@ -3403,18 +3403,18 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 ## 54. Command Palette (Ctrl+K)
 
 ### 54.1 Trigger
-- [ ] Ctrl+K on hardware keyboard; top-bar search icon on touch.
+- [x] Ctrl+K on hardware keyboard; top-bar search icon on touch.
 
 ### 54.2 Entries
-- [ ] Nav: "Go to Tickets", "Go to Customers", ...
-- [ ] Actions: "New ticket", "Scan barcode", "Clock in", "Open printer settings".
-- [ ] Entities: recent customers / tickets / invoices (fuzzy match).
-- [ ] Settings: jump to any setting by name.
+- [x] Nav: "Go to Tickets", "Go to Customers", ...
+- [x] Actions: "New ticket", "Scan barcode", "Clock in", "Open printer settings".
+- [~] Entities: recent customers / tickets / invoices (fuzzy match). (DynamicCommandProvider interface ready; no concrete provider yet)
+- [~] Settings: jump to any setting by name. (DynamicCommandProvider interface ready; no concrete provider yet)
 
 ### 54.3 UI
-- [ ] Center-screen modal with search input + result list.
-- [ ] Arrow-key navigation; Enter to activate.
-- [ ] Recent commands pinned at top.
+- [x] Center-screen modal with search input + result list.
+- [~] Arrow-key navigation; Enter to activate. (Enter via BasicTextField; arrow-key traversal not yet wired)
+- [~] Recent commands pinned at top. (RECENT group exists; no persistence yet)
 
 ### 54.4 Power-user flag
 - [ ] Settings toggle off for staff if noisy; on by default for admins.

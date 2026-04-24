@@ -50,8 +50,11 @@ import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryDetailScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosEntryScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosCartScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosTenderScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosReceiptScreen
 import com.bizarreelectronics.crm.ui.screens.pos.CheckoutScreen
-import com.bizarreelectronics.crm.ui.screens.pos.PosScreen
 import com.bizarreelectronics.crm.ui.screens.pos.TicketSuccessScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsListScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsThreadScreen
@@ -105,6 +108,13 @@ import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
+import com.bizarreelectronics.crm.ui.screens.memberships.MembershipListScreen
+import com.bizarreelectronics.crm.ui.screens.cash.CashRegisterScreen
+import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardScreen
+import com.bizarreelectronics.crm.ui.screens.audit.AuditLogsScreen
+import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
+import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
+import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
 import java.util.Locale
 import javax.inject.Inject
 
@@ -163,6 +173,11 @@ sealed class Screen(val route: String) {
     }
     data object InvoiceCreate : Screen("invoice-create")
     data object Pos : Screen("pos")
+    data object PosCart : Screen("pos/cart")
+    data object PosTender : Screen("pos/tender")
+    data object PosReceipt : Screen("pos/receipt/{orderId}") {
+        fun createRoute(orderId: String) = "pos/receipt/${Uri.encode(orderId)}"
+    }
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
             val encodedName = Uri.encode(customerName)
@@ -361,6 +376,51 @@ sealed class Screen(val route: String) {
     // plan:L2009-L2014 — Security Summary consolidated view.
     // Deep link: bizarrecrm://settings/security-summary
     data object SecuritySummary : Screen("settings/security/summary")
+
+    // §41 — Payment Links (create + list)
+    data object PaymentLinks : Screen("payment-links")
+    data object PaymentLinkCreate : Screen("payment-links/create")
+
+    // §42 — Voice / Calls (list + detail)
+    data object Calls : Screen("calls")
+    data object CallDetail : Screen("calls/{id}") {
+        fun createRoute(id: Long) = "calls/$id"
+    }
+
+    // §38 — Memberships / Loyalty list screen.
+    data object Memberships : Screen("memberships")
+
+    // §39 — Cash Register / Z-Report screen.
+    data object CashRegister : Screen("cash-register")
+
+    // §40 — Gift Cards / Store Credit screen.
+    data object GiftCards : Screen("gift-cards")
+
+    // §47 — Team Chat rooms list + thread screens.
+    data object TeamChat : Screen("team-chat")
+    data object TeamChatThread : Screen("team-chat/{roomId}") {
+        fun createRoute(roomId: String, roomName: String = "") =
+            "team-chat/${android.net.Uri.encode(roomId)}?roomName=${android.net.Uri.encode(roomName)}"
+    }
+
+    // §48 — Goals, Performance Reviews & Time Off
+    data object Goals : Screen("goals")
+    data object PerformanceReviews : Screen("performance-reviews")
+    data object TimeOffRequest : Screen("time-off-request")
+    data object TimeOffList : Screen("time-off-list")
+
+    // §52 — Audit Logs (admin-only)
+    data object AuditLogs : Screen("audit-logs")
+
+    // §50 — Data Import (admin-only)
+    data object DataImport : Screen("data-import")
+
+    // §51 — Data Export (manager+)
+    data object DataExport : Screen("data-export")
+
+    // §54 — Command Palette (overlay; not a real nav destination, but registered
+    // so Ctrl+K handling in AppNavGraph can check against it)
+    data object CommandPalette : Screen("command-palette")
 }
 
 data class BottomNavItem(
@@ -417,6 +477,11 @@ fun AppNavGraph(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // §54 — Command palette overlay state. Toggled by Ctrl+K (keyboard) or a
+    // FAB wired at the call site. Palette is a Dialog overlay — not a nav
+    // destination — so we keep the boolean here rather than in the back-stack.
+    var showCommandPalette by remember { mutableStateOf(false) }
 
     // §32.5 — log every nav route change so the breadcrumb tail in any
     // future crash log shows the user's path leading up to the throwable.
@@ -726,6 +791,8 @@ fun AppNavGraph(
                         }
                     }
                 },
+                // §54 — Ctrl+K opens the command palette overlay.
+                onCommandPalette = { showCommandPalette = true },
             ) {
             // §22.2 — at tablet+ widths render NavigationRail alongside the
             // NavHost in a Row. Phones fall through to single-column.
@@ -1087,10 +1154,40 @@ fun AppNavGraph(
                     },
                 )
             }
+            // Phase 2: POS entry → cart → tender → receipt sub-flow
             composable(Screen.Pos.route) {
-                PosScreen(
-                    onNavigateToTicketCreate = { navController.navigate(Screen.TicketCreate.route) },
-                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                PosEntryScreen(
+                    onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
+                    onNavigateToCheckin = { navController.navigate(Screen.TicketCreate.route) },
+                )
+            }
+            composable(Screen.PosCart.route) {
+                PosCartScreen(
+                    onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.PosTender.route) {
+                PosTenderScreen(
+                    onNavigateToReceipt = { orderId ->
+                        navController.navigate(Screen.PosReceipt.createRoute(orderId)) {
+                            popUpTo(Screen.Pos.route)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.PosReceipt.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) {
+                PosReceiptScreen(
+                    onOpenTicket = { ticketId -> navController.navigate(Screen.TicketDetail.createRoute(ticketId)) },
+                    onNewSale = {
+                        navController.navigate(Screen.Pos.route) {
+                            popUpTo(Screen.Pos.route) { inclusive = true }
+                        }
+                    },
                 )
             }
             // AND-20260414-H4: declare typed nav arguments so `ticketId` arrives
@@ -1395,6 +1492,12 @@ fun AppNavGraph(
                     onAppearance = { navController.navigate(Screen.Appearance.route) },
                     // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
                     onHardware = { navController.navigate(Screen.HardwareSettings.route) },
+                    // §38 — Memberships / Loyalty.
+                    onMemberships = { navController.navigate(Screen.Memberships.route) },
+                    // §39 — Cash Register / Z-Report.
+                    onCashRegister = { navController.navigate(Screen.CashRegister.route) },
+                    // §40 — Gift Cards / Store Credit.
+                    onGiftCards = { navController.navigate(Screen.GiftCards.route) },
                 )
             }
             // §3.13 L565–L567 — Display settings sub-screen.
@@ -1869,6 +1972,142 @@ fun AppNavGraph(
                     },
                 )
             }
+
+            // ─── §41 Payment Links ───
+            composable(Screen.PaymentLinks.route) {
+                com.bizarreelectronics.crm.ui.screens.payments.PaymentLinkListScreen(
+                    onCreateClick = { navController.navigate(Screen.PaymentLinkCreate.route) },
+                )
+            }
+            composable(Screen.PaymentLinkCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.payments.PaymentLinkScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §42 Calls ───
+            composable(Screen.Calls.route) {
+                com.bizarreelectronics.crm.ui.screens.calls.CallsTabScreen(
+                    onCallClick = { id -> navController.navigate(Screen.CallDetail.createRoute(id)) },
+                    // Outbound call initiation — number-picker pre-step TBD
+                    onInitiateCall = { navController.navigate(Screen.Calls.route) },
+                )
+            }
+            composable(
+                route = Screen.CallDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.calls.CallDetailScreen(
+                    callId = it.arguments?.getLong("id") ?: return@composable,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §38 Memberships / Loyalty ───────────────────────────────────
+            composable(Screen.Memberships.route) {
+                MembershipListScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id))
+                    },
+                )
+            }
+
+            // ─── §39 Cash Register / Z-Report ────────────────────────────────
+            composable(Screen.CashRegister.route) {
+                CashRegisterScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §40 Gift Cards / Store Credit ───────────────────────────────
+            composable(Screen.GiftCards.route) {
+                GiftCardScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §47 Team Chat ────────────────────────────────────────────────
+            composable(Screen.TeamChat.route) {
+                com.bizarreelectronics.crm.ui.screens.team.TeamChatListScreen(
+                    onRoomClick = { roomId, roomName ->
+                        navController.navigate(Screen.TeamChatThread.createRoute(roomId, roomName))
+                    },
+                )
+            }
+            composable(
+                route = Screen.TeamChatThread.route + "?roomName={roomName}",
+                arguments = listOf(
+                    navArgument("roomId") { type = NavType.StringType },
+                    navArgument("roomName") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.team.TeamChatThreadScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Goals ────────────────────────────────────────────────────
+            composable(Screen.Goals.route) {
+                com.bizarreelectronics.crm.ui.screens.goals.GoalsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Performance Reviews ──────────────────────────────────────
+            composable(Screen.PerformanceReviews.route) {
+                com.bizarreelectronics.crm.ui.screens.performance.PerformanceReviewScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Time-Off Request (staff) ─────────────────────────────────
+            composable(Screen.TimeOffRequest.route) {
+                com.bizarreelectronics.crm.ui.screens.timeoff.TimeOffRequestScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Time-Off List / Approval Queue (manager) ─────────────────
+            composable(Screen.TimeOffList.route) {
+                com.bizarreelectronics.crm.ui.screens.timeoff.TimeOffListScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §52 Audit Logs (admin-only) ──────────────────────────────────
+            // Role gate: AuditLogsScreen itself also renders an access-denied
+            // message for defense-in-depth, but callers should prefer to only
+            // surface this route in admin-visible navigation (MoreScreen / Settings).
+            composable(Screen.AuditLogs.route) {
+                val isAdmin = authPreferences?.userRole == "admin"
+                AuditLogsScreen(
+                    isAdmin = isAdmin,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §50 Data Import (admin-only) ─────────────────────────────────
+            // Role gate enforced in DataImportViewModel.isAdmin; server also enforces.
+            // 404-tolerant: screen shows "not configured" if /imports/* returns 404.
+            composable(Screen.DataImport.route) {
+                DataImportScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §51 Data Export (manager+) ───────────────────────────────────
+            // Role gate enforced in DataExportViewModel.canExport; server enforces too.
+            // 404-tolerant: screen shows "not configured" if /exports/* returns 404.
+            composable(Screen.DataExport.route) {
+                DataExportScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
@@ -1886,6 +2125,18 @@ fun AppNavGraph(
                     authPreferences.clear()
                     // authCleared flow (above) will navigate to Screen.Login.
                 },
+            )
+        }
+
+        // §54 — Command palette overlay. Triggered by Ctrl+K (wired above in
+        // KeyboardShortcutsHost.onCommandPalette). Only shown when logged in.
+        if (showCommandPalette && authPreferences?.isLoggedIn == true) {
+            CommandPaletteScreen(
+                onNavigate = { route ->
+                    showCommandPalette = false
+                    navController.navigate(route)
+                },
+                onDismiss = { showCommandPalette = false },
             )
         }
     }
@@ -1952,8 +2203,16 @@ fun MoreScreen(
         MoreSection(
             title = "OPERATIONS",
             items = listOf(
-                MoreItem(Icons.Default.BarChart, "Reports",   Screen.Reports.route),
-                MoreItem(Icons.Default.Group,    "Employees", Screen.Employees.route),
+                MoreItem(Icons.Default.BarChart,        "Reports",       Screen.Reports.route),
+                MoreItem(Icons.Default.Group,           "Employees",     Screen.Employees.route),
+                // §38 — Memberships / Loyalty
+                MoreItem(Icons.Default.CardMembership,  "Memberships",   Screen.Memberships.route),
+                // §39 — Cash Register / Z-Report
+                MoreItem(Icons.Default.PointOfSale,     "Cash Register", Screen.CashRegister.route),
+                // §40 — Gift Cards / Store Credit
+                MoreItem(Icons.Default.CardGiftcard,    "Gift Cards",    Screen.GiftCards.route),
+                // §47 — Team Chat internal messaging
+                MoreItem(Icons.Default.Forum,           "Team Chat",     Screen.TeamChat.route),
             ),
         ),
         MoreSection(

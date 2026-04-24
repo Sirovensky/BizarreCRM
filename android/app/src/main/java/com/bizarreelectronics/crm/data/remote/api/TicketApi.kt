@@ -221,4 +221,57 @@ interface TicketApi {
         @Part("type") type: RequestBody,
         @Part("ticket_device_id") ticketDeviceId: RequestBody,
     ): ApiResponse<Unit>
+
+    // ─── plan:L849-L856 — Labels ──────────────────────────────────────────────
+
+    /**
+     * Set (replace) the full label set for a ticket.
+     *
+     * PUT /tickets/:id/labels
+     * Body: { labels: ["urgent", "vip", ...] }
+     * 404 tolerated — callers degrade gracefully.
+     */
+    @PUT("tickets/{id}/labels")
+    suspend fun setLabels(
+        @Path("id") ticketId: Long,
+        @Body body: Map<String, @JvmSuppressWildcards List<String>>,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    /**
+     * Bulk apply a single label to multiple tickets.
+     *
+     * POST /tickets/bulk-labels
+     * Body: { ids: [1,2,3], label: "urgent" }
+     * 404 tolerated.
+     */
+    @POST("tickets/bulk-labels")
+    suspend fun bulkSetLabels(
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    // ─── plan:L838-L846 — QC checklist ───────────────────────────────────────
+
+    /**
+     * Fetch the QC checklist items for a given service type.
+     *
+     * GET /qc-checklists?service_id=<id>
+     * 404 tolerated — QcChecklistSheet shows an empty list.
+     */
+    @GET("qc-checklists")
+    suspend fun getQcChecklist(
+        @Query("service_id") serviceId: Long?,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    /**
+     * Submit QC checklist results for a ticket.
+     *
+     * POST /tickets/:id/qc-checklist
+     * Body: { items: [...], timestamp_ms: Long, has_fail: Boolean }
+     * 404 tolerated — callers fall back to attaching results as a note.
+     */
+    @POST("tickets/{id}/qc-checklist")
+    suspend fun submitQcChecklist(
+        @Path("id") ticketId: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
 }

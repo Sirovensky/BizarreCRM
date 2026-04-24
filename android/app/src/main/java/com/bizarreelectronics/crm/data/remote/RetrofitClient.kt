@@ -664,7 +664,41 @@ object RetrofitClient {
     @Provides @Singleton fun provideIntegrityApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.IntegrityApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.IntegrityApi::class.java)
     @Provides @Singleton fun provideAppointmentApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.AppointmentApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.AppointmentApi::class.java)
     @Provides @Singleton fun provideSyncApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SyncApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SyncApi::class.java)
-    @Provides @Singleton fun providePosApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PosApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PosApi::class.java)
     @Provides @Singleton fun provideSetupApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SetupApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SetupApi::class.java)
     @Provides @Singleton fun provideWorkManager(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context): androidx.work.WorkManager = androidx.work.WorkManager.getInstance(context)
+
+    // §38 — memberships / loyalty; all endpoints 404-tolerant
+    @Provides @Singleton fun provideMembershipApi(retrofit: Retrofit): MembershipApi = retrofit.create(MembershipApi::class.java)
+    // §39 — cash register / Z-report; all endpoints 404-tolerant
+    @Provides @Singleton fun provideCashRegisterApi(retrofit: Retrofit): CashRegisterApi = retrofit.create(CashRegisterApi::class.java)
+    // §40 — gift cards / store credit; all endpoints 404-tolerant
+    @Provides @Singleton fun provideGiftCardApi(retrofit: Retrofit): GiftCardApi = retrofit.create(GiftCardApi::class.java)
+    // §41 — payment links; all endpoints 404-tolerant
+    @Provides @Singleton fun providePaymentLinkApi(retrofit: Retrofit): PaymentLinkApi = retrofit.create(PaymentLinkApi::class.java)
+    // §42 — voice / calls; all endpoints 404-tolerant
+    @Provides @Singleton fun provideVoiceApi(retrofit: Retrofit): VoiceApi = retrofit.create(VoiceApi::class.java)
+    // §47 — team chat rooms + messages + reactions; all endpoints 404-tolerant
+    @Provides @Singleton fun provideTeamChatApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.TeamChatApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.TeamChatApi::class.java)
+    // §48 — goals / performance reviews / time-off; all endpoints 404-tolerant
+    @Provides @Singleton fun provideGoalApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.GoalApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.GoalApi::class.java)
+    @Provides @Singleton fun providePerformanceApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PerformanceApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PerformanceApi::class.java)
+    @Provides @Singleton fun provideTimeOffApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.TimeOffApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.TimeOffApi::class.java)
+    // §52 — Audit Logs API; 404-tolerant
+    @Provides @Singleton fun provideAuditApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.AuditApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.AuditApi::class.java)
+    // §50 — Data Import API; admin-only; 404-tolerant
+    @Provides @Singleton fun provideImportApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ImportApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ImportApi::class.java)
+    // §51 — Data Export API; manager+-only; 404-tolerant
+    @Provides @Singleton fun provideExportApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ExportApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ExportApi::class.java)
+
+    // Phase 2 — POS sale + receipt endpoints (PosApi shared with earlier Wave-36 entry)
+    @Provides @Singleton fun providePosApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PosApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.PosApi::class.java)
+    // POS-SMS-001: client stub for SMS receipt endpoint (server not yet deployed; 404 degrades gracefully)
+    @Provides @Singleton fun provideReceiptNotificationApi(retrofit: Retrofit): com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi =
+        retrofit.create(com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi::class.java)
+
+    // Phase 4 — BlockChyp payment terminal proxy (BlockChypModule.kt provides the typed
+    // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).
+    // BlockChypApi is provided directly in BlockChypModule to keep terminal-related
+    // bindings co-located. No entry here — see di/BlockChypModule.kt.
 }
