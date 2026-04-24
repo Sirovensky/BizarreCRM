@@ -382,6 +382,18 @@ const SMS_KILL_SWITCH_RESULT: SmsProviderResult = Object.assign(
   { suppressed: true, reason: 'kill-switch' } as const,
 );
 
+/**
+ * Returns true if a real (non-console) SMS provider is configured in DB.
+ * Mirrors isEmailConfigured() in services/email.ts.
+ */
+export function isSmsConfigured(db: any): boolean {
+  const dbCfg = getDbSmsConfig(db);
+  const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
+  if (providerType === 'console') return false;
+  const missing = getMissingFields(providerType, dbCfg);
+  return missing.length === 0;
+}
+
 /** Send an SMS or MMS. In multi-tenant mode, pass db and tenantSlug for correct provider. */
 export function sendSms(to: string, body: string, from?: string, media?: MmsMedia[]): Promise<SmsProviderResult> {
   // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_SMS=true, suppress

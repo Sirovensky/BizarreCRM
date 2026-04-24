@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
+import { sendSmsTenant, isSmsConfigured } from '../services/smsProvider.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { validateId } from '../utils/validate.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('notifications');
@@ -351,6 +353,113 @@ router.post(
     if (!sent) throw new AppError('Failed to send email', 500);
 
     res.json({ success: true, data: { message: `Receipt sent to ${recipientEmail}` } });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /send-receipt-sms – Send a receipt SMS for an invoice (POS-SMS-001)
+// ---------------------------------------------------------------------------
+const PHONE_REGEX = /^\+?[1-9]\d{6,14}$/;
+const MAX_SMS_BODY_CHARS = 320;
+
+router.post(
+  '/send-receipt-sms',
+  asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
+
+    const db = req.db;
+    const adb = req.asyncDb;
+    const userId = req.user!.id;
+
+    // Rate limit: 30 receipt SMS per minute per user
+    if (!checkWindowRate(db, 'receipt_sms', String(userId), 30, 60_000)) {
+      throw new AppError('Rate limit exceeded. Try again shortly.', 429);
+    }
+
+    const { invoice_id, recipient_phone } = req.body as { invoice_id: unknown; recipient_phone: unknown };
+
+    const invoiceId = validateId(invoice_id, 'invoice_id');
+
+    // Validate and normalise recipient_phone
+    if (typeof recipient_phone !== 'string' || recipient_phone.length === 0) {
+      throw new AppError('recipient_phone required', 400);
+    }
+    if (recipient_phone.length > 16) {
+      throw new AppError('recipient_phone exceeds maximum length of 16 characters', 400);
+    }
+
+    // Normalise 10-digit US to E.164 (+1XXXXXXXXXX); otherwise require valid format
+    let normalizedPhone: string;
+    const digitsOnly = recipient_phone.replace(/\D/g, '');
+    if (digitsOnly.length === 10) {
+      normalizedPhone = `+1${digitsOnly}`;
+    } else if (PHONE_REGEX.test(recipient_phone)) {
+      normalizedPhone = recipient_phone.startsWith('+') ? recipient_phone : `+${digitsOnly}`;
+    } else {
+      throw new AppError('recipient_phone must be a valid phone number (E.164 or 10-digit US)', 400);
+    }
+
+    // Look up invoice with customer info
+    const invoice = await adb.get<any>(`
+      SELECT inv.*, c.first_name, c.last_name, c.phone as customer_phone
+      FROM invoices inv
+      LEFT JOIN customers c ON c.id = inv.customer_id
+      WHERE inv.id = ?
+    `, invoiceId);
+    if (!invoice) throw new AppError('Invoice not found', 400);
+
+    // SCAN-811: Verify recipient matches the invoice's customer (defense in depth)
+    const custDigits = (invoice.customer_phone || '').replace(/\D/g, '');
+    const recipDigits = normalizedPhone.replace(/\D/g, '');
+    // Compare trailing digits — handles +1XXXXXXXXXX vs XXXXXXXXXX vs 1XXXXXXXXXX
+    const custTail = custDigits.length > 10 ? custDigits.slice(-10) : custDigits;
+    const recipTail = recipDigits.length > 10 ? recipDigits.slice(-10) : recipDigits;
+    if (custTail !== recipTail) {
+      throw new AppError('recipient_phone must match the invoice customer', 403);
+    }
+
+    if (!isSmsConfigured(db)) {
+      throw new AppError('SMS is not configured. Set up a provider in Settings.', 400);
+    }
+
+    // Fetch config rows + linked ticket (for tracking token) in parallel
+    const [configRows, linkedTicket] = await Promise.all([
+      adb.all<{ key: string; value: string }>(
+        `SELECT key, value FROM store_config WHERE key IN ('store_name')`,
+      ),
+      adb.get<{ order_id: string; tracking_token: string | null }>(
+        `SELECT order_id, tracking_token FROM tickets WHERE invoice_id = ? LIMIT 1`,
+        invoiceId,
+      ),
+    ]);
+    const cfgMap = Object.fromEntries(configRows.map((r) => [r.key, r.value]));
+    const storeName = cfgMap['store_name'] || 'Your Shop';
+
+    // Resolve tracking URL (same logic as /send-receipt)
+    const publicHost = `${req.protocol}://${req.get('host')}`;
+    let trackingUrl: string;
+    if (linkedTicket?.tracking_token) {
+      trackingUrl = `${publicHost}/track?token=${encodeURIComponent(linkedTicket.tracking_token)}`;
+    } else if (linkedTicket?.order_id) {
+      trackingUrl = `${publicHost}/track/${encodeURIComponent(linkedTicket.order_id)}`;
+    } else {
+      trackingUrl = `${publicHost}/track/${encodeURIComponent(invoice.order_id)}`;
+    }
+
+    // Build SMS body — cap at 320 chars (2 SMS segments)
+    const rawBody = `Receipt for invoice #${invoice.order_id} from ${storeName}. Total $${Number(invoice.total).toFixed(2)}. View online: ${trackingUrl}`;
+    const smsBody = rawBody.length > MAX_SMS_BODY_CHARS ? rawBody.slice(0, MAX_SMS_BODY_CHARS) : rawBody;
+
+    // Audit BEFORE dispatch so the record exists even if SMS delivery fails
+    audit(db, 'receipt_sms_sent', userId, req.ip ?? '', { invoice_id: invoiceId, recipient_phone: normalizedPhone });
+
+    const result = await sendSmsTenant(db, (req as any).tenantSlug ?? null, normalizedPhone, smsBody);
+
+    if (!result.success || result.simulated) {
+      throw new AppError('Failed to send SMS', 500);
+    }
+
+    res.json({ success: true, data: { message: `Receipt SMS sent to ${normalizedPhone}` } });
   }),
 );
 

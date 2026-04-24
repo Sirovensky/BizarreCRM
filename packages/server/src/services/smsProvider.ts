@@ -32,4 +32,5 @@ export {
   getProviderRegistry,
   isProviderRealOrSimulated,
   IncompleteSmsCredentialsError,
+  isSmsConfigured,
 } from '../providers/sms/index.js';
