@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 /**
  * POS entry screen: path picker + ready-for-pickup hero + animated SearchBar.
@@ -254,14 +255,14 @@ private fun CustomerHeaderBanner(customer: PosAttachedCustomer) {
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.tertiary),
+                .background(MaterialTheme.colorScheme.secondary),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                customer.name.take(2).uppercase(),
+                customer.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiary,
+                color = MaterialTheme.colorScheme.onSecondary,
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -303,7 +304,15 @@ private fun PathTile(
                 .background(if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Text(emoji, style = MaterialTheme.typography.titleLarge)
+            // Mockup PHONE 1 pattern: primary tile fills the icon box with
+            // cream so the glyph must paint in dark on-primary brown to stay
+            // legible. Non-primary tiles keep the default emoji colors.
+            Text(
+                emoji,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = if (isPrimary) FontWeight.Black else FontWeight.Normal,
+                color = if (isPrimary) MaterialTheme.colorScheme.onPrimary else androidx.compose.ui.graphics.Color.Unspecified,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -399,12 +408,13 @@ private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit)
     // (not on content rows), not on list items.
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     val heroShape = MaterialShapes.Cookie12Sided.toShape()
+    val success = LocalExtendedColors.current.success
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(heroShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.tertiary, heroShape)
-            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.12f))
+            .border(1.5.dp, success, heroShape)
+            .background(success.copy(alpha = 0.08f))
             .clickable(onClickLabel = "Open ticket ${ticket.ticketId} cart") { onOpen() }
             .padding(horizontal = 18.dp, vertical = 14.dp)
             .defaultMinSize(minHeight = 60.dp),
@@ -415,10 +425,10 @@ private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit)
             modifier = Modifier
                 .size(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.tertiary),
+                .background(success),
             contentAlignment = Alignment.Center,
         ) {
-            Text("✓", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiary)
+            Text("✓", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = androidx.compose.ui.graphics.Color(0xFF002817))
         }
         Column(modifier = Modifier.weight(1f)) {
             Text("#${ticket.ticketId} · Ready for pickup", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -426,14 +436,14 @@ private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit)
         }
         Surface(
             shape = RoundedCornerShape(99.dp),
-            color = MaterialTheme.colorScheme.tertiary,
+            color = success,
         ) {
             Text(
                 "Open cart →",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onTertiary,
+                color = androidx.compose.ui.graphics.Color(0xFF002817),
             )
         }
     }
@@ -455,7 +465,7 @@ private fun PastRepairRow(repair: PastRepair) {
                 "#${repair.ticketId}",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.tertiary,
+                color = LocalExtendedColors.current.info,
             )
             Text("· ${repair.description}", style = MaterialTheme.typography.bodySmall)
         }
