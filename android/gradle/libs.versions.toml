@@ -46,6 +46,10 @@ androidx-browser = "1.8.0"
 androidx-credentials = "1.2.2"
 paging = "3.3.6"
 mockwebserver = "4.12.0"
+# §22 L2235 — material3-adaptive (list-detail + three-pane scaffolds). 1.1.0 is cached locally.
+material3-adaptive = "1.1.0"
+# §22 L2280 — WindowInfoTracker for foldable posture detection
+androidx-window = "1.3.0"
 
 [libraries]
 # Core Android
@@ -167,6 +171,13 @@ androidx-room-paging = { group = "androidx.room", name = "room-paging", version.
 # Test utilities
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
 androidx-paging-testing = { group = "androidx.paging", name = "paging-testing", version.ref = "paging" }
+
+# §22 L2235 — material3-adaptive: list-detail pane + three-pane settings scaffolds
+material3-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive-android", version.ref = "material3-adaptive" }
+material3-adaptive-layout = { group = "androidx.compose.material3.adaptive", name = "adaptive-layout-android", version.ref = "material3-adaptive" }
+material3-adaptive-navigation = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation-android", version.ref = "material3-adaptive" }
+# §22 L2280 — WindowInfoTracker (foldable posture detection)
+androidx-window = { group = "androidx.window", name = "window", version.ref = "androidx-window" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

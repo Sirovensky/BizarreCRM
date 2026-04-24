@@ -128,7 +128,15 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.BizarreCRM"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
+            <!-- §22 L2251 — minimum window size for freeform / desktop windowing.
+                 ChromeOS and Samsung DeX honour these constraints.
+                 400×560 dp chosen to fit the compact ticket list + bottom nav comfortably. -->
+            <layout
+                android:minWidth="400dp"
+                android:minHeight="560dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

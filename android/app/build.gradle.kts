@@ -155,6 +155,14 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.compose.material.icons.extended)
+
+    // §22 L2235 — material3-adaptive: NavigableListDetailPaneScaffold + NavigableSupportingPaneScaffold
+    implementation(libs.material3.adaptive)
+    implementation(libs.material3.adaptive.layout)
+    implementation(libs.material3.adaptive.navigation)
+
+    // §22 L2280 — androidx.window: WindowInfoTracker for foldable posture detection
+    implementation(libs.androidx.window)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Navigation
