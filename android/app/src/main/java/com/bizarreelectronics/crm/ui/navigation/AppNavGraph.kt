@@ -457,7 +457,7 @@ data class BottomNavItem(
  */
 private fun mapResolvedRoute(raw: String): String? = when {
     // External H1 contract routes → internal nav destinations
-    raw == "ticket/new"   -> Screen.TicketCreate.route
+    raw == "ticket/new"   -> Screen.CheckInEntry.route
     raw == "customer/new" -> Screen.CustomerCreate.route
     raw == "scan"         -> Screen.Scanner.route
     // §2.7 L330 — setup invite: "login?setupToken=<encoded>" must navigate
@@ -607,6 +607,8 @@ fun AppNavGraph(
             // and the wizard would wrongly show the bottom-nav. Match by
             // prefix instead.
             !currentRoute.startsWith(Screen.TicketCreate.route) &&
+            !currentRoute.startsWith(Screen.CheckInEntry.route) &&
+            !currentRoute.startsWith("checkin/") &&
             currentRoute != Screen.ClockInOut.route &&
             currentRoute != Screen.EmployeeCreate.route &&
             !currentRoute.startsWith("customers/") &&
@@ -779,7 +781,7 @@ fun AppNavGraph(
             // physical keyboard is attached + the focusable Box claims focus
             // (no-op on phones).
             com.bizarreelectronics.crm.util.KeyboardShortcutsHost(
-                onNewTicket = { navController.navigate(Screen.TicketCreate.route) },
+                onNewTicket = { navController.navigate(Screen.CheckInEntry.route) },
                 onNewCustomer = { navController.navigate(Screen.CustomerCreate.route) },
                 onScanBarcode = { navController.navigate(Screen.Scanner.route) },
                 onNewSms = { navController.navigate(Screen.Messages.route) },
@@ -1018,7 +1020,7 @@ fun AppNavGraph(
                 DashboardScreen(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToTickets = { navController.navigate(Screen.Tickets.route) },
-                    onCreateTicket = { navController.navigate(Screen.TicketCreate.route) },
+                    onCreateTicket = { navController.navigate(Screen.CheckInEntry.route) },
                     onCreateCustomer = { navController.navigate(Screen.CustomerCreate.route) },
                     onLogSale = { navController.navigate(Screen.Pos.route) },
                     onScanBarcode = { navController.navigate(Screen.Scanner.route) },
@@ -1048,7 +1050,7 @@ fun AppNavGraph(
             composable(Screen.Tickets.route) {
                 TicketListScreen(
                     onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
-                    onCreateClick = { navController.navigate(Screen.TicketCreate.route) },
+                    onCreateClick = { navController.navigate(Screen.CheckInEntry.route) },
                 )
             }
             composable(Screen.TicketDetail.route) { backStackEntry ->
@@ -1325,7 +1327,7 @@ fun AppNavGraph(
                         }
                     },
                     onNewTicket = {
-                        navController.navigate(Screen.TicketCreate.route) {
+                        navController.navigate(Screen.CheckInEntry.route) {
                             popUpTo(Screen.Dashboard.route)
                         }
                     },
