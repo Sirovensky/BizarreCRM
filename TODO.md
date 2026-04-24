@@ -710,8 +710,6 @@ Verified working. Not TODOs.
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
 - [ ] SCAN-992. **Catalog page: `jobs`, `items`, `modelResults` typed as `any[]` — server payload unchecked.**
   <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:75,86,91; fix=define-Job-Item-Model-interfaces -->
-- [ ] SCAN-996. **EmployeeRow `getWeekRange()` called at render — unmemoized, can drift across rows same render.**
-  <!-- meta: scope=web/pages/employees; files=packages/web/src/pages/employees/EmployeeListPage.tsx:456-465; fix=useMemo-or-module-const -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 - [ ] SCAN-999. **Marketing campaigns uses `as any` for server data access — type safety lost.**

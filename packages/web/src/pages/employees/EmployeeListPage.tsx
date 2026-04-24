@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
@@ -453,7 +453,11 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
-  const weekRange = getWeekRange();
+  // Memoized — `getWeekRange()` returned fresh object identity on every
+  // render, so the `['employee-hours', ..., weekRange.from_date]` key drifted
+  // if a render crossed midnight (Date-based). Stable across this row's
+  // lifetime; weekly boundary crossing will be picked up on a page reload.
+  const weekRange = useMemo(() => getWeekRange(), []);
 
   const { data: detailData } = useQuery({
     queryKey: ['employee-detail', employee.id],
