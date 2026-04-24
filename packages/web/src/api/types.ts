@@ -325,6 +325,27 @@ export interface GetTransactionsParams {
   to_date?: string;
 }
 
+// Matches the shape the server expects in `pos.routes.ts` for each line item
+// in a unified-POS checkout call. The server does its own validation of
+// quantity/price — this interface is the client-side contract only.
+export interface PosProductLineItem {
+  inventory_item_id?: number | null;
+  name?: string;
+  sku?: string | null;
+  quantity: number;
+  unit_price: number;
+  taxable?: boolean;
+  tax_inclusive?: boolean;
+}
+
+export interface PosMiscLineItem {
+  name: string;
+  quantity: number;
+  price?: number;
+  unit_price?: number;
+  taxable?: boolean;
+}
+
 export interface CheckoutWithTicketInput {
   mode?: string;
   ticket_id?: number;
@@ -332,8 +353,8 @@ export interface CheckoutWithTicketInput {
   customer_id?: number | null;
   signature_file?: string;
   ticket?: Record<string, unknown>;
-  product_items?: unknown[];
-  misc_items?: unknown[];
+  product_items?: PosProductLineItem[];
+  misc_items?: PosMiscLineItem[];
   payment_method?: string | null;
   payment_amount?: number;
   payments?: Array<{ method: string; amount: number; reference?: string }>;

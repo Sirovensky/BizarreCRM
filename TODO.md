@@ -1467,8 +1467,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 ### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
 - [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
   <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
-- [ ] SCAN-942. **POS checkout line-item types use `unknown[]` — no compile-time guarantee the shape the server expects matches what the UI sends.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
