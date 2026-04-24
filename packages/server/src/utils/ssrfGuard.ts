@@ -14,19 +14,20 @@
  *        IPv6:  ::1, fc00::/7 (ULA), fe80::/10 (link-local), ::ffff:0:0/96
  *               (IPv4-mapped — re-checked against IPv4 rules).
  *   3. Returns the pinned IP so the caller can connect directly (DNS-rebinding
- *      defence). Callers that keep using the hostname are still protected
- *      because the OS DNS cache will typically return the same answer within
- *      the TTL — a racing rebind is in-theory possible but requires an
- *      attacker to control DNS for a host they just convinced the admin to
- *      point the CRM at, which already implies compromise of the trust path.
+ *      defence). Callers that perform their own `fetch(hostname, ...)` are
+ *      relying on OS DNS-cache TTL to give back the same answer at connect
+ *      time — that mitigates but does not fully close the rebind window.
  *
- * If a caller can tolerate the extra work, prefer `fetchWithSsrfGuard(url, init)`
- * which rewrites the URL to the pinned IP and sets the original hostname as a
- * `Host:` header — closing the rebinding window entirely.
+ * For the strongest guarantee, prefer `fetchWithSsrfGuard(url, init)`. It
+ * installs an undici `Agent` whose `connect.lookup` short-circuits to the
+ * already-validated IP, so the OS resolver is never consulted at connect
+ * time. TLS SNI + HTTP `Host` continue to use the original hostname, so
+ * certificate verification and virtual hosting are preserved.
  */
 import dns from 'dns';
 import net from 'net';
 import { promisify } from 'util';
+import { Agent } from 'undici';
 
 const dnsLookup = promisify(dns.lookup);
 
@@ -173,6 +174,14 @@ export async function assertPublicUrl(url: string): Promise<{
 /**
  * Convenience wrapper: run the SSRF guard, then fetch with a timeout.
  *
+ * SCAN-1063 — DNS-rebinding closure: we install a per-request undici
+ * `Agent` whose `connect.lookup` short-circuits to the IP that
+ * `assertPublicUrl` already validated. The OS resolver is never consulted
+ * again at connect time, so an attacker-controlled DNS that flips its
+ * answer between guard-time and connect-time cannot redirect us at a
+ * private address. TLS SNI + the HTTP `Host` header still use the original
+ * hostname, so cert verification and virtual hosting keep working.
+ *
  * Default timeout is 10 seconds — callers that want something else pass
  * `timeoutMs` in `init` (extracted before the call — it's not a standard
  * RequestInit field). The returned AbortSignal is merged with any signal the
@@ -182,7 +191,7 @@ export async function fetchWithSsrfGuard(
   url: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
-  await assertPublicUrl(url);
+  const { resolvedAddress, family } = await assertPublicUrl(url);
 
   const { timeoutMs = 10_000, signal: callerSignal, ...rest } = init;
   const controller = new AbortController();
@@ -194,9 +203,27 @@ export async function fetchWithSsrfGuard(
     else callerSignal.addEventListener('abort', () => controller.abort(), { once: true });
   }
 
+  // Pin the connection to the IP we already validated. undici's
+  // `connect.lookup` matches the Node `dns.lookup` callback signature.
+  const pinnedAgent = new Agent({
+    connect: {
+      lookup: (_hostname, _options, cb) => {
+        cb(null, resolvedAddress, family);
+      },
+    },
+  });
+
   try {
-    return await fetch(url, { ...rest, signal: controller.signal });
+    // `dispatcher` is recognised by Node's global fetch (undici under the hood).
+    return await fetch(url, {
+      ...rest,
+      signal: controller.signal,
+      // @ts-expect-error -- dispatcher is undici-specific; not in lib.dom RequestInit
+      dispatcher: pinnedAgent,
+    });
   } finally {
     clearTimeout(timeoutId);
+    // Best-effort cleanup; close() is async but we don't need to await it.
+    pinnedAgent.close().catch(() => { /* ignore */ });
   }
 }

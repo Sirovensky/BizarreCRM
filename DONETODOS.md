@@ -1,4 +1,8 @@
 
+## Closed 2026-04-23 (wave-60 server/utils — SSRF rebind closure)
+
+- [x] SCAN-1063. **`fetchWithSsrfGuard` left a DNS-rebinding window between guard-time lookup and connect-time resolution** — fixed by installing a per-request undici `Agent` with a custom `connect.lookup` that short-circuits to the IP `assertPublicUrl` already validated. OS resolver is never consulted again at connect time. TLS SNI + HTTP `Host` continue to use the original hostname so cert verification + virtual hosting are preserved. JSDoc on the module + on `fetchWithSsrfGuard` rewritten to describe the actual guarantee.
+
 ## Closed 2026-04-23 (wave-50 web/pages — main-branch-only phase)
 
 First batch after switching to direct-on-main commits (no feature branches).
