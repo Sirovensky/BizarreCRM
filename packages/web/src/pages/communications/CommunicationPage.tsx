@@ -238,8 +238,17 @@ function TemplatePicker({
     queryKey: ['sms-templates'],
     queryFn: () => smsApi.templates(),
   });
-  const templates: SmsTemplate[] = (tplData?.data as any)?.data?.templates ?? [];
-  const availableVars: string[] = (tplData?.data as any)?.data?.available_variables ?? [];
+  // Map the shared `SmsTemplate` shape to the local one, which declares
+  // `category: string | null` (no undefined). Explicit null-coalesce keeps
+  // the strict local typing without a blanket `as any`.
+  const templates: SmsTemplate[] = (tplData?.data?.data?.templates ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    content: t.content,
+    category: t.category ?? null,
+  }));
+  const availableVars: string[] =
+    ((tplData?.data?.data as { available_variables?: unknown } | undefined)?.available_variables as string[] | undefined) ?? [];
   const [filter, setFilter] = useState('');
   const [activeSection, setActiveSection] = useState<'templates' | 'variables'>('templates');
 

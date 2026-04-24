@@ -712,8 +712,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx; fix=type-when-dto-stable -->
 
 ### Wave-55 scan-loop findings (2026-04-23) — web/pages communications+reviews+expenses + shared API types
-- [ ] SCAN-1003. **Communications page: pervasive `(x.data as any)?.data?...` chains — server response shapes unchecked across SMS/customer/voice queries.**
-  <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:958; fix=type-response-interfaces -->
+- [ ] SCAN-1003b. **Communications page: 14+ `(x.data as any)?.data?.…` chains remain across SMS/customer/voice queries (templates narrowed).**
+  <!-- meta: scope=web/pages/communications; files=CommunicationPage.tsx; fix=type-per-response-interfaces -->
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**
