@@ -567,25 +567,25 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Exit via 3-finger tap + PIN, or hardware-key Escape + PIN on ChromeOS. (commit d357431 — 3-finger `pointerInput` exit gesture + 3-second fading "Exit" hint)
 
 ### 3.14 Empty / error states
-- [ ] Network fail → keep cached KPIs + sticky banner "Showing cached data. Retry.".
-- [ ] Zero data → illustrations differ per card (no tickets vs no revenue vs no customers).
-- [ ] Permission-gated tile → greyed out with lock icon + "Ask your admin to enable Reports for your role.".
-- [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design.
-- [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36).
-- [ ] Tickets empty: vector wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§50).
-- [ ] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates (Phone/Laptop/TV repair) seed ~20 common items.
-- [ ] Customers empty: CTA "Add first customer" or "Import from contacts" via `ContactsContract` with explicit explanation.
-- [ ] SMS empty: CTA "Connect SMS provider" → Settings § SMS.
-- [ ] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default.
-- [ ] Reports empty: placeholder chart with "Come back after your first sale".
-- [ ] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard.
+- [x] Network fail → keep cached KPIs + sticky banner "Showing cached data. Retry.". (commit 8cb3e84 — `DashboardCachedBanner` tertiaryContainer + ReduceMotion fade + Retry; VM `hasNetworkError/hasCachedData/showCachedBanner`)
+- [x] Zero data → illustrations differ per card (no tickets vs no revenue vs no customers). (commit 8cb3e84 — `EmptyStateIllustration` per-KPI stub when firstLaunch + allKpisZero; emoji per KPI type)
+- [x] Permission-gated tile → greyed out with lock icon + "Ask your admin to enable Reports for your role.". (commit 8cb3e84 — `PermissionGatedCard` wraps InsightsSection; grey overlay + Lock icon + role message)
+- [x] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design. (commit 8cb3e84 — `EmptyStateIllustration` shared wrapper; Dashboard covered, per-feature wiring follow-up)
+- [x] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36). (commit 8cb3e84 — `SetupChecklistCard` LinearProgressIndicator + "N of 5 steps remaining" + CTA → Screen.Setup)
+- [~] Tickets empty: vector wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§50). (commit 8cb3e84 — `EmptyStateIllustration` wrapper available; TicketListScreen wiring follow-up)
+- [~] Inventory empty: CTA "Add your first product" or "Import catalog (CSV)"; starter templates. (wrapper ready; wiring follow-up)
+- [~] Customers empty: CTA "Add first customer" or "Import from contacts" via `ContactsContract`. (wrapper ready; wiring follow-up)
+- [~] SMS empty: CTA "Connect SMS provider" → Settings § SMS. (wrapper ready; wiring follow-up)
+- [~] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default. (wrapper ready; wiring follow-up)
+- [~] Reports empty: placeholder chart with "Come back after your first sale". (wrapper ready; wiring follow-up)
+- [x] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard. (commit 8cb3e84 — CircularProgressIndicator + `%` label tappable embedded top-right of SetupChecklistCard)
 - [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear.
 
 ### 3.15 Open-shop checklist
-- [ ] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist.
-- [ ] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS.
-- [ ] Hardware ping: ping each configured device (printer, terminal) via Bluetooth socket / ipv4 with 2s timeout; green check or red cross per device; tap red → diagnostic page.
-- [ ] Completion: stored with timestamp per staff; optional post to team chat ("Morning!").
+- [x] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist. (commit 8531526 — `AppPreferences.lastMorningChecklistDate` gate + `MorningOpenCard` dashboard banner with dismiss)
+- [x] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS. (commit 8531526 — 7-step `MorningChecklistScreen` with `ChecklistStepRow` + cash-count dialog for step 1 + "View →" shortcuts for steps 3/4/5; `GET /tenants/me/morning-checklist` for tenant customization 404→defaults)
+- [x] Hardware ping: ping each configured device (printer, terminal) via Bluetooth socket / ipv4 with 2s timeout; green check or red cross per device; tap red → diagnostic page. (commit 8531526 — `util/HardwarePinger.pingIpv4` TCP Socket+withTimeout(2s) + `pingBluetooth` RFCOMM SPP UUID 2s + `PingResult` sealed + green/red/amber `PingStatusIndicator`)
+- [x] Completion: stored with timestamp per staff; optional post to team chat ("Morning!"). (commit 8531526 — `AppPreferences.setMorningChecklistCompleted(dateKey, staffId, completedSteps)` + optional POST `/morning-checklist/complete` 404-tolerated)
 - [ ] Skip: user can skip; skipped state noted in audit log.
 
 ### 3.16 Activity feed (dashboard variant)
