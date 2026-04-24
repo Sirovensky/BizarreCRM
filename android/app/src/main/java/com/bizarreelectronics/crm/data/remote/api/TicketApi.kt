@@ -48,6 +48,9 @@ interface TicketApi {
     @POST("tickets/{id}/notes")
     suspend fun addNote(@Path("id") id: Long, @Body note: Map<String, @JvmSuppressWildcards Any>): ApiResponse<TicketNote>
 
+    @DELETE("tickets/notes/{noteId}")
+    suspend fun deleteNote(@Path("noteId") noteId: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
     @PATCH("tickets/{id}/pin")
     suspend fun togglePin(@Path("id") id: Long): ApiResponse<TicketDetail>
 

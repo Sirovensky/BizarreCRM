@@ -316,11 +316,9 @@ class TicketDetailViewModel @Inject constructor(
                     )
                     loadTicketDetail()
 
-                    // Push undo entry — compensatingSync attempts server delete if noteId is valid.
-                    // Note: server DELETE /notes/:noteId is not yet in TicketApi; compensatingSync
-                    // returns false so UndoStack emits UndoEvent.Failed and the screen shows
-                    // "Can't undo — action already processed" per spec. Wire a real API call here
-                    // when TicketApi.deleteNote is added.
+                    // Push undo entry — compensatingSync deletes the note server-side via
+                    // TicketApi.deleteNote (DELETE /tickets/notes/:noteId). noteId is
+                    // captured from the server response above; negative means offline-queued.
                     val payload = TicketEdit.NoteAdded(noteId = noteId, noteText = text)
                     undoStack.push(
                         UndoStack.Entry(
@@ -338,14 +336,17 @@ class TicketDetailViewModel @Inject constructor(
                             auditDescription = "Note added: \"${text.take(60)}${if (text.length > 60) "…" else ""}\"",
                             compensatingSync = compensatingSyncForNote@{
                                 if (noteId < 0L) {
-                                    // Note was offline-queued; nothing to compensate server-side
+                                    // Note was offline-queued; no server row to delete yet
                                     Timber.tag("TicketUndo").w("compensatingSync: note was offline-queued, cannot server-delete")
                                     false
                                 } else {
-                                    // TicketApi.deleteNote not yet available — signal failure
-                                    // so UndoStack emits UndoEvent.Failed and UI shows toast.
-                                    Timber.tag("TicketUndo").w("compensatingSync: deleteNote endpoint not in TicketApi yet; noteId=$noteId")
-                                    false
+                                    try {
+                                        val resp = ticketApi.deleteNote(noteId)
+                                        resp.success
+                                    } catch (e: Exception) {
+                                        Timber.tag("TicketUndo").w(e, "compensatingSync: server delete of noteId=$noteId failed")
+                                        false
+                                    }
                                 }
                             },
                         )
