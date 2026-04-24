@@ -18,7 +18,7 @@ import type {
   CreateStatusInput, UpdateStatusInput, UpdateStoreInput, CreateTaxClassInput, UpdateTaxClassInput,
   CreatePaymentMethodInput, CreateReferralSourceInput, CreateUserInput, UpdateUserInput,
   UpdateNotificationTemplateInput, CreateChecklistTemplateInput, UpdateChecklistTemplateInput,
-  ReportParams, CreateSmsTemplateInput, UpdateSmsTemplateInput,
+  ReportParams, CreateSmsTemplateInput, UpdateSmsTemplateInput, SmsTemplateListResponse,
   PosTransactionInput, GetTransactionsParams, CheckoutWithTicketInput, BulkImportItem,
   CreateLeadInput, UpdateLeadInput, CreateAppointmentInput, UpdateAppointmentInput,
   CreateEstimateInput, UpdateEstimateInput, PreferenceValue,
@@ -537,7 +537,7 @@ export const smsApi = {
   toggleArchive: (phone: string) => api.patch(`/sms/conversations/${phone}/archive`),
   send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
-  templates: () => api.get('/sms/templates'),
+  templates: () => api.get<SmsTemplateListResponse>('/sms/templates'),
   createTemplate: (data: CreateSmsTemplateInput) => api.post('/sms/templates', data),
   updateTemplate: (id: number, data: UpdateSmsTemplateInput) => api.put(`/sms/templates/${id}`, data),
   deleteTemplate: (id: number) => api.delete(`/sms/templates/${id}`),

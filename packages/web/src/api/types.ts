@@ -284,6 +284,23 @@ export interface ReportParams {
 
 // ─── SMS ─────────────────────────────────────────────────────────────────────
 
+export interface SmsTemplate {
+  id: number;
+  name: string;
+  content: string;
+  category?: string | null;
+  template_vars?: string[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SmsTemplateListResponse {
+  success: boolean;
+  data: {
+    templates?: SmsTemplate[];
+  };
+}
+
 export interface CreateSmsTemplateInput {
   name: string;
   template: string;
