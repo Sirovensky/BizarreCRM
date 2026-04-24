@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, settingsApi, onboardingApi } from '@/api/endpoints';
+import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
@@ -77,7 +78,10 @@ export function CustomerListPage() {
   // Import modal
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
-  const [importPreview, setImportPreview] = useState<any[]>([]);
+  // CSV import preview rows. `first_name` is the only required field on the
+  // server side; everything else is optional. Typing this precisely used to
+  // be `any[]`, which let malformed payloads flow through to `importCsv`.
+  const [importPreview, setImportPreview] = useState<ImportCustomerItem[]>([]);
 
   // Bulk selection & tagging
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -221,7 +225,7 @@ export function CustomerListPage() {
   );
 
   const importMutation = useMutation({
-    mutationFn: (items: any[]) => customerApi.importCsv(items),
+    mutationFn: (items: ImportCustomerItem[]) => customerApi.importCsv(items),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       const d = res?.data?.data;
@@ -333,12 +337,16 @@ export function CustomerListPage() {
     const lines = text.trim().split('\n');
     if (lines.length < 2) return;
     const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
-    const rows = lines.slice(1).map(line => {
+    const rows: ImportCustomerItem[] = [];
+    for (const line of lines.slice(1)) {
       const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-      return obj;
-    });
+      // Server requires `first_name`; skip rows missing it rather than
+      // shipping malformed payloads.
+      if (!obj.first_name) continue;
+      rows.push(obj as unknown as ImportCustomerItem);
+    }
     setImportPreview(rows);
   };
 
