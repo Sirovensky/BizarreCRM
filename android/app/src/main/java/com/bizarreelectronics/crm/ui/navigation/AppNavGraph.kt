@@ -1,7 +1,9 @@
 package com.bizarreelectronics.crm.ui.navigation
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,6 +62,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
@@ -78,6 +81,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
@@ -223,6 +227,9 @@ sealed class Screen(val route: String) {
     // §1.3 [plan:L185] — Diagnostics (Export DB snapshot). DEBUG builds only.
     data object Diagnostics : Screen("settings/diagnostics")
 
+    // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG builds only.
+    data object RateLimitBuckets : Screen("settings/rate-limit-buckets")
+
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
 
@@ -289,6 +296,7 @@ private fun mapResolvedRoute(raw: String): String? = when (raw) {
 fun AppNavGraph(
     authPreferences: AuthPreferences? = null,
     serverReachabilityMonitor: ServerReachabilityMonitor? = null,
+    networkMonitor: NetworkMonitor? = null,
     syncQueueDao: SyncQueueDao? = null,
     syncManager: SyncManager? = null,
     deepLinkBus: DeepLinkBus? = null,
@@ -528,6 +536,20 @@ fun AppNavGraph(
                 pendingSyncCount = pendingSyncCount,
                 isSyncing = isSyncing,
             )
+
+            // §1 L166 — network-offline banner driven by NetworkMonitor (raw connectivity).
+            // Complements the ServerReachabilityMonitor-driven OfflineBanner above:
+            // this one fires when there is literally no network interface (e.g. Airplane
+            // mode), while the existing one fires when the server is unreachable over an
+            // available link. The Retry button triggers an immediate WorkManager sync.
+            if (authPreferences?.isLoggedIn == true && networkMonitor != null) {
+                val isOnline by networkMonitor.isOnline.collectAsState(initial = true)
+                val retryContext: Context = LocalContext.current
+                OfflineBanner(
+                    isOffline = !isOnline,
+                    onRetry = { com.bizarreelectronics.crm.data.sync.SyncWorker.syncNow(retryContext) },
+                )
+            }
 
             // §1 L251 — clock-drift warning; only meaningful when logged in.
             if (authPreferences?.isLoggedIn == true && clockDrift != null) {
@@ -1155,6 +1177,8 @@ fun AppNavGraph(
                     onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
                     // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only.
                     onDiagnostics = { navController.navigate(Screen.Diagnostics.route) },
+                    // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG only.
+                    onRateLimitBuckets = { navController.navigate(Screen.RateLimitBuckets.route) },
                 )
             }
             composable(Screen.CrashReports.route) {
@@ -1166,6 +1190,13 @@ fun AppNavGraph(
             // SettingsScreen never navigates here in release builds.
             composable(Screen.Diagnostics.route) {
                 DiagnosticsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG builds only;
+            // SettingsScreen never navigates here in release builds.
+            composable(Screen.RateLimitBuckets.route) {
+                RateLimitBucketsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

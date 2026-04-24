@@ -244,6 +244,8 @@ fun SettingsScreen(
     onAbout: (() -> Unit)? = null,
     // §1.3 [plan:L185] — opens Diagnostics (Export DB snapshot). DEBUG builds only.
     onDiagnostics: (() -> Unit)? = null,
+    // §1.2 [plan:L258] — opens Rate-limit buckets viewer. DEBUG builds only.
+    onRateLimitBuckets: (() -> Unit)? = null,
     // §2.5 — opens the Switch User PIN screen (shared device flow).
     // Nullable so previews and any callers that don't need the row can omit it.
     onSwitchUser: (() -> Unit)? = null,
@@ -386,6 +388,16 @@ fun SettingsScreen(
                     icon = Icons.Default.BugReport,
                     title = "Diagnostics",
                     onClick = onDiagnostics,
+                )
+            }
+
+            // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG only:
+            // live token counts are developer-only; no value to end-users.
+            if (com.bizarreelectronics.crm.BuildConfig.DEBUG && onRateLimitBuckets != null) {
+                SettingsRow(
+                    icon = Icons.Default.BugReport,
+                    title = "Rate limit buckets",
+                    onClick = onRateLimitBuckets,
                 )
             }
 
