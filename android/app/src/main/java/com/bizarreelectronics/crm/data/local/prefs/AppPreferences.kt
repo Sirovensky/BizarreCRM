@@ -1027,6 +1027,40 @@ class AppPreferences @Inject constructor(
             }
         }
 
+    // --- plan:L803 — Ticket quick-action MRU usage counter ----------------
+    //
+    // Tracks how many times each quick-action key has been used so the
+    // TicketQuickActionsBar can sort most-recently-used actions first.
+    // Stored as flat "ticket_action_usage_<key>" Int keys in plain prefs.
+    // Keys match TicketQuickActionsBar catalog keys:
+    //   open | copy_id | share_pdf | call | sms | print | mark_ready | assign_me | archive
+
+    /**
+     * plan:L803 — usage count map for ticket quick actions (MRU sort).
+     *
+     * Returns a snapshot of all recorded action counts. Use [incrementTicketActionUsage]
+     * to record a use. The returned map is immutable.
+     */
+    val ticketActionUsage: Map<String, Int>
+        get() = prefs.all
+            .filter { (k, _) -> k.startsWith("ticket_action_usage_") }
+            .mapNotNull { (k, v) ->
+                val action = k.removePrefix("ticket_action_usage_")
+                val count = (v as? Int) ?: return@mapNotNull null
+                action to count
+            }
+            .toMap()
+
+    /**
+     * plan:L803 — increment the usage counter for [actionKey].
+     *
+     * Idempotent for any key; starts from 0 when the key is first seen.
+     */
+    fun incrementTicketActionUsage(actionKey: String) {
+        val current = prefs.getInt("ticket_action_usage_$actionKey", 0)
+        prefs.edit().putInt("ticket_action_usage_$actionKey", current + 1).apply()
+    }
+
     // --- plan:L1992 — Per-channel ringtone URIs ----------------------------
     //
     // Stored as flat "notif_sound_<channelId>" keys in plain prefs.

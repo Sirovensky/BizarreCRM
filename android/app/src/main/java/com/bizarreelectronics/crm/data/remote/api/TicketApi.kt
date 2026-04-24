@@ -188,6 +188,22 @@ interface TicketApi {
         @Part("comments") comments: RequestBody,
     ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
 
+    // ─── plan:L793 — Status rollback (admin-only) ──────────────────────────────
+
+    /**
+     * POST /tickets/:id/status-rollback — revert a ticket to a previous status.
+     *
+     * Body: `{ statusId: Long, reason: String }`.
+     * Creates an audit entry with the reason on the server side.
+     * 404 is tolerated — callers should degrade gracefully when the endpoint is not
+     * yet deployed (treat as a no-op and surface a soft warning to the user).
+     */
+    @POST("tickets/{id}/status-rollback")
+    suspend fun rollbackStatus(
+        @Path("id") ticketId: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<TicketDetail>
+
     // U3 fix: photo upload endpoint backing PhotoCaptureScreen's gallery picker.
     // Server matches on ticket-level photos (tickets.routes.ts POST /:id/photos).
     // Uses multipart field name "photos" per upload.array('photos', 20).

@@ -314,6 +314,11 @@ fun TicketListScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
+                        // TODO(plan:L801): Implement tablet Kanban drag-drop to assign/status rail.
+                        // Pattern: extend Leads Kanban (commit e3f5579) for Tickets.
+                        // Drag a ticket row to the Assign rail → PUT /tickets/:id {assignedTo}.
+                        // Drag a ticket row to a status column → PUT /tickets/:id {statusId}.
+                        // Full implementation deferred: requires DragAndDropTarget + ReorderableLazyColumn.
                         "Kanban view coming soon — use Leads for now.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

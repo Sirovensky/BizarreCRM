@@ -32,6 +32,63 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 
 /**
+ * plan:L800 — Ticket-detail keyboard chords (tablet/ChromeOS).
+ *
+ * Intended to be composed inside [TicketDetailScreen] by wrapping the screen
+ * content in this host. Registers:
+ *   - Ctrl+D           → mark ticket done (onMarkDone)
+ *   - Ctrl+Shift+A     → assign ticket (onAssign)
+ *   - Ctrl+Shift+S     → send SMS update (onSmsUpdate)
+ *   - Ctrl+P           → print receipt (onPrint)
+ *   - Ctrl+Delete      → delete ticket (admin only, onDelete)
+ *
+ * On phones without a physical keyboard, the focusRequester never receives
+ * focus so all events are silently ignored.
+ */
+@Composable
+fun TicketDetailKeyboardHost(
+    onMarkDone: () -> Unit,
+    onAssign: () -> Unit,
+    onSmsUpdate: () -> Unit,
+    onPrint: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+
+    Box(
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (!event.isCtrlPressed) return@onPreviewKeyEvent false
+                when {
+                    event.key == Key.D && !event.isShiftPressed -> {
+                        onMarkDone(); true
+                    }
+                    event.key == Key.A && event.isShiftPressed -> {
+                        onAssign(); true
+                    }
+                    event.key == Key.S && event.isShiftPressed -> {
+                        onSmsUpdate(); true
+                    }
+                    event.key == Key.P && !event.isShiftPressed -> {
+                        onPrint(); true
+                    }
+                    event.key == Key.Delete && onDelete != null -> {
+                        onDelete(); true
+                    }
+                    else -> false
+                }
+            },
+    ) {
+        content()
+    }
+}
+
+/**
  * §17.10 — global hardware-keyboard shortcuts for tablet / ChromeOS / Pixel-
  * w/ Magic Keyboard. Wraps the nav graph in a focusable Box that previews
  * key events before they reach focused widgets, so the shortcut fires no
@@ -47,6 +104,13 @@ import androidx.compose.ui.input.key.type
  *   - Ctrl+H        → onHome (dashboard)
  *   - Escape        → onBack
  *   - Ctrl+/        → show help dialog
+ *
+ * Ticket-detail chords (plan:L800) — registered via [TicketDetailKeyboardHost]:
+ *   - Ctrl+D           → mark done
+ *   - Ctrl+Shift+A     → assign
+ *   - Ctrl+Shift+S     → SMS update
+ *   - Ctrl+P           → print
+ *   - Ctrl+Delete      → delete (admin)
  *
  * Returns true from the lambda when handled so the event is not propagated
  * further (otherwise Ctrl+N would also type "n" into the focused TextField).
@@ -146,6 +210,11 @@ private fun ShortcutHelpTable() {
         "Escape" to "Back",
         "Ctrl+T" to "Jump to today (Appointments)",
         "Ctrl+/" to "Show this help",
+        // plan:L800 — ticket detail chords
+        "Ctrl+D" to "Mark ticket done (ticket detail)",
+        "Ctrl+Shift+A" to "Assign ticket (ticket detail)",
+        "Ctrl+P" to "Print receipt (ticket detail)",
+        "Ctrl+Delete" to "Delete ticket / admin (ticket detail)",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { (chord, label) ->

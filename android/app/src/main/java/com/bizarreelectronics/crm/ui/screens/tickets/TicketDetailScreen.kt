@@ -81,7 +81,9 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import com.bizarreelectronics.crm.ui.screens.tickets.components.QcSignOffDialog
+import com.bizarreelectronics.crm.ui.screens.tickets.components.RollbackStatusDialog
 import com.bizarreelectronics.crm.ui.screens.tickets.components.StatusNotifyPreviewDialog
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketStatePill
 import com.bizarreelectronics.crm.util.MultipartUpload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -175,6 +177,9 @@ data class TicketDetailUiState(
     // ─── L742 — Status notify preview ────────────────────────────────────────
     /** Non-null while the status-notify preview dialog is open. */
     val pendingStatusChange: PendingStatusChange? = null,
+    // ─── plan:L793 — Rollback status (admin-only) ────────────────────────────
+    /** True when the admin-only "Rollback status" dialog is visible. */
+    val showRollbackDialog: Boolean = false,
     // ─── L780-L786 — Waivers ─────────────────────────────────────────────────
     /**
      * True when the server confirmed the waiver feature is enabled for this ticket.
@@ -945,6 +950,138 @@ class TicketDetailViewModel @Inject constructor(
 
     fun cancelPendingStatusChange() {
         _state.value = _state.value.copy(pendingStatusChange = null)
+    }
+
+    // -----------------------------------------------------------------------
+    // plan:L790 — State-machine transition guard (wraps changeStatus)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Validates the transition via [TicketStateMachine.validateTransition] before
+     * delegating to [changeStatus]. Sets [TicketDetailUiState.statusTransitionError]
+     * inline when the guard fails; otherwise proceeds normally.
+     *
+     * Callers should prefer this over calling [changeStatus] directly so the
+     * state-machine guard is always applied.
+     */
+    fun changeStatusGuarded(newStatusId: Long) {
+        val ticket = _state.value.ticket ?: return
+        val targetStatus = _state.value.statuses.find { it.id == newStatusId }
+        val fromName = ticket.statusName
+        val toName = targetStatus?.name
+
+        val result = TicketStateMachine.validateTransition(
+            fromStateName = fromName,
+            toStateName = toName,
+            targetStatusItem = targetStatus,
+            hasNotes = _state.value.notes.isNotEmpty(),
+            hasPhotos = _state.value.photos.isNotEmpty(),
+            hasDevices = _state.value.devices.isNotEmpty(),
+        )
+
+        when (result) {
+            is TransitionResult.Allowed -> requestStatusChangeWithNotify(newStatusId)
+            is TransitionResult.Blocked -> _state.value = _state.value.copy(
+                statusTransitionError = result.message,
+            )
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // plan:L793 — Rollback status (admin-only)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns the rollback candidate list for the current ticket's status.
+     * Prefers server statuses that match default-graph predecessors; falls back
+     * to all non-terminal statuses when the current state is a custom tenant state.
+     */
+    val rollbackCandidateStatuses: List<TicketStatusItem>
+        get() {
+            val currentName = _state.value.ticket?.statusName
+            val candidates = TicketStateMachine.rollbackCandidates(currentName)
+            return if (candidates.isNotEmpty()) {
+                // Map TicketState display names to loaded server status items
+                val nameSet = candidates.map { it.displayName }.toSet()
+                _state.value.statuses.filter { it.name in nameSet }
+            } else {
+                // For custom/unknown current states, offer all non-terminal statuses
+                _state.value.statuses.filter { it.isClosed == 0 && it.isCancelled == 0 }
+            }
+        }
+
+    fun showRollbackDialog() {
+        _state.value = _state.value.copy(showRollbackDialog = true)
+    }
+
+    fun dismissRollbackDialog() {
+        _state.value = _state.value.copy(showRollbackDialog = false)
+    }
+
+    /**
+     * Execute a status rollback — admin only.
+     *
+     * 1. Validates via [TicketStateMachine.validateRollback].
+     * 2. POSTs to `POST /tickets/:id/status-rollback` with `{statusId, reason}`.
+     * 3. On 404 (endpoint not yet deployed), falls back to a standard PATCH status
+     *    change so the rollback at least takes effect, then logs a warning.
+     * 4. On success, refreshes the ticket detail.
+     */
+    fun rollbackStatus(targetStatusId: Long, reason: String) {
+        val ticket = _state.value.ticket ?: return
+        val targetStatus = _state.value.statuses.find { it.id == targetStatusId }
+
+        val guard = TicketStateMachine.validateRollback(ticket.statusName, targetStatus?.name)
+        if (guard is TransitionResult.Blocked) {
+            _state.value = _state.value.copy(actionMessage = "Rollback blocked: ${guard.message}")
+            return
+        }
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                ticketApi.rollbackStatus(
+                    ticketId,
+                    mapOf("statusId" to targetStatusId, "reason" to reason),
+                )
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Status rolled back to \"${targetStatus?.name ?: targetStatusId}\"",
+                )
+                loadTicketDetail()
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    // Endpoint not deployed — degrade to a plain PATCH so the change still lands
+                    Timber.tag("Rollback").w("rollback endpoint 404 — falling back to standard PATCH")
+                    try {
+                        ticketRepository.updateTicket(
+                            ticketId,
+                            UpdateTicketRequest(statusId = targetStatusId),
+                        )
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Status rolled back (audit endpoint pending deployment)",
+                        )
+                        loadTicketDetail()
+                    } catch (ex: Exception) {
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Rollback failed: ${ex.message}",
+                        )
+                    }
+                } else {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Rollback failed: HTTP ${e.code()}",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Rollback failed: ${e.message}",
+                )
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
