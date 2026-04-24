@@ -166,6 +166,30 @@
                 <data android:scheme="bizarrecrm" />
             </intent-filter>
 
+            <!-- §2.7 L330 — Setup-token App Link: HTTPS on both the bare domain and
+                 the app subdomain so either invite URL works.
+                 autoVerify=true causes the OS to verify the domain via
+                 /.well-known/assetlinks.json; falls back to browser until that
+                 route is deployed (TODO: see AUDIT-AND-019).
+                 Kept as two separate autoVerify filters — see existing reset-password
+                 comment above for why merging hosts breaks domain verification. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="bizarrecrm.com" android:pathPrefix="/setup/" />
+                <data android:scheme="https" android:host="app.bizarrecrm.com" android:pathPrefix="/setup/" />
+            </intent-filter>
+
+            <!-- §2.7 L330 — Custom-scheme variant: bizarrecrm://setup/<token>
+                 for internal use (QR codes, email deep links in test environments). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" android:host="setup" />
+            </intent-filter>
+
             <!-- Static shortcuts + App Actions metadata. -->
             <meta-data
                 android:name="android.app.shortcuts"

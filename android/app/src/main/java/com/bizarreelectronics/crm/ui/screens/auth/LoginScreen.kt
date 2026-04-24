@@ -141,6 +141,11 @@ data class LoginUiState(
     val registerTimezone: String = java.time.ZoneId.systemDefault().id,
     // §2.7-L329 — shop type chosen during registration
     val registerShopType: String = "repair",
+    // §2.7-L330 — setup invite token delivered via App Link bizarrecrm.com/setup/:token.
+    // Null = normal registration flow. Non-null = pre-linked invite; sent as
+    // `setup_token` in the POST /api/v1/signup body so the server can associate
+    // the new shop with the pending invite. Server ignores the field if no invite exists.
+    val registerSetupToken: String? = null,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -299,6 +304,8 @@ class LoginViewModel @Inject constructor(
     fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
     fun updateRegisterTimezone(value: String) { _state.value = _state.value.copy(registerTimezone = value, error = null) }
     fun updateRegisterShopType(value: String) { _state.value = _state.value.copy(registerShopType = value, error = null) }
+    // §2.7-L330 — called by LoginScreen when a setup token arrives via deep link.
+    fun applySetupToken(token: String?) { _state.value = _state.value.copy(registerSetupToken = token) }
     fun updateUsername(value: String) {
         _state.value = _state.value.copy(username = value, error = null, unreachableHost = false, rateLimited = false)
     }
@@ -429,6 +436,8 @@ class LoginViewModel @Inject constructor(
                         put("timezone", s.registerTimezone)
                         // §2.7-L329 — shop type (optional)
                         put("shop_type", s.registerShopType)
+                        // §2.7-L330 — invite token (optional; server ignores if absent or unknown)
+                        s.registerSetupToken?.let { put("setup_token", it) }
                     }
                     val requestBody = json.toString().toRequestBody("application/json".toMediaType())
                     val request = Request.Builder()
@@ -800,10 +809,24 @@ fun LoginScreen(
     onForgotPassword: (() -> Unit)? = null,
     // §2.8 L335 — shown on the TWO_FA_VERIFY step; routes to BackupCodeRecoveryScreen.
     onBackupCodeRecovery: (() -> Unit)? = null,
+    // §2.7 L330 — setup invite token delivered from App Link bizarrecrm.com/setup/:token.
+    // When non-null the screen immediately advances to the Register step and stores
+    // the token in the ViewModel so registerShop() includes it in the POST body.
+    setupToken: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // §2.7 L330 — when an invite token arrives via deep link, jump to the
+    // Register step and store the token once. Keyed on setupToken identity so
+    // config changes don't re-fire unless the token itself changes.
+    LaunchedEffect(setupToken) {
+        if (!setupToken.isNullOrBlank()) {
+            viewModel.applySetupToken(setupToken)
+            viewModel.goToRegister()
+        }
+    }
 
     // §2.13-L366 — expiry ticker: runs only while a challenge token is active
     // (challengeTokenExpiresAtMs != null). Ticks every second and fires

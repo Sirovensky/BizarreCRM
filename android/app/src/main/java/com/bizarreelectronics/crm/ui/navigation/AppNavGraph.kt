@@ -60,6 +60,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
+import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
@@ -89,7 +90,13 @@ import java.util.Locale
 import javax.inject.Inject
 
 sealed class Screen(val route: String) {
-    data object Login : Screen("login")
+    data object Login : Screen("login") {
+        // §2.7 L330 — nav route variant carrying an invite token from
+        // bizarrecrm.com/setup/:token. The base route "login" remains the
+        // default start destination; this factory is used only when a deep
+        // link delivers a token.
+        fun withSetupToken(token: String) = "login?setupToken=${android.net.Uri.encode(token)}"
+    }
     data object Dashboard : Screen("dashboard")
     data object Tickets : Screen("tickets")
     data object TicketDetail : Screen("tickets/{id}") {
@@ -240,6 +247,9 @@ sealed class Screen(val route: String) {
     // §2.9 — Change-password screen (authenticated; reachable from Security sub-screen).
     data object ChangePassword : Screen("settings/security/change-password")
 
+    // §2.11 — Active sessions list + revoke (reachable from Security sub-screen).
+    data object ActiveSessions : Screen("settings/active-sessions")
+
     // §2.5 — Switch User (shared device): PIN entry to switch active identity.
     // Entry point: Settings > "Switch user" row (and TODO: long-press avatar in top bar).
     data object SwitchUser : Screen("settings/switch-user")
@@ -280,11 +290,15 @@ data class BottomNavItem(
  * Returns null for routes that don't correspond to a known destination, in
  * which case the caller should leave the user on the start destination.
  */
-private fun mapResolvedRoute(raw: String): String? = when (raw) {
+private fun mapResolvedRoute(raw: String): String? = when {
     // External H1 contract routes → internal nav destinations
-    "ticket/new"   -> Screen.TicketCreate.route
-    "customer/new" -> Screen.CustomerCreate.route
-    "scan"         -> Screen.Scanner.route
+    raw == "ticket/new"   -> Screen.TicketCreate.route
+    raw == "customer/new" -> Screen.CustomerCreate.route
+    raw == "scan"         -> Screen.Scanner.route
+    // §2.7 L330 — setup invite: "login?setupToken=<encoded>" must navigate
+    // to the Login composable before the user is authenticated. Returned
+    // as-is; the auth gate in the collector is bypassed for this prefix.
+    raw.startsWith("login?setupToken=") -> raw
     // FCM H2 routes (tickets/{id}, invoices/{id}, etc.) are already
     // internal — forward them as-is. Static routes like `messages`,
     // `notifications`, `appointments`, `expenses` are also valid internal
@@ -345,13 +359,25 @@ fun AppNavGraph(
     // finishes and the composition re-runs with a logged-in start
     // destination. Unknown routes (mapResolvedRoute returns null) are
     // dropped so a malformed push payload can't crash the navigate call.
+    //
+    // §2.7 L330 — exception: setup-token routes are pre-auth; they navigate
+    // to the Login composable so the invite token is passed in before the
+    // user has a session. We bypass the isLoggedIn gate for this prefix only.
     LaunchedEffect(deepLinkBus, authPreferences?.isLoggedIn) {
         deepLinkBus?.pendingRoute?.collect { raw ->
             if (raw == null) return@collect
-            if (authPreferences?.isLoggedIn != true) return@collect
+            val isSetupToken = raw.startsWith("login?setupToken=")
+            if (!isSetupToken && authPreferences?.isLoggedIn != true) return@collect
             val dest = mapResolvedRoute(raw)
             if (dest != null) {
-                navController.navigate(dest)
+                navController.navigate(dest) {
+                    if (isSetupToken) {
+                        // Replace the current back-stack entry so the user
+                        // doesn't land back on the bare Login after pressing
+                        // back from the Register step.
+                        popUpTo("login?setupToken={setupToken}") { inclusive = true }
+                    }
+                }
             }
             // Always consume — even for unknown routes — so we don't spin
             // on a payload the app can't handle.
@@ -655,16 +681,30 @@ fun AppNavGraph(
                 popEnterTransition = { fadeIn(animationSpec = tween(200)) },
                 popExitTransition = { fadeOut(animationSpec = tween(200)) },
             ) {
-            composable(Screen.Login.route) { entry ->
+            // §2.7 L330 — the Login route accepts an optional `setupToken` query arg
+            // delivered by DeepLinkBus when an invite link is tapped. The arg is
+            // nullable/defaultValue=null so existing callers that navigate to
+            // Screen.Login.route (no query string) continue to work unchanged.
+            composable(
+                route = "login?setupToken={setupToken}",
+                arguments = listOf(
+                    navArgument("setupToken") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
                 // §28.6 — pick up the reason set by the authCleared observer
                 // so the LoginScreen can show "you've been signed out" copy.
                 val sessionRevokedReason by entry.savedStateHandle
                     .getStateFlow<String?>("session_revoked_reason", null)
                     .collectAsState()
+                val setupToken = entry.arguments?.getString("setupToken")
                 LoginScreen(
                     onLoginSuccess = {
                         navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(Screen.Login.route) { inclusive = true }
+                            popUpTo("login?setupToken={setupToken}") { inclusive = true }
                         }
                     },
                     sessionRevokedReason = sessionRevokedReason,
@@ -679,6 +719,8 @@ fun AppNavGraph(
                     onBackupCodeRecovery = {
                         navController.navigate(Screen.BackupCodeRecovery.route)
                     },
+                    // §2.7 L330 — forward invite token from deep link (null on normal start)
+                    setupToken = setupToken,
                 )
             }
             // §2.1 — Setup-status gate: probes the server before rendering login.
@@ -1230,6 +1272,14 @@ fun AppNavGraph(
                     onChangePin = { navController.navigate(Screen.PinSetup.route) },
                     // §2.9: Change-password screen wired (ActionPlan L340).
                     onChangePassword = { navController.navigate(Screen.ChangePassword.route) },
+                    // §2.11: Active sessions screen wired (ActionPlan L350).
+                    onActiveSessions = { navController.navigate(Screen.ActiveSessions.route) },
+                )
+            }
+            // §2.11 — Active sessions list + revoke.
+            composable(Screen.ActiveSessions.route) {
+                ActiveSessionsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             // §2.9 — Change-password screen (authenticated, under Security).

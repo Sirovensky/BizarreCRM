@@ -392,14 +392,15 @@ class MainActivity : FragmentActivity() {
     /**
      * Pulls an internal deep-link path out of either:
      *  - A `bizarrecrm://` URI (launcher shortcut / Assistant)
+     *  - An HTTPS App Link URI (reset-password, setup-token invite)
      *  - The Quick Settings tile action
      * Returns null if the intent doesn't carry a recognised route.
      *
      * SECURITY: the deep-link intent filter is exported (any app on the
      * device can fire `bizarrecrm://...`), so we whitelist allowed routes
      * instead of echoing whatever host/path the caller passes in. A route
-     * that isn't on [ALLOWED_DEEP_LINK_ROUTES] is dropped silently — the
-     * nav graph just lands the user on the dashboard in that case.
+     * that isn't on [com.bizarreelectronics.crm.util.DeepLinkAllowlist] is
+     * dropped silently — the nav graph just lands the user on the dashboard.
      */
     private fun resolveDeepLink(intent: Intent?): String? {
         if (intent == null) return null
@@ -408,11 +409,33 @@ class MainActivity : FragmentActivity() {
             return "ticket/new"
         }
         val data: Uri = intent.data ?: return null
+
+        // §2.7 L330 — HTTPS App Link: https://bizarrecrm.com/setup/<token>
+        //             or              https://app.bizarrecrm.com/setup/<token>
+        // Host is validated against a hard-coded set — we never echo
+        // attacker-supplied hosts. Token is validated via DeepLinkAllowlist.
+        if (data.scheme == "https") {
+            val host = data.host?.lowercase() ?: return null
+            val allowedSetupHosts = setOf("bizarrecrm.com", "app.bizarrecrm.com")
+            if (host in allowedSetupHosts) {
+                val segments = data.pathSegments
+                if (segments.size == 2 && segments[0] == "setup") {
+                    val rawToken = segments[1]
+                    val token = com.bizarreelectronics.crm.util.DeepLinkAllowlist
+                        .validateSetupToken(rawToken) ?: return null
+                    return "login?setupToken=${Uri.encode(token)}"
+                }
+            }
+            return null
+        }
+
         if (data.scheme != "bizarrecrm") return null
 
         // Normalise "bizarrecrm://ticket/new" → "ticket/new". We intentionally
         // do NOT include query parameters: a route is just a static path,
         // and the current whitelist has no route that needs arguments.
+        // Exception: "bizarrecrm://setup/<token>" is handled by DeepLinkAllowlist
+        // which returns a parametrized "login?setupToken=…" route.
         val host = data.host ?: return null
         val path = data.path?.trimStart('/').orEmpty()
         val candidate = if (path.isEmpty()) host else "$host/$path"
