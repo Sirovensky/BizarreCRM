@@ -111,6 +111,42 @@ interface SmsTemplate {
   category: string | null;
 }
 
+// SCAN-1003b: server endpoints return the `{ success: true, data: X }`
+// envelope, which axios wraps again under `response.data`. The UI was
+// reading through `(response.data as any)?.data?.…` chains that lost all
+// type help. Define a minimal envelope shape and a small helper that
+// unwraps axios's outer `.data` so call sites become one-liner reads
+// against the real payload shape.
+interface ApiEnvelope<T> { success?: boolean; data?: T; message?: string }
+type AxiosLike<T> = { data: ApiEnvelope<T> } | undefined | null;
+function unwrap<T>(res: AxiosLike<T>): T | undefined {
+  return res?.data?.data;
+}
+
+interface CommCustomerSummary {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phones?: Array<{ number: string; is_primary?: boolean }>;
+}
+
+interface CallsPayload {
+  calls: CallLog[];
+  pagination?: { page: number; per_page: number; total: number; total_pages: number };
+}
+
+interface ConversationsPayload { conversations: Conversation[] }
+
+interface MessagesPayload {
+  messages: SmsMessage[];
+  customer?: CommCustomerSummary | null;
+  recent_tickets?: Array<{ id: number; order_id: string; status_name?: string; status_color?: string }>;
+}
+
+interface CustomerTicketsPayload {
+  tickets?: Array<{ id: number; order_id: string; status_name?: string; status_color?: string }>;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /** Parse an ISO date string as UTC (SQLite datetime('now') returns UTC without Z suffix) */
@@ -398,8 +434,10 @@ function CallLogPanel() {
     queryFn: () => voiceApi.calls({ page, pagesize: 20 }),
   });
 
-  const calls: CallLog[] = (callsData?.data as any)?.data?.calls ?? [];
-  const pagination = (callsData?.data as any)?.data?.pagination;
+  // SCAN-1003b: typed unwrap of axios→envelope→payload.
+  const callsPayload = unwrap<CallsPayload>(callsData as AxiosLike<CallsPayload>);
+  const calls: CallLog[] = callsPayload?.calls ?? [];
+  const pagination = callsPayload?.pagination;
 
   function formatDuration(secs: number | undefined): string {
     if (!secs) return '--';
@@ -595,7 +633,8 @@ function NewMessageModal({ onClose, onStart }: {
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const customers = (searchResults?.data as any)?.data ?? [];
+  // SCAN-1003b: typed unwrap.
+  const customers = unwrap<CommCustomerSummary[]>(searchResults as AxiosLike<CommCustomerSummary[]>) ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -700,12 +739,14 @@ function LinkCustomerPopover({
     queryFn: () => customerApi.search(searchQuery),
     enabled: searchQuery.length >= 2,
   });
-  const customers = (searchResults?.data as any)?.data ?? [];
+  // SCAN-1003b: typed unwrap.
+  const customers = unwrap<CommCustomerSummary[]>(searchResults as AxiosLike<CommCustomerSummary[]>) ?? [];
 
   const createMut = useMutation({
     mutationFn: () => customerApi.create({ first_name: 'New', last_name: 'Customer', mobile: phone } as any),
     onSuccess: (res) => {
-      const cust = (res.data as any)?.data;
+      // SCAN-1003b: typed unwrap.
+      const cust = unwrap<CommCustomerSummary>(res as AxiosLike<CommCustomerSummary>);
       if (cust) {
         onLinked({ id: cust.id, first_name: cust.first_name, last_name: cust.last_name });
         queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
@@ -981,7 +1022,8 @@ export function CommunicationPage() {
     // reuses cached data instead of firing a redundant network request.
     staleTime: 14_000,
   });
-  const conversations: Conversation[] = (convData?.data as any)?.data?.conversations ?? [];
+  // SCAN-1003b: typed unwrap.
+  const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
 
   // Fetch messages for selected conversation
   const { data: msgData, isLoading: msgLoading } = useQuery({
@@ -1025,17 +1067,27 @@ export function CommunicationPage() {
       markReadRef.current(selectedPhone);
     }
   }, [selectedPhone]);
-  const messages: SmsMessage[] = (msgData?.data as any)?.data?.messages ?? [];
-  const rawThreadCustomer = (msgData?.data as any)?.data?.customer ?? null;
+  // SCAN-1003b: typed unwrap.
+  const msgPayload = unwrap<MessagesPayload>(msgData as AxiosLike<MessagesPayload>);
+  const messages: SmsMessage[] = msgPayload?.messages ?? [];
+  const rawThreadCustomer = msgPayload?.customer ?? null;
   const threadCustomer = (selectedPhone && linkedCustomerOverride[selectedPhone]) || rawThreadCustomer;
 
   // Fetch customer tickets for right panel
   const { data: customerTicketsData, isLoading: customerTicketsLoading } = useQuery({
     queryKey: ['customer-tickets-sms', threadCustomer?.id],
-    queryFn: () => customerApi.getTickets(threadCustomer.id, { page: 1 }),
+    // `enabled` below guards null so the non-null assertion here is safe.
+    queryFn: () => customerApi.getTickets(threadCustomer!.id, { page: 1 }),
     enabled: !!threadCustomer?.id,
   });
-  const customerTickets: any[] = (customerTicketsData?.data as any)?.data?.tickets ?? (customerTicketsData?.data as any)?.data ?? [];
+  // SCAN-1003b: typed unwrap. Server has shipped both payload shapes over
+  // time — `{ tickets: [...] }` and a bare array — keep both fallbacks.
+  const ctRaw = unwrap<CustomerTicketsPayload | CustomerTicketsPayload['tickets']>(customerTicketsData as AxiosLike<CustomerTicketsPayload | CustomerTicketsPayload['tickets']>);
+  const customerTickets = (
+    Array.isArray(ctRaw)
+      ? ctRaw
+      : (ctRaw as CustomerTicketsPayload | undefined)?.tickets
+  ) ?? [];
 
   // Reminder helpers
   const handleSetReminder = useCallback((phone: string, label: string, ms: number) => {
@@ -1597,8 +1649,9 @@ export function CommunicationPage() {
                     </>
                   )}
                   {(() => {
+                    // SCAN-1003b: typed unwrap via `msgPayload` defined above.
                     const tickets: { id: number; order_id: string; status_name: string; status_color: string; device_name?: string; total?: number }[] =
-                      (msgData?.data as any)?.data?.recent_tickets ?? [];
+                      (msgPayload?.recent_tickets as Array<{ id: number; order_id: string; status_name: string; status_color: string; device_name?: string; total?: number }> | undefined) ?? [];
                     if (tickets.length === 0) return null;
                     return (
                       <>

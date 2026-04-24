@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (LARGE drain — CommunicationPage envelope typing)
+
+- [x] SCAN-1003b. **`CommunicationPage.tsx` had 10 `(x.data as any)?.data?.…` chains that lost all type help** across voice calls, SMS conversations, SMS messages + recent tickets, customer-ticket list, customer-search modals, and the in-thread create-customer mutation. Introduced an `ApiEnvelope<T>` / `AxiosLike<T>` pair + a tiny `unwrap<T>(res)` helper so every call site becomes a one-line typed read; added dedicated `CallsPayload`, `ConversationsPayload`, `MessagesPayload`, `CustomerTicketsPayload`, `CommCustomerSummary` interfaces mirroring the documented server responses. The `customerTickets` unwrap preserves both historical payload shapes (`{ tickets: [...] }` and a bare array) via `Array.isArray` + fallback. Also fixed a pre-existing null-narrowing bug surfaced by the typing: `queryFn` for `customer-tickets-sms` now uses `threadCustomer!.id` since the sibling `enabled: !!threadCustomer?.id` already guards null.
+
 ## Closed 2026-04-24 (wave-68 LOW tail — metrics/recurring/notifications/dismissible/audit)
 
 - [x] SCAN-1160. **`metricsCollector` used `setInterval` for 60s samples + hourly rollups** — a slow sample (e.g. during WAL checkpoint) let Node queue overlapping runs that back-to-back spiked CPU when the event loop drained. Swapped to self-rescheduling `setTimeout` chains — the next tick is scheduled AFTER the current run returns. Added a `collectorStopped` flag and updated `stopMetricsCollector` to `clearTimeout` (matching the new handle type). Preserved `unref` behavior for test-harness compatibility.
