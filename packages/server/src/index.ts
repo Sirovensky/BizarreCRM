@@ -66,7 +66,7 @@ import { trackInterval, backgroundIntervals } from './utils/trackInterval.js';
 const log = createLogger('server');
 
 // Routes
-import authRoutes from './routes/auth.routes.js';
+import authRoutes, { startChallengeReaper } from './routes/auth.routes.js';
 import ticketRoutes from './routes/tickets.routes.js';
 import customerRoutes from './routes/customers.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
@@ -1963,6 +1963,9 @@ server.listen(config.port, config.host, async () => {
 
   // SCAN-668: TOTP replay-prevention reaper (extracted from module scope in middleware/stepUpTotp.ts).
   startStepUpTotpReaper();
+
+  // SCAN-881: 2FA challenge Map TTL reaper — purges expired entries every 5 min.
+  startChallengeReaper();
 
   // Start backup scheduler
   // Tier: in single-tenant (self-hosted) mode, run the global per-shop backup cron.

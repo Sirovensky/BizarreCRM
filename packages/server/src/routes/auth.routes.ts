@@ -183,6 +183,19 @@ function validateChallenge(token: string): number | null {
   return entry.userId;
 }
 
+// SCAN-881: TTL reaper — purges expired challenge entries on a 5-min interval
+// so memory is not held indefinitely between cap-based evictions.
+const CHALLENGE_REAPER_INTERVAL_MS = 5 * 60 * 1000;
+
+export function startChallengeReaper(): void {
+  trackInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of challenges) {
+      if (record.expires <= now) challenges.delete(key);
+    }
+  }, CHALLENGE_REAPER_INTERVAL_MS);
+}
+
 function consumeChallenge(token: string): number | null {
   const userId = validateChallenge(token);
   if (userId) challenges.delete(token);
@@ -1629,7 +1642,10 @@ router.post('/forgot-password', asyncHandler(async (req: Request, res: Response)
     tokenHash, expiresAt, user.id
   );
 
-  audit(dbSync, 'password_reset_requested', user.id, ip, { email: email.trim() });
+  // SCAN-883: audit the reset attempt without persisting the raw email (SEC-L43).
+  audit(dbSync, 'password_reset_requested', user.id, ip, {
+    email_hash: crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 16),
+  });
 
   // Build the reset URL.
   // SEC-H7: Use config.baseDomain rather than req.headers.host so an attacker

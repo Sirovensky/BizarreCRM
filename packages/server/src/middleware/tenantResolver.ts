@@ -201,6 +201,14 @@ function endOfDayInTimezone(instant: Date, tz: string): number {
 }
 
 // Plan info cache (60s TTL) — avoids querying master DB on every request
+//
+// SCAN-882: version counter invalidation. When clearPlanCache / clearAllPlanCache
+// is called between a reader's cache-hit check and the subsequent set(), the
+// stale entry is never re-stored because the version won't match. Concurrent
+// readers that already passed the check may serve one stale response — that is
+// acceptable for a 60s TTL cache. The counter approach is lock-free and minimal.
+let planCacheVersion = 0;
+
 interface PlanCacheEntry {
   plan: string;
   max_tickets_month: number | null;
@@ -209,6 +217,7 @@ interface PlanCacheEntry {
   trial_started_at: string | null;
   trial_ends_at: string | null;
   cachedAt: number;
+  version: number;
 }
 const planCache = new Map<number, PlanCacheEntry>();
 const PLAN_CACHE_TTL_MS = 60_000;
@@ -219,6 +228,7 @@ const PLAN_CACHE_TTL_MS = 60_000;
  * cached plan for up to 60 seconds.
  */
 export function clearPlanCache(tenantId: number): void {
+  planCacheVersion++;
   planCache.delete(tenantId);
 }
 
@@ -226,6 +236,7 @@ export function clearPlanCache(tenantId: number): void {
  * Invalidate every cached plan entry. Use sparingly (e.g. bulk admin operations).
  */
 export function clearAllPlanCache(): void {
+  planCacheVersion++;
   planCache.clear();
 }
 
@@ -504,7 +515,10 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   const now = Date.now();
   let planData: { plan: string; max_tickets_month: number | null; max_users: number | null; storage_limit_mb: number | null; trial_started_at: string | null; trial_ends_at: string | null };
 
-  if (cached && (now - cached.cachedAt) < PLAN_CACHE_TTL_MS) {
+  // SCAN-882: also check version so a clearPlanCache() call between our read
+  // and the set() below cannot re-store a stale entry.
+  const capturedVersion = planCacheVersion;
+  if (cached && cached.version === capturedVersion && (now - cached.cachedAt) < PLAN_CACHE_TTL_MS) {
     planData = cached;
   } else {
     planData = {
@@ -515,7 +529,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
       trial_started_at: tenant.trial_started_at,
       trial_ends_at: tenant.trial_ends_at,
     };
-    planCache.set(tenant.id, { ...planData, cachedAt: now });
+    planCache.set(tenant.id, { ...planData, cachedAt: now, version: capturedVersion });
   }
 
   // SEC (TZ4): Trial expiry math must run in the tenant's LOCAL timezone, not

@@ -40,6 +40,9 @@ function validateBaseDomain(req: Request, res: Response): string | null {
 }
 
 // POST /api/v1/billing/checkout — Create Stripe Checkout session
+// SCAN-878: billing POST endpoints authenticate via JWT Authorization
+// header (not cookie), so CSRF form-submit attacks aren't applicable.
+// If cookie-based session auth is ever added, enable requireCsrf here.
 router.post('/checkout', billingRateLimit, async (req: Request, res: Response) => {
   if (!config.multiTenant || !req.tenantId || !req.tenantSlug) {
     res.status(400).json({ success: false, message: 'Billing is only available for hosted tenants' });

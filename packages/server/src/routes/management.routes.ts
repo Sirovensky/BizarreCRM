@@ -55,7 +55,7 @@ import { getMasterDb } from '../db/master-connection.js';
 import { getMetricsHistory } from '../services/metricsCollector.js';
 import { createLogger } from '../utils/logger.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
-import { trackInterval } from '../utils/trackInterval.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 
 const router = Router();
 const logger = createLogger('management');
@@ -129,39 +129,29 @@ router.get('/setup-status', (_req: Request, res: Response) => {
 // ── First-run setup: create super admin account ─────────────────────────
 // Only works when no super admins exist. No auth required (there's nobody to auth as).
 //
-// @audit-fixed: Previously had NO rate limit. Combined with the tight race
-// window between server boot and the legitimate operator finishing first-run
-// setup, an attacker reaching localhost (e.g. via SSRF or container egress)
-// could spam this endpoint and claim the super-admin slot first. We add a
-// per-IP cool-down so a flood is rejected even from 127.0.0.1.
-const setupAttemptsByIp = new Map<string, { count: number; firstAt: number }>();
-const SETUP_MAX_ATTEMPTS = 5;
-const SETUP_WINDOW_MS = 60_000;
-trackInterval(() => {
-  const cutoff = Date.now() - SETUP_WINDOW_MS;
-  for (const [ip, v] of setupAttemptsByIp) {
-    if (v.firstAt < cutoff) setupAttemptsByIp.delete(ip);
-  }
-}, 30_000);
+// @audit-fixed (SCAN-874): Replaced in-memory Map rate limit with DB-backed
+// checkWindowRate/recordWindowAttempt so the limit survives server restarts
+// and cannot be bypassed by triggering a process reboot between the flood and
+// the legitimate operator completing first-run setup.
+const SETUP_RATE_CATEGORY = 'management_setup_attempt';
+const SETUP_RATE_MAX = 5;
+const SETUP_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 min
 
 router.post('/setup', async (req: Request, res: Response) => {
-  const ip = req.socket?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const bucket = setupAttemptsByIp.get(ip);
-  if (bucket && now - bucket.firstAt < SETUP_WINDOW_MS) {
-    if (bucket.count >= SETUP_MAX_ATTEMPTS) {
-      return res.status(429).json({ success: false, message: 'Too many setup attempts. Wait and retry.' });
-    }
-    bucket.count += 1;
-  } else {
-    setupAttemptsByIp.set(ip, { count: 1, firstAt: now });
-  }
+  const ip = req.socket?.remoteAddress ?? 'unknown';
 
   const masterDb = getMasterDb();
   if (!masterDb) {
     res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
     return;
   }
+
+  if (!checkWindowRate(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_MAX, SETUP_RATE_WINDOW_MS)) {
+    logger.warn('setup rate limit exceeded', { ip });
+    res.status(429).json({ success: false, message: 'Too many setup attempts. Wait and retry.' });
+    return;
+  }
+  recordWindowAttempt(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_WINDOW_MS);
 
   // Block if any super admin already exists
   const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();

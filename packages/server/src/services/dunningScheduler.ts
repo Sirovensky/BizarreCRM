@@ -404,11 +404,26 @@ export async function runDunningIfDue(
 // Helpers
 // ---------------------------------------------------------------------------
 
+const MAX_STEPS = 50; // reasonable cap for a dunning sequence
+
 function parseSteps(json: string): DunningStep[] {
+  if (!json) return [];
   try {
     const parsed = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
+    if (!Array.isArray(parsed)) {
+      logger.warn('dunning steps: not an array', { rawLen: json.length });
+      return [];
+    }
+    if (parsed.length > MAX_STEPS) {
+      logger.warn('dunning steps: exceeds cap, truncating', { got: parsed.length, max: MAX_STEPS });
+      return parsed.slice(0, MAX_STEPS) as DunningStep[];
+    }
+    return parsed as DunningStep[];
+  } catch (err) {
+    logger.warn('dunning steps: JSON.parse failed', {
+      err: err instanceof Error ? err.message : String(err),
+      rawLen: json.length,
+    });
     return [];
   }
 }

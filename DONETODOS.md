@@ -2496,6 +2496,14 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-870. **recurringInvoicesCron Infinity overflow** — FIXED wave-36 via MAX_SUBTOTAL_CENTS=$1M cap + Number.isFinite + per-line + cumulative guards.
 - [x] SCAN-735. **estimate_versions snapshot shape** — FIXED wave-36 via non-object reject + subtotal/total typeof number check at estimates.routes.ts.
 - [x] SCAN-736. **leads addMonthsClamped DST** — FIXED wave-36 via JSDoc documenting wall-clock + DST semantics.
+
+## Closed 2026-04-23 (wave-37)
+- [x] SCAN-881. **auth challenges Map no TTL sweep** — FIXED wave-37 via startChallengeReaper() trackInterval 5-min sweep + index.ts wiring.
+- [x] SCAN-883. **forgot-password no audit** — FIXED wave-37 via audit() with email_hash (SEC-L43 pattern).
+- [x] SCAN-874. **management setup rate-limit in-memory** — FIXED wave-37 via DB-backed checkWindowRate + recordWindowAttempt; removed Map.
+- [x] SCAN-878. **billing CSRF** — COMMENT wave-37; billing uses JWT bearer auth not cookie sessions, CSRF not applicable; comment added for future cookie migration.
+- [x] SCAN-882. **tenantResolver plan cache race** — FIXED wave-37 via version counter; stale entries miss on next read.
+- [x] SCAN-875. **dunning parseSteps silent + bounds** — FIXED wave-37 via MAX_STEPS=50 cap + logger.warn on parse fail / truncate.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.
