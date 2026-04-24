@@ -727,8 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-64 scan-loop findings (2026-04-24) — team-chat + automations + roles + web components
-- [ ] SCAN-1119. **[LOW] `bookingPublic /availability` minNotice uses UTC hours vs local open/close — wrong boundary per tz.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/bookingPublic.routes.ts:351-357; fix=use-tenant-store_timezone-Intl.DateTimeFormat -->
 
 ### Wave-63 scan-loop findings (2026-04-24) — routes + services + authStore
 

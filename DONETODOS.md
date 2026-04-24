@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-64 bookingPublic tz)
+
+- [x] SCAN-1119. **`bookingPublic /availability` computed `nowMinutes` from UTC but compared against shop-local slot times** — on a shop in America/Denver the "is today" check + min-notice comparison crossed the UTC midnight boundary incorrectly: either same-day slots got through that violated notice, or the next day's early slots got blocked. Pull `store_timezone` from `store_config` (fallback `America/Denver`) and compute both `nowMinutes` and `isToday` via `Intl.DateTimeFormat('en-CA', { timeZone, hour:'2-digit', minute:'2-digit', hour12:false })`. No new dependency — `Intl` is standard.
+
 ## Closed 2026-04-24 (wave-64 recurring-invoice month clamp + web component polish)
 
 - [x] SCAN-1114. **`advanceNextRunAt` (both `services/recurringInvoicesCron.ts` and `routes/recurringInvoices.routes.ts`) rolled Jan-31 → Mar-03 on monthly advance** — `d.setUTCMonth(m + count)` overflows the day into the following month when the target month has fewer days. Same issue for yearly advances across Feb-29 in non-leap years. Captured the original day before the mutation; if the resulting `getUTCDate()` doesn't match, `setUTCDate(0)` clamps back to the last day of the intended target month. Applied to both copies so cron + route write path stay in sync.

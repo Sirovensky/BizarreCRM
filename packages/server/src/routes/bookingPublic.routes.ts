@@ -349,11 +349,36 @@ router.get('/availability', asyncHandler(async (req, res) => {
   });
 
   // --- min_notice_hours: also filter out today's slots that are too soon ---
-  const nowMinutes = (() => {
-    const now = new Date();
-    return now.getUTCHours() * 60 + now.getUTCMinutes();
+  // SCAN-1119: previously compared slot open/close hours (which are LOCAL
+  // to the tenant) against `new Date().getUTCHours()*60` (UTC minutes). On
+  // a shop in America/Denver the "is today" check + min-notice comparison
+  // crossed the midnight boundary incorrectly and either let same-day
+  // slots through that violated notice, or blocked the next day's early
+  // slots. Pull the tenant's `store_timezone` and compute both `nowMinutes`
+  // and `isToday` in that zone using Intl.DateTimeFormat.
+  const tzRow = (() => {
+    try {
+      return req.db
+        .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
+        .get() as { value?: string } | undefined;
+    } catch {
+      return undefined;
+    }
   })();
-  const isToday = (dateStr === new Date().toISOString().slice(0, 10));
+  const tenantTimeZone = (tzRow?.value && typeof tzRow.value === 'string' && tzRow.value.trim())
+    || 'America/Denver';
+  const localParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tenantTimeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const partMap = Object.fromEntries(localParts.map((p) => [p.type, p.value]));
+  const localDateStr = `${partMap.year}-${partMap.month}-${partMap.day}`;
+  // Intl hour='2-digit' hour12=false returns '00'..'24'; clamp 24 → 0.
+  const localHours = Number(partMap.hour) === 24 ? 0 : Number(partMap.hour);
+  const localMinutes = Number(partMap.minute);
+  const nowMinutes = localHours * 60 + localMinutes;
+  const isToday = dateStr === localDateStr;
   const minBookableMinutes = isToday ? nowMinutes + minNoticeHours * 60 : -1;
 
   // --- Filter slots ---
