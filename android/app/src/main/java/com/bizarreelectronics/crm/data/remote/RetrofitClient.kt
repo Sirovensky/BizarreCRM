@@ -646,4 +646,6 @@ object RetrofitClient {
     @Provides @Singleton fun provideTenantsApi(retrofit: Retrofit): TenantsApi = retrofit.create(TenantsApi::class.java)
     // §3.3 L513 — dashboard attention dismiss endpoint (404-tolerant; client falls back to local prefs)
     @Provides @Singleton fun provideDashboardApi(retrofit: Retrofit): DashboardApi = retrofit.create(DashboardApi::class.java)
+    // §14.3 L1626-L1631 — break/timesheet/admin-action endpoints (404-tolerant)
+    @Provides @Singleton fun provideEmployeeApi(retrofit: Retrofit): EmployeeApi = retrofit.create(EmployeeApi::class.java)
 }

@@ -5,6 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,18 +24,26 @@ import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
+import com.bizarreelectronics.crm.service.WebSocketService
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.employees.components.EmployeeFilter
+import com.bizarreelectronics.crm.ui.screens.employees.components.EmployeeFilterChips
+import com.bizarreelectronics.crm.ui.screens.employees.components.PresenceBadge
+import com.bizarreelectronics.crm.ui.screens.employees.components.PresenceStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+// region — ViewModel
 
 data class EmployeeListUiState(
     val employees: List<EmployeeListItem> = emptyList(),
@@ -41,21 +52,34 @@ data class EmployeeListUiState(
     val error: String? = null,
     val isOffline: Boolean = false,
     // Whether the signed-in user may invoke admin-only flows such as the
-    // create-employee FAB. Derived once at VM construction from AuthPreferences
-    // — refreshing role on login is handled by AuthPreferences.clear() firing
-    // authCleared which forces a restart of this screen.
+    // create-employee FAB. Derived once at VM construction from AuthPreferences.
     val isAdmin: Boolean = false,
-)
+    // §14.1 L1610 — active filter chip
+    val activeFilter: EmployeeFilter = EmployeeFilter.All,
+    // §14.1 L1611 — real-time presence map: employeeId → PresenceStatus.
+    // Populated from WebSocket "presence" events; absent = Off (stub gray).
+    val presenceMap: Map<Long, PresenceStatus> = emptyMap(),
+) {
+    /** Derived filtered list applied in UI without extra API calls. */
+    val filtered: List<EmployeeListItem>
+        get() = when (activeFilter) {
+            EmployeeFilter.All -> employees
+            EmployeeFilter.Admin -> employees.filter { it.role == "admin" }
+            EmployeeFilter.Technician -> employees.filter { it.role == "technician" }
+            EmployeeFilter.Active -> employees.filter { it.isActive == 1 }
+            EmployeeFilter.Inactive -> employees.filter { it.isActive != 1 }
+            EmployeeFilter.ClockedIn -> employees.filter { it.isClockedIn == true }
+        }
+}
 
 @HiltViewModel
 class EmployeeListViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val serverMonitor: ServerReachabilityMonitor,
+    private val webSocketService: WebSocketService,
     authPreferences: AuthPreferences,
 ) : ViewModel() {
 
-    // Seed the initial state with the admin flag so the UI can decide whether
-    // to render the create-employee FAB without flicker on first composition.
     private val _state = MutableStateFlow(
         EmployeeListUiState(isAdmin = authPreferences.userRole == "admin"),
     )
@@ -63,6 +87,7 @@ class EmployeeListViewModel @Inject constructor(
 
     init {
         loadEmployees()
+        observePresence()
     }
 
     fun loadEmployees() {
@@ -103,39 +128,64 @@ class EmployeeListViewModel @Inject constructor(
         }
     }
 
-    // D5-7: force-refresh hook for PullToRefreshBox. Sets isRefreshing so the
-    // spinner renders, then loadEmployees() clears the flag when the API
-    // call resolves (success OR failure). Non-breaking — existing callers of
-    // loadEmployees() still work; this just adds an explicit pull-to-refresh
-    // entry point for when Room/Web sync has drifted and the technician needs
-    // a manual re-fetch bypass.
     fun refresh() {
         _state.value = _state.value.copy(isRefreshing = true)
         loadEmployees()
     }
 
+    fun setFilter(filter: EmployeeFilter) {
+        _state.value = _state.value.copy(activeFilter = filter)
+    }
+
+    /**
+     * §14.1 L1611 — Subscribe to WebSocket "presence" events.
+     * Event shape expected: { type: "presence", employeeId: 42, status: "clocked_in"|"on_break"|"off" }
+     * Falls back gracefully if the field is absent or null.
+     */
+    private fun observePresence() {
+        viewModelScope.launch {
+            webSocketService.events.collect { event ->
+                if (event.type != "presence") return@collect
+                try {
+                    val json = com.google.gson.Gson().fromJson(event.data, Map::class.java)
+                    val idRaw = json["employeeId"] ?: return@collect
+                    val statusRaw = json["status"]?.toString() ?: return@collect
+                    val employeeId = (idRaw as? Number)?.toLong() ?: return@collect
+                    val presence = when (statusRaw) {
+                        "clocked_in" -> PresenceStatus.ClockedIn
+                        "on_break" -> PresenceStatus.OnBreak
+                        else -> PresenceStatus.Off
+                    }
+                    val updated = _state.value.presenceMap + (employeeId to presence)
+                    _state.value = _state.value.copy(presenceMap = updated)
+                } catch (_: Exception) {
+                    // Malformed WS payload — ignore silently
+                }
+            }
+        }
+    }
+
     companion object {
-        /** In-memory cache shared across ViewModel instances for offline fallback. */
         private var cachedEmployees: List<EmployeeListItem>? = null
     }
 }
+
+// endregion
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeListScreen(
     onClockInOutClick: () -> Unit = {},
     onCreateClick: () -> Unit = {},
-    // §14.2 row tap → detail. Default no-op so previews + non-nav callers
-    // don't have to wire it.
     onEmployeeClick: (Long) -> Unit = {},
-    // When flipped from false to true by the nav layer (after a successful
-    // create), the list reloads and then acknowledges via [onRefreshConsumed].
-    // Non-nav callers can ignore both params.
     refreshTrigger: Boolean = false,
     onRefreshConsumed: () -> Unit = {},
     viewModel: EmployeeListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+
+    // §14.1 L1612 — tablet layout detection (uses project's rememberWindowMode helper)
+    val isTablet = isMediumOrExpandedWidth()
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger) {
@@ -150,10 +200,7 @@ fun EmployeeListScreen(
                 title = "Employees",
                 actions = {
                     IconButton(onClick = onClockInOutClick) {
-                        Icon(
-                            Icons.Default.AccessTime,
-                            contentDescription = "Clock In/Out",
-                        )
+                        Icon(Icons.Default.AccessTime, contentDescription = "Clock In/Out")
                     }
                     IconButton(onClick = { viewModel.loadEmployees() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -161,9 +208,6 @@ fun EmployeeListScreen(
                 },
             )
         },
-        // Admin-only FAB. We hide it for non-admin users because the backend
-        // route (POST /settings/users) enforces the same gate with
-        // adminOnly — this is a UX signal, not a security boundary.
         floatingActionButton = {
             if (state.isAdmin) {
                 FloatingActionButton(
@@ -179,16 +223,12 @@ fun EmployeeListScreen(
             state.isLoading -> {
                 BrandSkeleton(
                     rows = 6,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                    modifier = Modifier.fillMaxSize().padding(padding),
                 )
             }
             state.error != null && state.employees.isEmpty() -> {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                    modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
                     ErrorState(
@@ -197,56 +237,71 @@ fun EmployeeListScreen(
                     )
                 }
             }
-            state.employees.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EmptyState(
-                        icon = Icons.Default.Group,
-                        title = "No employees",
-                        subtitle = "No employee accounts found.",
-                    )
-                }
-            }
             else -> {
-                // D5-7: wrap employee list in PullToRefreshBox so a technician
-                // can force a server re-fetch when the cached list is stale,
-                // without restarting the app.
-                PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        // CROSS16-ext: bottom inset so the last row can scroll
-                        // above the bottom-nav / gesture area.
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
-                    ) {
-                        // Offline banner when showing cached data
-                        if (state.isOffline && state.error != null) {
-                            item {
-                                Text(
-                                    text = state.error ?: "",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        items(state.employees, key = { it.id }) { employee ->
-                            EmployeeRow(
-                                employee = employee,
-                                onClick = { onEmployeeClick(employee.id) },
+                Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    // §14.1 L1610 — filter chip row
+                    EmployeeFilterChips(
+                        selected = state.activeFilter,
+                        onSelect = { viewModel.setFilter(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    if (state.employees.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            EmptyState(
+                                icon = Icons.Default.Group,
+                                title = "No employees",
+                                subtitle = "No employee accounts found.",
                             )
-                            BrandListItemDivider()
+                        }
+                    } else {
+                        PullToRefreshBox(
+                            isRefreshing = state.isRefreshing,
+                            onRefresh = { viewModel.refresh() },
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            if (isTablet) {
+                                // §14.1 L1612 — tablet: multi-column grid with header row
+                                EmployeeTabletGrid(
+                                    employees = state.filtered,
+                                    presenceMap = state.presenceMap,
+                                    isOffline = state.isOffline,
+                                    offlineBanner = state.error,
+                                    onEmployeeClick = onEmployeeClick,
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp),
+                                ) {
+                                    if (state.isOffline && state.error != null) {
+                                        item {
+                                            Text(
+                                                text = state.error ?: "",
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    items(state.filtered, key = { it.id }) { employee ->
+                                        val presence = state.presenceMap[employee.id]
+                                            ?: if (employee.isClockedIn == true) PresenceStatus.ClockedIn
+                                            else PresenceStatus.Off
+                                        EmployeeRow(
+                                            employee = employee,
+                                            presence = presence,
+                                            onClick = { onEmployeeClick(employee.id) },
+                                        )
+                                        BrandListItemDivider()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -255,21 +310,151 @@ fun EmployeeListScreen(
     }
 }
 
+// region — Tablet grid layout
+
 @Composable
-private fun EmployeeRow(
+private fun EmployeeTabletGrid(
+    employees: List<EmployeeListItem>,
+    presenceMap: Map<Long, PresenceStatus>,
+    isOffline: Boolean,
+    offlineBanner: String?,
+    onEmployeeClick: (Long) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(1),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 80.dp),
+    ) {
+        // Header row
+        item {
+            if (isOffline && offlineBanner != null) {
+                Text(
+                    text = offlineBanner,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            EmployeeTableHeader()
+        }
+        items(employees, key = { it.id }) { employee ->
+            val presence = presenceMap[employee.id]
+                ?: if (employee.isClockedIn == true) PresenceStatus.ClockedIn
+                else PresenceStatus.Off
+            EmployeeTableRow(
+                employee = employee,
+                presence = presence,
+                onClick = { onEmployeeClick(employee.id) },
+            )
+            BrandListItemDivider()
+        }
+    }
+}
+
+@Composable
+private fun EmployeeTableHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Name", Modifier.weight(2f), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Email", Modifier.weight(2f), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Role", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Status", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Hours", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun EmployeeTableRow(
     employee: EmployeeListItem,
+    presence: PresenceStatus,
     onClick: () -> Unit,
 ) {
     val isActive = employee.isActive == 1
-    val isClockedIn = employee.isClockedIn == true
+    val displayName = listOfNotNull(employee.firstName, employee.lastName)
+        .joinToString(" ").ifBlank { employee.username ?: "Unknown" }
+
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Name + presence dot
+            Row(
+                modifier = Modifier.weight(2f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PresenceBadge(status = presence, size = 8.dp, borderWidth = 1.dp)
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = employee.email ?: "—",
+                modifier = Modifier.weight(2f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                text = (employee.role ?: "—").replaceFirstChar { it.uppercase() },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Text(
+                text = if (isActive) "Active" else "Inactive",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isActive) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // Hours: stub "—" until weekly endpoint lands
+            Text(
+                text = "—",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// endregion
+
+// region — Phone list row
+
+@Composable
+private fun EmployeeRow(
+    employee: EmployeeListItem,
+    presence: PresenceStatus,
+    onClick: () -> Unit,
+) {
+    val isActive = employee.isActive == 1
 
     BrandListItem(
         onClick = onClick,
         leading = {
-            // CROSS44: employee avatar now uses an initial-circle (first-name
-            // first-letter) to match the Customer list row pattern and make
-            // each row visually scannable instead of a sea of identical Person
-            // icons. Falls back to person-glyph when no name data is present.
             val initial = (employee.firstName?.firstOrNull()
                 ?: employee.username?.firstOrNull())
                 ?.uppercase() ?: ""
@@ -291,27 +476,17 @@ private fun EmployeeRow(
                 } else {
                     Icon(
                         Icons.Default.Person,
-                        // decorative — fallback avatar glyph inside an avatar Box; sibling name Text in the parent Row carries the announcement
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
-                // Clock-in status dot
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .align(Alignment.BottomEnd)
-                        .background(
-                            color = if (isClockedIn) SuccessGreen
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            shape = CircleShape,
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = CircleShape,
-                        ),
+                // §14.1 L1611 — presence dot (replaces old isClockedIn dot)
+                PresenceBadge(
+                    status = presence,
+                    size = 10.dp,
+                    borderWidth = 1.5.dp,
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
         },
@@ -327,12 +502,16 @@ private fun EmployeeRow(
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                if (isClockedIn) {
-                    Text(
-                        "Clocked in",
-                        style = MaterialTheme.typography.labelSmall,
+                when (presence) {
+                    PresenceStatus.ClockedIn -> Text(
+                        "Clocked in", style = MaterialTheme.typography.labelSmall,
                         color = SuccessGreen,
                     )
+                    PresenceStatus.OnBreak -> Text(
+                        "On break", style = MaterialTheme.typography.labelSmall,
+                        color = WarningAmber,
+                    )
+                    PresenceStatus.Off -> Unit
                 }
             }
         },
@@ -341,20 +520,15 @@ private fun EmployeeRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Role chip: teal text on surface2 (surfaceVariant) bg
                 Surface(
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    // CROSS40: use `uppercase()` (String) to match every other role
-                    // display site (SettingsScreen, ProfileScreen, EmployeeCreateScreen)
-                    // so locales where `uppercaseChar()` diverges (e.g. Turkish i/İ)
-                    // can't drift between screens.
                     Text(
                         text = (employee.role ?: "user").replaceFirstChar { it.uppercase() },
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary, // teal
+                        color = MaterialTheme.colorScheme.secondary,
                     )
                 }
                 if (!employee.email.isNullOrBlank()) {
@@ -367,7 +541,6 @@ private fun EmployeeRow(
             }
         },
         trailing = {
-            // Active / inactive status badge
             Surface(
                 shape = MaterialTheme.shapes.small,
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -383,3 +556,5 @@ private fun EmployeeRow(
         },
     )
 }
+
+// endregion
