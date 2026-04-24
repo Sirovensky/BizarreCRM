@@ -384,6 +384,10 @@ fun SecurityScreen(
     // roles pass null (row renders disabled). If role check is not wired at the
     // call site, pass a non-null lambda to show for all authenticated users.
     onManageTwoFactorFactors: (() -> Unit)? = null,
+    // §2.22 L463 — "Passkeys" row callback. Navigates to PasskeyScreen.
+    // Pass null to hide the row (e.g. on pre-API-28 devices detected at the call site,
+    // though PasskeyScreen also guards this internally for defence-in-depth).
+    onPasskeys: (() -> Unit)? = null,
     viewModel: SecurityViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -594,6 +598,20 @@ fun SecurityScreen(
                         subtitle = "Generate one-time codes for 2FA recovery",
                         onClick = { onRecoveryCodes?.invoke() },
                         enabled = onRecoveryCodes != null,
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
+
+                    // §2.22 L463: Passkeys screen — enroll, list, remove passkeys + hardware keys.
+                    SecurityNavRow(
+                        icon = Icons.Default.Key,
+                        title = "Passkeys",
+                        subtitle = "Sign in with biometrics or a hardware security key",
+                        onClick = { onPasskeys?.invoke() },
+                        enabled = onPasskeys != null,
                     )
                 }
             }

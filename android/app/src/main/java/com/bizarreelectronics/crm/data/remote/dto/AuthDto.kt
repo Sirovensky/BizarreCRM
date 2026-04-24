@@ -309,6 +309,44 @@ data class MagicLinkExchangeResponse(
     @SerializedName("tenantName")    val tenantName: String? = null,
 )
 
+// ── §2.15 L387-L388 — Forgot-PIN email reset DTOs ──────────────────────────
+
+/**
+ * Body for POST /auth/forgot-pin/request.
+ *
+ * The server dispatches a PIN-reset link to [email]. 404 → feature disabled
+ * on this self-hosted tenant (email server may be absent); callers surface the
+ * admin-fallback message rather than an error.
+ *
+ * KDoc: email server may be absent on self-hosted tenants — tolerate 404 gracefully.
+ */
+data class ForgotPinRequest(
+    @SerializedName("email") val email: String,
+)
+
+/**
+ * Body for POST /auth/forgot-pin/confirm.
+ *
+ * [token] — opaque reset token from the link delivered to the user's inbox.
+ * [newPin] — the replacement PIN chosen by the user (4-6 digits, validated
+ *            client-side against PinBlocklist before this call is made).
+ *
+ * SECURITY: [newPin] is NEVER logged.
+ */
+data class ForgotPinConfirm(
+    @SerializedName("token") val token: String,
+    @SerializedName("newPin") val newPin: String,
+)
+
+/**
+ * §2.15 L388 — manager-triggered reset-link dispatch.
+ *
+ * Body for POST /employees/:id/forgot-pin/trigger.
+ * No fields required — the server reads the employee ID from the path and
+ * uses the employee's stored email. Empty body keeps Retrofit happy.
+ */
+class ForgotPinTriggerRequest
+
 /**
  * §2.21 L454 — Stub field added to the tenant-info response.
  *
@@ -316,11 +354,87 @@ data class MagicLinkExchangeResponse(
  * button is hidden on the credentials step. The field defaults to true so that
  * self-hosted servers that predate this field still show the button (opt-out model).
  *
+ * §2.22 — [passkeyEnabled] = true when the tenant has passkeys enabled on the server.
+ * The "Use passkey" button on the credentials step is shown only when this is true.
+ * Defaults to false (opt-in model) so servers that predate this field hide the button.
+ *
  * Reuses the existing [TenantsApi] / [TenantSupportDto] path; this is a separate
  * DTO fetched from GET /tenants/me (not /tenants/me/support-contact).
  */
 data class TenantMeResponse(
     @SerializedName("magic_links_enabled") val magicLinksEnabled: Boolean = true,
+    @SerializedName("passkey_enabled") val passkeyEnabled: Boolean = false,
+)
+
+// ── §2.22 FIDO2 / WebAuthn DTOs ────────────────────────────────────────────
+
+/**
+ * WebAuthn L2 — PublicKeyCredentialCreationOptions.
+ *
+ * Shape matches the JSON produced by most WebAuthn server libraries (simplewebauthn,
+ * fido2-lib, etc.) and is passed directly as the `requestJson` argument to
+ * CreatePublicKeyCredentialRequest.
+ *
+ * [challengeJson] is the raw JSON string from POST /auth/passkey/register/begin;
+ * PasskeyManager passes it as-is to CredentialManager — no manual parsing needed.
+ */
+data class PasskeyRegisterBeginResponse(
+    /**
+     * Raw WebAuthn PublicKeyCredentialCreationOptions JSON.
+     * Contains `challenge`, `rp`, `user`, `pubKeyCredParams`, `timeout`,
+     * `attestation`, and `excludeCredentials` per the WebAuthn L2 spec.
+     */
+    @SerializedName("challengeJson") val challengeJson: String,
+)
+
+/**
+ * WebAuthn L2 — AuthenticatorAttestationResponse.
+ *
+ * Sent to POST /auth/passkey/register/finish after the system credential sheet
+ * resolves. The [responseJson] is the raw JSON from
+ * CreatePublicKeyCredentialResponse.registrationResponseJson or
+ * PublicKeyCredential.authenticationResponseJson depending on the credential type.
+ */
+data class PasskeyRegisterFinishRequest(
+    @SerializedName("responseJson") val responseJson: String,
+)
+
+/**
+ * WebAuthn L2 — PublicKeyCredentialRequestOptions.
+ *
+ * Shape matches the JSON from POST /auth/passkey/login/begin.
+ * Passed as the `requestJson` argument to GetPublicKeyCredentialOption.
+ */
+data class PasskeyLoginBeginResponse(
+    /**
+     * Raw WebAuthn PublicKeyCredentialRequestOptions JSON.
+     * Contains `challenge`, `timeout`, `rpId`, `allowCredentials`, and
+     * `userVerification` per the WebAuthn L2 spec.
+     */
+    @SerializedName("challengeJson") val challengeJson: String,
+)
+
+/**
+ * Sent to POST /auth/passkey/login/finish after PasskeyManager.signInWithPasskey resolves.
+ *
+ * [responseJson] is the raw JSON from GetCredentialResponse (the assertion response).
+ * The server validates the signature and issues { accessToken, refreshToken, user }.
+ */
+data class PasskeyLoginFinishRequest(
+    @SerializedName("responseJson") val responseJson: String,
+)
+
+/**
+ * A single enrolled passkey as returned by GET /auth/passkey/list.
+ *
+ * [id]         — opaque credential ID; used by DELETE /auth/passkey/{id}.
+ * [deviceName] — human-readable label set at enrollment (e.g. "Pixel 8 Pro").
+ * [createdAt]  — ISO-8601 creation timestamp (may be null for older records).
+ */
+data class PasskeyCredentialInfo(
+    @SerializedName("id") val id: String,
+    @SerializedName("deviceName") val deviceName: String = "",
+    @SerializedName("createdAt") val createdAt: String? = null,
 )
 
 /**

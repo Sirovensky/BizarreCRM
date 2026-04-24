@@ -258,6 +258,15 @@ dependencies {
     // androidx.browser 1.8.0 ships CustomTabsIntent + CustomTabColorSchemeParams.
     implementation(libs.androidx.browser)
 
+    // §2.22 / §2.23 L463-L481 — Credential Manager: passkeys + hardware-key (FIDO2).
+    // Requires minSdk 26 (already set); CredentialManager APIs are API-28-gated in code.
+    // credentials-play-services-auth bridges to Google Play Services FIDO on devices
+    // that use the Play Services FIDO2 stack (API 28–33 on some OEMs).
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    // Note: the catalog alias `androidx-credentials-play-services-auth` maps to
+    // libs.androidx.credentials.play.services.auth in the Kotlin DSL accessor.
+
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 

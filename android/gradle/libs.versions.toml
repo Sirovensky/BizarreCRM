@@ -39,6 +39,10 @@ zxing-core = "3.5.3"
 play-services-auth-api-phone = "18.0.2"
 glance = "1.1.1"
 androidx-browser = "1.8.0"
+# §2.22 — Credential Manager (passkeys / FIDO2). 1.2.2 is the stable release that
+# includes PublicKeyCredential and GetPublicKeyCredentialOption used by PasskeyManager.
+# credentials-play-services-auth bridges to Google Play Services FIDO on API 28+.
+androidx-credentials = "1.2.2"
 
 [libraries]
 # Core Android
@@ -140,6 +144,14 @@ androidx-glance-material3 = { group = "androidx.glance", name = "glance-material
 
 # Chrome Custom Tabs — SSO / SAML / OIDC browser-based auth flow (§2.20 L441)
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidx-browser" }
+
+# §2.22 — Credential Manager: passkeys / FIDO2 / hardware-key (plan:L463-L481).
+# credentials         : core CredentialManager API (create + get flows).
+# credentials-play-services-auth: bridges to Google Play Services FIDO on API 28+ devices
+#                       that use the Play Services FIDO2 implementation rather than
+#                       the Android platform authenticator (Android 9–13 on some OEMs).
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "androidx-credentials" }
+androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "androidx-credentials" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

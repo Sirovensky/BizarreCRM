@@ -3,6 +3,13 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorFactorDto
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.ForgotPinConfirm
+import com.bizarreelectronics.crm.data.remote.dto.ForgotPinRequest
+import com.bizarreelectronics.crm.data.remote.dto.PasskeyCredentialInfo
+import com.bizarreelectronics.crm.data.remote.dto.PasskeyLoginBeginResponse
+import com.bizarreelectronics.crm.data.remote.dto.PasskeyLoginFinishRequest
+import com.bizarreelectronics.crm.data.remote.dto.PasskeyRegisterBeginResponse
+import com.bizarreelectronics.crm.data.remote.dto.PasskeyRegisterFinishRequest
 import com.bizarreelectronics.crm.data.remote.dto.MagicLinkRequest
 import com.bizarreelectronics.crm.data.remote.dto.MagicLinkTokenExchange
 import com.bizarreelectronics.crm.data.remote.dto.MagicLinkExchangeResponse
@@ -174,4 +181,73 @@ interface AuthApi {
 
     @GET("tenants/me")
     suspend fun getTenantMe(): ApiResponse<TenantMeResponse>
+
+    // §2.22 L463 — Passkey (WebAuthn) registration + login + list + delete.
+    //
+    // Registration flow (two-step challenge/response):
+    //   POST /auth/passkey/register/begin  → PasskeyRegisterBeginResponse { challengeJson }
+    //     Android passes challengeJson to CredentialManager.create() via PasskeyManager.
+    //   POST /auth/passkey/register/finish → Unit (server stores the new credential).
+    //     Body: { responseJson: <attestation JSON from CredentialManager> }
+    //   404 on either endpoint → passkeys are disabled for this tenant.
+    //
+    // Login flow (two-step challenge/response):
+    //   POST /auth/passkey/login/begin   → PasskeyLoginBeginResponse { challengeJson }
+    //     Android passes challengeJson to CredentialManager.getCredential() via PasskeyManager.
+    //   POST /auth/passkey/login/finish  → TwoFactorResponse (same token shape as password login).
+    //     Body: { responseJson: <assertion JSON from CredentialManager> }
+    //   404 on either endpoint → passkeys are disabled for this tenant.
+    //
+    // Management:
+    //   GET  /auth/passkey/list     → list of PasskeyCredentialInfo (empty if none enrolled).
+    //   DELETE /auth/passkey/{id}   → removes a single credential.
+    //   404 on list → server predates passkey support; ViewModel treats as empty list.
+    //   404 on delete → credential already removed (idempotent; surface user-friendly message).
+    //
+    // Hardware key (§2.23): CredentialManager's FIDO2 stack transparently includes
+    // USB-C / NFC security keys. No separate endpoint is required — the same begin/finish
+    // handshake works for both platform authenticators and roaming (hardware key) authenticators.
+    @POST("auth/passkey/register/begin")
+    suspend fun beginPasskeyRegistration(): ApiResponse<PasskeyRegisterBeginResponse>
+
+    @POST("auth/passkey/register/finish")
+    suspend fun finishPasskeyRegistration(
+        @Body request: PasskeyRegisterFinishRequest,
+    ): ApiResponse<Unit>
+
+    @POST("auth/passkey/login/begin")
+    suspend fun beginPasskeyLogin(): ApiResponse<PasskeyLoginBeginResponse>
+
+    @POST("auth/passkey/login/finish")
+    suspend fun finishPasskeyLogin(
+        @Body request: PasskeyLoginFinishRequest,
+    ): ApiResponse<TwoFactorResponse>
+
+    @GET("auth/passkey/list")
+    suspend fun listPasskeys(): ApiResponse<List<PasskeyCredentialInfo>>
+
+    @DELETE("auth/passkey/{id}")
+    suspend fun deletePasskey(@Path("id") id: String): ApiResponse<Unit>
+
+    // §2.15 L387-L388 — Forgot-PIN email reset.
+    //
+    // POST /auth/forgot-pin/request — dispatches a reset link to [email].
+    //   Response: MessageResponse { message }
+    //   404 → feature disabled (email server absent on self-hosted tenant).
+    //         Callers surface "Ask admin to reset from Employees" fallback.
+    //
+    // POST /auth/forgot-pin/confirm — redeems the token from the deep link
+    //   and sets [newPin] as the new PIN on the server.
+    //   Response: MessageResponse { message }
+    //   404 → feature disabled; same fallback as above.
+    //   SECURITY: [ForgotPinConfirm.newPin] is NEVER logged.
+    @POST("auth/forgot-pin/request")
+    suspend fun requestForgotPin(
+        @Body request: ForgotPinRequest,
+    ): ApiResponse<MessageResponse>
+
+    @POST("auth/forgot-pin/confirm")
+    suspend fun confirmForgotPin(
+        @Body request: ForgotPinConfirm,
+    ): ApiResponse<MessageResponse>
 }

@@ -238,6 +238,18 @@ data class LoginUiState(
     val magicLinkExchangeError: String? = null,
     // magicLinkLoginSuccess: set to true after a successful same-device exchange.
     val magicLinkLoginSuccess: Boolean = false,
+
+    // §2.22 L463 — Passkey sign-in state.
+    // passkeyEnabled: loaded from GET /tenants/me. Null = not yet probed (hide button
+    // optimistically — opt-in model; servers that predate this field return false default).
+    // False = tenant disabled; hide button. True = show "Use passkey" button.
+    val passkeyEnabled: Boolean? = null,
+    // passkeyLoading: true while the begin → CredentialManager → finish handshake is in flight.
+    val passkeyLoading: Boolean = false,
+    // passkeyError: transient error shown below the passkey button.
+    val passkeyError: String? = null,
+    // passkeyLoginSuccess: set after a successful login/finish; LoginScreen navigates to dashboard.
+    val passkeyLoginSuccess: Boolean = false,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -366,6 +378,10 @@ class LoginViewModel @Inject constructor(
         // §2.21 L454 — probe magic-link feature flag from GET /tenants/me.
         // 404 or any network failure defaults to enabled (opt-out model).
         viewModelScope.launch { probemagicLinksEnabled() }
+
+        // §2.22 L463 — probe passkey feature flag from GET /tenants/me.
+        // 404 or any network failure defaults to disabled (opt-in model; hide button).
+        viewModelScope.launch { probePasskeyEnabled() }
 
         // §2.21 L454 — collect magic-link tokens published by MainActivity.
         // DeepLinkBus.publishMagicLinkToken is called when a magic-link URI arrives.
@@ -1313,6 +1329,130 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    // endregion
+
+    // region — §2.22 Passkey sign-in
+
+    /**
+     * Probes GET /tenants/me for [TenantMeResponse.passkeyEnabled].
+     *
+     * Opt-in model: defaults to false when the server predates this field.
+     * "Use passkey" button is hidden until the server explicitly opts in.
+     */
+    private suspend fun probePasskeyEnabled() {
+        try {
+            val response = authApi.getTenantMe()
+            val enabled = response.data?.passkeyEnabled ?: false
+            _state.value = _state.value.copy(passkeyEnabled = enabled)
+        } catch (_: Exception) {
+            // 404 or any failure → hide button (opt-in model).
+            _state.value = _state.value.copy(passkeyEnabled = false)
+        }
+    }
+
+    /**
+     * Runs the full passkey sign-in handshake:
+     *  1. POST /auth/passkey/login/begin → challenge JSON
+     *  2. [PasskeyManager.signInWithPasskey] → CredentialManager get sheet
+     *  3. POST /auth/passkey/login/finish → { accessToken, refreshToken, user }
+     *
+     * On success, sets [passkeyLoginSuccess] = true so the composable navigates
+     * to the dashboard. The same auth-storage path used by password login is
+     * reused here (authPreferences.saveUser).
+     *
+     * Password remains as a breakglass path (L468). "Remove password" deferred (L469).
+     */
+    fun signInWithPasskey(activity: android.app.Activity) {
+        if (_state.value.passkeyLoading) return
+        _state.value = _state.value.copy(passkeyLoading = true, passkeyError = null)
+        viewModelScope.launch {
+            try {
+                // Step 1: get challenge from server.
+                val beginResponse = authApi.beginPasskeyLogin()
+                val challengeJson = beginResponse.data?.challengeJson
+                    ?: throw Exception("Server returned no passkey challenge")
+
+                // Step 2: present system credential sheet.
+                val outcome = com.bizarreelectronics.crm.util.PasskeyManager.signInWithPasskey(
+                    activity = activity,
+                    challengeJson = challengeJson,
+                )
+
+                when (outcome) {
+                    is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Success -> {
+                        val responseJson = when (val cred = outcome.data.credential) {
+                            is androidx.credentials.PublicKeyCredential -> cred.authenticationResponseJson
+                            else -> throw Exception("Unexpected credential type: ${cred::class.simpleName}")
+                        }
+                        // Step 3: exchange assertion with server.
+                        val finishResponse = authApi.finishPasskeyLogin(
+                            com.bizarreelectronics.crm.data.remote.dto.PasskeyLoginFinishRequest(
+                                responseJson = responseJson,
+                            )
+                        )
+                        val tokens = finishResponse.data ?: throw Exception("No token data in passkey login response")
+                        val user = tokens.user
+                        authPreferences.saveUser(
+                            token = tokens.accessToken,
+                            refreshToken = tokens.refreshToken,
+                            id = user.id,
+                            username = user.username,
+                            firstName = user.firstName,
+                            lastName = user.lastName,
+                            role = user.role,
+                        )
+                        _state.value = _state.value.copy(passkeyLoading = false, passkeyLoginSuccess = true)
+                    }
+                    is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Cancelled -> {
+                        _state.value = _state.value.copy(passkeyLoading = false)
+                    }
+                    is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.NoCredentials -> {
+                        _state.value = _state.value.copy(
+                            passkeyLoading = false,
+                            passkeyError = "No passkey found on this device. Sign in with your password first.",
+                        )
+                    }
+                    is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Unsupported -> {
+                        _state.value = _state.value.copy(
+                            passkeyLoading = false,
+                            passkeyEnabled = false,
+                        )
+                    }
+                    is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Error -> {
+                        _state.value = _state.value.copy(
+                            passkeyLoading = false,
+                            passkeyError = outcome.message,
+                        )
+                    }
+                }
+            } catch (e: retrofit2.HttpException) {
+                val msg = when (e.code()) {
+                    404 -> "Passkey login is not available on this server."
+                    401 -> "Passkey not recognized. Try again or use your password."
+                    else -> "Passkey sign-in failed (${e.code()})."
+                }
+                _state.value = _state.value.copy(passkeyLoading = false, passkeyError = msg)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    passkeyLoading = false,
+                    passkeyError = "Passkey sign-in failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun clearPasskeyError() {
+        _state.value = _state.value.copy(passkeyError = null)
+    }
+
+    fun clearPasskeyLoginSuccess() {
+        _state.value = _state.value.copy(passkeyLoginSuccess = false)
+    }
+
+    // endregion — passkey
+
+    // region — §2.21 Magic-link (continued)
+
     fun updateMagicLinkEmail(value: String) {
         _state.value = _state.value.copy(magicLinkEmail = value, magicLinkError = null)
     }
@@ -1596,6 +1736,15 @@ fun LoginScreen(
     LaunchedEffect(magicLinkLoginSuccess) {
         if (magicLinkLoginSuccess) {
             viewModel.clearMagicLinkLoginSuccess()
+            onLoginSuccess()
+        }
+    }
+
+    // §2.22 L463 — passkey login success: navigate to dashboard.
+    val passkeyLoginSuccess = state.passkeyLoginSuccess
+    LaunchedEffect(passkeyLoginSuccess) {
+        if (passkeyLoginSuccess) {
+            viewModel.clearPasskeyLoginSuccess()
             onLoginSuccess()
         }
     }
@@ -2909,6 +3058,53 @@ private fun CredentialsStep(
 
         if (state.showMagicLinkSheet) {
             MagicLinkRequestSheet(state = state, viewModel = viewModel)
+        }
+    }
+
+    // §2.22 L463 — "Use passkey" button.
+    // Shown when GET /tenants/me returns passkey_enabled = true AND
+    // PasskeyManager.isSupported() (device API >= 28).
+    // Hidden when tenant has not enabled passkeys or device is unsupported.
+    val passkeyVisible = state.passkeyEnabled == true &&
+            com.bizarreelectronics.crm.util.PasskeyManager.isSupported()
+    if (passkeyVisible) {
+        val activityForPasskey = LocalContext.current as? android.app.Activity
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = {
+                if (activityForPasskey != null) {
+                    viewModel.signInWithPasskey(activityForPasskey)
+                }
+            },
+            enabled = !state.passkeyLoading,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.passkeyLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Signing in…", style = MaterialTheme.typography.labelMedium)
+            } else {
+                Icon(
+                    Icons.Default.Key,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Use passkey",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+        // Inline error below the passkey button.
+        val passkeyErr = state.passkeyError
+        if (passkeyErr != null) {
+            Text(
+                text = passkeyErr,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }

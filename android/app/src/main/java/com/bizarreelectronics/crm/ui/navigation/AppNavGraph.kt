@@ -62,7 +62,9 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
+import com.bizarreelectronics.crm.ui.screens.settings.ForgotPinScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.PasskeyScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RecoveryCodesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.TwoFactorFactorsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
@@ -297,11 +299,20 @@ sealed class Screen(val route: String) {
     // §2.18 L420 — Manage 2FA factors screen (list enrolled, enroll TOTP/SMS; passkey/HW stubs).
     data object TwoFactorFactors : Screen("settings/security/2fa-factors")
 
+    // §2.22 L463 — Passkey management screen (enroll, list, remove passkeys + hardware keys).
+    data object Passkeys : Screen("settings/security/passkeys")
+
     // §2.10 [plan:L343] — 13-step first-run tenant onboarding wizard.
     // Reachable from:
     //   1. SetupStatusGateScreen when GET /auth/setup-status returns needsSetup=true.
     //   2. Deep link bizarrecrm://setup (carries a setup token from a tenant-invite email).
     data object Setup : Screen("setup/wizard")
+
+    // §2.15 L387-L388 — Forgot-PIN self-service email reset.
+    // Pre-auth; shown when the user taps "Forgot PIN?" on the lock screen.
+    // Deep-link token (bizarrecrm://forgot-pin/<token>) is handled via
+    // DeepLinkBus.pendingForgotPinToken; no manifest <data> entry needed for MVP.
+    data object ForgotPin : Screen("auth/forgot-pin")
 }
 
 data class BottomNavItem(
@@ -403,7 +414,12 @@ fun AppNavGraph(
         deepLinkBus?.pendingRoute?.collect { raw ->
             if (raw == null) return@collect
             val isSetupToken = raw.startsWith("login?setupToken=")
-            if (!isSetupToken && authPreferences?.isLoggedIn != true) return@collect
+            // §2.15 L387 — forgot-pin is pre-auth (user has no active session
+            // when they're locked behind the PIN gate). Bypass the isLoggedIn
+            // check so the route resolves while the session is still valid but
+            // the PIN gate was active.
+            val isForgotPin = raw == Screen.ForgotPin.route
+            if (!isSetupToken && !isForgotPin && authPreferences?.isLoggedIn != true) return@collect
             val dest = mapResolvedRoute(raw)
             if (dest != null) {
                 navController.navigate(dest) {
@@ -495,6 +511,8 @@ fun AppNavGraph(
             currentRoute != Screen.ForgotPassword.route &&
             !currentRoute.startsWith("auth/reset-password/") &&
             currentRoute != Screen.BackupCodeRecovery.route &&
+            // §2.15 L387 — forgot-PIN screen is pre-auth; hide bottom bar
+            currentRoute != Screen.ForgotPin.route &&
             // §2.1 — setup-status gate is a pre-auth transient screen
             currentRoute != Screen.SetupStatusGate.route &&
             // §2.10 [plan:L343] — setup wizard hides the bottom bar (full-screen flow)
@@ -851,6 +869,16 @@ fun AppNavGraph(
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                )
+            }
+            // §2.15 L387-L388 — Forgot-PIN self-service reset.
+            // Pre-auth: reachable from the PIN lock screen "Forgot PIN?" button.
+            // On success, pop back to wherever the user came from (lock screen
+            // clears and resumes normally once the new PIN is set locally).
+            composable(Screen.ForgotPin.route) {
+                ForgotPinScreen(
+                    onBack = { navController.popBackStack() },
+                    onSuccess = { navController.popBackStack() },
                 )
             }
             composable(Screen.Dashboard.route) {
@@ -1356,6 +1384,15 @@ fun AppNavGraph(
                     // Document: role-gate wiring tracked as follow-up when Session role
                     // is accessible from the nav composable scope.
                     onManageTwoFactorFactors = { navController.navigate(Screen.TwoFactorFactors.route) },
+                    // §2.22 L463: Passkeys screen — shown for all authenticated users.
+                    // PasskeyScreen guards API < 28 internally.
+                    onPasskeys = { navController.navigate(Screen.Passkeys.route) },
+                )
+            }
+            // §2.22 L463 — Passkey management screen (enroll, list, remove).
+            composable(Screen.Passkeys.route) {
+                PasskeyScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             // §2.11 — Active sessions list + revoke.
