@@ -20,8 +20,14 @@ export function formatCurrency(
       style: 'currency',
       currency: currencyCode,
     }).format(value);
-  } catch {
-    // Fallback for unknown currency codes
+  } catch (err) {
+    // Fallback for unknown currency codes. Surface the bad code so
+    // misconfigured tenant currency settings don't hide behind a silent USD
+    // substitution in production.
+    console.error(
+      `[formatCurrency] unknown currency code "${currencyCode}" — falling back to USD`,
+      err,
+    );
     return new Intl.NumberFormat(resolvedLocale, {
       style: 'currency',
       currency: 'USD',
