@@ -132,14 +132,14 @@ export function PaymentLinksPage() {
             Showing it disabled would tempt staff to create links that lead to
             a dead-end page for customers. */}
         {canManagePaymentLinks && paymentLinksEnabled ? (
-          <button
+          <button type="button"
             className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
             onClick={() => setShowForm((s) => !s)}
           >
             {showForm ? 'Close form' : 'New payment request'}
           </button>
         ) : canManagePaymentLinks ? (
-          <button
+          <button type="button"
             disabled
             title={paymentLinksDisabledReason}
             className="cursor-not-allowed rounded-md bg-surface-200 px-4 py-2 text-sm font-semibold text-surface-400 opacity-50 dark:bg-surface-700 dark:text-surface-500"
@@ -206,7 +206,7 @@ export function PaymentLinksPage() {
               className="rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </div>
-          <button
+          <button type="button"
             className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
             disabled={createMutation.isPending}
             onClick={handleCreate}
@@ -218,7 +218,7 @@ export function PaymentLinksPage() {
 
       <div className="flex gap-2">
         {(['all', 'active', 'paid', 'cancelled'] as const).map((s) => (
-          <button
+          <button type="button"
             key={s}
             onClick={() => setFilter(s)}
             className={`rounded-full border px-3 py-1 text-sm ${
@@ -258,14 +258,14 @@ export function PaymentLinksPage() {
                   </td>
                   <td className="px-3 py-2">{row.click_count}</td>
                   <td className="px-3 py-2 text-right space-x-2">
-                    <button
+                    <button type="button"
                       className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
                       onClick={() => copyLink(row.token)}
                     >
                       Copy
                     </button>
                     {canManagePaymentLinks && row.status === 'active' ? (
-                      <button
+                      <button type="button"
                         className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
                         onClick={() => cancelMutation.mutate(row.id)}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}

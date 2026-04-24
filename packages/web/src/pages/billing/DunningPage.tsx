@@ -127,7 +127,7 @@ export function DunningPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Dunning Sequences</h1>
-        <button
+        <button type="button"
           onClick={() => runNowMutation.mutate()}
           disabled={runNowMutation.isPending}
           className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
@@ -198,7 +198,7 @@ export function DunningPage() {
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
           />
         </label>
-        <button
+        <button type="button"
           onClick={() => createMutation.mutate()}
           disabled={!name.trim() || createMutation.isPending}
           className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
@@ -244,7 +244,7 @@ export function DunningPage() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button
+                    <button type="button"
                       className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                       onClick={() =>
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })

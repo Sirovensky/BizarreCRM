@@ -120,7 +120,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
           </h3>
-          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />
           </button>
         </div>
@@ -151,13 +151,13 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
-          <button
+          <button type="button"
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={() => onSubmit(pin)}
             disabled={pin.length < 4 || isPending}
             className={cn(
@@ -522,7 +522,7 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
           {formatHours(weeklyHours)}
         </td>
         <td className="px-4 py-3">
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               onClockAction(isClockedIn ? 'clock-out' : 'clock-in');

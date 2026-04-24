@@ -71,7 +71,7 @@ export function AgingReportPage() {
           const bucket = data?.buckets[key] ?? { count: 0, total_cents: 0 };
           const isSelected = selectedBucket === key;
           return (
-            <button
+            <button type="button"
               key={key}
               onClick={() => setSelectedBucket(isSelected ? null : key)}
               className={`rounded-lg border p-4 text-left transition ${
