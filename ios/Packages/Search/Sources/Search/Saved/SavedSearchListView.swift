@@ -1,16 +1,13 @@
 import SwiftUI
-import Core
 import DesignSystem
 
-/// §18.5 — Settings → Saved Searches. CRUD list; tap opens EntitySearchView.
+/// §18 — Settings → Saved Searches. CRUD list. Tap runs the search;
+/// swipe-left reveals delete; long-press offers rename.
 public struct SavedSearchListView: View {
 
     @State private var searches: [SavedSearch] = []
-    @State private var showingAdd: Bool = false
-    @State private var newName: String = ""
-    @State private var newQuery: String = ""
-    @State private var newEntity: EntityFilter = .all
-    @State private var editingId: String? = nil
+    @State private var errorMessage: String? = nil
+    @State private var renameTarget: SavedSearch? = nil
     @State private var renameText: String = ""
 
     private let store: SavedSearchStore
@@ -22,36 +19,52 @@ public struct SavedSearchListView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            List {
-                ForEach(searches) { search in
-                    savedRow(search)
-                }
-                .onDelete(perform: delete)
+        List {
+            ForEach(searches) { search in
+                savedRow(search)
             }
+            .onDelete(perform: delete)
+        }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.plain)
+        #endif
+        .scrollContentBackground(.hidden)
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .navigationTitle("Saved Searches")
+        .toolbar {
             #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.plain)
+            ToolbarItem(placement: .navigationBarTrailing) {
+                EditButton()
+            }
             #endif
-            .scrollContentBackground(.hidden)
-            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-            .navigationTitle("Saved Searches")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAdd = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Add saved search")
-                }
-            }
-            .sheet(isPresented: $showingAdd) {
-                addSheet
-            }
-            .task {
-                await loadSearches()
+        }
+        .alert("Rename Search", isPresented: Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Save") { Task { await commitRename() } }
+                .disabled(renameText.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            if let msg = errorMessage { Text(msg) }
+        }
+        .task { await loadSearches() }
+        .overlay {
+            if searches.isEmpty {
+                ContentUnavailableView(
+                    "No Saved Searches",
+                    systemImage: "bookmark.slash",
+                    description: Text("Save a search to reuse it later.")
+                )
             }
         }
     }
@@ -92,6 +105,15 @@ public struct SavedSearchListView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(search.name), \(search.entity.displayName), query: \(search.query)")
         .accessibilityHint("Double-tap to open search")
+        .swipeActions(edge: .leading) {
+            Button {
+                renameText = search.name
+                renameTarget = search
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.bizarreOrange)
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 Task { await deleteSearch(id: search.id) }
@@ -99,59 +121,28 @@ public struct SavedSearchListView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
-    }
-
-    // MARK: - Add sheet
-
-    private var addSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Search details") {
-                    TextField("Name", text: $newName)
-                        .accessibilityLabel("Saved search name")
-                    TextField("Query", text: $newQuery)
-                        .accessibilityLabel("Search query")
-                }
-                Section("Entity") {
-                    Picker("Entity", selection: $newEntity) {
-                        ForEach(EntityFilter.allCases, id: \.self) { filter in
-                            Label(filter.displayName, systemImage: filter.systemImage)
-                                .tag(filter)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
+        .contextMenu {
+            Button {
+                renameText = search.name
+                renameTarget = search
+            } label: {
+                Label("Rename", systemImage: "pencil")
             }
-            .navigationTitle("New Saved Search")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        resetAddForm()
-                        showingAdd = false
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await addSearch() }
-                    }
-                    .disabled(newName.isEmpty || newQuery.isEmpty)
-                }
+            Button(role: .destructive) {
+                Task { await deleteSearch(id: search.id) }
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
+        .simultaneousGesture(TapGesture().onEnded {
+            Task { await store.recordUse(id: search.id) }
+        })
     }
 
     // MARK: - Actions
 
     private func loadSearches() async {
         searches = await store.all
-    }
-
-    private func addSearch() async {
-        let search = SavedSearch(name: newName, query: newQuery, entity: newEntity)
-        await store.save(search)
-        resetAddForm()
-        showingAdd = false
-        await loadSearches()
     }
 
     private func delete(at offsets: IndexSet) {
@@ -167,9 +158,16 @@ public struct SavedSearchListView: View {
         await loadSearches()
     }
 
-    private func resetAddForm() {
-        newName = ""
-        newQuery = ""
-        newEntity = .all
+    private func commitRename() async {
+        guard let target = renameTarget else { return }
+        do {
+            try await store.rename(id: target.id, newName: renameText)
+            renameTarget = nil
+            await loadSearches()
+        } catch SavedSearchStore.SavedSearchStoreError.duplicateName(let existing) {
+            errorMessage = "A saved search named \"\(existing)\" already exists."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
