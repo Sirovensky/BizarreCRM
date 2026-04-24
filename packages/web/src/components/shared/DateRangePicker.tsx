@@ -260,6 +260,7 @@ export function DateRangePicker({
                 />
               </div>
               <button
+                type="button"
                 onClick={() => setOpen(false)}
                 disabled={!value.from || !value.to}
                 className={cn(

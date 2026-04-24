@@ -714,8 +714,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CommandPalette.tsx:175-176; fix=surface-error-state -->
 - [ ] SCAN-1032. **API client response interceptor uses `as any` to read `.code` + `.request_id`.**
   <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:200-202; fix=inline-type-narrow -->
-- [ ] SCAN-1033. **DateRangePicker "Apply" button missing `type="button"` — form-submit risk in filter bars.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/DateRangePicker.tsx:262; fix=add-type-button -->
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
 - [ ] SCAN-992b. **Catalog `jobs` + `items` still `any[]` — narrow interface deferred until server DTOs stabilise. `modelResults` is now typed.**
