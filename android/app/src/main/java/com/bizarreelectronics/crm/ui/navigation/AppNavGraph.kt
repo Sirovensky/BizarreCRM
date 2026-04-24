@@ -131,17 +131,8 @@ sealed class Screen(val route: String) {
     data object TicketDetail : Screen("tickets/{id}") {
         fun createRoute(id: Long) = "tickets/$id"
     }
-    data object TicketCreate : Screen("ticket-create") {
-        /**
-         * CROSS47-seed: when launched from a customer detail, pre-seed the
-         * wizard with that customer's id as an optional `customerId` query
-         * arg. Nav route remains `ticket-create` (without the query string)
-         * so existing call sites that don't care about seeding continue to
-         * hit the same destination.
-         */
-        fun createRoute(customerId: Long? = null): String =
-            if (customerId != null) "ticket-create?customerId=$customerId" else "ticket-create"
-    }
+    // Screen.TicketCreate removed 2026-04-24 — replaced by Screen.CheckInEntry
+    // (the new 6-step repair check-in flow). All callers migrated.
     data object TicketDeviceEdit : Screen("tickets/{ticketId}/devices/{deviceId}") {
         fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/devices/$deviceId"
     }
@@ -187,7 +178,15 @@ sealed class Screen(val route: String) {
             "checkin/$customerId/$deviceId?customerName=${Uri.encode(customerName)}&deviceName=${Uri.encode(deviceName)}"
     }
     /** Pre-step that collects customer + device info before launching [CheckIn]. */
-    data object CheckInEntry : Screen("checkin-entry")
+    data object CheckInEntry : Screen("checkin-entry?customerId={customerId}") {
+        /**
+         * Optional pre-fill: when the entry is launched from a customer
+         * detail screen, the customer is already known — skip re-searching.
+         * Bare route (no customerId) still works via default.
+         */
+        fun createRoute(customerId: Long? = null): String =
+            if (customerId != null && customerId > 0L) "checkin-entry?customerId=$customerId" else "checkin-entry"
+    }
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
             val encodedName = Uri.encode(customerName)
@@ -606,7 +605,6 @@ fun AppNavGraph(
             // check against the bare `ticket-create` literal would never hit
             // and the wizard would wrongly show the bottom-nav. Match by
             // prefix instead.
-            !currentRoute.startsWith(Screen.TicketCreate.route) &&
             !currentRoute.startsWith(Screen.CheckInEntry.route) &&
             !currentRoute.startsWith("checkin/") &&
             currentRoute != Screen.ClockInOut.route &&
@@ -1113,29 +1111,11 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(
-                // CROSS47-seed: optional `customerId` query arg. The VM reads
-                // it from SavedStateHandle and pre-selects the customer so the
-                // wizard opens on the Category step when launched from a
-                // customer detail screen.
-                route = Screen.TicketCreate.route + "?customerId={customerId}",
-                arguments = listOf(
-                    navArgument("customerId") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                ),
-            ) {
-                com.bizarreelectronics.crm.ui.screens.tickets.TicketCreateScreen(
-                    onBack = { navController.popBackStack() },
-                    onCreated = { id ->
-                        navController.navigate(Screen.TicketSuccess.createRoute(id)) {
-                            popUpTo(Screen.Tickets.route)
-                        }
-                    },
-                )
-            }
+            // Legacy Screen.TicketCreate composable removed 2026-04-24.
+            // All callers (POS tile, dashboard "+", tickets-tab FAB, Ctrl+T,
+            // CustomerDetail onCreateTicket, deep-link `ticket/new`, estimate
+            // promote) now route to Screen.CheckInEntry. The new flow supports
+            // optional `?customerId={id}` pre-fill for the customer-detail path.
             composable(Screen.Customers.route) {
                 CustomerListScreen(
                     onCustomerClick = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
@@ -1153,7 +1133,7 @@ fun AppNavGraph(
                     // wizard pre-selects the customer and opens on the
                     // Category step instead of forcing a second customer
                     // picker trip.
-                    onCreateTicket = { id -> navController.navigate(Screen.TicketCreate.createRoute(id)) },
+                    onCreateTicket = { id -> navController.navigate(Screen.CheckInEntry.createRoute(id)) },
                 )
             }
             composable(Screen.CustomerCreate.route) {
@@ -1243,8 +1223,18 @@ fun AppNavGraph(
             }
             // CheckInEntry: pre-step that gathers customer + device info before
             // launching CheckInHostScreen with the required nav args.
-            composable(Screen.CheckInEntry.route) {
+            composable(
+                route = Screen.CheckInEntry.route,
+                arguments = listOf(
+                    navArgument("customerId") {
+                        type = NavType.LongType
+                        defaultValue = -1L
+                    },
+                ),
+            ) { backStack ->
+                val preFillCustomerId = backStack.arguments?.getLong("customerId") ?: -1L
                 com.bizarreelectronics.crm.ui.screens.checkin.entry.CheckInEntryScreen(
+                    preFillCustomerId = preFillCustomerId,
                     onCancel = { navController.popBackStack() },
                     onStartCheckIn = { customerId, customerName, deviceName ->
                         navController.navigate(

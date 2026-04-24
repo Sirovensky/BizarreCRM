@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -79,11 +80,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun CheckInEntryScreen(
     onCancel: () -> Unit,
     onStartCheckIn: (customerId: Long, customerName: String, deviceName: String) -> Unit,
+    preFillCustomerId: Long = -1L,
     viewModel: CheckInEntryViewModel = hiltViewModel(),
 ) {
     val step1 by viewModel.step1.collectAsState()
     val step2 by viewModel.step2.collectAsState()
     val currentStep by viewModel.currentStep.collectAsState()
+
+    // Pre-fill once when launched from CustomerDetail with a customerId arg.
+    // viewModel.preFillCustomer guards against repeat / invalid ids so this
+    // is safe on recomposition.
+    LaunchedEffect(preFillCustomerId) {
+        if (preFillCustomerId > 0L) viewModel.preFillCustomer(preFillCustomerId)
+    }
 
     Scaffold(
         topBar = {

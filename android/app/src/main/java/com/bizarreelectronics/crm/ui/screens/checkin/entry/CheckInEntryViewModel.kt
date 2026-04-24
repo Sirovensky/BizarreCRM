@@ -135,6 +135,30 @@ class CheckInEntryViewModel @Inject constructor(
         _step1.update { it.copy(attachedCustomer = null) }
     }
 
+    /**
+     * Pre-fill the attached customer from an ID. Called once on entry when
+     * the nav route carries `?customerId=N`. Silent no-op if the id is
+     * non-positive or the fetch fails — user can still search manually.
+     */
+    fun preFillCustomer(customerId: Long) {
+        if (customerId <= 0L || _step1.value.attachedCustomer != null) return
+        viewModelScope.launch {
+            runCatching { customerApi.getCustomer(customerId) }
+                .onSuccess { resp ->
+                    val detail = resp.data ?: return@onSuccess
+                    val entry = AttachedCustomerEntry(
+                        id = detail.id,
+                        name = listOfNotNull(detail.firstName, detail.lastName)
+                            .joinToString(" ")
+                            .ifBlank { "Customer #${detail.id}" },
+                        phone = detail.phone ?: detail.mobile,
+                        email = detail.email,
+                    )
+                    _step1.update { it.copy(attachedCustomer = entry) }
+                }
+        }
+    }
+
     fun showCreateNewForm() {
         _step1.update { it.copy(isCreatingNew = true, createError = null) }
     }
