@@ -2553,6 +2553,28 @@ server.listen(config.port, config.host, async () => {
     }, 24 * 60 * 60 * 1000);
   }
 
+  // SCAN-1171: prune master stripe_webhook_events once/day. The table is
+  // pure webhook idempotency state — 30 days comfortably covers Stripe's
+  // retry window while capping table growth. Cheap single-DELETE; no
+  // circuit breaker needed. Multi-tenant only (master DB exists only in
+  // MT mode).
+  if (config.multiTenant && process.env.NODE_ENV !== 'test') {
+    trackInterval(async () => {
+      try {
+        if (!shouldRunDaily('stripe-webhook-events-prune', 'UTC')) return;
+        const { pruneStripeWebhookEvents } = await import('./db/master-connection.js');
+        const purged = pruneStripeWebhookEvents(30);
+        if (purged > 0) {
+          log.info('stripe-webhook-events-prune: purged rows', { count: purged, retention_days: 30 });
+        }
+      } catch (err) {
+        log.error('stripe-webhook-events-prune: daily sweep failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, 24 * 60 * 60 * 1000);
+  }
+
   // Audit issue #23: Retention sweeper for unbounded log/queue tables.
   // Separate cron from the audit_logs purge above because:
   //  (1) runRetentionSweep is async (forEachDbAsync), the audit purge uses sync forEachDb,

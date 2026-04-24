@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (SCAN-992b LARGE drain + stripe retention)
+
+- [x] SCAN-992b [LARGE]. **CatalogPage.tsx had `jobs: any[]` + `items: any[]` spanning job-row + item-tile renderers** — every optional field access was unchecked. Introduced `CatalogJob` and `CatalogItem` interfaces that extend `Record<string, any>` — named fields (id/source/status/created_at/name/sku/category) get compile-time help for the common subset, price/image_url/product_url stay in the index signature because consumers (formatCurrency, safeProductUrl) accept multiple shapes. Matches the pattern landed in SCAN-1014. Added null-guard on StatusBadge (`j.status ?? 'pending'`) — the prop contract required string.
+- [x] SCAN-1171. **Master `stripe_webhook_events` had no retention** — every processed Stripe webhook id lived forever even though idempotency only needs ~30 days of replay-window protection. Added `pruneStripeWebhookEvents(retentionDays=30)` to `master-connection.ts` (single DELETE keyed on processed_at) + a daily cron tick in `index.ts` guarded by `shouldRunDaily('stripe-webhook-events-prune', 'UTC')`. Multi-tenant only (master DB exists only in MT mode).
+
 ## Closed 2026-04-24 (LARGE drain + wave-70 batch — PrintPage typing + 6 atomic fixes)
 
 - [x] SCAN-1014 [LARGE]. **`PrintPage.tsx` had 23 `: any` annotations across ticket/device/part/payment/note/config props and map callbacks** — every property access was unchecked and tenant-specific extras (device_type, warranty_timeframe, service.name, security_code, etc.) shipped silently as `any`. Introduced `PrintCustomer`, `PrintTicket`, `PrintDevice`, `PrintPart`, `PrintPayment`, `PrintNote`, `PrintConfig` that extend `Record<string, any>` — named fields get compile-time help for the common set, extras pass through via the index signature (honest about what print actually consumes). Swapped every `: any` annotation. Narrowed `(d.parts?.length ?? 0) > 0` so the parts-list render guard compiles.

@@ -707,8 +707,6 @@ Verified working. Not TODOs.
 ### Wave-57 scan-loop findings (2026-04-24) — web/components/shared + web/api + web/utils
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
-- [ ] SCAN-992b. **Catalog `jobs` + `items` still `any[]` — narrow interface deferred until server DTOs stabilise. `modelResults` is now typed.**
-  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx; fix=type-when-dto-stable -->
 
 ### Wave-55 scan-loop findings (2026-04-23) — web/pages communications+reviews+expenses + shared API types
 ### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
@@ -720,8 +718,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-70 scan-loop findings (2026-04-24) — confirmStore/migrations/stripe/sla/giftCard/dunning/index
-- [ ] SCAN-1171. **[LOW] Master `stripe_webhook_events` unbounded growth — no retention.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/master-connection.ts:231-240; fix=daily-DELETE-30d -->
 
 ### Wave-69 scan-loop findings (2026-04-24) — client CSV/dashboard tz/pin/signature/portal
 

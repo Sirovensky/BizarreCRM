@@ -52,16 +52,44 @@ function safeProductUrl(raw: unknown): string | null {
   return null;
 }
 
-// Only `modelResults` benefits from a local shape — the catalog-item and
-// job-row renderers reach into many optional server fields and would bloat a
-// narrow interface. Leaving `items` / `jobs` loose for now; SCAN-992-follow
-// tracks a full-typing pass when the server DTOs stabilise.
+// SCAN-992b: the catalog-item and job-row renderers reach into many
+// optional fields that vary across scraper sources. Use interfaces that
+// extend `Record<string, any>` — named fields give compile-time help for
+// the common subset, tenant/source-specific extras still access freely
+// via the index signature (no cast churn). Matches the pattern the
+// PrintPage typing landed on in SCAN-1014.
 interface CatalogDeviceModel {
   id: number;
   name: string;
   manufacturer_name?: string;
   ifixit_url?: string | null;
   [key: string]: unknown;
+}
+
+interface CatalogJob extends Record<string, any> {
+  id?: number;
+  source?: string;
+  status?: string;
+  created_at?: string;
+  finished_at?: string | null;
+  items_processed?: number;
+  items_inserted?: number;
+  items_updated?: number;
+  error_message?: string | null;
+}
+
+interface CatalogItem extends Record<string, any> {
+  id?: number;
+  source?: string;
+  external_id?: string | null;
+  sku?: string | null;
+  name?: string;
+  // price/compare_price/image_url/product_url left to the index signature
+  // because consumers (formatCurrency, safeProductUrl, imgSrc) use their
+  // own coercion and permissive input accepts multiple shapes.
+  category?: string | null;
+  in_stock?: number | boolean;
+  last_synced?: string | null;
 }
 
 export function CatalogPage() {
@@ -98,7 +126,7 @@ export function CatalogPage() {
     refetchInterval: 3000,
     staleTime: 2500, // just under the 3s interval
   });
-  const jobs: any[] = Array.isArray(jobsData?.data?.data) ? (jobsData?.data?.data as any[]) : [];
+  const jobs: CatalogJob[] = Array.isArray(jobsData?.data?.data) ? (jobsData?.data?.data as CatalogJob[]) : [];
 
   const { data: catalogData, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog-search', debouncedSearch, activeSource, deviceModelId],
@@ -109,8 +137,8 @@ export function CatalogPage() {
       limit: 60,
     }),
   });
-  const items: any[] = Array.isArray(catalogData?.data?.data?.items)
-    ? (catalogData?.data?.data?.items as any[])
+  const items: CatalogItem[] = Array.isArray(catalogData?.data?.data?.items)
+    ? (catalogData?.data?.data?.items as CatalogItem[])
     : [];
   const total: number = (catalogData?.data?.data?.total as number) || 0;
 
@@ -542,7 +570,7 @@ export function CatalogPage() {
           <div className="card divide-y divide-surface-100 dark:divide-surface-700">
             {jobs.slice(0, 5).map((j) => (
               <div key={j.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                <StatusBadge status={j.status} />
+                <StatusBadge status={j.status ?? 'pending'} />
                 <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{j.source}</span>
                 <span className="text-surface-400">{j.items_upserted ?? 0} items · {j.pages_done ?? 0} pages</span>
                 {j.error && <span className="text-red-500 truncate">{j.error}</span>}

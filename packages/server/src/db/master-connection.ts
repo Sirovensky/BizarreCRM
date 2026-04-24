@@ -267,3 +267,28 @@ export function closeMasterDb(): void {
     masterDb = null;
   }
 }
+
+/**
+ * SCAN-1171: prune `stripe_webhook_events` rows older than the retention
+ * window. The table is pure idempotency state — once a webhook has been
+ * acknowledged and its business effect committed, keeping the processed
+ * event id forever just bloats the master DB. 30 days comfortably covers
+ * Stripe's retry window (which is hours, not days) while still allowing a
+ * month of forensic analysis on replayed events.
+ *
+ * Returns the number of rows deleted; 0 on single-tenant or when the
+ * master DB hasn't been initialised yet. Call from a daily cron tick.
+ */
+export function pruneStripeWebhookEvents(retentionDays = 30): number {
+  if (!masterDb) return 0;
+  try {
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000)
+      .toISOString().replace('T', ' ').slice(0, 19);
+    const result = masterDb.prepare(
+      'DELETE FROM stripe_webhook_events WHERE processed_at < ?',
+    ).run(cutoff) as { changes: number };
+    return result.changes ?? 0;
+  } catch {
+    return 0;
+  }
+}
