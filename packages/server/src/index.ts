@@ -173,7 +173,7 @@ import { sendDailyReport } from './services/scheduledReports.js';
 import { initMasterDb, getMasterDb, closeMasterDb } from './db/master-connection.js';
 // buildTemplateDb is invoked internally by migrateAllTenants(); no direct import needed.
 import { migrateAllTenants } from './db/migrate-all-tenants.js';
-import { getTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
+import { getTenantDb, releaseTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
 import { tenantResolver } from './middleware/tenantResolver.js';
 import { requireFeature } from './middleware/tierGate.js';
 import signupRoutes from './routes/signup.routes.js';
@@ -202,9 +202,10 @@ async function forEachDb(callback: (slug: string | null, tenantDb: any) => void)
   if (!masterDb) { callback(null, db); return; }
   const tenants = masterDb.prepare("SELECT slug FROM tenants WHERE status = 'active'").all() as { slug: string }[];
   for (const t of tenants) {
+    let pooled: Awaited<ReturnType<typeof getTenantDb>> | undefined;
     try {
       // SEC-BG6: reuse the connection from tenant-pool.ts instead of opening a new handle.
-      const pooled = await getTenantDb(t.slug);
+      pooled = await getTenantDb(t.slug);
       callback(t.slug, pooled);
     } catch (err) {
       // Surface structured so ops can see when a tenant DB is unreachable.
@@ -213,6 +214,8 @@ async function forEachDb(callback: (slug: string | null, tenantDb: any) => void)
         tenantSlug: t.slug,
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      if (pooled !== undefined) releaseTenantDb(t.slug);
     }
   }
 }
@@ -249,9 +252,10 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
   if (!masterDb) { await callback(null, db); return; }
   const tenants = masterDb.prepare("SELECT slug FROM tenants WHERE status = 'active'").all() as { slug: string }[];
   for (const t of tenants) {
+    let pooled: Awaited<ReturnType<typeof getTenantDb>> | undefined;
     try {
       // SEC-BG6: reuse the pooled connection.
-      const pooled = await getTenantDb(t.slug);
+      pooled = await getTenantDb(t.slug);
       // SEC-M31: race the callback against a timeout so one hung tenant
       // can't stall the whole iteration.
       const outcome = await withTimeout(callback(t.slug, pooled), PER_TENANT_CRON_TIMEOUT_MS, t.slug);
@@ -268,6 +272,8 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
         tenantSlug: t.slug,
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      if (pooled !== undefined) releaseTenantDb(t.slug);
     }
   }
 }
@@ -1979,8 +1985,8 @@ server.listen(config.port, config.host, async () => {
   } else {
     // Lazy import to avoid circular dependency between backup.ts and tenant-pool.ts
     import('./services/backup.js').then(({ scheduleMultiTenantBackups }) => {
-      import('./db/tenant-pool.js').then(({ getTenantDb: getTenantDbFn }) => {
-        scheduleMultiTenantBackups(getMasterDb, getTenantDbFn);
+      import('./db/tenant-pool.js').then(({ getTenantDb: getTenantDbFn, releaseTenantDb: releaseTenantDbFn }) => {
+        scheduleMultiTenantBackups(getMasterDb, getTenantDbFn, releaseTenantDbFn);
       });
     }).catch((err) => {
       console.error('[Backup] Failed to schedule multi-tenant backups:', err);
@@ -3497,8 +3503,9 @@ server.listen(config.port, config.host, async () => {
         for (const t of rows) {
           // Serial — never parallel. SQLite single-writer + worker-pool budget
           // mean parallel fleets only create lock contention.
+          let tenantDbHandle: Awaited<ReturnType<typeof getTenantDb>> | undefined;
           try {
-            const tenantDbHandle = await getTenantDb(t.slug); // pool-owned, do not close
+            tenantDbHandle = await getTenantDb(t.slug);
             const tzRow = tenantDbHandle
               .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
               .get() as { value?: string } | undefined;
@@ -3530,6 +3537,8 @@ server.listen(config.port, config.host, async () => {
               tenantSlug: t.slug,
               error: err instanceof Error ? err.message : String(err),
             });
+          } finally {
+            if (tenantDbHandle !== undefined) releaseTenantDb(t.slug);
           }
         }
       } else {

@@ -219,11 +219,12 @@ async function isTenantOriginAllowed(
   // at upgrade time.
   if (!tenantSlug) return true;
 
+  // Lazy import keeps ws/server.ts free of DB concerns on the hot path for
+  // non-auth messages and avoids a circular init in single-tenant mode.
+  const { getTenantDb, releaseTenantDb } = await import('../db/tenant-pool.js');
+  let tdb: Awaited<ReturnType<typeof getTenantDb>> | undefined;
   try {
-    // Lazy import keeps ws/server.ts free of DB concerns on the hot path for
-    // non-auth messages and avoids a circular init in single-tenant mode.
-    const { getTenantDb } = await import('../db/tenant-pool.js');
-    const tdb = await getTenantDb(tenantSlug);
+    tdb = await getTenantDb(tenantSlug);
     if (!tdb) return true;
 
     const row = tdb
@@ -253,6 +254,8 @@ async function isTenantOriginAllowed(
       error: err instanceof Error ? err.message : String(err),
     });
     return false;
+  } finally {
+    if (tdb !== undefined) releaseTenantDb(tenantSlug);
   }
 }
 

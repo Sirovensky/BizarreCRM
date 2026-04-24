@@ -40,7 +40,7 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { repairTenant } from '../services/tenant-repair.js';
-import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
+import { getTenantDb, releaseTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
@@ -725,12 +725,15 @@ router.get('/tenants/:slug', async (req, res) => {
   if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
 
   let userCount = 0, ticketCount = 0, customerCount = 0;
+  let _tdbStats: import('better-sqlite3').Database | undefined;
   try {
-    const tdb = await getTenantDb(tenant.slug);
-    userCount = (tdb.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
-    ticketCount = (tdb.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
-    customerCount = (tdb.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
-  } catch {}
+    _tdbStats = await getTenantDb(tenant.slug);
+    userCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
+    ticketCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
+    customerCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
+  } catch {} finally {
+    if (_tdbStats !== undefined) releaseTenantDb(tenant.slug);
+  }
 
   let dbSizeMb = 0;
   try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, tenant.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
@@ -1199,7 +1202,7 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
     });
   }
 
-  let tdb;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
     tdb = await getTenantDb(slug);
   } catch (err) {
@@ -1210,55 +1213,59 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
     return res.status(500).json({ success: false, message: 'Failed to open tenant database' });
   }
 
-  const target = tdb
-    .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
-    .get(targetId) as AnyRow | undefined;
-  if (!target) {
-    return res.status(404).json({ success: false, message: 'User not found in tenant' });
-  }
-
-  const wasEnabled = Boolean(target.totp_enabled);
-
-  // Atomic: clear 2FA AND revoke every session for this user in one transaction.
-  // If either statement fails we want neither to land.
-  const tx = tdb.transaction(() => {
-    tdb
-      .prepare(
-        "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
-      )
-      .run(targetId);
-    tdb.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
-  });
   try {
-    tx();
-  } catch (err) {
-    logger.error('Force-disable 2FA transaction failed', {
-      slug,
-      targetId,
-      error: err instanceof Error ? err.message : String(err),
+    const target = tdb
+      .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
+      .get(targetId) as AnyRow | undefined;
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User not found in tenant' });
+    }
+
+    const wasEnabled = Boolean(target.totp_enabled);
+
+    // Atomic: clear 2FA AND revoke every session for this user in one transaction.
+    // If either statement fails we want neither to land.
+    const tx = tdb.transaction(() => {
+      tdb!
+        .prepare(
+          "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
+        )
+        .run(targetId);
+      tdb!.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
     });
-    return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
-  }
+    try {
+      tx();
+    } catch (err) {
+      logger.error('Force-disable 2FA transaction failed', {
+        slug,
+        targetId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
+    }
 
-  auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
-    tenant_slug: slug,
-    tenant_id: tenant.id,
-    target_user_id: target.id,
-    target_username: target.username,
-    target_email: target.email,
-    was_2fa_enabled: wasEnabled,
-    sessions_revoked: true,
-  });
-
-  res.json({
-    success: true,
-    data: {
-      message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+    auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
       tenant_slug: slug,
-      user_id: target.id,
+      tenant_id: tenant.id,
+      target_user_id: target.id,
+      target_username: target.username,
+      target_email: target.email,
       was_2fa_enabled: wasEnabled,
-    },
-  });
+      sessions_revoked: true,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+        tenant_slug: slug,
+        user_id: target.id,
+        was_2fa_enabled: wasEnabled,
+      },
+    });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // ─── Backup Management ──────────────────────────────────────────────
@@ -1666,7 +1673,7 @@ router.get('/tenants/:slug/notifications', async (req: Request, res: Response) =
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
     tdb = await getTenantDb(slug);
   } catch (err) {
@@ -1677,47 +1684,51 @@ router.get('/tenants/:slug/notifications', async (req: Request, res: Response) =
     return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 
-  // Pre-flight: notification_queue is created by migration 060; on a fresh
-  // template DB without it, return empty rather than 500.
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_queue'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, pending: 0, sent: 0, failed: 0, cancelled: 0 } } });
+  try {
+    // Pre-flight: notification_queue is created by migration 060; on a fresh
+    // template DB without it, return empty rather than 500.
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_queue'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, pending: 0, sent: 0, failed: 0, cancelled: 0 } } });
+    }
+
+    const status = req.query.status ? String(req.query.status) : '';
+    const type = req.query.type ? String(req.query.type) : '';
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status && /^(pending|sent|failed|cancelled)$/.test(status)) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (type && /^(sms|email|push)$/.test(type)) {
+      conditions.push('type = ?');
+      params.push(type);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const rows = tdb
+      .prepare(`SELECT id, type, recipient, subject, status, error, retry_count, scheduled_at, sent_at, created_at FROM notification_queue ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+
+    // Always return the unfiltered status counts so the UI badges stay accurate
+    // when the operator is filtering down to one status.
+    const summaryRow = tdb.prepare(
+      "SELECT COUNT(*) AS total, " +
+      "SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending, " +
+      "SUM(CASE WHEN status='sent'      THEN 1 ELSE 0 END) AS sent, " +
+      "SUM(CASE WHEN status='failed'    THEN 1 ELSE 0 END) AS failed, " +
+      "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled " +
+      "FROM notification_queue"
+    ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
+
+    res.json({ success: true, data: { rows, summary: summaryRow } });
+  } finally {
+    releaseTenantDb(slug);
   }
-
-  const status = req.query.status ? String(req.query.status) : '';
-  const type = req.query.type ? String(req.query.type) : '';
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (status && /^(pending|sent|failed|cancelled)$/.test(status)) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  if (type && /^(sms|email|push)$/.test(type)) {
-    conditions.push('type = ?');
-    params.push(type);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const rows = tdb
-    .prepare(`SELECT id, type, recipient, subject, status, error, retry_count, scheduled_at, sent_at, created_at FROM notification_queue ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-
-  // Always return the unfiltered status counts so the UI badges stay accurate
-  // when the operator is filtering down to one status.
-  const summaryRow = tdb.prepare(
-    "SELECT COUNT(*) AS total, " +
-    "SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending, " +
-    "SUM(CASE WHEN status='sent'      THEN 1 ELSE 0 END) AS sent, " +
-    "SUM(CASE WHEN status='failed'    THEN 1 ELSE 0 END) AS failed, " +
-    "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled " +
-    "FROM notification_queue"
-  ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
-
-  res.json({ success: true, data: { rows, summary: summaryRow } });
 });
 
 // ─── Webhook Delivery Failures (per-tenant dead-letter queue) ──────
@@ -1736,7 +1747,7 @@ router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
     tdb = await getTenantDb(slug);
   } catch (err) {
@@ -1746,40 +1757,45 @@ router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response
     });
     return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, byEvent: [] } } });
-  }
 
-  const event = req.query.event ? String(req.query.event) : '';
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (event && /^[a-z_]+$/.test(event) && event.length <= 64) {
-    conditions.push('event = ?');
-    params.push(event);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = tdb
-    .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-  const byEventRaw = tdb
-    .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
-    .all() as Array<{ event: string; c: number }>;
-  const totalRaw = tdb.prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures').get() as { c: number };
+  try {
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, byEvent: [] } } });
+    }
 
-  res.json({
-    success: true,
-    data: {
-      rows,
-      summary: {
-        total: totalRaw.c,
-        byEvent: byEventRaw.map((r) => ({ event: r.event, count: r.c })),
+    const event = req.query.event ? String(req.query.event) : '';
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (event && /^[a-z_]+$/.test(event) && event.length <= 64) {
+      conditions.push('event = ?');
+      params.push(event);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = tdb
+      .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+    const byEventRaw = tdb
+      .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
+      .all() as Array<{ event: string; c: number }>;
+    const totalRaw = tdb.prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures').get() as { c: number };
+
+    res.json({
+      success: true,
+      data: {
+        rows,
+        summary: {
+          total: totalRaw.c,
+          byEvent: byEventRaw.map((r) => ({ event: r.event, count: r.c })),
+        },
       },
-    },
-  });
+    });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // POST retry on a single dead-lettered webhook delivery. Deletes the row on
@@ -1802,7 +1818,7 @@ router.post(
     const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
     if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-    let tdb: import('better-sqlite3').Database;
+    let tdb: import('better-sqlite3').Database | undefined;
     try { tdb = await getTenantDb(slug); }
     catch (err) {
       logger.error('super-admin: tenant webhook-failure retry DB open failed', {
@@ -1811,16 +1827,20 @@ router.post(
       });
       return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, error: 'internal server error — operation failed' });
     }
-    const { retryDeliveryFailure } = await import('../services/webhooks.js');
-    const result = await retryDeliveryFailure(tdb, failureId);
-    auditLog('webhook_retry', req.superAdmin!.superAdminId, req.ip || 'unknown', {
-      tenant_slug: slug,
-      failure_id: failureId,
-      ok: result.ok,
-      status: result.status,
-      ...(result.ok ? {} : { attempts: result.attempts, error: result.error }),
-    });
-    res.json({ success: true, data: result });
+    try {
+      const { retryDeliveryFailure } = await import('../services/webhooks.js');
+      const result = await retryDeliveryFailure(tdb, failureId);
+      auditLog('webhook_retry', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+        tenant_slug: slug,
+        failure_id: failureId,
+        ok: result.ok,
+        status: result.status,
+        ...(result.ok ? {} : { attempts: result.attempts, error: result.error }),
+      });
+      res.json({ success: true, data: result });
+    } finally {
+      releaseTenantDb(slug);
+    }
   }
 );
 
@@ -1835,7 +1855,7 @@ router.get('/tenants/:slug/automation-runs', async (req: Request, res: Response)
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
     tdb = await getTenantDb(slug);
   } catch (err) {
@@ -1845,40 +1865,45 @@ router.get('/tenants/:slug/automation-runs', async (req: Request, res: Response)
     });
     return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, success: 0, failure: 0, skipped: 0 } } });
-  }
 
-  const status = req.query.status ? String(req.query.status) : '';
-  const automationId = req.query.automationId ? parseInt(String(req.query.automationId), 10) : 0;
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (status && /^(success|failure|skipped|loop_rejected)$/.test(status)) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  if (automationId && !isNaN(automationId)) {
-    conditions.push('automation_id = ?');
-    params.push(automationId);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = tdb
-    .prepare(`SELECT id, automation_id, automation_name, trigger_event, action_type, target_entity_type, target_entity_id, status, error_message, depth, created_at FROM automation_run_log ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-  const summary = tdb.prepare(
-    "SELECT COUNT(*) AS total, " +
-    "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success, " +
-    "SUM(CASE WHEN status='failure' THEN 1 ELSE 0 END) AS failure, " +
-    "SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) AS skipped, " +
-    "SUM(CASE WHEN status='loop_rejected' THEN 1 ELSE 0 END) AS loop_rejected " +
-    "FROM automation_run_log"
-  ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+  try {
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, success: 0, failure: 0, skipped: 0 } } });
+    }
 
-  res.json({ success: true, data: { rows, summary } });
+    const status = req.query.status ? String(req.query.status) : '';
+    const automationId = req.query.automationId ? parseInt(String(req.query.automationId), 10) : 0;
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status && /^(success|failure|skipped|loop_rejected)$/.test(status)) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (automationId && !isNaN(automationId)) {
+      conditions.push('automation_id = ?');
+      params.push(automationId);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = tdb
+      .prepare(`SELECT id, automation_id, automation_name, trigger_event, action_type, target_entity_type, target_entity_id, status, error_message, depth, created_at FROM automation_run_log ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+    const summary = tdb.prepare(
+      "SELECT COUNT(*) AS total, " +
+      "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success, " +
+      "SUM(CASE WHEN status='failure' THEN 1 ELSE 0 END) AS failure, " +
+      "SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) AS skipped, " +
+      "SUM(CASE WHEN status='loop_rejected' THEN 1 ELSE 0 END) AS loop_rejected " +
+      "FROM automation_run_log"
+    ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+
+    res.json({ success: true, data: { rows, summary } });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // ─── Admin Tools ─────────────────────────────────────────────────────
@@ -1968,10 +1993,13 @@ router.get('/admin-tools/rate-limits', async (req: Request, res: Response) => {
   readDb(masterDb, 'master');
   const tenants = masterDb.prepare('SELECT slug FROM tenants WHERE status = ?').all('active') as Array<{ slug: string }>;
   for (const t of tenants) {
+    let tdb: import('better-sqlite3').Database | undefined;
     try {
-      const tdb = await getTenantDb(t.slug);
+      tdb = await getTenantDb(t.slug);
       readDb(tdb, `tenant:${t.slug}`);
-    } catch { /* ignore unavailable tenant DB */ }
+    } catch { /* ignore unavailable tenant DB */ } finally {
+      if (tdb !== undefined) releaseTenantDb(t.slug);
+    }
   }
 
   // Sort across all DBs by locked-until then count desc so the most-blocked
@@ -2011,8 +2039,9 @@ router.post(
       if (!tenant?.slug) {
         return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
       }
+      let tdb: import('better-sqlite3').Database | undefined;
       try {
-        const tdb = await getTenantDb(tenant.slug);
+        tdb = await getTenantDb(tenant.slug);
         results.push(clearRateLimitsOnDb(tdb, `tenant:${tenant.slug}`, categories));
       } catch (err) {
         results.push({
@@ -2021,14 +2050,17 @@ router.post(
           skipped: false,
           error: err instanceof Error ? err.message : String(err),
         });
+      } finally {
+        if (tdb !== undefined) releaseTenantDb(tenant.slug);
       }
     } else {
       // Wide scope — master DB + every tenant DB known to the master table.
       results.push(clearRateLimitsOnDb(masterDb, 'master', categories));
       const tenants = masterDb.prepare('SELECT slug FROM tenants').all() as Array<{ slug: string }>;
       for (const t of tenants) {
+        let tdb: import('better-sqlite3').Database | undefined;
         try {
-          const tdb = await getTenantDb(t.slug);
+          tdb = await getTenantDb(t.slug);
           results.push(clearRateLimitsOnDb(tdb, `tenant:${t.slug}`, categories));
         } catch (err) {
           results.push({
@@ -2037,6 +2069,8 @@ router.post(
             skipped: false,
             error: err instanceof Error ? err.message : String(err),
           });
+        } finally {
+          if (tdb !== undefined) releaseTenantDb(t.slug);
         }
       }
     }
@@ -2157,15 +2191,18 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
   }
 
   let targetUser: { id: number; username: string; role: string } | undefined;
+  let _tdbImpersonate: import('better-sqlite3').Database | undefined;
   try {
-    const tdb = await getTenantDb(slug);
+    _tdbImpersonate = await getTenantDb(slug);
     // Prefer an admin user; fall back to any active user.
     targetUser =
-      (tdb.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??
-      (tdb.prepare("SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined);
+      (_tdbImpersonate.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??
+      (_tdbImpersonate.prepare("SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined);
   } catch (err) {
     logger.error('impersonate: failed to open tenant DB', { slug, error: err instanceof Error ? err.message : String(err) });
     return res.status(500).json({ success: false, message: 'Could not open tenant database' });
+  } finally {
+    if (_tdbImpersonate !== undefined) releaseTenantDb(slug);
   }
 
   if (!targetUser) {
@@ -2228,10 +2265,17 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
 
   // Tenant-side audit: write to the tenant's own audit_logs so the tenant can
   // see super-admin access in their own audit history (SCAN-571 fix 2).
-  const tdb = getTenantDb(slug);
-  audit(tdb, 'super_admin.impersonate_started', targetUser.id, ip, {
-    super_admin_id: superAdminId,
-    session_id: sessionId,
+  getTenantDb(slug).then((tdbAudit) => {
+    try {
+      audit(tdbAudit, 'super_admin.impersonate_started', targetUser!.id, ip, {
+        super_admin_id: superAdminId,
+        session_id: sessionId,
+      });
+    } finally {
+      releaseTenantDb(slug);
+    }
+  }).catch((err) => {
+    logger.error('impersonate: tenant audit write failed', { slug, error: err instanceof Error ? err.message : String(err) });
   });
 
   logger.info('super-admin impersonation token issued', {
@@ -2327,10 +2371,17 @@ router.post('/tenants/:slug/impersonate/:jti/end', async (req: Request, res: Res
   });
 
   // Tenant-level audit.
-  const tdb = getTenantDb(slug);
-  audit(tdb, 'super_admin.impersonate_ended', sessionExists.user_id, ip, {
-    super_admin_id: superAdminId,
-    session_id: sessionId,
+  getTenantDb(slug).then((tdbAudit) => {
+    try {
+      audit(tdbAudit, 'super_admin.impersonate_ended', sessionExists!.user_id, ip, {
+        super_admin_id: superAdminId,
+        session_id: sessionId,
+      });
+    } finally {
+      releaseTenantDb(slug);
+    }
+  }).catch((err) => {
+    logger.error('impersonate/end: tenant audit write failed', { slug, error: err instanceof Error ? err.message : String(err) });
   });
 
   logger.info('super-admin impersonation session ended', {

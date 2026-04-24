@@ -650,15 +650,16 @@ function startAutoClockoutSweep(): void {
         const { createAsyncDb } = await import('../db/async-db.js');
         if (config.multiTenant) {
           const { getMasterDb } = await import('../db/master-connection.js');
-          const { getTenantDb } = await import('../db/tenant-pool.js');
+          const { getTenantDb, releaseTenantDb } = await import('../db/tenant-pool.js');
           const masterDb = getMasterDb();
           if (!masterDb) return;
           const tenants = masterDb
             .prepare("SELECT slug FROM tenants WHERE status = 'active'")
             .all() as { slug: string }[];
           for (const t of tenants) {
+            let pooled: import('better-sqlite3').Database | undefined;
             try {
-              const pooled = await getTenantDb(t.slug);
+              pooled = await getTenantDb(t.slug);
               const tenantAdb = createAsyncDb(pooled.name);
               const closed = await autoClockOutStaleSessions(tenantAdb, pooled);
               if (closed > 0) {
@@ -669,6 +670,8 @@ function startAutoClockoutSweep(): void {
                 tenant: t.slug,
                 error: err instanceof Error ? err.message : 'unknown',
               });
+            } finally {
+              if (pooled !== undefined) releaseTenantDb(t.slug);
             }
           }
         } else {
