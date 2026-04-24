@@ -2507,3 +2507,23 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.
+
+## Closed 2026-04-23 (wave-39)
+- [x] SCAN-584. **automations GET / no role gate** — verified wave-39, `requireAdmin` gate already present on automations.routes.ts GET /.
+- [x] SCAN-586. **rma GET /:id raw req.params.id** — FIXED wave-39 via validateId middleware applied today at rma.routes.ts:99.
+- [x] SCAN-594. **inbox previewBulkSegment no sms consent filter** — verified wave-39, `sms_opt_in` + `sms_consent_marketing` filters already present on all 3 segment queries in inbox.routes.ts.
+- [x] SCAN-598. **snippets PUT /:id no shortcode regex** — verified wave-39, shortcode regex validation already present at snippets.routes.ts:83.
+- [x] SCAN-602. **inbox bulk-send step-2 segment drift** — verified wave-39, HMAC phonesHash check already present at inbox.routes.ts:421-427.
+- [x] SCAN-605. **stale-ticket cron no consent check** — verified wave-39, consent SELECT + skip-opted-out already present at index.ts:2965-2997.
+- [x] SCAN-606. **overdue-invoice cron no consent check** — verified wave-39, consent pattern already present at index.ts:3053-3078.
+- [x] SCAN-607. **estimate-followup cron no consent check** — verified wave-39, consent pattern already present at index.ts:3134-3158.
+- [x] SCAN-609. **WS tenant origin counter leak on rejection** — verified wave-39, counter decrement on origin-check rejection already present in ws/server.ts.
+- [x] SCAN-611. **bench /defects/by-item no role gate** — verified wave-39, admin/manager role gate already present at bench.routes.ts:1116-1119.
+- [x] SCAN-612. **paymentLinks GET /:id SELECT *** — verified wave-39, `requireManagerOrAdmin` already present at paymentLinks.routes.ts:105.
+- [x] SCAN-613. **JWT type check accepts undefined** — verified wave-39, strict `payload.type !== 'access'` assertion already present at auth.routes.ts:86.
+- [x] SCAN-615. **deviceTemplates apply-to-ticket no role gate** — verified wave-39, admin/manager gate already present at deviceTemplates.routes.ts:385-387.
+- [x] SCAN-617. **appointment-reminder cron no consent check** — verified wave-39, consent pattern already present at index.ts:2699-2723.
+- [x] SCAN-618. **notification_queue cron no opt-in check** — verified wave-39, consent gate already present at index.ts:3225-3227.
+- [x] SCAN-620. **invoices GET / no requirePermission** — verified wave-39, `requirePermission('invoices.view')` already present at invoices.routes.ts:112.
+- [x] SCAN-884. **super-admin client baseURL** — FIXED wave-39 today, baseURL corrected to `/super-admin/api`.
+- [x] SCAN-885. **membership /subscriptions no admin gate** — verified wave-39, `requireAdmin` already present at membership.routes.ts:275.

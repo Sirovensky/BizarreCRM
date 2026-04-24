@@ -4,7 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
-import { validateEnum, validateTextLength, validatePaginationOffset } from '../utils/validate.js';
+import { validateEnum, validateTextLength, validatePaginationOffset, validateId } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
@@ -95,8 +95,7 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 // GET /:id — Single RMA with items
 router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const rmaId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(rmaId) || rmaId <= 0) throw new AppError('Invalid RMA id', 400);
+  const rmaId = validateId(req.params.id, 'id');
   const [rma, items] = await Promise.all([
     adb.get<any>('SELECT * FROM rma_requests WHERE id = ? AND is_deleted = 0', rmaId),
     adb.all(`
@@ -164,8 +163,7 @@ router.post('/', requirePermission('inventory.edit'), asyncHandler(async (req, r
 // cannot mark an RMA as `received`/`resolved` and short-circuit the return path.
 router.patch('/:id/status', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const rmaId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(rmaId) || rmaId <= 0) throw new AppError('Invalid RMA id', 400);
+  const rmaId = validateId(req.params.id, 'id');
 
   const rawStatus = req.body?.status;
   if (!rawStatus || typeof rawStatus !== 'string') {

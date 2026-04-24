@@ -275,7 +275,7 @@ export { client as api };
 export const SUPER_ADMIN_TOKEN_KEY = 'superAdminToken';
 
 export const superAdminClient = axios.create({
-  baseURL: '/super-admin',
+  baseURL: '/super-admin/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
