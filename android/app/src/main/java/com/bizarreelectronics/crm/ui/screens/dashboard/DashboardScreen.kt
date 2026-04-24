@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.bizarreelectronics.crm.util.WindowMode
+import com.bizarreelectronics.crm.util.rememberWindowMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -41,12 +43,21 @@ import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.BusyHoursHeatmap
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.ChurnAlertCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardDatePreset
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DateRange
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DateRangeSelector
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.ForecastCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiGrid
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiTile
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.LeaderboardCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MissingPartsCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.ProfitHeroCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.RepeatCustomerCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.toDateRange
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.LeaderboardEntry
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MissingPartItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,6 +138,8 @@ class DashboardViewModel @Inject constructor(
     syncManager: SyncManager,
     syncQueueDao: SyncQueueDao,
     notificationDao: NotificationDao,
+    /** Exposed for BI widget cards that need reduce-motion awareness (§3.2 L500). */
+    val appPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences,
 ) : ViewModel() {
 
     // Exposed so the Dashboard can render a SyncStatusBadge without the
@@ -145,6 +158,58 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // §3.2 L500–L506 — BI widget state slots.
+    //
+    // All flows default to empty / stub values. Cards render a "Connect data"
+    // affordance when they receive empty collections — no network calls are made
+    // until the corresponding server endpoints ship.
+    //
+    // Stub contract:
+    //   profitTrend    — empty list → ProfitHeroCard shows "Connect Profit data"
+    //   busyHours      — empty array → BusyHoursHeatmap shows "No heatmap data"
+    //   leaderboard    — empty list → LeaderboardCard shows "No leaderboard data"
+    //   repeatPercent  — null → RepeatCustomerCard shows "—"
+    //   churnAtRisk    — null → ChurnAlertCard shows "Data unavailable"
+    //   forecastCents  — null → ForecastCard shows "Forecast available with 90+ days"
+    //   missingParts   — null → MissingPartsCard shows "Connect Inventory data"
+    // -------------------------------------------------------------------------
+
+    /** §3.2 L500 — daily net-margin percentages for Profit Hero sparkline (≤30 pts). */
+    private val _profitTrend = MutableStateFlow<List<Double>>(emptyList())
+    val profitTrend: StateFlow<List<Double>> = _profitTrend.asStateFlow()
+
+    /** §3.2 L501 — 7×24 ticket-volume grid for the Busy Hours heatmap. */
+    private val _busyHours = MutableStateFlow<Array<IntArray>>(emptyArray())
+    val busyHours: StateFlow<Array<IntArray>> = _busyHours.asStateFlow()
+
+    /** §3.2 L502 — top staff entries for the Leaderboard card. */
+    private val _leaderboard = MutableStateFlow<List<LeaderboardEntry>>(emptyList())
+    val leaderboard: StateFlow<List<LeaderboardEntry>> = _leaderboard.asStateFlow()
+
+    /** §3.2 L503 — % repeat customers last 90 days. Null = no data. */
+    private val _repeatPercent = MutableStateFlow<Double?>(null)
+    val repeatPercent: StateFlow<Double?> = _repeatPercent.asStateFlow()
+
+    /** §3.2 L503 — pp delta vs prior 90-day period. Null = unknown. */
+    private val _repeatTrendDelta = MutableStateFlow<Double?>(null)
+    val repeatTrendDelta: StateFlow<Double?> = _repeatTrendDelta.asStateFlow()
+
+    /** §3.2 L504 — count of at-risk customers for Churn Alert. Null = data unavailable. */
+    private val _churnAtRisk = MutableStateFlow<Int?>(null)
+    val churnAtRisk: StateFlow<Int?> = _churnAtRisk.asStateFlow()
+
+    /** §3.2 L505 — projected 30-day revenue in cents. Null = insufficient history. */
+    private val _forecastCents = MutableStateFlow<Long?>(null)
+    val forecastCents: StateFlow<Long?> = _forecastCents.asStateFlow()
+
+    /** §3.2 L505 — days of revenue history for Forecast progress bar. */
+    private val _forecastHistoryDays = MutableStateFlow<Int?>(null)
+    val forecastHistoryDays: StateFlow<Int?> = _forecastHistoryDays.asStateFlow()
+
+    /** §3.2 L506 — inventory items needing reorder. Null = source not connected. */
+    private val _missingParts = MutableStateFlow<List<MissingPartItem>?>(null)
+    val missingParts: StateFlow<List<MissingPartItem>?> = _missingParts.asStateFlow()
 
     private val _state = MutableStateFlow(DashboardUiState())
     val state = _state.asStateFlow()
@@ -724,6 +789,12 @@ fun DashboardScreen(
                 )
             }
         }
+
+        // §3.2 L500–L506 — BI Widgets "Insights" section.
+        // Widgets flow 1-column on Phone, 2-column on Tablet/Desktop.
+        item {
+            InsightsSection(viewModel = viewModel)
+        }
     }
     }
     // Scrim: rendered after PullToRefreshBox so it sits above the list in Z-order.
@@ -938,3 +1009,122 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// §3.2 L500–L506 — Insights section (BI widgets)
+// ---------------------------------------------------------------------------
+
+/**
+ * "Insights" section rendered below the KPI grid in [DashboardScreen].
+ *
+ * Layout adapts to [WindowMode]:
+ *   - Phone   → single-column vertical stack
+ *   - Tablet / Desktop → 2-column grid using Row pairs
+ *
+ * All widgets handle empty / stub data gracefully — this composable never
+ * crashes regardless of what the ViewModel emits.
+ */
+@Composable
+private fun InsightsSection(viewModel: DashboardViewModel) {
+    val windowMode = rememberWindowMode()
+    val isTwoCol = windowMode != WindowMode.Phone
+
+    // Collect all BI state flows
+    val profitTrend by viewModel.profitTrend.collectAsState()
+    val busyHours by viewModel.busyHours.collectAsState()
+    val leaderboard by viewModel.leaderboard.collectAsState()
+    val repeatPercent by viewModel.repeatPercent.collectAsState()
+    val repeatTrendDelta by viewModel.repeatTrendDelta.collectAsState()
+    val churnAtRisk by viewModel.churnAtRisk.collectAsState()
+    val forecastCents by viewModel.forecastCents.collectAsState()
+    val forecastHistoryDays by viewModel.forecastHistoryDays.collectAsState()
+    val missingParts by viewModel.missingParts.collectAsState()
+
+    // Net margin from latest trend point (last value = most recent day)
+    val netMarginPercent = profitTrend.lastOrNull()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Section heading
+        Text(
+            text = "Insights",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+
+        if (isTwoCol) {
+            // 2-column layout for tablet/desktop
+            // Row 1: Profit Hero + Repeat Customer
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                ProfitHeroCard(
+                    trendPoints = profitTrend,
+                    netMarginPercent = netMarginPercent,
+                    appPreferences = viewModel.appPreferences,
+                    modifier = Modifier.weight(1f),
+                )
+                RepeatCustomerCard(
+                    repeatPercent = repeatPercent,
+                    trendDelta = repeatTrendDelta,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            // Row 2: Churn Alert + Forecast
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                ChurnAlertCard(
+                    atRiskCount = churnAtRisk,
+                    modifier = Modifier.weight(1f),
+                )
+                ForecastCard(
+                    forecastRevenue = forecastCents,
+                    historyDays = forecastHistoryDays,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            // Row 3: Leaderboard (full width)
+            LeaderboardCard(
+                entries = leaderboard,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // Row 4: Busy Hours heatmap (full width — 24 columns need width)
+            BusyHoursHeatmap(
+                data = busyHours,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // Row 5: Missing Parts (full width)
+            MissingPartsCard(
+                items = missingParts,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            // 1-column layout for phones
+            ProfitHeroCard(
+                trendPoints = profitTrend,
+                netMarginPercent = netMarginPercent,
+                appPreferences = viewModel.appPreferences,
+            )
+            RepeatCustomerCard(
+                repeatPercent = repeatPercent,
+                trendDelta = repeatTrendDelta,
+            )
+            ChurnAlertCard(atRiskCount = churnAtRisk)
+            ForecastCard(
+                forecastRevenue = forecastCents,
+                historyDays = forecastHistoryDays,
+            )
+            LeaderboardCard(entries = leaderboard)
+            BusyHoursHeatmap(data = busyHours)
+            MissingPartsCard(items = missingParts)
+        }
+    }
+}
+
