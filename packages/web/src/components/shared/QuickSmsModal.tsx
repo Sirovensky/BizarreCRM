@@ -5,6 +5,13 @@ import toast from 'react-hot-toast';
 import { smsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 
+interface SmsTemplate {
+  id: number | string;
+  name: string;
+  content: string;
+  category?: string;
+}
+
 interface QuickSmsModalProps {
   onClose: () => void;
   customer: { first_name: string; last_name: string; phone?: string; mobile?: string };
@@ -18,7 +25,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   const phone = toPhone || customer.phone || customer.mobile || '';
   const [recipient, setRecipient] = useState(phone);
   const [message, setMessage] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [, setSelectedTemplate] = useState<SmsTemplate | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const MAX_CHARS = 160;
 
@@ -26,7 +33,8 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
     queryKey: ['sms-templates'],
     queryFn: () => smsApi.templates(),
   });
-  const templates: any[] = tplData?.data?.data?.templates || [];
+  const rawTemplates = tplData?.data?.data?.templates;
+  const templates: SmsTemplate[] = Array.isArray(rawTemplates) ? (rawTemplates as SmsTemplate[]) : [];
 
   // Template variable substitution
   const substituteTemplate = (content: string) => {
@@ -39,7 +47,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
     return content.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
   };
 
-  const applyTemplate = (tpl: any) => {
+  const applyTemplate = (tpl: SmsTemplate) => {
     setSelectedTemplate(tpl);
     setMessage(substituteTemplate(tpl.content));
     setShowTemplates(false);
@@ -56,7 +64,13 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
       toast.success('SMS sent');
       onClose();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to send SMS'),
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      toast.error(msg || 'Failed to send SMS');
+    },
   });
 
   const handleSend = () => {
@@ -66,7 +80,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   };
 
   // Group templates by category
-  const grouped = templates.reduce((acc: Record<string, any[]>, tpl: any) => {
+  const grouped = templates.reduce<Record<string, SmsTemplate[]>>((acc, tpl) => {
     const cat = tpl.category || 'General';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(tpl);
@@ -87,7 +101,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
               <p className="text-xs text-surface-400">{customer.first_name} {customer.last_name}{ticket && ` · ${ticket.order_id}`}</p>
             </div>
           </div>
-          <button aria-label="Close" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+          <button type="button" aria-label="Close" onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -95,8 +109,9 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
         <div className="p-6 space-y-4">
           {/* Recipient */}
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">To</label>
+            <label htmlFor="quick-sms-recipient" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">To</label>
             <input
+              id="quick-sms-recipient"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
               className="input w-full font-mono text-sm"
@@ -109,6 +124,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Message</label>
               <button
+                type="button"
                 onClick={() => setShowTemplates(!showTemplates)}
                 className="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 font-medium"
               >
@@ -123,8 +139,8 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
                     <div className="px-3 py-1.5 bg-surface-50 dark:bg-surface-800 text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider sticky top-0">
                       {cat}
                     </div>
-                    {(tpls as any[]).map((tpl: any) => (
-                      <button key={tpl.id} onClick={() => applyTemplate(tpl)}
+                    {tpls.map((tpl) => (
+                      <button type="button" key={tpl.id} onClick={() => applyTemplate(tpl)}
                         className="w-full text-left px-3 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors border-b border-surface-100 dark:border-surface-700/50 last:border-0">
                         <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{tpl.name}</p>
                         <p className="text-xs text-surface-400 truncate mt-0.5">{substituteTemplate(tpl.content)}</p>
@@ -158,10 +174,11 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100 transition-colors">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 hover:text-surface-800 dark:hover:text-surface-100 transition-colors">
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSend}
             disabled={!message.trim() || !recipient.trim() || sendMutation.isPending}
             className="inline-flex items-center gap-2 px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
