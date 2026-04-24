@@ -18,7 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -248,11 +254,26 @@ private fun TotalsRow(label: String, value: String, highlight: Boolean = false) 
 
 @Composable
 private fun DashedSlot(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // Mockup phone 3: these three action slots (+Misc / +Note / +Discount)
+    // render with a dashed rectangle border. Compose stdlib has no
+    // Modifier.dashedBorder so we draw it inline via drawBehind + Stroke +
+    // PathEffect — same recipe as GhostWalkInTile in PosEntryScreen.
+    val outlineColor = MaterialTheme.colorScheme.outline
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
             .clickable(onClickLabel = label) { onClick() }
+            .drawBehind {
+                val strokeWidth = 1.dp.toPx()
+                val dash = PathEffect.dashPathEffect(floatArrayOf(10f, 6f), 0f)
+                drawRoundRect(
+                    color = outlineColor,
+                    size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2),
+                    cornerRadius = CornerRadius(10.dp.toPx() - strokeWidth / 2),
+                    style = Stroke(width = strokeWidth, pathEffect = dash),
+                )
+            }
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
