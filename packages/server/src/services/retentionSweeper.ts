@@ -131,7 +131,10 @@ const PII_RULES: readonly PiiRule[] = [
 ];
 
 const DEFAULT_PII_MONTHS = 24;
-const MIN_PII_MONTHS = 1;
+// SCAN-1136 / SCAN-1132: 0 is now a valid sentinel meaning "disabled for
+// this table". Negative values still get clamped to DEFAULT_PII_MONTHS so
+// a fat-fingered `-1` doesn't wipe the table on the next run.
+const MIN_PII_MONTHS = 0;
 const MAX_PII_MONTHS = 120; // 10 years — anything past this is almost certainly a typo.
 
 /**
@@ -439,6 +442,11 @@ function applyPiiRule(db: Database, rule: PiiRule): number {
   if (rule.redactColumn) assertSqlIdent(rule.redactColumn, 'redactColumn');
 
   const months = readPiiRetentionMonths(db, rule.configKey);
+  // SCAN-1132 / SCAN-1136: per-table disable — operators who want to keep
+  // (say) ticket_notes indefinitely while still sweeping other tables can
+  // set the tenant's store_config for this rule's key to `0`. Skip both
+  // the DELETE and redact branches; return 0 rows touched.
+  if (months === 0) return 0;
   // `months` is already validated + clamped by readPiiRetentionMonths, so
   // interpolating it into the SQL modifier literal is safe.
   const cutoff = `datetime('now', '-${months} months')`;

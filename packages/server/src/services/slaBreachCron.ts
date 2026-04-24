@@ -86,7 +86,10 @@ function markBreached(slug: string, db: Database.Database, ticket: OverdueTicket
   const breachedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   try {
-    db.transaction(() => {
+    // SCAN-1137: gate the broadcast on whether the UPDATE actually flipped
+    // the flag for this tick; previously the rebroadcast fired on every
+    // tick for already-breached tickets.
+    const logged = db.transaction((): boolean => {
       // Idempotency guard: only mark if still 0 (another tick may have raced us)
       const updateResult = db.prepare(`
         UPDATE tickets
@@ -95,8 +98,7 @@ function markBreached(slug: string, db: Database.Database, ticket: OverdueTicket
       `).run(ticket.id);
 
       if (updateResult.changes === 0) {
-        // Already marked by another cron tick — skip log insert
-        return;
+        return false;
       }
 
       db.prepare(`
@@ -111,23 +113,24 @@ function markBreached(slug: string, db: Database.Database, ticket: OverdueTicket
         order_id: ticket.order_id,
         breached_at: breachedAt,
       });
+      return true;
     })();
 
-    // Emit WebSocket event outside the transaction (non-critical)
-    try {
-      broadcast('sla_breached', {
-        ticket_id: ticket.id,
-        order_id: ticket.order_id,
-        breach_type: 'resolution',
-        breached_at: breachedAt,
-      }, slug);
-    } catch (wsErr) {
-      // WebSocket failures must not affect the breach log
-      logger.warn('sla-breach-cron: ws broadcast failed', {
-        slug,
-        ticket_id: ticket.id,
-        err: wsErr instanceof Error ? wsErr.message : String(wsErr),
-      });
+    if (logged) {
+      try {
+        broadcast('sla_breached', {
+          ticket_id: ticket.id,
+          order_id: ticket.order_id,
+          breach_type: 'resolution',
+          breached_at: breachedAt,
+        }, slug);
+      } catch (wsErr) {
+        logger.warn('sla-breach-cron: ws broadcast failed', {
+          slug,
+          ticket_id: ticket.id,
+          err: wsErr instanceof Error ? wsErr.message : String(wsErr),
+        });
+      }
     }
   } catch (err) {
     logger.error('sla-breach-cron: failed to mark ticket breached', {
@@ -188,7 +191,13 @@ function markFirstResponseBreached(slug: string, db: Database.Database, ticket: 
   const breachedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   try {
-    db.transaction(() => {
+    // SCAN-1137: previously the `if (result.changes === 0) return` guard sat
+    // inside the transaction callback, but the `broadcast(...)` call fired
+    // unconditionally AFTER the transaction — every cron tick rebroadcast
+    // `sla_breached` for already-logged tickets, spamming connected
+    // clients with duplicate alerts. Return a boolean from the transaction
+    // and only broadcast on a true first insert.
+    const logged = db.transaction((): boolean => {
       // Idempotent at the DB level via the UNIQUE index on
       // (ticket_id, breach_type) added in migration 143. `INSERT OR IGNORE`
       // collapses the SELECT+INSERT into one atomic statement so two
@@ -199,7 +208,7 @@ function markFirstResponseBreached(slug: string, db: Database.Database, ticket: 
         VALUES (?, ?, 'first_response', ?)
       `).run(ticket.id, ticket.sla_policy_id ?? null, breachedAt);
 
-      if (result.changes === 0) return; // Already logged by another tick/worker.
+      if (result.changes === 0) return false; // Already logged.
 
       logger.info('sla-breach-cron: first_response breach logged', {
         slug,
@@ -207,21 +216,24 @@ function markFirstResponseBreached(slug: string, db: Database.Database, ticket: 
         order_id: ticket.order_id,
         breached_at: breachedAt,
       });
+      return true;
     })();
 
-    try {
-      broadcast('sla_breached', {
-        ticket_id: ticket.id,
-        order_id: ticket.order_id,
-        breach_type: 'first_response',
-        breached_at: breachedAt,
-      }, slug);
-    } catch (wsErr) {
-      logger.warn('sla-breach-cron: ws broadcast failed (first_response)', {
-        slug,
-        ticket_id: ticket.id,
-        err: wsErr instanceof Error ? wsErr.message : String(wsErr),
-      });
+    if (logged) {
+      try {
+        broadcast('sla_breached', {
+          ticket_id: ticket.id,
+          order_id: ticket.order_id,
+          breach_type: 'first_response',
+          breached_at: breachedAt,
+        }, slug);
+      } catch (wsErr) {
+        logger.warn('sla-breach-cron: ws broadcast failed (first_response)', {
+          slug,
+          ticket_id: ticket.id,
+          err: wsErr instanceof Error ? wsErr.message : String(wsErr),
+        });
+      }
     }
   } catch (err) {
     logger.error('sla-breach-cron: failed to log first_response breach', {

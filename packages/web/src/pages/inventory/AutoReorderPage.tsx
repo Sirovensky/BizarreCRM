@@ -66,12 +66,36 @@ export function AutoReorderPage() {
 
   const upsertMut = useMutation({
     mutationFn: async () => {
+      // SCAN-1133: `parseInt('')` returns NaN, which the server then rejects
+      // with a generic 400 and the UI surfaces as "Save failed". Validate
+      // each required numeric up front so the user gets a clear toast
+      // naming the bad field. Optional ids/leads still allow empty → null.
+      const itemIdN = parseInt(itemId, 10);
+      const minQtyN = parseInt(minQty, 10);
+      const reorderQtyN = parseInt(reorderQty, 10);
+      if (!Number.isFinite(itemIdN) || itemIdN <= 0) {
+        throw new Error('Item is required');
+      }
+      if (!Number.isFinite(minQtyN) || minQtyN < 0) {
+        throw new Error('Minimum quantity must be a non-negative number');
+      }
+      if (!Number.isFinite(reorderQtyN) || reorderQtyN <= 0) {
+        throw new Error('Reorder quantity must be a positive number');
+      }
+      const supplierIdN = supplierId ? parseInt(supplierId, 10) : null;
+      const leadTimeN = leadTime ? parseInt(leadTime, 10) : null;
+      if (supplierIdN !== null && (!Number.isFinite(supplierIdN) || supplierIdN <= 0)) {
+        throw new Error('Preferred supplier id is invalid');
+      }
+      if (leadTimeN !== null && (!Number.isFinite(leadTimeN) || leadTimeN < 0)) {
+        throw new Error('Lead time days is invalid');
+      }
       const res = await api.post('/inventory-enrich/auto-reorder-rules', {
-        inventory_item_id: parseInt(itemId, 10),
-        min_qty: parseInt(minQty, 10),
-        reorder_qty: parseInt(reorderQty, 10),
-        preferred_supplier_id: supplierId ? parseInt(supplierId, 10) : null,
-        lead_time_days: leadTime ? parseInt(leadTime, 10) : null,
+        inventory_item_id: itemIdN,
+        min_qty: minQtyN,
+        reorder_qty: reorderQtyN,
+        preferred_supplier_id: supplierIdN,
+        lead_time_days: leadTimeN,
       });
       return res.data.data;
     },

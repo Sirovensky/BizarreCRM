@@ -726,14 +726,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-66 scan-loop findings (2026-04-24) — reports/locations/retention/autoreorder/webhooks/notifications/sla/dunning/tenantExport/worker-pool
-- [ ] SCAN-1132. **[MED] `DataRetentionTab` hint says "set 0 to disable" but `readPiiRetentionMonths` clamps <1 → DEFAULT_PII_MONTHS.**
-  <!-- meta: scope=web/pages+server/services; files=packages/web/src/pages/settings/DataRetentionTab.tsx:166,packages/server/src/services/retentionSweeper.ts:337-351; fix=treat-0-as-disabled-or-correct-hint-text -->
-- [ ] SCAN-1133. **[LOW] `AutoReorderPage upsertMut` sends NaN when numeric inputs empty.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/inventory/AutoReorderPage.tsx:67-76; fix=isFinite+>0-guard -->
-- [ ] SCAN-1136. **[LOW] `retentionSweeper` has no per-table disabled sentinel — 0 months forces DEFAULT_PII_MONTHS.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:339-351,433-467; fix=allow-0-sentinel-early-return -->
-- [ ] SCAN-1137. **[LOW] `slaBreachCron` broadcasts `sla_breached` first-response even when INSERT OR IGNORE no-oped.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/slaBreachCron.ts:196-225; fix=tx-returns-boolean-gate-broadcast -->
 - [ ] SCAN-1138. **[LOW/perf] `tenant-pool getPoolStats` iterates on every call — no cached inUseCount.**
   <!-- meta: scope=server/db; files=packages/server/src/db/tenant-pool.ts:278-294; fix=maintain-inUseCount-counter -->
 

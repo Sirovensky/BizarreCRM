@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-66 retention 0-sentinel + sla broadcast gate + autoreorder NaN)
+
+- [x] SCAN-1132 / SCAN-1136. **`DataRetentionTab` hint claimed "set 0 to disable" but `readPiiRetentionMonths` clamped anything `<1` back to `DEFAULT_PII_MONTHS`** — operators who wanted to keep a single PII table indefinitely (e.g. ticket_notes) had no way to express that per-table, and the UI copy was actively misleading. Lowered `MIN_PII_MONTHS` to `0` (still clamps negatives to default) and added an `if (months === 0) return 0;` early-return in `applyPiiRule` so both the DELETE and redact branches skip the table cleanly. The tab hint is now accurate.
+- [x] SCAN-1137. **`slaBreachCron` broadcast `sla_breached` unconditionally after the transaction** — the `changes === 0 → return` guard was INSIDE the tx callback, so every already-logged tick kept rebroadcasting. Reworked both `markBreached` (resolution breach) and the first-response path to return a boolean from `db.transaction(...)` and only broadcast on a genuine first insert.
+- [x] SCAN-1133. **`AutoReorderPage upsertMut` called `parseInt(itemId, 10)` etc. without guarding NaN** — empty numeric inputs sent `{ min_qty: NaN, reorder_qty: NaN }`, the server bounced it as a generic 400, and the toast said "Save failed" with no hint which field. Added per-field `Number.isFinite` + range checks up front that throw named errors; the mutation's existing `onError` path surfaces the specific message.
+
 ## Closed 2026-04-24 (wave-66 locations PATCH + dunning N+1 + slug + webhook entropy)
 
 - [x] SCAN-1131. **`locations.routes PATCH` built its UPDATE with `COALESCE(?, field)`** — "absent" and "explicit null" collapsed to the same NOP, so clients could never unset optional phone/email/lat/lng/notes fields once they were set. Rewrote as a dynamic SET-clause builder: each `addField(column, value)` call only emits a `column = ?` clause when the client actually supplied that field (including explicit null), so null-writes now actually persist.
