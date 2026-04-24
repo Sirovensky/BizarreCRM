@@ -23,7 +23,13 @@ if [[ -z "$SERIAL" ]]; then
     echo "no adb device; run: $ADB devices" >&2
     exit 1
 fi
-OUT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/docs/m3-expressive-audit"
+# Resolve the script's own directory, then walk up to the repo root —
+# more reliable than `git rev-parse --show-toplevel` which returns the
+# current worktree when invoked from one, splitting captures across
+# `.claude/worktrees/…/docs/…` and the canonical `docs/…`.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+OUT_DIR="$REPO_ROOT/docs/m3-expressive-audit"
 TMP_RAW="$(mktemp --suffix=.png)"
 trap 'rm -f "$TMP_RAW"' EXIT
 
