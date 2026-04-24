@@ -434,15 +434,24 @@
     width: 100%;
     padding: 18px;
     border-radius: 18px;
-    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
     color: var(--on-primary);
-    border: 0;
+    border: 1px solid rgba(255,255,255,0.30);
     font-size: 17px; font-weight: 800;
     letter-spacing: -0.01em;
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.85),
-      0 14px 30px rgba(253,238,208,0.25);
+      inset 0 1.5px 0 rgba(255,255,255,0.90),
+      0 0 40px rgba(253,238,208,0.20),
+      0 14px 32px rgba(253,238,208,0.28);
     min-height: 56px;
+  }
+  .tender-btn:active {
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.60),
+      0 6px 16px rgba(253,238,208,0.18);
+    transform: scale(0.99);
   }
   .tender-btn .tb-amount {
     font-family: var(--font-display);
@@ -566,26 +575,55 @@
     padding: 12px 16px;
   }
   .method {
-    padding: 14px 12px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    position: relative;
+    padding: 18px 12px 16px;
+    border-radius: 16px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.09), transparent 65%),
+      rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
     text-align: center;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 6px 16px rgba(0,0,0,0.20);
+    overflow: hidden;
+  }
+  .method::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 45%, rgba(253,238,208,0.10) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
   }
   .method.selected {
-    background: var(--primary);
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
     color: var(--on-primary);
     border-color: var(--primary);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 8px 22px rgba(253,238,208,0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 12px 28px rgba(253,238,208,0.28),
+      0 0 0 1px rgba(253,238,208,0.5);
   }
-  .method .m-icon { font-size: 22px; margin-bottom: 4px; }
+  .method.selected::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.55), rgba(253,238,208,0.25) 50%, rgba(255,255,255,0.35) 100%);
+  }
+  /* Cream halo behind selected tile */
+  .method.selected::after {
+    content: ""; position: absolute; inset: -8px; border-radius: 24px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(253,238,208,0.20), transparent 70%);
+    pointer-events: none; z-index: -1;
+  }
+  .method .m-icon { font-size: 24px; margin-bottom: 5px; }
   .method.selected .m-icon { color: var(--on-primary); }
-  .method .m-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .method .m-name { font-size: 13.5px; font-weight: 800; letter-spacing: -0.01em; }
   .method .m-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .method.selected .m-sub { color: rgba(43,20,0,0.7); }
+  .method.selected .m-sub { color: rgba(43,20,0,0.72); }
 
-  /* Quick-amount strip — above numpad */
+  /* Quick-amount strip — above numpad — glassy capsules */
   .quick-amounts {
     display: flex; gap: 6px; padding: 10px 16px 4px;
     overflow-x: auto;
@@ -593,10 +631,13 @@
   .quick-amounts::-webkit-scrollbar { display: none; }
   .quick-amount {
     flex: 1; min-width: 68px;
-    padding: 12px 6px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+    padding: 11px 6px;
+    border-radius: 99px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.11);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
     text-align: center;
     font-family: var(--font-display);
     font-size: 17px; font-weight: 700;
@@ -604,14 +645,20 @@
     color: var(--on);
     letter-spacing: -0.01em;
     min-height: 44px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
   }
   .quick-amount.selected {
-    background: var(--primary-soft);
-    border-color: rgba(253,238,208,0.5);
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.30), transparent 65%),
+      rgba(253,238,208,0.10);
+    border-color: rgba(253,238,208,0.55);
     color: var(--primary);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.30),
+      0 4px 12px rgba(253,238,208,0.12);
   }
 
-  /* Numpad */
+  /* Numpad — tactile Liquid Glass keys */
   .numpad {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
     padding: 10px 16px 16px;
@@ -620,41 +667,89 @@
     min-height: 56px;
     padding: 14px;
     border-radius: 14px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.14), transparent 60%),
+      rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.13);
+    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
     color: var(--on);
     font-family: var(--font-display);
     font-size: 26px; font-weight: 700;
     font-variant-numeric: tabular-nums;
     text-align: center;
     letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.18),
+      inset 0 -1px 0 rgba(0,0,0,0.18),
+      0 4px 10px rgba(0,0,0,0.18);
+    /* Cream ambient glow — always-on subtle warmth */
+    text-shadow: 0 0 18px rgba(253,238,208,0.10);
+  }
+  .numkey::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 50%);
+    pointer-events: none;
+  }
+  /* Active/pressed simulation */
+  .numkey:active {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(253,238,208,0.18), transparent 60%),
+      rgba(253,238,208,0.08);
+    border-color: rgba(253,238,208,0.30);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      0 2px 6px rgba(0,0,0,0.22),
+      0 0 0 2px rgba(253,238,208,0.14);
+    color: var(--primary);
   }
   .numkey.backspace { color: var(--error); font-family: var(--font-text); font-size: 18px; }
   .numkey.dot { color: var(--muted); }
 
-  /* Received / change panel */
+  /* Received / change panel — Liquid Glass card with specular */
   .cash-panel {
     margin: 10px 16px 2px;
-    padding: 16px;
-    border-radius: 16px;
-    background: rgba(36,31,46,0.55);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255,255,255,0.1);
+    padding: 18px 20px;
+    border-radius: 18px;
+    position: relative;
+    background: rgba(36,31,46,0.60);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.12);
     display: flex; justify-content: space-between; align-items: baseline;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.14),
+      0 10px 26px rgba(0,0,0,0.30);
+    overflow: hidden;
   }
+  .cash-panel::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 40%, rgba(253,238,208,0.14) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .cash-panel::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.09), transparent);
+    pointer-events: none;
+  }
+  .cash-panel .cp-col { position: relative; z-index: 2; }
   .cash-panel .cp-col .cp-label {
-    font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 11px; color: var(--muted); letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600;
   }
   .cash-panel .cp-col .cp-amount {
     font-family: var(--font-display);
-    font-size: 34px; font-weight: 700;
+    font-size: 40px; font-weight: 800;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin-top: 3px;
   }
-  .cash-panel .cp-col.change .cp-amount { color: var(--success); font-size: 26px; }
+  .cash-panel .cp-col.change .cp-amount { color: var(--success); font-size: 30px; }
 
   /* Hero pickup row on home screen */
   .pickup-hero {
@@ -680,63 +775,151 @@
 
   /* Receipt */
   .receipt-hero {
-    padding: 24px 18px; text-align: center;
+    padding: 28px 18px 20px; text-align: center;
+    position: relative;
+  }
+  /* Success radial glow behind checkmark */
+  .receipt-hero::before {
+    content: ""; position: absolute;
+    top: 28px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(52,196,126,0.13) 0%, transparent 70%);
+    filter: blur(10px);
+    pointer-events: none;
   }
   .receipt-hero .rh-check {
-    width: 64px; height: 64px; margin: 0 auto 12px;
-    border-radius: 18px;
+    width: 72px; height: 72px; margin: 0 auto 14px;
+    border-radius: 20px;
     background: linear-gradient(180deg, #4ad088, #34c47e);
     color: #002817;
     display: flex; align-items: center; justify-content: center;
-    font-size: 32px; font-weight: 900;
-    box-shadow: 0 14px 34px rgba(52,196,126,0.35);
+    font-size: 36px; font-weight: 900;
+    box-shadow:
+      0 16px 40px rgba(52,196,126,0.42),
+      inset 0 1px 0 rgba(255,255,255,0.45);
+    position: relative; z-index: 2;
   }
   .receipt-hero .rh-amount {
     font-family: var(--font-display);
-    font-size: 42px; font-weight: 700;
+    font-size: 54px; font-weight: 800;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    position: relative; z-index: 2;
   }
-  .receipt-hero .rh-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .receipt-hero .rh-label {
+    font-size: 13px; font-weight: 600;
+    color: var(--success);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-top: 4px;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-sub {
+    font-size: 12.5px; color: var(--muted); margin-top: 5px;
+    position: relative; z-index: 2;
+  }
 
+  /* Share tiles — glassy rounded rectangles */
   .share-grid {
     display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;
     padding: 8px 16px 4px;
   }
   .share-tile {
-    padding: 14px 6px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+    padding: 14px 6px 12px;
+    border-radius: 16px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.10), transparent 65%),
+      rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
     text-align: center;
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex; flex-direction: column; gap: 5px;
     align-items: center;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 4px 12px rgba(0,0,0,0.16);
+    overflow: hidden;
+  }
+  .share-tile::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 50%, transparent);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
   }
   .share-tile.primary {
-    background: var(--primary);
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45), transparent 60%),
+      linear-gradient(180deg, var(--primary-bright), var(--primary));
     color: var(--on-primary);
-    border-color: var(--primary);
+    border-color: rgba(255,255,255,0.30);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.80),
+      0 0 28px rgba(253,238,208,0.18),
+      0 8px 22px rgba(253,238,208,0.22);
   }
-  .share-tile .st-icon { font-size: 18px; }
-  .share-tile .st-label { font-size: 11px; font-weight: 700; }
+  .share-tile.primary::before {
+    background: linear-gradient(140deg, rgba(255,255,255,0.5), rgba(253,238,208,0.20) 50%, transparent);
+  }
+  .share-tile .st-icon { font-size: 20px; position: relative; z-index: 2; }
+  .share-tile .st-label { font-size: 11px; font-weight: 700; position: relative; z-index: 2; }
 
+  /* Receipt list — physical receipt feel */
   .receipt-list {
     margin: 10px 16px;
     padding: 12px 14px;
     border-radius: 14px;
-    background: var(--surface-solid);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(28, 22, 38, 0.80);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 6px 18px rgba(0,0,0,0.28);
   }
   .receipt-list .rl-row {
     display: flex; justify-content: space-between;
-    padding: 4px 0; font-size: 12.5px;
+    padding: 4px 0; font-size: 12px;
     font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
   }
   .receipt-list .rl-row.muted { color: var(--muted); }
   .receipt-list .rl-row.total {
-    font-weight: 800; font-size: 14px;
-    border-top: 1px dashed rgba(255,255,255,0.22);
+    font-weight: 700; font-size: 13.5px;
+    font-family: var(--font-mono);
+    border-top: 1px dashed rgba(255,255,255,0.18);
     margin-top: 6px; padding-top: 8px;
+    color: var(--on);
+  }
+
+  /* Loyalty celebration row */
+  .loyalty-celebration {
+    margin: 10px 16px 4px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)),
+      var(--surface-solid);
+    border: 1px solid rgba(253,238,208,0.40);
+    display: flex; gap: 12px; align-items: center;
+    box-shadow: 0 6px 20px rgba(253,238,208,0.08);
+  }
+  .loyalty-celebration .lc-star {
+    font-size: 28px;
+    filter: drop-shadow(0 0 8px rgba(253,238,208,0.50));
+  }
+  .loyalty-celebration .lc-progress {
+    height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.10);
+    margin-top: 7px;
+    position: relative; overflow: hidden;
+  }
+  .loyalty-celebration .lc-progress::after {
+    content: ""; position: absolute; top: 0; left: 0;
+    height: 100%; width: 57%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-bright));
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(253,238,208,0.45);
   }
 
   /* Dynamic Island live activity */
@@ -776,7 +959,7 @@
   iPhone 16 Pro · iOS 26 Liquid Glass · cream primary <code>#fdeed0</code>. Not an Android port — native patterns only: <code>.searchable(.navigationBarDrawer(.always))</code>, <code>.safeAreaInset(edge: .bottom)</code> tender CTA, <code>.sheet</code> detents, no FAB, portrait lock. Built from <code>docs/pos-redesign-plan.md</code> + 7 parallel research agents (Liquid Glass specs, SwiftUI idioms, typography math, competitive UX, ergonomics).
 </p>
 
-<div class="section-label">Full flow · 6 iPhone screens</div>
+<div class="section-label">Full flow · 7 iPhone screens (tender split into 5a + 5b)</div>
 
 <div class="grid">
 
@@ -807,105 +990,67 @@
           </div>
         </div>
 
-        <div class="scroll" style="padding: 14px 0 0;">
+        <div class="scroll" style="padding: 20px 0 0;">
 
-          <div style="padding: 0 20px 8px;">
-            <div style="font-size: 20px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
-            <div style="font-size: 12.5px; color: var(--muted); margin-top: 3px;">Every sale starts with a customer. Pick one to continue.</div>
+          <div style="padding: 0 20px 10px;">
+            <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
           </div>
 
-          <!-- Primary: search-result-forward pattern; search bar is tappable above -->
-          <div class="path-row primary" style="min-height: 78px; padding: 14px;">
+          <!-- 3 gate rows, tighter padding, shorter sub-text -->
+          <div class="path-row primary" style="padding: 12px 14px;">
             <div class="p-icon">👤</div>
             <div style="flex: 1;">
-              <div class="p-name">Find existing customer</div>
-              <div class="p-sub">Search by name, phone, email, or loyalty ID</div>
+              <div class="p-name">Find existing</div>
+              <div class="p-sub">Search name, phone, loyalty ID</div>
             </div>
             <span class="p-chev">›</span>
           </div>
 
-          <div class="path-row" style="min-height: 78px; padding: 14px;">
-            <div class="p-icon" style="background: linear-gradient(180deg, #4db8c9, #2f6f78); color: #002d35; border-color: rgba(255,255,255,0.2);">＋</div>
+          <div class="path-row" style="padding: 12px 14px;">
+            <div class="p-icon" style="background: linear-gradient(180deg, #6ed4e3, #4db8c9); color: #002d35; border-color: rgba(255,255,255,0.22);">＋</div>
             <div style="flex: 1;">
-              <div class="p-name">Create new customer</div>
-              <div class="p-sub">Name + phone · one-tap add · attach later details</div>
+              <div class="p-name">Create new</div>
+              <div class="p-sub">Name + phone · one-tap add</div>
             </div>
             <span class="p-chev">›</span>
           </div>
 
-          <div class="path-row" style="min-height: 78px; padding: 14px; border-style: dashed;">
+          <div class="path-row" style="padding: 12px 14px; border-style: dashed;">
             <div class="p-icon" style="background: transparent; border: 1.5px dashed rgba(255,255,255,0.2);">🚶</div>
             <div style="flex: 1;">
               <div class="p-name">Walk-in · no record</div>
-              <div class="p-sub">Quick retail sale · no loyalty, no history, no receipt auto-send</div>
+              <div class="p-sub">Quick sale · no loyalty, no history</div>
             </div>
             <span class="p-chev">›</span>
           </div>
 
-          <div class="sect-label" style="display: flex; justify-content: space-between; align-items: center; padding-right: 16px;">
-            <span>Ready for pickup · 3</span>
-            <span style="font-size: 10.5px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em;">VIEW ALL →</span>
-          </div>
+          <!-- Recent customers — avatar-only horizontal scroll, tap → attach -->
+          <div class="sect-label" style="padding-top: 18px;">Recent today</div>
 
-          <!-- Pickup strip — horizontally scrollable, tap to open cart + skip customer gate -->
-          <div style="display: flex; gap: 10px; overflow-x: auto; padding: 0 16px 10px;" class="chip-row">
-            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.14), rgba(52,196,126,0.02)), var(--surface-solid); border: 1.5px solid rgba(52,196,126,0.4); display: flex; gap: 10px; align-items: center; box-shadow: 0 6px 18px rgba(52,196,126,0.08);">
-              <div style="width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(180deg, #4ad088, #34c47e); color: #002817; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(52,196,126,0.3);">✓</div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;"><span>Sarah M.</span><span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 8.5px; padding: 1px 4px; border-radius: 99px; font-weight: 800;">★ GOLD</span></div>
-                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">#4829 · iPhone 14 screen</div>
-                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$274.51</div>
-              </div>
-              <span style="color: var(--success); font-size: 16px;">›</span>
+          <div style="display: flex; gap: 12px; overflow-x: auto; padding: 0 16px 6px;" class="chip-row">
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 0 0 2px rgba(253,238,208,0.45);">SM<span style="position: absolute; top: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center;">★</span></div>
+              <div style="font-size: 11px; font-weight: 600; white-space: nowrap;">Sarah M.</div>
             </div>
-            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 10px; align-items: center;">
-              <div style="width: 38px; height: 38px; border-radius: 11px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12.5px; font-weight: 700;">Marco D.</div>
-                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4812 · iPad battery</div>
-                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$142.00</div>
-              </div>
-              <span style="color: var(--muted); font-size: 16px;">›</span>
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center;">JK</div>
+              <div style="font-size: 11px; font-weight: 600; white-space: nowrap;">James K.</div>
             </div>
-            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 10px; align-items: center;">
-              <div style="width: 38px; height: 38px; border-radius: 11px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;"><span>Nora P.</span><span style="background: rgba(77,184,201,0.2); color: var(--teal); font-size: 8.5px; padding: 1px 4px; border-radius: 99px; font-weight: 700;">SILVER</span></div>
-                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4801 · Watch crown</div>
-                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$68.00</div>
-              </div>
-              <span style="color: var(--muted); font-size: 16px;">›</span>
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; position: relative;">AL<span style="position: absolute; bottom: -2px; right: -2px; background: rgba(77,184,201,0.9); color: #002d35; font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 99px;">SLV</span></div>
+              <div style="font-size: 11px; font-weight: 600; white-space: nowrap;">Alex L.</div>
+            </div>
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.06); color: var(--muted); font-size: 22px; display: flex; align-items: center; justify-content: center;">🚶</div>
+              <div style="font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--muted);">15 m ago</div>
+            </div>
+            <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 20px; display: flex; align-items: center; justify-content: center;">+12</div>
+              <div style="font-size: 11px; color: var(--muted);">See all</div>
             </div>
           </div>
 
-          <div class="sect-label">Recent customers · today</div>
-
-          <div style="padding: 0 16px 8px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
-              <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">SM</div>
-              <div style="flex: 1;">
-                <div style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Sarah M. <span class="chip" style="background: rgba(253,238,208,0.14); border-color: rgba(253,238,208,0.35); color: var(--primary); font-size: 9.5px; padding: 1px 6px;">★ GOLD</span></div>
-                <div style="font-size: 11px; color: var(--muted);">#4829 ready · 3 past tickets · $42 credit</div>
-              </div>
-              <span class="chip success" style="font-size: 10px;">Pickup</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
-              <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.06); color: var(--muted); font-size: 14px; display: flex; align-items: center; justify-content: center;">🚶</div>
-              <div style="flex: 1;">
-                <div style="font-size: 13px; font-weight: 600;">Walk-in · 15 min ago</div>
-                <div style="font-size: 11px; color: var(--muted);">Resume drafted cart · $42.00</div>
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
-              <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">JK</div>
-              <div style="flex: 1;">
-                <div style="font-size: 13px; font-weight: 600;">James K.</div>
-                <div style="font-size: 11px; color: var(--muted);">(555) 888-1120 · last visit 4 days ago</div>
-              </div>
-            </div>
-          </div>
-
-          <div style="height: 20px;"></div>
+          <div style="height: 16px;"></div>
         </div>
 
         <div class="home-indicator"></div>
@@ -1163,10 +1308,10 @@
   </div>
 
   <!-- ════════════════════════════════════════════════════════════════════
-       5 — Tender · method grid + quick-amounts + numpad, single scroll
+       5a — Tender Step 1 · method picker · due amount prominent · no numpad
        ════════════════════════════════════════════════════════════════════ -->
   <div>
-    <div class="frame-caption">5 · Tender · methods + quick-amounts + numpad · one scroll</div>
+    <div class="frame-caption">5a · Tender — Step 1 · pick method · due amount front and center · tap to proceed to numpad</div>
     <div class="phone">
       <div class="island"></div>
       <div class="phone-body">
@@ -1175,34 +1320,42 @@
           <div class="nav-title-row">
             <span class="nav-back">‹ Cart</span>
             <div class="nav-title">Tender</div>
-            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$274.51</span>
+            <div class="nav-ellipsis">✕</div>
           </div>
         </div>
 
-        <div class="scroll">
+        <div class="scroll" style="padding: 0 0 16px;">
 
-          <!-- Membership banner · applied perks + earned pts preview -->
-          <div style="margin: 10px 16px 0; padding: 10px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; gap: 10px; align-items: center;">
-            <span style="font-size: 20px;">★</span>
-            <div style="flex: 1;">
-              <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member benefit active</div>
-              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">10% off applied · will earn 55 pts on this sale</div>
-            </div>
-            <span class="chip" style="font-family: var(--font-display); font-size: 13px; padding: 4px 10px;">SAVED $10</span>
+          <!-- Due amount hero -->
+          <div style="padding: 28px 24px 20px; text-align: center; position: relative;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
+            <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">Sarah M. · 3 items · incl. 10% GOLD discount</div>
           </div>
 
-          <div class="sect-label">Method</div>
+          <!-- Membership banner -->
+          <div style="margin: 0 16px 16px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.38); display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 14px rgba(253,238,208,0.06);">
+            <span style="font-size: 22px; filter: drop-shadow(0 0 6px rgba(253,238,208,0.45));">★</span>
+            <div style="flex: 1;">
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member · 10% off applied</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Earning 55 pts · $10 saved this sale</div>
+            </div>
+            <span class="chip" style="font-family: var(--font-display); font-size: 12px; padding: 3px 9px;">SAVED $10</span>
+          </div>
 
+          <div class="sect-label" style="padding-top: 4px;">Choose payment method</div>
+
+          <!-- Method picker — 2×2 grid, each one tappable to go to step 2 -->
           <div class="tender-methods">
             <div class="method">
               <div class="m-icon">💳</div>
               <div class="m-name">Card</div>
               <div class="m-sub">Tap to Pay</div>
             </div>
-            <div class="method selected">
+            <div class="method">
               <div class="m-icon">💵</div>
               <div class="m-name">Cash</div>
-              <div class="m-sub">Selected</div>
+              <div class="m-sub">Enter amount</div>
             </div>
             <div class="method">
               <div class="m-icon">🎁</div>
@@ -1216,8 +1369,57 @@
             </div>
           </div>
 
+          <!-- Split tender hint -->
+          <div style="margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.10); display: flex; gap: 10px; align-items: center;">
+            <span style="color: var(--muted); font-size: 15px;">⊕</span>
+            <div style="font-size: 12px; color: var(--muted);">Split tender — pick method, enter partial, then pick another</div>
+          </div>
+
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn disabled" style="opacity: 0.4;">
+            <span>Select a payment method</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5b — Tender Step 2 · Cash amount entry · received + change + numpad
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">5b · Tender — Step 2 · Cash selected · received / change panel + quick-amounts + numpad · Confirm → receipt (or back for split)</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Method</span>
+            <div class="nav-title">Cash</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$274.51</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Selected method confirmation strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(253,238,208,0.22); flex-shrink: 0;">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Cash payment</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Due: $274.51 · enter amount received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
           <div class="sect-label">Cash received</div>
 
+          <!-- Cash panel — Liquid Glass with specular -->
           <div class="cash-panel">
             <div class="cp-col">
               <div class="cp-label">Received</div>
@@ -1251,12 +1453,13 @@
 
         <div class="tender-safearea">
           <div style="display: flex; gap: 10px; padding-bottom: 8px;">
-            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Split payment</button>
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">+ Split tender</button>
             <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Add tip</button>
           </div>
           <button class="tender-btn">
-            <span>Complete cash sale</span>
+            <span>Confirm cash</span>
             <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
           </button>
         </div>
 
@@ -1266,10 +1469,10 @@
   </div>
 
   <!-- ════════════════════════════════════════════════════════════════════
-       6 — Receipt · full width · share grid · Dynamic Island live activity
+       6 — Receipt · celebration hero · glassy share tiles · receipt preview
        ════════════════════════════════════════════════════════════════════ -->
   <div>
-    <div class="frame-caption">6 · Receipt · cart collapsed · share grid · Live Activity</div>
+    <div class="frame-caption">6 · Receipt · celebration hero · glassy share tiles · JetBrains Mono receipt + loyalty progress bar · Live Activity</div>
     <div class="phone">
       <div class="island active">
         <div class="ia-left">🛍 3 items</div>
@@ -1287,13 +1490,16 @@
 
         <div class="scroll">
 
+          <!-- Hero — elevated, celebratory -->
           <div class="receipt-hero">
             <div class="rh-check">✓</div>
+            <div class="rh-label">Payment complete</div>
             <div class="rh-amount">$274.51</div>
             <div class="rh-sub">Cash · $300 received · $25.49 change</div>
           </div>
 
-          <div class="sect-label">Send receipt</div>
+          <!-- Share tiles — glassy action row -->
+          <div class="sect-label" style="padding-top: 8px;">Send receipt to Sarah M.</div>
 
           <div class="share-grid">
             <div class="share-tile primary">
@@ -1309,28 +1515,51 @@
               <div class="st-label">Print</div>
             </div>
             <div class="share-tile">
-              <div class="st-icon">—</div>
-              <div class="st-label">Skip</div>
+              <div class="st-icon">📡</div>
+              <div class="st-label">AirDrop</div>
             </div>
           </div>
 
-          <div class="receipt-list">
-            <div class="rl-row muted"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
-            <div class="rl-row muted"><span>Labor · screen</span><span>$60.00</span></div>
-            <div class="rl-row muted"><span>USB-C 3 ft cable</span><span>$14.00</span></div>
-            <div class="rl-row muted" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
-            <div class="rl-row muted"><span>Tax · 8.5%</span><span>$21.51</span></div>
-            <div class="rl-row total"><span>Total</span><span>$274.51</span></div>
+          <!-- Loyalty celebration row with progress bar -->
+          <div class="loyalty-celebration">
+            <div class="lc-star">★</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier held</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b></div>
+              <div class="lc-progress" style="margin-top: 7px;"></div>
+              <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-2); margin-top: 3px;"><span>GOLD 285 pts</span><span>PLATINUM 500 pts</span></div>
+            </div>
           </div>
 
-          <div style="padding: 0 16px;">
-            <div class="btn secondary" style="width: 100%; margin-bottom: 8px; font-size: 13px;">View ticket #4829</div>
+          <!-- Receipt preview — monospace, elevated -->
+          <div class="receipt-list" style="margin-top: 12px;">
+            <div style="padding: 9px 14px 7px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;">Receipt #28014</span>
+              <span class="chip success" style="font-size: 9px; padding: 2px 7px;">Sent ✓</span>
+            </div>
+            <div style="padding: 10px 14px 12px;">
+              <div class="rl-row muted"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+              <div class="rl-row muted"><span>Labor · screen</span><span>$60.00</span></div>
+              <div class="rl-row muted"><span>USB-C 3ft cable</span><span>$14.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>★ GOLD 10% off</span><span>−$10.00</span></div>
+              <div class="rl-row muted"><span>Tax 8.5%</span><span>$21.51</span></div>
+              <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
+              <div class="rl-row muted" style="padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+              <div class="rl-row muted" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+            </div>
           </div>
+
+          <!-- Secondary actions -->
+          <div style="padding: 8px 16px 4px; display: flex; gap: 8px;">
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">View ticket #4829</div>
+            <div class="btn secondary" style="flex: 1; font-size: 12px; padding: 10px;">Customer profile</div>
+          </div>
+
         </div>
 
         <div class="tender-safearea">
           <button class="tender-btn">
-            <span>Next sale</span>
+            <span>New sale</span>
             <span style="font-size: 15px;">›</span>
           </button>
         </div>
