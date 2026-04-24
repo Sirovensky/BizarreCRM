@@ -744,18 +744,14 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:279-285; fix=assertPublicUrl-or-proxy -->
 - [ ] SCAN-1050. **Catalog `liveSearchSupplier` has no rate limit — unbounded outbound HTTP per caller.**
   <!-- meta: scope=server/services; files=packages/server/src/services/catalogScraper.ts:815-829; fix=consumeWindowRate -->
-- [ ] SCAN-1051. **[HIGH/XSS] AutomationsTab email-body textarea stores raw HTML with no size cap + no server sanitization.**
-  <!-- meta: scope=web/pages/settings,server/services; files=AutomationsTab.tsx:208-214,email.ts; fix=maxLength+server-sanitize -->
-- [ ] SCAN-1052. **AutomationsTab rule name input has no client-side length cap.**
-  <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:386-392; fix=maxLength-255 -->
+- [ ] SCAN-1051b. **[HIGH/XSS] AutomationsTab email body — client 10KB cap shipped; server-side HTML sanitize/escape still pending.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/email.ts; fix=sanitize-or-escape-on-send -->
 - [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**
   <!-- meta: scope=server/services; files=packages/server/src/services/backup.ts:971-998; fix=accept-getDb-factory -->
 - [ ] SCAN-1056. **slaBreachCron `markFirstResponseBreached` SELECT-then-INSERT needs UNIQUE index for concurrency safety.**
   <!-- meta: scope=server/services; files=packages/server/src/services/slaBreachCron.ts:193-205; fix=unique-index+insert-or-ignore -->
 - [ ] SCAN-1057. **retentionSweeper SQL interpolates table+column names from RULES — safe today, document invariant or allowlist.**
   <!-- meta: scope=server/services; files=packages/server/src/services/retentionSweeper.ts:400-404,441; fix=allowlist-regex-assert -->
-- [ ] SCAN-1059. **AutomationsTab `err: any` in create/update mutation onError handlers.**
-  <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:541,553; fix=err-unknown+narrow -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 

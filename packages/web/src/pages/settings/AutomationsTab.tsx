@@ -208,6 +208,7 @@ function ActionConfigForm({
               value={String(config.body ?? '')}
               onChange={(e) => onChange({ ...config, body: e.target.value })}
               rows={4}
+              maxLength={10000}
               placeholder="<p>Hi {customer_name}, your repair is ready for pickup.</p>"
               className="w-full px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono"
             />
@@ -387,6 +388,7 @@ function AutomationModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              maxLength={255}
               placeholder="e.g. Notify customer on status change"
               className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
@@ -538,7 +540,10 @@ export function AutomationsTab() {
       toast.success('Automation rule created');
       setShowModal(false);
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to create rule'),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } } | undefined;
+      toast.error(e?.response?.data?.message || 'Failed to create rule');
+    },
   });
 
   const updateMut = useMutation({
@@ -549,7 +554,10 @@ export function AutomationsTab() {
       setShowModal(false);
       setEditingRule(null);
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to update rule'),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } } | undefined;
+      toast.error(e?.response?.data?.message || 'Failed to update rule');
+    },
   });
 
   const toggleMut = useMutation({
