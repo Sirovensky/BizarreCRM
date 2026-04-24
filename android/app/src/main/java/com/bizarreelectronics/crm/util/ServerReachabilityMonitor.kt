@@ -196,7 +196,12 @@ class ServerReachabilityMonitor @Inject constructor(
 
     private fun pingServer(): Boolean {
         val serverUrl = authPreferences.serverUrl
-        if (serverUrl.isNullOrBlank()) return false
+        // No URL yet (e.g. user hasn't logged in / URL not committed yet).
+        // Treat as "unknown" (optimistic true) rather than a server failure so the
+        // ping loop does not accumulate consecutive-failure counts and flip
+        // isEffectivelyOnline to false before the user has a chance to submit a ticket.
+        // The next ping after serverUrl is populated will give a real result.
+        if (serverUrl.isNullOrBlank()) return true
 
         // GET /api/v1/info is a lightweight endpoint that returns {lan_ip, port, server_url}
         // without requiring auth. It's the same endpoint the desktop setup wizard uses.

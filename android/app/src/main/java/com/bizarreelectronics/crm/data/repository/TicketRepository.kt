@@ -80,7 +80,9 @@ class TicketRepository @Inject constructor(
 
     /** Create a ticket. Online: API call. Offline: local insert + sync queue. */
     suspend fun createTicket(request: CreateTicketRequest): Long {
-        if (serverMonitor.isEffectivelyOnline.value) {
+        val isOnline = serverMonitor.isEffectivelyOnline.value
+        Log.i(TAG, "TicketCreate save: isOnline=$isOnline branch=${if (isOnline) "online→API" else "offline→queue"}")
+        if (isOnline) {
             try {
                 val response = ticketApi.createTicket(request)
                 val detail = response.data ?: throw Exception(response.message ?: "Create failed")
