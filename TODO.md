@@ -718,8 +718,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/api+web/pages; files=BulkSmsModal.tsx:63,CannedResponseHotkeys,CommunicationPage.tsx; fix=export-SmsTemplateListResponse-type -->
 - [ ] SCAN-1009. **Communications `sendMutation` closure captures `selectedPhone` — mid-flight conversation switch invalidates wrong thread cache.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:1085; fix=pass-phone-in-mutation-variables -->
-- [ ] SCAN-1010b. **ExpensesPage `exp: any` loop variable — lost type safety on rendered rows (CashRegister half shipped).**
-  <!-- meta: scope=web/pages/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:196; fix=define-Expense-interface -->
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**

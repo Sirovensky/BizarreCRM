@@ -21,6 +21,20 @@ interface ExpenseFormPayload {
   location_id?: number;
 }
 
+// Row returned by `GET /expenses`. Permissive on amount (server sends number
+// but stored as string in some legacy rows) + optional joined first/last name.
+interface ExpenseRow {
+  id: number;
+  category: string;
+  amount: number | string;
+  description?: string | null;
+  date?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  location_id?: number | null;
+  [key: string]: unknown;
+}
+
 export function ExpensesPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -41,7 +55,9 @@ export function ExpensesPage() {
     staleTime: 30_000,
   });
 
-  const expenses = data?.data?.data?.expenses || [];
+  const expenses: ExpenseRow[] = Array.isArray(data?.data?.data?.expenses)
+    ? (data?.data?.data?.expenses as ExpenseRow[])
+    : [];
   const pagination = data?.data?.data?.pagination || { page: 1, total: 0, total_pages: 1 };
   const summary = data?.data?.data?.summary || { total_amount: 0, total_count: 0 };
   const categories = data?.data?.data?.categories || [];
@@ -70,7 +86,7 @@ export function ExpensesPage() {
     createMut.mutate({ ...form, amount: parseFloat(form.amount) });
   };
 
-  const handleEdit = (exp: any) => {
+  const handleEdit = (exp: ExpenseRow) => {
     setEditingId(exp.id);
     setForm({ category: exp.category, amount: String(exp.amount), description: exp.description || '', date: exp.date || '' });
     setShowAdd(true);
@@ -194,7 +210,7 @@ export function ExpensesPage() {
                 </p>
               </td></tr>
             ) : (
-              expenses.map((exp: any) => (
+              expenses.map((exp) => (
                 <tr key={exp.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
                   <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{exp.date ? formatDate(exp.date) : '—'}</td>
                   <td className="px-4 py-3">
@@ -204,7 +220,7 @@ export function ExpensesPage() {
                   </td>
                   <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-xs truncate">{exp.description || '—'}</td>
                   <td className="px-4 py-3 text-surface-500 text-xs">{exp.first_name} {exp.last_name}</td>
-                  <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(exp.amount)}</td>
+                  <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(exp.amount) || 0)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button aria-label="Edit" onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
