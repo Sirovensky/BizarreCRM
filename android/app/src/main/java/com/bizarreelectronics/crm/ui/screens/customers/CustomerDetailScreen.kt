@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.customers
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.ContactsContract
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -52,9 +54,11 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerDetailTabs
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.UndoStack
+import com.bizarreelectronics.crm.util.VCardBuilder
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import com.bizarreelectronics.crm.util.toCentsOrZero
@@ -66,6 +70,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 import javax.inject.Inject
 
 // ---------------------------------------------------------------------------
@@ -142,6 +147,16 @@ data class CustomerDetailUiState(
     /** Display-only group name snapshot captured when editing begins. */
     val editGroupName: String? = null,
     val saveMessage: String? = null,
+    // plan:L892 — health score ring (null = not loaded / 404)
+    val healthScore: com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore? = null,
+    // plan:L893 — LTV tier chip (null = not loaded / 404)
+    val ltvTier: com.bizarreelectronics.crm.data.remote.dto.CustomerLtvTier? = null,
+    // plan:L897 — invoices tab
+    val invoices: List<com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem>? = null,
+    // plan:L897 — assets tab
+    val assets: List<com.bizarreelectronics.crm.data.remote.dto.CustomerAsset>? = null,
+    // plan:L905 — delete confirm dialog
+    val showDeleteConfirm: Boolean = false,
 )
 
 @HiltViewModel
@@ -218,6 +233,10 @@ class CustomerDetailViewModel @Inject constructor(
         loadAnalytics()
         loadRecentTickets()
         loadNotes()
+        loadHealthScore()
+        loadLtvTier()
+        loadInvoices()
+        loadAssets()
     }
 
     /**
@@ -273,6 +292,85 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(notes = notes)
             } catch (_: Exception) {
                 // Silent degrade — Notes card simply doesn't render.
+            }
+        }
+    }
+
+    // plan:L892 — health score
+    private var healthScoreJob: Job? = null
+    private fun loadHealthScore() {
+        healthScoreJob?.cancel()
+        healthScoreJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getHealthScore(customerId)
+                _state.value = _state.value.copy(healthScore = response.data)
+            } catch (_: Exception) { /* silent — 404 tolerated */ }
+        }
+    }
+
+    fun recalculateHealthScore() {
+        viewModelScope.launch {
+            try {
+                val response = customerApi.recalculateHealthScore(customerId)
+                _state.value = _state.value.copy(healthScore = response.data)
+            } catch (_: Exception) { /* silent */ }
+        }
+    }
+
+    // plan:L893 — LTV tier
+    private var ltvTierJob: Job? = null
+    private fun loadLtvTier() {
+        ltvTierJob?.cancel()
+        ltvTierJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getLtvTier(customerId)
+                _state.value = _state.value.copy(ltvTier = response.data)
+            } catch (_: Exception) { /* silent — 404 tolerated */ }
+        }
+    }
+
+    // plan:L897 — invoices tab
+    private var invoicesJob: Job? = null
+    private fun loadInvoices() {
+        invoicesJob?.cancel()
+        invoicesJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getInvoices(customerId)
+                _state.value = _state.value.copy(invoices = response.data?.invoices ?: emptyList())
+            } catch (_: Exception) { /* silent */ }
+        }
+    }
+
+    // plan:L897 — assets tab (from detail payload)
+    private fun loadAssets() {
+        viewModelScope.launch {
+            try {
+                val response = customerApi.getCustomer(customerId)
+                val assets = response.data?.assets
+                _state.value = _state.value.copy(assets = assets ?: emptyList())
+            } catch (_: Exception) { /* silent */ }
+        }
+    }
+
+    // plan:L905 — delete
+    fun requestDelete() {
+        _state.value = _state.value.copy(showDeleteConfirm = true)
+    }
+
+    fun cancelDelete() {
+        _state.value = _state.value.copy(showDeleteConfirm = false)
+    }
+
+    fun confirmDelete(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                customerApi.deleteCustomer(customerId)
+                onDeleted()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    showDeleteConfirm = false,
+                    saveMessage = "Delete failed: ${e.message}",
+                )
             }
         }
     }
@@ -570,6 +668,7 @@ fun CustomerDetailScreen(
     // (CROSS47-seed) only needs a wiring change, not another API hop.
     onCreateTicket: ((Long) -> Unit)? = null,
     viewModel: CustomerDetailViewModel = hiltViewModel(),
+    useTabs: Boolean = true, // plan:L889 — enable tabs layout
 ) {
     val state by viewModel.state.collectAsState()
     val customer = state.customer
@@ -704,34 +803,130 @@ fun CustomerDetailScreen(
                 )
             }
             customer != null -> {
-                CustomerDetailContent(
-                    customer = customer,
-                    analytics = state.analytics,
-                    recentTickets = state.recentTickets,
-                    notes = state.notes,
-                    noteDraft = state.noteDraft,
-                    isPostingNote = state.isPostingNote,
-                    onNoteDraftChange = viewModel::updateNoteDraft,
-                    onPostNote = viewModel::postNote,
-                    padding = padding,
-                    onNavigateToTicket = onNavigateToTicket,
-                    onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
-                    onCallPhone = { phone ->
-                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                        context.startActivity(intent)
-                    },
-                    onSmsPhone = { phone ->
-                        if (onNavigateToSms != null) {
-                            val normalized = phone.replace(Regex("[^0-9]"), "").let {
-                                if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
-                            }
-                            onNavigateToSms(normalized)
-                        } else {
-                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone"))
-                            context.startActivity(intent)
+                // plan:L905 — delete confirm dialog
+                if (state.showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = viewModel::cancelDelete,
+                        title = { Text("Delete customer?") },
+                        text = {
+                            Text("This will permanently delete ${customer.firstName} ${customer.lastName ?: ""}. This action cannot be undone.")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = { viewModel.confirmDelete { onBack() } },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) { Text("Delete") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = viewModel::cancelDelete) { Text("Cancel") }
+                        },
+                    )
+                }
+
+                if (useTabs) {
+                    // plan:L889 — tabs layout
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                    ) {
+                        // Avatar + stats header above tabs
+                        val displayName = listOfNotNull(customer.firstName, customer.lastName)
+                            .joinToString(" ").ifBlank { "Customer" }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CustomerAvatar(
+                                name = displayName,
+                                size = 72.dp,
+                                textStyle = MaterialTheme.typography.headlineMedium,
+                            )
                         }
-                    },
-                )
+                        CustomerDetailTabs(
+                            customer = customer,
+                            analytics = state.analytics,
+                            healthScore = state.healthScore,
+                            ltvTier = state.ltvTier,
+                            recentTickets = state.recentTickets,
+                            invoices = state.invoices,
+                            notes = state.notes,
+                            assets = state.assets,
+                            noteDraft = state.noteDraft,
+                            isPostingNote = state.isPostingNote,
+                            onNoteDraftChange = viewModel::updateNoteDraft,
+                            onPostNote = viewModel::postNote,
+                            onNavigateToTicket = onNavigateToTicket,
+                            onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
+                            onCall = { phone ->
+                                context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                            },
+                            onSms = { phone ->
+                                if (onNavigateToSms != null) {
+                                    val normalized = phone.replace(Regex("[^0-9]"), "").let {
+                                        if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+                                    }
+                                    onNavigateToSms(normalized)
+                                } else {
+                                    context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")))
+                                }
+                            },
+                            onShare = {
+                                // plan:L903 — share vCard
+                                val vcf = VCardBuilder.build(customer)
+                                val file = File(context.cacheDir, "customer_${customer.id}.vcf")
+                                file.writeText(vcf)
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.provider",
+                                    file,
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/x-vcard"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Share contact"))
+                            },
+                            onDelete = viewModel::requestDelete,
+                            onRecalculateHealth = viewModel::recalculateHealthScore,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    CustomerDetailContent(
+                        customer = customer,
+                        analytics = state.analytics,
+                        recentTickets = state.recentTickets,
+                        notes = state.notes,
+                        noteDraft = state.noteDraft,
+                        isPostingNote = state.isPostingNote,
+                        onNoteDraftChange = viewModel::updateNoteDraft,
+                        onPostNote = viewModel::postNote,
+                        padding = padding,
+                        onNavigateToTicket = onNavigateToTicket,
+                        onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
+                        onCallPhone = { phone ->
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                            context.startActivity(intent)
+                        },
+                        onSmsPhone = { phone ->
+                            if (onNavigateToSms != null) {
+                                val normalized = phone.replace(Regex("[^0-9]"), "").let {
+                                    if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+                                }
+                                onNavigateToSms(normalized)
+                            } else {
+                                val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone"))
+                                context.startActivity(intent)
+                            }
+                        },
+                    )
+                }
             }
         }
     }

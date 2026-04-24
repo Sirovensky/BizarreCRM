@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.data.local.db.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,6 +12,22 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CustomerDao {
+
+    // -----------------------------------------------------------------------
+    // Paging3 PagingSources (plan:L874)
+    // -----------------------------------------------------------------------
+
+    /** Default paging source: most-recently-updated first. */
+    @Query("SELECT * FROM customers WHERE is_deleted = 0 ORDER BY updated_at DESC")
+    fun pagingSource(): PagingSource<Int, CustomerEntity>
+
+    /** A–Z by first + last name. */
+    @Query("SELECT * FROM customers WHERE is_deleted = 0 ORDER BY first_name ASC, last_name ASC")
+    fun pagingSourceAZ(): PagingSource<Int, CustomerEntity>
+
+    /** Z–A by first + last name. */
+    @Query("SELECT * FROM customers WHERE is_deleted = 0 ORDER BY first_name DESC, last_name DESC")
+    fun pagingSourceZA(): PagingSource<Int, CustomerEntity>
 
     @Query("SELECT * FROM customers WHERE is_deleted = 0 ORDER BY first_name ASC, last_name ASC")
     fun getAll(): Flow<List<CustomerEntity>>

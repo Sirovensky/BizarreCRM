@@ -54,6 +54,47 @@ data class CustomerListData(
     val pagination: Pagination? = null
 )
 
+/**
+ * Cursor-based page response for [CustomerRemoteMediator] (plan:L874).
+ * Mirrors [TicketPageResponse] exactly.
+ */
+data class CustomerPageResponse(
+    val customers: List<CustomerListItem> = emptyList(),
+    val cursor: String? = null,
+    @SerializedName("server_exhausted")
+    val serverExhausted: Boolean = false,
+    val total: Int? = null,
+)
+
+/** Stats tiles for the customer list header (plan:L880). */
+data class CustomerStats(
+    val total: Int = 0,
+    val vips: Int = 0,
+    @SerializedName("at_risk")
+    val atRisk: Int = 0,
+    @SerializedName("total_ltv")
+    val totalLtv: Double = 0.0,
+    @SerializedName("avg_ltv")
+    val avgLtv: Double = 0.0,
+)
+
+/** Health score from GET /customers/:id/health-score (plan:L892). */
+data class CustomerHealthScore(
+    val score: Int = 0,
+    val tier: String? = null,
+    val explanation: String? = null,
+    @SerializedName("last_calculated_at")
+    val lastCalculatedAt: String? = null,
+)
+
+/** LTV tier from GET /customers/:id/ltv-tier (plan:L893). */
+data class CustomerLtvTier(
+    val tier: String = "Regular",
+    val explanation: String? = null,
+    @SerializedName("lifetime_value")
+    val lifetimeValue: Double = 0.0,
+)
+
 data class InvoiceListData(
     val invoices: List<InvoiceListItem>,
     val pagination: Pagination? = null

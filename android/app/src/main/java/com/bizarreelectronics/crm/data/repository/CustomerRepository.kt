@@ -1,8 +1,13 @@
 package com.bizarreelectronics.crm.data.repository
 
 import android.util.Log
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncStateDao
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
@@ -11,6 +16,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
+import com.bizarreelectronics.crm.data.sync.CustomerRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
@@ -28,11 +34,51 @@ class CustomerRepository @Inject constructor(
     private val customerDao: CustomerDao,
     private val customerApi: CustomerApi,
     private val syncQueueDao: SyncQueueDao,
+    private val syncStateDao: SyncStateDao,
     private val serverMonitor: ServerReachabilityMonitor,
     private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // -----------------------------------------------------------------------
+    // Paging3 — cursor-based paged stream (plan:L874)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns a cold [Flow]<[PagingData]<[CustomerEntity]>> backed by Room and
+     * [CustomerRemoteMediator]. Sort is applied at the DB layer via the matching
+     * PagingSource variant; filterKey gates the remote fetch.
+     *
+     * @param sort      One of "recent" | "az" | "za" — selects the PagingSource.
+     * @param filterKey Optional filter tag (e.g. "tier:VIP").
+     */
+    @OptIn(ExperimentalPagingApi::class)
+    fun customersPaged(
+        sort: String = "recent",
+        filterKey: String = "",
+    ): Flow<PagingData<CustomerEntity>> {
+        val mediator = CustomerRemoteMediator(
+            customerDao = customerDao,
+            syncStateDao = syncStateDao,
+            customerApi = customerApi,
+            filterKey = filterKey,
+        )
+        val pagingSourceFactory: () -> androidx.paging.PagingSource<Int, CustomerEntity> = when (sort) {
+            "az" -> { { customerDao.pagingSourceAZ() } }
+            "za" -> { { customerDao.pagingSourceZA() } }
+            else -> { { customerDao.pagingSource() } }
+        }
+        return Pager(
+            config = PagingConfig(
+                pageSize = CustomerRemoteMediator.PAGE_SIZE,
+                enablePlaceholders = false,
+                prefetchDistance = 10,
+            ),
+            remoteMediator = mediator,
+            pagingSourceFactory = pagingSourceFactory,
+        ).flow
+    }
 
     /** Returns cached customers immediately, refreshes from API in background. */
     fun getCustomers(): Flow<List<CustomerEntity>> {
