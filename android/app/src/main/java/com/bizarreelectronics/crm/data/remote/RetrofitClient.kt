@@ -656,4 +656,10 @@ object RetrofitClient {
     @Provides @Singleton fun provideBenchApi(retrofit: Retrofit): BenchApi = retrofit.create(BenchApi::class.java)
     // §4.9 L762 — device templates CRUD; 404-tolerant
     @Provides @Singleton fun provideDeviceTemplateApi(retrofit: Retrofit): DeviceTemplateApi = retrofit.create(DeviceTemplateApi::class.java)
+    // §38 — memberships / loyalty; all endpoints 404-tolerant
+    @Provides @Singleton fun provideMembershipApi(retrofit: Retrofit): MembershipApi = retrofit.create(MembershipApi::class.java)
+    // §39 — cash register / Z-report; all endpoints 404-tolerant
+    @Provides @Singleton fun provideCashRegisterApi(retrofit: Retrofit): CashRegisterApi = retrofit.create(CashRegisterApi::class.java)
+    // §40 — gift cards / store credit; all endpoints 404-tolerant
+    @Provides @Singleton fun provideGiftCardApi(retrofit: Retrofit): GiftCardApi = retrofit.create(GiftCardApi::class.java)
 }
