@@ -28,9 +28,14 @@ export function EstimateDetailPage() {
   const [notes, setNotes] = useState('');
   const [showVersions, setShowVersions] = useState(false);
 
+  // Guard against a missing route param — `Number(undefined)` is NaN and
+  // would otherwise fire the API call with a garbage id.
+  const numericId = id ? Number(id) : NaN;
+  const idIsValid = Number.isFinite(numericId);
   const { data, isLoading, isError } = useQuery({
     queryKey: ['estimate', id],
-    queryFn: () => estimateApi.get(Number(id)),
+    queryFn: () => estimateApi.get(numericId),
+    enabled: idIsValid,
   });
 
   const estimate = data?.data?.data;

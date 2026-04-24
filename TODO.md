@@ -714,8 +714,4 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryDetailPage.tsx:23,53,85; fix=define-InventoryItem-interface -->
 - [ ] SCAN-988. **Inventory list icon-only row actions missing aria-label — view/edit/delete unreadable to screen readers.**
   <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:~680-720; fix=aria-label-per-action -->
-- [ ] SCAN-989. **EstimateDetailPage fires API call with `Number(undefined)`=NaN when route param missing — guard query with isNaN check.**
-  <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:33; fix=enabled-guard -->
-- [ ] SCAN-990. **KeyboardShortcutsPanel close button missing type="button" + aria-label.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/KeyboardShortcutsPanel.tsx:115-123; fix=add-type-button+aria-label -->
 

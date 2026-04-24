@@ -113,11 +113,13 @@ export function KeyboardShortcutsPanel({ open, onClose }: KeyboardShortcutsPanel
             Keyboard Shortcuts
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
+            aria-label="Close keyboard shortcuts"
+            className="rounded-md p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             <span className="sr-only">Close</span>
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
