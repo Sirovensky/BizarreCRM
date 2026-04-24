@@ -177,6 +177,13 @@ router.put(
     }
 
     const json = JSON.stringify(body);
+    // Cap the serialized policy blob at 64 KB per user row. Without this a
+    // crafted request can store unbounded JSON in user_preferences.value and
+    // inflate the tenant DB file indefinitely.
+    const MAX_FOCUS_POLICIES_BYTES = 64 * 1024;
+    if (Buffer.byteLength(json, 'utf8') > MAX_FOCUS_POLICIES_BYTES) {
+      throw new AppError('focus_policies payload exceeds 64 KB limit', 400);
+    }
 
     await adb.run(
       `INSERT INTO user_preferences (user_id, key, value)
@@ -206,8 +213,16 @@ router.post(
 
     const invoiceId = validateId(invoice_id, 'invoice_id');
 
-    if (typeof recipient_email !== 'string' || !recipient_email.includes('@')) {
-      throw new AppError('recipient_email required', 400);
+    // RFC-5321 caps the mailbox at 254 chars; reject oversized or malformed
+    // strings before they hit the SMTP layer.
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (
+      typeof recipient_email !== 'string' ||
+      recipient_email.length === 0 ||
+      recipient_email.length > 254 ||
+      !EMAIL_REGEX.test(recipient_email)
+    ) {
+      throw new AppError('recipient_email required (valid address, ≤254 chars)', 400);
     }
 
     // Look up invoice with customer info

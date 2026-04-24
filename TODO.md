@@ -736,10 +736,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:660-693,823-867,870-927; fix=consumeWindowRate-3-per-min -->
 - [ ] SCAN-1040. **campaigns /review-request/trigger: `req.user!.id` dereferenced even when called via INTERNAL_SERVICE_TOKEN (user undefined).**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:812; fix=user?.id-or-sentinel -->
-- [ ] SCAN-1041. **notifications PUT /focus-policies: JSON body stored with no byte-size cap — unbounded per-user storage.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/notifications.routes.ts:173-193; fix=64k-cap -->
-- [ ] SCAN-1042. **notifications POST /send-receipt: recipient_email only `.includes('@')` — oversized/malformed values flow to SMTP.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/notifications.routes.ts:209; fix=length+regex-guard -->
 - [ ] SCAN-1043. **loaners POST /:id/loan: no rate limit on write — technician can spam loan records.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:106-138; fix=consumeWindowRate -->
 - [ ] SCAN-1045. **rma POST /: no rate limit + unbounded items[] array — DoS via 10k-item batch.**
