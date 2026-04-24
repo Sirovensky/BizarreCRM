@@ -712,9 +712,10 @@ export function InventoryListPage() {
                               }}
                               className="rounded p-0.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors disabled:opacity-30"
                               disabled={item.in_stock <= 0}
+                              aria-label={`Decrease stock of ${item.name} by 1`}
                               title="Decrease stock by 1"
                             >
-                              <Minus className="h-3 w-3" />
+                              <Minus aria-hidden="true" className="h-3 w-3" />
                             </button>
                             <span className={cn(
                               'font-medium min-w-[24px] text-center',
@@ -742,9 +743,10 @@ export function InventoryListPage() {
                                 }
                               }}
                               className="rounded p-0.5 text-surface-400 hover:text-green-600 hover:bg-green-50 dark:hover:text-green-400 dark:hover:bg-green-900/20 transition-colors"
+                              aria-label={`Increase stock of ${item.name} by 1`}
                               title="Increase stock by 1"
                             >
-                              <Plus className="h-3 w-3" />
+                              <Plus aria-hidden="true" className="h-3 w-3" />
                             </button>
                             {item.in_stock <= (item.reorder_level || 0) && item.in_stock >= 0 && (
                               <Link to="/purchase-orders" onClick={(e) => e.stopPropagation()}
@@ -775,16 +777,19 @@ export function InventoryListPage() {
                       <td className="px-4 py-3 text-sm">
                         <div className="flex items-center justify-end gap-1">
                           <Link to={`/inventory/${item.id}`} onClick={(e) => e.stopPropagation()}
+                            aria-label={`View ${item.name}`}
                             className="p-1.5 rounded-md text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 transition-colors" title="View">
-                            <Eye className="h-4 w-4" />
+                            <Eye aria-hidden="true" className="h-4 w-4" />
                           </Link>
                           <Link to={`/inventory/${item.id}?edit=true`} onClick={(e) => e.stopPropagation()}
+                            aria-label={`Edit ${item.name}`}
                             className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors" title="Edit">
-                            <Pencil className="h-4 w-4" />
+                            <Pencil aria-hidden="true" className="h-4 w-4" />
                           </Link>
-                          <button onClick={(e) => handleDelete(e, item.id, item.name)}
+                          <button type="button" onClick={(e) => handleDelete(e, item.id, item.name)}
+                            aria-label={`Deactivate ${item.name}`}
                             className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors" title="Deactivate">
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
