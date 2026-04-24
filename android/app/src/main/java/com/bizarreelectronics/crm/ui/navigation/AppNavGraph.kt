@@ -186,6 +186,8 @@ sealed class Screen(val route: String) {
         fun createRoute(customerId: Long, deviceId: Long, customerName: String, deviceName: String): String =
             "checkin/$customerId/$deviceId?customerName=${Uri.encode(customerName)}&deviceName=${Uri.encode(deviceName)}"
     }
+    /** Pre-step that collects customer + device info before launching [CheckIn]. */
+    data object CheckInEntry : Screen("checkin-entry")
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
             val encodedName = Uri.encode(customerName)
@@ -1166,14 +1168,7 @@ fun AppNavGraph(
             composable(Screen.Pos.route) {
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
-                    // TODO(checkin-entry): build a CheckInEntryScreen that
-                    // attaches customer + device upfront, then pushes to
-                    // Screen.CheckIn. Until then, the "Create repair ticket"
-                    // tile falls back to the legacy TicketCreate flow which
-                    // owns its own customer/device picker. CheckInHostScreen
-                    // itself is now wired at Screen.CheckIn.route below and
-                    // reachable via deep-link + future integrations.
-                    onNavigateToCheckin = { navController.navigate(Screen.TicketCreate.route) },
+                    onNavigateToCheckin = { navController.navigate(Screen.CheckInEntry.route) },
                 )
             }
             composable(Screen.PosCart.route) {
@@ -1241,6 +1236,18 @@ fun AppNavGraph(
                         navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
                             popUpTo(Screen.Pos.route)
                         }
+                    },
+                )
+            }
+            // CheckInEntry: pre-step that gathers customer + device info before
+            // launching CheckInHostScreen with the required nav args.
+            composable(Screen.CheckInEntry.route) {
+                com.bizarreelectronics.crm.ui.screens.checkin.entry.CheckInEntryScreen(
+                    onCancel = { navController.popBackStack() },
+                    onStartCheckIn = { customerId, customerName, deviceName ->
+                        navController.navigate(
+                            Screen.CheckIn.createRoute(customerId, 0L, customerName, deviceName)
+                        ) { popUpTo(Screen.CheckInEntry.route) { inclusive = true } }
                     },
                 )
             }
