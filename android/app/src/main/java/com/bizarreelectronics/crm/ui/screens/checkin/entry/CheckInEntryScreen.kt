@@ -104,7 +104,14 @@ fun CheckInEntryScreen(
         bottomBar = {
             CheckInEntryBottomBar(
                 currentStep = currentStep,
-                canAdvance = if (currentStep == 0) viewModel.canAdvanceStep1 else viewModel.canAdvanceStep2,
+                // Read from the collected state (step1/step2) — NOT from the
+                // VM's plain-getter properties — so recomposition kicks in
+                // when attachedCustomer / deviceModel change. Reading via
+                // `viewModel.canAdvanceStep1` took a non-Compose-tracked
+                // snapshot that left the button stuck-disabled after
+                // attachCustomer() or attachWalkIn().
+                canAdvance = if (currentStep == 0) step1.attachedCustomer != null
+                             else step2.deviceModel.isNotBlank(),
                 onAdvance = {
                     if (currentStep == 0) {
                         viewModel.advance()
