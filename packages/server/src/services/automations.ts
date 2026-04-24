@@ -586,6 +586,44 @@ export function runAutomations(
             }
           }
 
+          // SCAN-1111: the hourly per-ticket cap used to run AFTER the action
+          // executor, so the (N+1)'th send actually fired before being
+          // recorded as loop_rejected — every hour the cap silently
+          // overflowed by 1 SMS / email / status-change per ticket. Do the
+          // same count query BEFORE dispatching the action; if we're at the
+          // cap, log loop_rejected and continue without firing. The post-
+          // action transaction block below still commits the run record on
+          // the happy path so concurrent evaluators can't both slip under.
+          if (target.type === 'ticket' && target.id !== null) {
+            try {
+              const preCapRow = db
+                .prepare(
+                  "SELECT COUNT(*) AS c FROM automation_run_log " +
+                    "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
+                    "AND created_at > datetime('now','-1 hour')",
+                )
+                .get(target.id) as { c?: number } | undefined;
+              if ((preCapRow?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
+                logger.warn('Automation per-ticket hourly cap reached — skipping action', {
+                  trigger,
+                  ruleId: rule.id,
+                  ticketId: target.id,
+                  runsLastHour: preCapRow?.c,
+                  cap: MAX_RUNS_PER_TICKET_PER_HOUR,
+                });
+                logAutomationRun(db, {
+                  ...baseLogEntry,
+                  status: 'loop_rejected',
+                  error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded (pre-action)`,
+                });
+                continue;
+              }
+            } catch {
+              // automation_run_log table absent on legacy tenant DBs — fall
+              // through and let the post-action path handle it.
+            }
+          }
+
           logger.info('Executing rule', {
             ruleId: rule.id,
             ruleName: rule.name,

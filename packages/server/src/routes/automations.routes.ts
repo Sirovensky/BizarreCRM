@@ -11,6 +11,49 @@ import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 
 const router = Router();
 
+// SCAN-1110 [HIGH]: POST + PUT previously accepted ANY string for
+// `trigger_type` / `action_type`. A typo (`sms_send` vs `send_sms`,
+// `ticket_status_change` vs `ticket_status_changed`) stored a dead rule
+// that the UI displayed as active but the engine silently never fired.
+// Source the allowlists from the engine's own switch cases so the routes
+// can only persist values the runner actually dispatches on.
+//   — `trigger_type`: every string passed as the second arg to
+//     `runAutomations(db, <trigger>, ...)` across the codebase
+//   — `action_type`: every `case` arm inside `services/automations.ts`
+//     action executor switch (lines 597-642 at last audit)
+const ALLOWED_TRIGGERS: ReadonlySet<string> = new Set([
+  'ticket_created',
+  'ticket_status_changed',
+  'ticket_assigned',
+  'customer_created',
+  'invoice_created',
+]);
+const ALLOWED_ACTIONS: ReadonlySet<string> = new Set([
+  'send_sms',
+  'send_email',
+  'change_status',
+  'assign_to',
+  'add_note',
+  'create_notification',
+]);
+
+function assertTriggerType(v: unknown): asserts v is string {
+  if (typeof v !== 'string' || !ALLOWED_TRIGGERS.has(v)) {
+    throw new AppError(
+      `Invalid trigger_type. Must be one of: ${[...ALLOWED_TRIGGERS].join(', ')}`,
+      400,
+    );
+  }
+}
+function assertActionType(v: unknown): asserts v is string {
+  if (typeof v !== 'string' || !ALLOWED_ACTIONS.has(v)) {
+    throw new AppError(
+      `Invalid action_type. Must be one of: ${[...ALLOWED_ACTIONS].join(', ')}`,
+      400,
+    );
+  }
+}
+
 // SEC (PL5): Every write route here must verify the actor is an admin,
 // regardless of whatever middleware the router is mounted under. Relying on
 // the mount point means a future routing refactor can silently expose these
@@ -84,6 +127,8 @@ router.post(
     if (!name) throw new AppError('name is required');
     if (!trigger_type) throw new AppError('trigger_type is required');
     if (!action_type) throw new AppError('action_type is required');
+    assertTriggerType(trigger_type);
+    assertActionType(action_type);
 
     const result = await adb.run(`
       INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config, sort_order)
@@ -125,6 +170,10 @@ router.put(
     if (!existing) throw new AppError('Automation not found', 404);
 
     const { name, trigger_type, trigger_config, action_type, action_config, sort_order } = req.body;
+    // SCAN-1110: validate supplied values. Undefined skips update so leave them
+    // alone — assertions run only when the field is actually present in body.
+    if (trigger_type !== undefined) assertTriggerType(trigger_type);
+    if (action_type !== undefined) assertActionType(action_type);
 
     await adb.run(`
       UPDATE automations SET

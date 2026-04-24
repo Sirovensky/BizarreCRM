@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-64 automations type allowlist + per-ticket cap pre-check)
+
+- [x] SCAN-1110 [HIGH]. **`automations.routes` POST + PUT accepted any string for `trigger_type` / `action_type`** — a typo (`sms_send` vs `send_sms`) stored a dead rule that the UI showed as active but the engine silently never dispatched on. Sourced the allowlists from the engine itself (every `runAutomations(db, <trigger>, …)` call site; every `case` arm in the action executor switch), with `assertTriggerType` / `assertActionType` asserts that 400 on unknown values. POST validates both fields; PUT only validates fields actually present in the body (undefined leaves the stored value alone).
+- [x] SCAN-1111. **`services/automations.ts` ran the per-ticket hourly cap check AFTER the action executor** — every hour the (N+1)'th SMS / email / status-change for a single ticket actually fired before being recorded as `loop_rejected`. Added a pre-action count query on `automation_run_log` (with a try/catch fall-through for legacy tenant DBs that don't have the table); if already at `MAX_RUNS_PER_TICKET_PER_HOUR`, log `loop_rejected` with `(pre-action)` suffix and `continue`. The post-action transaction block still commits the run record on the happy path so concurrent evaluators can't both slip past the cap.
+
 ## Closed 2026-04-24 (wave-64 roles admin gate + matrix tx + paymentLinks id guard)
 
 - [x] SCAN-1113. **`roles.routes` `GET /` and `GET /:id/permissions` were ungated** — any authenticated user (cashier/technician) could enumerate the full role list and the full permission matrix. Added `requireAdmin(req)` as the first line of both GET handlers. Sibling POST/PUT/DELETE already require admin, so this brings reads into parity. `GET /permission-keys` remains public (used by shared UI dropdowns — just the canonical key list, no role mapping).
