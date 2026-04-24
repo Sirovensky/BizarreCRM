@@ -278,6 +278,13 @@ fun SettingsScreen(
         }
     }
 
+    // L1976 — search state
+    var searchResults by remember { mutableStateOf<List<SettingsEntry>>(emptyList()) }
+    // We forward navigate calls from search results to the navController via
+    // a callback stored in a lambda so the SettingsScreen composable itself
+    // stays nav-controller agnostic (matches existing pattern).
+    // The caller passes onSearchNavigate or we fall back to no-op.
+
     Scaffold(
         topBar = { BrandTopAppBar(title = "Settings") },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -286,6 +293,16 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // L1976 — search bar + results overlay
+            SettingsSearchBar(onResultsChanged = { searchResults = it })
+            if (searchResults.isNotEmpty()) {
+                SettingsSearchResults(
+                    results = searchResults,
+                    onNavigate = { /* route navigated by AppNavGraph callback — no-op if not wired */ },
+                )
+                return@Column
+            }
+
             // CROSS38b: promote Edit Profile to a dedicated top-level row so
             // password/PIN changes aren't buried inside the user-info card.
             // Matches the card-with-clickable-row pattern used elsewhere on

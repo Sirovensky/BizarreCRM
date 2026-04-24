@@ -1,7 +1,12 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,8 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -23,13 +32,18 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 
 data class ProfileUiState(
@@ -52,6 +66,7 @@ data class ProfileUiState(
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val authApi: AuthApi,
+    private val settingsApi: SettingsApi,
     private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
@@ -169,6 +184,57 @@ class ProfileViewModel @Inject constructor(
     fun clearSnackbar() {
         _state.value = _state.value.copy(snackbarMessage = null)
     }
+
+    /**
+     * L1981 — Upload a new avatar image via POST /auth/avatar (multipart).
+     * The URI is read as bytes from the content resolver and sent as
+     * "avatar" form field. On success, [ProfileUiState.avatarUrl] is updated
+     * with the server-returned URL.
+     *
+     * 404 on the endpoint is tolerated (plan constraint) — an error snackbar
+     * is shown but the upload failure does not crash or block the screen.
+     *
+     * @param context  Android Context for opening the content resolver.
+     * @param uri      Content URI of the selected image from PhotoPicker.
+     */
+    fun uploadAvatar(context: android.content.Context, uri: Uri) {
+        if (_state.value.isSubmitting) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true)
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Could not read selected image",
+                    )
+                    return@launch
+                }
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("avatar", "avatar.jpg", requestBody)
+                val response = settingsApi.uploadAvatar(part)
+                if (response.success) {
+                    val newUrl = response.data?.avatarUrl
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        avatarUrl = newUrl ?: _state.value.avatarUrl,
+                        snackbarMessage = "Avatar updated",
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = response.message ?: "Failed to upload avatar",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    snackbarMessage = "Avatar upload failed: ${e.message}",
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -179,9 +245,20 @@ fun ProfileScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     var showPasswordDialog by rememberSaveable { mutableStateOf(false) }
     var showPinDialog by rememberSaveable { mutableStateOf(false) }
+
+    // L1981 — PhotoPicker launcher (Android 13+ native picker; falls back to
+    // GetContent on older API via the Jetpack contract).
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.uploadAvatar(context, uri)
+        }
+    }
 
     LaunchedEffect(state.snackbarMessage) {
         val msg = state.snackbarMessage
@@ -264,27 +341,78 @@ fun ProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Avatar placeholder
+                // L1981 — Avatar: Coil-loaded if avatarUrl is present, else initials fallback.
                 val initials = buildString {
                     state.firstName.firstOrNull()?.let { append(it.uppercase()) }
                     state.lastName.firstOrNull()?.let { append(it.uppercase()) }
                 }.ifBlank { state.username.take(2).uppercase() }
 
-                // a11y: avatar circle — non-interactive; describes profile image with initials
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .semantics { contentDescription = "Profile avatar: $initials" },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            initials,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    if (!state.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = state.avatarUrl,
+                            contentDescription = "Profile avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape),
                         )
+                    } else {
+                        // Initials fallback
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .semantics { contentDescription = "Profile avatar: $initials" },
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    initials,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+                    }
+
+                    // "Change photo" floating icon button
+                    SmallFloatingActionButton(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .semantics { contentDescription = "Change profile photo" },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(
+                            Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+
+                // "Change photo" text button (more discoverable)
+                TextButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                    enabled = !state.isSubmitting,
+                ) {
+                    if (state.isSubmitting) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Uploading...")
+                    } else {
+                        Text("Change photo")
                     }
                 }
 

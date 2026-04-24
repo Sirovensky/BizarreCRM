@@ -23,7 +23,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,10 +38,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.time.ZoneId
+import java.util.Currency
 import javax.inject.Inject
 
 // ---------------------------------------------------------------------------
@@ -48,11 +55,12 @@ import javax.inject.Inject
 
 /**
  * Thin ViewModel that bridges [LanguageManager] into the Compose world.
- * No side-effects beyond delegating to [LanguageManager.setLanguage].
+ * Also exposes timezone and currency overrides (plan:L2004, plan:L2006).
  */
 @HiltViewModel
 class LanguageViewModel @Inject constructor(
     private val languageManager: LanguageManager,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     /** All languages offered in the picker. Immutable. */
@@ -64,6 +72,34 @@ class LanguageViewModel @Inject constructor(
 
     /** Persist and apply [tag]. On API 33+ the OS handles the recreate. */
     fun setLanguage(tag: String) = languageManager.setLanguage(tag)
+
+    // plan:L2004 — timezone override
+    private val _timezoneOverride = MutableStateFlow(appPreferences.timezoneOverride)
+    val timezoneOverride: StateFlow<String?> = _timezoneOverride.asStateFlow()
+
+    fun setTimezoneOverride(zoneId: String?) {
+        appPreferences.timezoneOverride = zoneId
+        _timezoneOverride.value = zoneId
+    }
+
+    // plan:L2006 — currency override
+    private val _currencyOverride = MutableStateFlow(appPreferences.currencyOverride)
+    val currencyOverride: StateFlow<String?> = _currencyOverride.asStateFlow()
+
+    fun setCurrencyOverride(code: String?) {
+        appPreferences.currencyOverride = code
+        _currencyOverride.value = code
+    }
+
+    /** plan:L2004 — sorted list of all available zone IDs. */
+    val availableZoneIds: List<String> by lazy {
+        ZoneId.getAvailableZoneIds().sorted()
+    }
+
+    /** plan:L2006 — sorted list of ISO 4217 currency codes. */
+    val availableCurrencies: List<String> by lazy {
+        Currency.getAvailableCurrencies().map { it.currencyCode }.sorted()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -77,12 +113,14 @@ fun LanguageScreen(
     viewModel: LanguageViewModel = hiltViewModel(),
 ) {
     val currentTag by viewModel.currentLanguage.collectAsState()
+    val timezoneOverride by viewModel.timezoneOverride.collectAsState()
+    val currencyOverride by viewModel.currencyOverride.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
         topBar = {
             BrandTopAppBar(
-                title = "Language",
+                title = "Language & Region",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -152,6 +190,211 @@ fun LanguageScreen(
                         }
                     },
                 )
+            }
+
+            // plan:L2004 — timezone override
+            item {
+                TimezonePickerRow(
+                    currentZoneId = timezoneOverride,
+                    availableZoneIds = viewModel.availableZoneIds,
+                    onSelect = { viewModel.setTimezoneOverride(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+
+            // plan:L2005 — date/time/number locale follows OS (documented invariant)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Date, time & number format", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Follows the OS locale. Change via device Settings > General > Language & Region.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // plan:L2006 — currency override
+            item {
+                CurrencyPickerRow(
+                    currentCode = currencyOverride,
+                    availableCurrencies = viewModel.availableCurrencies,
+                    onSelect = { viewModel.setCurrencyOverride(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// plan:L2004 — Timezone picker row
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimezonePickerRow(
+    currentZoneId: String?,
+    availableZoneIds: List<String>,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val displayValue = currentZoneId ?: "Device default"
+
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text("Timezone override", style = MaterialTheme.typography.titleSmall)
+            }
+            Text(
+                "Override the timezone used for displaying dates and times in the app. " +
+                    "\"Device default\" follows the system timezone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = displayValue,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                    label = { Text("Timezone") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.exposedDropdownSize(),
+                ) {
+                    // "Device default" option
+                    DropdownMenuItem(
+                        text = { Text("Device default") },
+                        onClick = {
+                            onSelect(null)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                    HorizontalDivider()
+                    availableZoneIds.forEach { zoneId ->
+                        DropdownMenuItem(
+                            text = { Text(zoneId) },
+                            onClick = {
+                                onSelect(zoneId)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// plan:L2006 — Currency picker row
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrencyPickerRow(
+    currentCode: String?,
+    availableCurrencies: List<String>,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val displayValue = currentCode ?: "Locale default"
+
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.AttachMoney,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text("Currency", style = MaterialTheme.typography.titleSmall)
+            }
+            Text(
+                "Override the currency symbol used when displaying money values. " +
+                    "\"Locale default\" uses the currency from the active locale.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = displayValue,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                    label = { Text("Currency") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.exposedDropdownSize(),
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Locale default") },
+                        onClick = {
+                            onSelect(null)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                    HorizontalDivider()
+                    availableCurrencies.forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text(code) },
+                            onClick = {
+                                onSelect(code)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                        )
+                    }
+                }
             }
         }
     }

@@ -6,9 +6,12 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateEmployeeRequest
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.StatusListData
 import com.bizarreelectronics.crm.data.remote.dto.TaxClassListData
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 
 interface SettingsApi {
@@ -52,4 +55,16 @@ interface SettingsApi {
     suspend fun getConditionChecks(
         @Path("category") category: String
     ): ApiResponse<List<ConditionCheckItem>>
+
+    /**
+     * L1981 — Upload a new avatar image for the current user.
+     * POST /auth/avatar (multipart/form-data, field name "avatar").
+     * Returns the updated UserDto inside ApiResponse.data.
+     * 404 is tolerated (endpoint may not exist yet — caller handles gracefully).
+     */
+    @Multipart
+    @POST("auth/avatar")
+    suspend fun uploadAvatar(
+        @Part avatar: MultipartBody.Part,
+    ): ApiResponse<com.bizarreelectronics.crm.data.remote.dto.UserDto>
 }

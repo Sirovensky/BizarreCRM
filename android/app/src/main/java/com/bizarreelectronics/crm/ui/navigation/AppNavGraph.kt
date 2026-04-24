@@ -84,6 +84,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
 import com.bizarreelectronics.crm.ui.screens.settings.AppearanceScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DisplaySettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SecuritySummaryScreen
 import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.bench.BenchTabScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DeviceTemplatesScreen
@@ -356,6 +357,10 @@ sealed class Screen(val route: String) {
 
     // §3.16 L592-L599 — Full-screen Activity Feed with filters, reactions, infinite scroll.
     data object ActivityFeed : Screen("activity/feed")
+
+    // plan:L2009-L2014 — Security Summary consolidated view.
+    // Deep link: bizarrecrm://settings/security-summary
+    data object SecuritySummary : Screen("settings/security/summary")
 }
 
 data class BottomNavItem(
@@ -1531,6 +1536,26 @@ fun AppNavGraph(
                     onNavigateToTotpEnroll = { navController.popBackStack() },
                 )
             }
+            // plan:L2009-L2014 — Security Summary consolidated view.
+            // Deep link: bizarrecrm://settings/security-summary
+            composable(
+                route = Screen.SecuritySummary.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://settings/security-summary" },
+                ),
+            ) {
+                SecuritySummaryScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) },
+                )
+            }
+            // plan:L1976/L1978 — deep links for individual settings entries.
+            // Pattern: bizarrecrm://settings/<id> → resolves via SettingsMetadata.findById
+            // and navigates to the entry's route. Handled by the generic deep-link
+            // composable below (route must be in the nav graph already).
+            // Note: individual entry routes (profile, notifications, appearance, language,
+            // security, display, hardware, shared-device, theme) are already declared above.
+
             // §2.5 — Switch User (shared device): PIN entry, reachable from
             // Settings > "Switch user" row. On success the new identity is
             // persisted and the user is sent to Dashboard with the back-stack
