@@ -183,6 +183,27 @@ data class RecoveryCodesResponse(
 )
 
 /**
+ * §2.18 L418 — A single 2FA factor as returned by GET /auth/2fa/factors.
+ *
+ * Supported [type] values: "totp", "sms", "hardware_key", "passkey".
+ * [isPrimary] marks the factor used by default during login verification.
+ * [enrolledAt] is an ISO-8601 string (may be null for legacy records).
+ * [label] is a human-readable description set at enroll time (e.g. phone number for SMS).
+ *
+ * 404 from the endpoint means the server predates this feature; ViewModel maps to NotSupported.
+ */
+data class TwoFactorFactorDto(
+    @SerializedName("type")
+    val type: String,
+    @SerializedName("enrolledAt")
+    val enrolledAt: String? = null,
+    @SerializedName("label")
+    val label: String? = null,
+    @SerializedName("isPrimary")
+    val isPrimary: Boolean = false,
+)
+
+/**
  * §2.11 — Active session as returned by GET /auth/sessions.
  *
  * Fields mirror the server's session record. [current] is true for the

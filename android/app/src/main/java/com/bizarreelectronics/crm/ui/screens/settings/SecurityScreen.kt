@@ -377,6 +377,11 @@ fun SecurityScreen(
     onChangePassword: () -> Unit,
     onActiveSessions: (() -> Unit)? = null,
     onRecoveryCodes: (() -> Unit)? = null,
+    // §2.18 L417 — "Manage 2FA factors" row callback.
+    // Role gate: only Owner / Manager / Admin should wire this callback; other
+    // roles pass null (row renders disabled). If role check is not wired at the
+    // call site, pass a non-null lambda to show for all authenticated users.
+    onManageTwoFactorFactors: (() -> Unit)? = null,
     viewModel: SecurityViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -556,6 +561,21 @@ fun SecurityScreen(
                         title = "Change password",
                         subtitle = "Update your account password",
                         onClick = onChangePassword,
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
+
+                    // §2.18: Manage 2FA factors (ActionPlan L417-L426).
+                    // Role gate: Owner / Manager / Admin only. Pass null for other roles.
+                    SecurityNavRow(
+                        icon = Icons.Default.Shield,
+                        title = "Manage 2FA factors",
+                        subtitle = "View enrolled factors and add new ones",
+                        onClick = { onManageTwoFactorFactors?.invoke() },
+                        enabled = onManageTwoFactorFactors != null,
                     )
 
                     HorizontalDivider(

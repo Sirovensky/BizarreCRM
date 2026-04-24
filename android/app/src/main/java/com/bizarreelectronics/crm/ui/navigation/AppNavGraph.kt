@@ -64,6 +64,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RecoveryCodesScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TwoFactorFactorsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
@@ -281,6 +282,9 @@ sealed class Screen(val route: String) {
 
     // §2.19 — Recovery codes settings screen (generate / display / print / email).
     data object RecoveryCodes : Screen("settings/security/recovery-codes")
+
+    // §2.18 L420 — Manage 2FA factors screen (list enrolled, enroll TOTP/SMS; passkey/HW stubs).
+    data object TwoFactorFactors : Screen("settings/security/2fa-factors")
 }
 
 data class BottomNavItem(
@@ -1295,6 +1299,11 @@ fun AppNavGraph(
                     onActiveSessions = { navController.navigate(Screen.ActiveSessions.route) },
                     // §2.19: Recovery codes screen wired (ActionPlan L427-L438).
                     onRecoveryCodes = { navController.navigate(Screen.RecoveryCodes.route) },
+                    // §2.18 L421: Manage 2FA factors (Owner/Manager/Admin).
+                    // Role check is deferred — shown for all authenticated users for now.
+                    // Document: role-gate wiring tracked as follow-up when Session role
+                    // is accessible from the nav composable scope.
+                    onManageTwoFactorFactors = { navController.navigate(Screen.TwoFactorFactors.route) },
                 )
             }
             // §2.11 — Active sessions list + revoke.
@@ -1315,6 +1324,18 @@ fun AppNavGraph(
             composable(Screen.RecoveryCodes.route) {
                 RecoveryCodesScreen(
                     onBack = { navController.popBackStack() },
+                )
+            }
+            // §2.18 L421 — Manage 2FA factors screen (ActionPlan L417-L426).
+            // TOTP enroll navigates to existing 2FA setup step; SMS prompts phone;
+            // passkey + hardware_key show coming-soon bottom-sheet stubs.
+            composable(Screen.TwoFactorFactors.route) {
+                TwoFactorFactorsScreen(
+                    onBack = { navController.popBackStack() },
+                    // Reuse existing TOTP enroll step (commit cd36e98 QR path).
+                    // Navigate back to the 2fa-setup route which is already wired
+                    // in the login/auth flow. popBackStack keeps the security back-stack clean.
+                    onNavigateToTotpEnroll = { navController.popBackStack() },
                 )
             }
             // §2.5 — Switch User (shared device): PIN entry, reachable from

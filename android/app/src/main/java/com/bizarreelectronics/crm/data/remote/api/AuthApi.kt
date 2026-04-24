@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
+import com.bizarreelectronics.crm.data.remote.dto.TwoFactorFactorDto
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
 import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
@@ -108,4 +109,21 @@ interface AuthApi {
     suspend fun regenerateRecoveryCodes(
         @Body body: Map<String, String>,
     ): ApiResponse<RecoveryCodesResponse>
+
+    // §2.18 L419 — 2FA factor list + enroll.
+    //
+    // GET /auth/2fa/factors — returns all factors currently enrolled for the
+    // authenticated user. 404 → server predates this endpoint; ViewModel maps
+    // to NotSupported state.
+    //
+    // POST /auth/2fa/factors/enroll — enroll a new factor.
+    // Body shape: { type: "totp"|"sms"|"hardware_key"|"passkey", label?: string }
+    // For SMS, body also carries { phone: E.164 } for server-side OTP dispatch.
+    // Returns ApiResponse<Unit>; the caller navigates to the per-type verify step.
+    // 404 → type not yet supported on this server; ViewModel flags accordingly.
+    @GET("auth/2fa/factors")
+    suspend fun listFactors(): ApiResponse<List<TwoFactorFactorDto>>
+
+    @POST("auth/2fa/factors/enroll")
+    suspend fun enrollFactor(@Body body: Map<String, String>): ApiResponse<Unit>
 }
