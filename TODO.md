@@ -1468,3 +1468,26 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
+### Wave-50 scan-loop findings (2026-04-23) — web/pages
+- [ ] SCAN-951. **Ticket list add-note fails silently — user sees nothing if the note save errors.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketListPage.tsx:1039; fix=try-catch+toast -->
+- [ ] SCAN-952. **Invoice stats chart doesn't refresh when user changes date/status filters — stale numbers persist.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:104; fix=include-filters-in-queryKey -->
+- [ ] SCAN-953. **Invoice status + method pie charts recompute on every render — wasted work on list page.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:124-125; fix=useMemo -->
+- [ ] SCAN-954. **Invoice list typed as any[] — no compile-time guarantees on row shape.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:108; fix=define-Invoice-interface -->
+- [ ] SCAN-955. **POS customer search swallows network errors — user sees "no results" when the backend was actually unreachable.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:1003; fix=toast-error-in-catch -->
+- [ ] SCAN-956. **POS recent-customers list is recalculated every render — unmemoized IIFE over ticket rows.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:980; fix=useMemo -->
+- [ ] SCAN-957. **POS customer step fans out 3 parallel queries every session open — consolidate or hoist with stale cache.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:965-1057; fix=consolidate-or-hoist -->
+- [ ] SCAN-958. **Lead list leaks console.error to production logs on convert/delete failure — toast already shown, console is noise.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/leads/LeadListPage.tsx:303,326; fix=drop-console-error -->
+- [ ] SCAN-959. **POS product search input has no aria-label — unreadable to screen readers.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/ProductsTab.tsx:64; fix=aria-label -->
+- [ ] SCAN-960. **Ticket wizard labels not associated with their inputs — click-label and screen readers broken.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx:140; fix=htmlFor+id -->
+
+
