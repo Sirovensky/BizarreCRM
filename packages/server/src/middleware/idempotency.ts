@@ -188,9 +188,29 @@ export function idempotent(req: Request, res: Response, next: NextFunction): voi
     }
 
     // First request completed — replay the stored response.
-    const body: unknown = existing.response_body !== null
-      ? JSON.parse(existing.response_body)
-      : null;
+    // SCAN-1153: `capBody()` slices on a byte boundary (not a JSON boundary),
+    // so a response body that crossed MAX_BODY_BYTES was stored as truncated
+    // invalid JSON — every subsequent replay of the same key then threw
+    // inside JSON.parse and the caller saw a generic 500 forever. Wrap in
+    // try/catch: on parse failure delete the corrupted row and treat the
+    // request as fresh so the route can re-execute, giving the client a
+    // recovery path instead of a permanently poisoned Idempotency-Key.
+    let body: unknown = null;
+    if (existing.response_body !== null) {
+      try {
+        body = JSON.parse(existing.response_body);
+      } catch (err) {
+        logger.warn('idempotency replay JSON parse failed — dropping row', {
+          key,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        try {
+          db.prepare('DELETE FROM idempotency_keys WHERE user_id = ? AND key = ?').run(userId, key);
+        } catch { /* best effort */ }
+        next();
+        return;
+      }
+    }
     res.status(existing.response_status).json(body);
     return;
   }

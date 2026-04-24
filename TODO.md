@@ -725,6 +725,18 @@ Verified working. Not TODOs.
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
+### Wave-68 scan-loop findings (2026-04-24) — idempotency/auth/audit/notifications/metrics
+- [ ] SCAN-1154. **[LOW] `useDismissible` ignores key changes after mount — versioned banners stay dismissed.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDismissible.ts:32-38; fix=useEffect-reread-on-storageKey -->
+- [ ] SCAN-1157. **[LOW] `masterAudit.checkBruteForce` alert-dedup has SELECT→INSERT race — duplicate critical alerts.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:95-121; fix=masterDb.transaction+UNIQUE-partial-index -->
+- [ ] SCAN-1158. **[LOW/perf] `sendTicketStatusNotification` loads ALL send_sms_auto templates per status change.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/notifications.ts:425-438; fix=indexed-selects-per-event_key -->
+- [ ] SCAN-1159. **[LOW] Recurring invoice cron credits `created_by_user_id` without liveness check — deactivated users keep billing.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/recurringInvoicesCron.ts:209-223; fix=SELECT-is_active-1-or-skip -->
+- [ ] SCAN-1160. **[LOW] `metricsCollector` setInterval stacks samples when sampleMetrics exceeds 60s — back-to-back CPU spikes.**
+  <!-- meta: scope=server/services; files=packages/server/src/services/metricsCollector.ts:317-334; fix=self-rescheduling-setTimeout-chain -->
+
 ### Wave-67 scan-loop findings (2026-04-24) — auth/layout/migrations/public-api
 - [ ] SCAN-1148. **[LOW] Migrations 139-142 hardcode `location_id=1` backfill — breaks if Main Store id != 1.**
   <!-- meta: scope=server/db; files=packages/server/src/db/migrations/139-142; fix=SELECT-FROM-locations-WHERE-is_default=1 -->

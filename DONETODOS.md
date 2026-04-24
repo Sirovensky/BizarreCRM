@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-68 idempotency crash + change-pin rate limit + backup-code order)
+
+- [x] SCAN-1153. **`idempotency` replay crashed on a truncated cached body** — `capBody()` slices on byte boundary, not JSON boundary, so any response that crossed `MAX_BODY_BYTES` stored as invalid JSON and every subsequent replay of the same Idempotency-Key threw inside `JSON.parse` → permanent 500. Wrapped in try/catch: on parse failure log warn, DELETE the corrupt row, call `next()` so the route can re-execute. Client gets recovery path instead of forever-poisoned key.
+- [x] SCAN-1155. **`/change-pin` had no rate limit** — `/verify-pin` was gated by `checkPinRateLimit` but `/change-pin` wasn't, so an attacker holding a stolen access token could spray passwords at bcrypt uncapped (slow but no lockout). Added `checkWindowRate(db, 'change_pin', userId:ip, 5, 3600_000)` at handler entry + `recordWindowFailure` on bad-password branch.
+- [x] SCAN-1156. **`/recover-with-backup-code` consumed the backup code BEFORE the password-history check** — a user submitting a valid code + a reused password atomically burned the code then got a 400, losing a recovery code permanently for nothing. Moved `isPasswordReused` above the consume loop so the 400 short-circuits cleanly without touching backup_codes. Order now: rate-limit → totp/backup match → password history → consume code → finalize.
+
 ## Closed 2026-04-24 (wave-67 AppShell polish + localhost IPv6)
 
 - [x] SCAN-1146. **`AppShell` focus handler fired `fetchPlan` on every focus event** — rapid alt-tab storms hammered `/account/usage`. Added a 30-second `lastFetchAt` debounce around the listener so focus-loss storms collapse into at most one fetch per window. Initial mount still runs a fetch; explicit react-query refetches on route mount are unaffected.

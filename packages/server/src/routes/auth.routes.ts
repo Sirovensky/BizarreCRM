@@ -2029,6 +2029,19 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
     return;
   }
 
+  // SCAN-1156: enforce password history BEFORE consuming the backup code so
+  // a legit caller with a valid code + a reused password gets a 400 without
+  // permanently losing the code (previously the code was consumed first and
+  // the 400 followed, burning the code for nothing and pushing the user
+  // closer to total lockout).
+  if (await isPasswordReused(adb, user.id, newPassword)) {
+    res.status(400).json({
+      success: false,
+      message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
+    });
+    return;
+  }
+
   // SEC-H73: Atomic consume with retry — find the matching hash, then use a
   // conditional UPDATE (json_extract guard) so two concurrent POSTs carrying
   // the same code can only consume it once. Retry up to 3 times if a racing
@@ -2078,14 +2091,8 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
     return;
   }
 
-  // Enforce password history.
-  if (await isPasswordReused(adb, user.id, newPassword)) {
-    res.status(400).json({
-      success: false,
-      message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
-    });
-    return;
-  }
+  // SCAN-1156: password-history check was moved above the consume loop so it
+  // can't burn a backup code on a reused-password 400.
 
   // All checks passed — perform the recovery. The backup code was already
   // atomically removed above; this UPDATE finalises the password reset and
@@ -2240,6 +2247,18 @@ router.post('/change-pin', authMiddleware, asyncHandler(async (req: Request, res
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const userId = req.user!.id;
 
+  // SCAN-1155: gate the password check with a per-user+IP rate limit. The
+  // route requires a valid access token AND the current password, but an
+  // attacker holding a stolen token could otherwise spray passwords here
+  // uncapped (bcrypt slows them but imposes no upstream lockout). 5 bad
+  // attempts per hour per (userId,ip) pair is aligned with the other
+  // password-verification surfaces in this file.
+  const rateKey = `${userId}:${ip}`;
+  if (!checkWindowRate(db, 'change_pin', rateKey, 5, 3600_000)) {
+    res.status(429).json({ success: false, message: 'Too many PIN-change attempts. Try again in an hour.' });
+    return;
+  }
+
   const { current_password: currentPassword, new_pin: newPin } = req.body || {};
 
   if (!currentPassword || typeof currentPassword !== 'string') {
@@ -2267,6 +2286,9 @@ router.post('/change-pin', authMiddleware, asyncHandler(async (req: Request, res
     passwordValid = false;
   }
   if (!passwordValid) {
+    // SCAN-1155: count this as a rate-limited failure so 5 bad attempts
+    // per hour per (userId,ip) trip the window.
+    recordWindowFailure(db, 'change_pin', rateKey, 3600_000);
     audit(db, 'pin_change_failed', userId, ip, { reason: 'bad_current_password' });
     logTenantAuthEvent('pin_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
