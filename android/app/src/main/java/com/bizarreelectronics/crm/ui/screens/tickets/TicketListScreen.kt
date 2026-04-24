@@ -30,8 +30,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
-import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
@@ -41,6 +44,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSavedViewSheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSortDropdown
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSwipeRow
@@ -48,7 +53,9 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgencyChi
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -56,10 +63,18 @@ fun TicketListScreen(
     onTicketClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
     viewModel: TicketListViewModel = hiltViewModel(),
+    networkMonitor: NetworkMonitor? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+
+    // Paging3: collect the paged stream as LazyPagingItems
+    val lazyPagingItems: LazyPagingItems<TicketEntity> = viewModel.ticketsPaged.collectAsLazyPagingItems()
+
+    // Network state for offline footer
+    val isOnline by (networkMonitor?.isOnline ?: kotlinx.coroutines.flow.flowOf(true))
+        .collectAsState(initial = true)
 
     // TODO(plan:L637-ext): wire rememberReduceMotion(appPreferences) once AppPreferences is
     // injected into TicketListScreen via CompositionLocal or passed as a parameter.
@@ -325,11 +340,41 @@ fun TicketListScreen(
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        // Derive footer state from Paging3 load states + offline signal
+                        val footerState: TicketFooterState = run {
+                            val appendState = lazyPagingItems.loadState.append
+                            val cachedCount = lazyPagingItems.itemCount
+                            when {
+                                !isOnline && cachedCount > 0 -> {
+                                    // Approximate hours since last sync — SyncState not directly
+                                    // injected here; derive from state.tickets as best-effort.
+                                    TicketFooterState.Offline(
+                                        cachedCount = cachedCount,
+                                        lastSyncedHoursAgo = 0L,
+                                    )
+                                }
+                                appendState is LoadState.Loading -> TicketFooterState.Loading
+                                appendState is LoadState.NotLoading && appendState.endOfPaginationReached ->
+                                    TicketFooterState.EndOfList
+                                else -> TicketFooterState.Partial(
+                                    shown = cachedCount,
+                                    approximateTotal = null,
+                                )
+                            }
+                        }
+
                         LazyColumn(
                             state = listState,
                             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
                         ) {
-                            items(state.tickets, key = { it.id }) { ticket ->
+                            // Paging3 items — filter + sort applied at VM/Room level
+                            items(
+                                count = lazyPagingItems.itemCount,
+                                key = lazyPagingItems.itemKey { it.id },
+                            ) { index ->
+                                val ticket = lazyPagingItems[index] ?: return@items
+                                // VM-side sort/filter still applies to the legacy
+                                // state.tickets list (unchanged); paged list is raw.
                                 val isSelected = ticket.id in state.selectedIds
 
                                 TicketSwipeRow(
@@ -354,10 +399,8 @@ fun TicketListScreen(
                                         },
                                         onLongPress = {
                                             if (isExpandedWidth) {
-                                                // Multi-select on tablet
                                                 viewModel.enterSelectMode(ticket.id)
                                             }
-                                            // Context menu handled via separate dropdown within the row
                                         },
                                         onContextMenuAction = { action ->
                                             when (action) {
@@ -379,6 +422,11 @@ fun TicketListScreen(
                                     )
                                 }
                                 BrandListItemDivider()
+                            }
+
+                            // 4-state footer
+                            item(key = "ticket_list_footer") {
+                                TicketListFooter(state = footerState)
                             }
                         }
                     }

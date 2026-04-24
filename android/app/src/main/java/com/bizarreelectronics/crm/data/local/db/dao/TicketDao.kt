@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.data.local.db.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,6 +12,22 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TicketDao {
+
+    @Query("SELECT * FROM tickets WHERE is_deleted = 0 ORDER BY updated_at DESC")
+    fun pagingSource(): PagingSource<Int, TicketEntity>
+
+    /**
+     * Filter-scoped [PagingSource] for status-group filtering.
+     * [statusIsClosed] maps directly to [TicketEntity.statusIsClosed].
+     */
+    @Query("SELECT * FROM tickets WHERE is_deleted = 0 AND status_is_closed = :statusIsClosed ORDER BY updated_at DESC")
+    fun pagingSourceByStatusClosed(statusIsClosed: Boolean): PagingSource<Int, TicketEntity>
+
+    /**
+     * Filter-scoped [PagingSource] by assignee user ID.
+     */
+    @Query("SELECT * FROM tickets WHERE is_deleted = 0 AND assigned_to = :assignedTo ORDER BY updated_at DESC")
+    fun pagingSourceByAssignee(assignedTo: Long): PagingSource<Int, TicketEntity>
 
     @Query("SELECT * FROM tickets WHERE is_deleted = 0 ORDER BY created_at DESC")
     fun getAll(): Flow<List<TicketEntity>>

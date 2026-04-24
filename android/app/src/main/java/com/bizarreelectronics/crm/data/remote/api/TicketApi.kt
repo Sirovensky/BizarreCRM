@@ -9,9 +9,11 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevicePart
 import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.TicketNote
+import com.bizarreelectronics.crm.data.remote.dto.TicketPageResponse
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import retrofit2.http.Query
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.Body
@@ -29,6 +31,22 @@ interface TicketApi {
 
     @GET("tickets")
     suspend fun getTickets(@QueryMap filters: Map<String, String> = emptyMap()): ApiResponse<TicketListData>
+
+    /**
+     * Cursor-based page fetch for Paging3 [TicketRemoteMediator].
+     *
+     * - [cursor] — opaque token returned by the previous page; omit for the first page.
+     * - [limit]  — page size; default 50 matches [PagingConfig.pageSize].
+     * - Additional query params from [filters] allow status/assignee/urgency scoping.
+     *
+     * Response: [TicketPageResponse] with [items], next [cursor], and [serverExhausted] flag.
+     */
+    @GET("tickets")
+    suspend fun getTicketPage(
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int = 50,
+        @QueryMap filters: Map<String, String> = emptyMap(),
+    ): ApiResponse<TicketPageResponse>
 
     @GET("tickets/stats")
     suspend fun getStats(): ApiResponse<@JvmSuppressWildcards Map<String, Any>>

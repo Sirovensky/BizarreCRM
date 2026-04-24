@@ -270,6 +270,11 @@ dependencies {
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 
+    // Paging 3 — cursor-based pagination + RemoteMediator (plan:L632-L635)
+    implementation(libs.androidx.paging.runtime)
+    implementation(libs.androidx.paging.compose)
+    implementation(libs.androidx.room.paging)
+
     // Testing — unit test baseline
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
@@ -285,6 +290,8 @@ dependencies {
     testImplementation(libs.androidx.arch.core.testing)
     // TestDispatcher / runTest for deterministic coroutine testing.
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.androidx.paging.testing)
 }
 
 // §32.1 — data-sovereignty Gradle guard rail.

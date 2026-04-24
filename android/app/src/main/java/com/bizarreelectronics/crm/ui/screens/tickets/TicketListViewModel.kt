@@ -3,19 +3,23 @@ package com.bizarreelectronics.crm.ui.screens.tickets
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSort
-import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
+import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -68,6 +72,17 @@ class TicketListViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(TicketListUiState())
     val state = _state.asStateFlow()
+
+    /**
+     * Paged stream of tickets, cached in [viewModelScope] so the Pager survives
+     * recomposition. Switches to a new stream when [_filterKeyFlow] changes.
+     *
+     * Consumed by TicketListScreen via [collectAsLazyPagingItems].
+     */
+    private val _filterKeyFlow = MutableStateFlow(resolveFilterKey())
+    val ticketsPaged: Flow<PagingData<TicketEntity>> = _filterKeyFlow
+        .flatMapLatest { key -> ticketRepository.ticketsPaged(key) }
+        .cachedIn(viewModelScope)
 
     private var searchJob: Job? = null
     private var collectJob: Job? = null
@@ -168,6 +183,7 @@ class TicketListViewModel @Inject constructor(
 
     fun onFilterChanged(filter: String) {
         _state.value = _state.value.copy(selectedFilter = filter)
+        _filterKeyFlow.value = resolveFilterKey(filter = filter)
         collectTickets()
     }
 
@@ -317,6 +333,7 @@ class TicketListViewModel @Inject constructor(
     fun onSavedViewSelected(savedView: TicketSavedView) {
         _state.value = _state.value.copy(savedView = savedView)
         appPreferences.ticketListSavedView = savedView.name
+        _filterKeyFlow.value = resolveFilterKey(savedView = savedView)
         collectTickets()
     }
 
@@ -340,6 +357,29 @@ class TicketListViewModel @Inject constructor(
                 !it.statusIsClosed && ticketUrgencyFor(it).ordinal <= TicketUrgency.High.ordinal
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Paging3 filter-key helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * Derives the [filterKey] string passed to [TicketRepository.ticketsPaged].
+     * Called on init (from persisted state) and on filter/savedView changes.
+     */
+    private fun resolveFilterKey(
+        filter: String = _state.value.selectedFilter,
+        savedView: TicketSavedView = _state.value.savedView,
+    ): String = when {
+        savedView == TicketSavedView.MyQueue ->
+            "assignee:${authPreferences.userId}"
+        filter == "My Tickets" ->
+            "assignee:${authPreferences.userId}"
+        filter == "Closed" ->
+            "status:closed"
+        filter == "Open" || filter == "In Progress" || filter == "Waiting" ->
+            "status:open"
+        else -> ""
     }
 
     private companion object {

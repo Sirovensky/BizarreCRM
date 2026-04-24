@@ -43,6 +43,8 @@ androidx-browser = "1.8.0"
 # includes PublicKeyCredential and GetPublicKeyCredentialOption used by PasskeyManager.
 # credentials-play-services-auth bridges to Google Play Services FIDO on API 28+.
 androidx-credentials = "1.2.2"
+paging = "3.3.6"
+mockwebserver = "4.12.0"
 
 [libraries]
 # Core Android
@@ -152,6 +154,15 @@ androidx-browser = { group = "androidx.browser", name = "browser", version.ref =
 #                       the Android platform authenticator (Android 9–13 on some OEMs).
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "androidx-credentials" }
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "androidx-credentials" }
+
+# Paging 3 — cursor-based pagination + RemoteMediator (plan:L632-L635)
+androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
+androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
+androidx-room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+
+# Test utilities
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
+androidx-paging-testing = { group = "androidx.paging", name = "paging-testing", version.ref = "paging" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

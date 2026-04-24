@@ -28,6 +28,27 @@ data class TicketListData(
     val pagination: Pagination? = null
 )
 
+/**
+ * Cursor-based page response used by [TicketRemoteMediator] (plan:L632).
+ *
+ * The server returns the same ticket list but with an opaque [cursor] token for the
+ * next page and a [serverExhausted] flag confirming no further pages exist.
+ * When the server does not yet support cursor params it falls back to returning
+ * the standard ticket array under the `tickets` key — callers should handle [cursor]=null
+ * as end-of-pagination.
+ */
+data class TicketPageResponse(
+    /** Page of ticket items. */
+    val tickets: List<TicketListItem> = emptyList(),
+    /** Opaque cursor to pass as `?cursor=` on the next APPEND load. Null = exhausted. */
+    val cursor: String? = null,
+    /** True when the server explicitly confirms no more pages remain. */
+    @SerializedName("server_exhausted")
+    val serverExhausted: Boolean = false,
+    /** Optional approximate total for UI display ("Showing N of ~M"). */
+    val total: Int? = null,
+)
+
 data class CustomerListData(
     val customers: List<CustomerListItem>,
     val pagination: Pagination? = null

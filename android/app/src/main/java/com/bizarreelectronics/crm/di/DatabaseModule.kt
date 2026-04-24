@@ -167,4 +167,5 @@ object DatabaseModule {
     @Provides fun provideExpenseDao(db: BizarreDatabase): ExpenseDao = db.expenseDao()
     @Provides fun provideDraftDao(db: BizarreDatabase): DraftDao = db.draftDao()
     @Provides fun provideAppliedMigrationDao(db: BizarreDatabase): AppliedMigrationDao = db.appliedMigrationDao()
+    @Provides fun provideSyncStateDao(db: BizarreDatabase): SyncStateDao = db.syncStateDao()
 }

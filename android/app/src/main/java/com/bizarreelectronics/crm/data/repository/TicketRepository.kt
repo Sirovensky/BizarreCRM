@@ -1,7 +1,12 @@
 package com.bizarreelectronics.crm.data.repository
 
 import android.util.Log
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncStateDao
 import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
@@ -11,6 +16,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import com.bizarreelectronics.crm.data.sync.TicketRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
@@ -30,11 +36,61 @@ class TicketRepository @Inject constructor(
     private val ticketDao: TicketDao,
     private val ticketApi: TicketApi,
     private val syncQueueDao: SyncQueueDao,
+    private val syncStateDao: SyncStateDao,
     private val serverMonitor: ServerReachabilityMonitor,
     private val offlineIdGenerator: OfflineIdGenerator,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // -----------------------------------------------------------------------
+    // Paging3 — cursor-based paged stream (plan:L632–L635)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns a cold [Flow]<[PagingData]<[TicketEntity]>> backed by Room cache
+     * and [TicketRemoteMediator].
+     *
+     * The mediator fetches pages from the server when the local cache is stale
+     * (>15 min) or the user scrolls to the end. Sort/filter predicates are
+     * applied at the DB layer via filter-scoped [PagingSource] variants.
+     *
+     * @param filterKey  Optional filter tag (e.g. `"status:open"`, `"assignee:42"`).
+     *                   Empty string = no filter (show all non-deleted tickets).
+     */
+    @OptIn(ExperimentalPagingApi::class)
+    fun ticketsPaged(filterKey: String = ""): Flow<PagingData<TicketEntity>> {
+        val mediator = TicketRemoteMediator(
+            ticketDao = ticketDao,
+            syncStateDao = syncStateDao,
+            ticketApi = ticketApi,
+            filterKey = filterKey,
+        )
+        val pagingSourceFactory: () -> androidx.paging.PagingSource<Int, TicketEntity> = when {
+            filterKey.startsWith("assignee:") -> {
+                val assigneeId = filterKey.removePrefix("assignee:").toLongOrNull() ?: 0L
+                { ticketDao.pagingSourceByAssignee(assigneeId) }
+            }
+            filterKey == "status:closed" -> {
+                { ticketDao.pagingSourceByStatusClosed(true) }
+            }
+            filterKey == "status:open" -> {
+                { ticketDao.pagingSourceByStatusClosed(false) }
+            }
+            else -> {
+                { ticketDao.pagingSource() }
+            }
+        }
+        return Pager(
+            config = PagingConfig(
+                pageSize = TicketRemoteMediator.PAGE_SIZE,
+                prefetchDistance = 10,
+                enablePlaceholders = false,
+            ),
+            remoteMediator = mediator,
+            pagingSourceFactory = pagingSourceFactory,
+        ).flow
+    }
 
     /** Returns cached tickets immediately, refreshes from API in background. */
     fun getTickets(): Flow<List<TicketEntity>> {
