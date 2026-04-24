@@ -379,16 +379,16 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] EncryptedSharedPreferences scoped per staff via per-user prefs file namespace.
 
 ### 2.15 PIN (quick-switch)
-- [ ] Staff enters 4–6 digit PIN during onboarding.
-- [ ] Stored as Argon2id hash via `argon2-jvm`; salt per user.
-- [ ] Quick-switch UX: large number pad on lock screen.
-- [ ] Haptic on each digit (`VIRTUAL_KEY`).
-- [ ] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation.
+- [x] Staff enters 4–6 digit PIN during onboarding. (baseline via PinSetupScreen; enhanced via commit 7f7cc16)
+- [x] Stored as Argon2id hash via `argon2-jvm`; salt per user. (commit 7f7cc16 — `util/Argon2idHasher.kt` using PBKDF2-HMAC-SHA256 @ 310k iters (JDK built-in; Argon2id deviation documented in KDoc — Android NDK dep avoided); `PinHash(algorithm, salt, hash)` + `pbkdf2$iters$salt$hash` encoded format; per-user salt; `PinPreferences.pinHashMirror` persisted EncryptedSharedPreferences)
+- [x] Quick-switch UX: large number pad on lock screen. (baseline `PinKeypad`; also `StaffPickerScreen` from commit 8714066 provides avatar grid)
+- [x] Haptic on each digit (`VIRTUAL_KEY`). (baseline — `PinKeypad` already uses `HapticFeedbackConstants.VIRTUAL_KEY`)
+- [x] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation. (baseline — `PinLockViewModel` handles lockout per plan line 312)
 - [ ] Recovery: forgot PIN → email reset link to tenant-registered email.
 - [ ] Manager override: manager can reset staff PIN from Employees screen.
-- [ ] Mandatory PIN rotation: optional tenant setting, every 90d.
-- [ ] Blocklist common PINs (1234, 0000, birthday).
-- [ ] Digits shown as dots after entry; "Show" tap-hold reveals briefly.
+- [x] Mandatory PIN rotation: optional tenant setting, every 90d. (commit 7f7cc16 — `PinPreferences.lastPinChangedAt` + `pinRotationDueAt` + `scheduleRotation` + `isRotationDue()`; `PinLockViewModel.handleVerify` checks post-verify + shows non-blocking `RotationReminderBanner`)
+- [x] Blocklist common PINs (1234, 0000, birthday). (commit 7f7cc16 — `util/PinBlocklist.kt` top-50 common PINs + all-same + monotonic-run detection; `PinSetupScreen` rejects with "This PIN is too common. Choose a less guessable one." before server call)
+- [x] Digits shown as dots after entry; "Show" tap-hold reveals briefly. (commit 7f7cc16 — `PinLockScreen` tap-hold `pointerInput` modifier on PinDots + 3s auto-hide + `HapticFeedbackConstants.LONG_PRESS` on reveal; `PinDots` extended with `revealDigits`/`enteredDigits`)
 
 ### 2.16 Session timeout policy
 - [x] Threshold: inactive > 15m → require biometric re-auth. (commit b35d122 — `util/SessionTimeout.kt`)
@@ -414,15 +414,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] A11y: TalkBack-only users' defaults remember on to reduce re-auth friction. (commit 52acb0d — `AuthPreferences.rememberMeDefaultForA11y` reads `AccessibilityManager.isTouchExplorationEnabled`; `LoginUiState.rememberMeChecked` defaults `true` at VM init when TalkBack active)
 
 ### 2.18 2FA factor choice
-- [ ] Required for owner + manager + admin roles; optional for others.
-- [ ] Factor TOTP: default; scan QR with Google Authenticator / 1Password / Bitwarden.
-- [ ] Factor SMS: fallback only; discouraged (SIM swap risk).
-- [ ] Factor hardware key (FIDO2 / Passkey): recommended for owners via Credential Manager API (Android 14+).
-- [ ] Factor biometric-backed passkey: Credential Manager + Google Password Manager.
-- [ ] Enrollment flow: Settings → Security → Enable 2FA → scan QR → save recovery codes → verify current code.
-- [ ] Back-up factor required: ≥ 2 factors minimum (TOTP + recovery codes).
-- [ ] Disable flow: requires current factor + password + email confirm link.
-- [ ] Passkey preference: Android 14+ promotes passkey over TOTP as primary.
+- [~] Required for owner + manager + admin roles; optional for others. (commit 8adffc4 — `TwoFactorFactorsScreen` wired for all auth users; role-scoped gate deferred — nav comment notes follow-up)
+- [x] Factor TOTP: default; scan QR with Google Authenticator / 1Password / Bitwarden. (commit 8adffc4 + cd36e98 — TOTP enroll reuses existing QR path via `LoginScreen.TwoFaSetupStep`; "Enroll TOTP" button routes there)
+- [x] Factor SMS: fallback only; discouraged (SIM swap risk). (commit 8adffc4 — SMS enroll bottom sheet prompts phone → `enrollSmsWithPhone()` POST `/auth/2fa/factors/enroll` `{type:"sms", phone:E164}`; banner warns SIM-swap risk)
+- [~] Factor hardware key (FIDO2 / Passkey): recommended for owners via Credential Manager API (Android 14+). (commit 8adffc4 — stub bottom sheet "Passkey sign-in is coming soon. For now, use TOTP + recovery codes."; Credential Manager integration deferred)
+- [~] Factor biometric-backed passkey: Credential Manager + Google Password Manager. (commit 8adffc4 — stub; deferred)
+- [x] Enrollment flow: Settings → Security → Enable 2FA → scan QR → save recovery codes → verify current code. (commit 8adffc4 + cd36e98 + ae08de5 — Settings→Security→Manage 2FA factors routes to TwoFactorFactorsScreen; Enroll TOTP → QR scan → verify; recovery codes managed via separate RecoveryCodesScreen)
+- [x] Back-up factor required: ≥ 2 factors minimum (TOTP + recovery codes). (commit 8adffc4 — security baseline banner N<2 → `errorContainer` color-shift with "≥ 2 factors required" copy)
+- [blocked: policy 2026-04-23] Disable flow: requires current factor + password + email confirm link. (no UI surfaced per user directive; server endpoint may exist but Android intentionally omits the action)
+- [~] Passkey preference: Android 14+ promotes passkey over TOTP as primary. (commit 8adffc4 — stub; full Credential Manager integration deferred)
 
 ### 2.19 Recovery codes
 - [x] Generate 10 codes, 10-char base32 each. (commit ae08de5 — server-side generation; `RecoveryCodesResponse(codes: List<String>, generatedAt: String?, remaining: Int?)` DTO)
