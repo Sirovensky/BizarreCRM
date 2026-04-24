@@ -63,15 +63,21 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttention
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionCategory
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionPriority
 import com.bizarreelectronics.crm.data.remote.api.DashboardApi
+import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityItem
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementDto
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueTicket
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityFeedCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementBanner
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.AvatarLongPressMenu
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.CelebratoryModal
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardTabletActions
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
 import com.bizarreelectronics.crm.util.rememberReduceMotion
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
@@ -153,6 +159,8 @@ class DashboardViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     /** §3.3 L513 — dismiss endpoint; 404-tolerant. */
     private val dashboardApi: DashboardApi,
+    /** §3.12 L561 — SMS unread count; 404-tolerant. */
+    private val smsApi: SmsApi,
     syncManager: SyncManager,
     syncQueueDao: SyncQueueDao,
     notificationDao: NotificationDao,
@@ -378,12 +386,81 @@ class DashboardViewModel @Inject constructor(
         refresh()
     }
 
+    // -------------------------------------------------------------------------
+    // §3.12 L561 — SMS unread count
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.12 L561 — Unread SMS conversation count. Null = 404 / endpoint not yet
+     * available. Badge is hidden when null.
+     */
+    private val _unreadSmsCount = MutableStateFlow<Int?>(null)
+    val unreadSmsCount: StateFlow<Int?> = _unreadSmsCount.asStateFlow()
+
+    fun refreshSmsCount() {
+        viewModelScope.launch {
+            try {
+                val response = smsApi.getUnreadCount()
+                _unreadSmsCount.value = response.data?.count
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    _unreadSmsCount.value = null // endpoint not yet live — hide badge
+                } else {
+                    android.util.Log.w("Dashboard", "getUnreadCount failed (${e.code()}): ${e.message}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "getUnreadCount offline: ${e.message}")
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // §3.12 L562 — Team Inbox unread count
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.12 L562 — Team Inbox unread count from `GET /inbox`. Null = 404 / hide tile.
+     */
+    private val _teamInboxCount = MutableStateFlow<Int?>(null)
+    val teamInboxCount: StateFlow<Int?> = _teamInboxCount.asStateFlow()
+
+    fun refreshTeamInbox() {
+        viewModelScope.launch {
+            try {
+                val response = dashboardApi.getInbox()
+                _teamInboxCount.value = response.data?.unreadCount
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    _teamInboxCount.value = null // endpoint not yet live — hide tile
+                } else {
+                    android.util.Log.w("Dashboard", "getInbox failed (${e.code()}): ${e.message}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "getInbox offline: ${e.message}")
+            }
+        }
+    }
+
     init {
         loadDashboard()
         collectMyQueue()
         loadAssignmentSetting()
         loadActivityFeed()
         loadAnnouncement()
+        refreshSmsCount()
+        refreshTeamInbox()
+        startPeriodicRefresh()
+    }
+
+    /** §3.12 — auto-refresh SMS unread + team inbox every 30 s. */
+    private fun startPeriodicRefresh() {
+        viewModelScope.launch {
+            while (true) {
+                delay(30_000L)
+                refreshSmsCount()
+                refreshTeamInbox()
+            }
+        }
     }
 
     private fun loadAssignmentSetting() {
@@ -620,10 +697,20 @@ fun DashboardScreen(
     // §3.10 — sync badge redirects to Settings → Data → Sync Issues when
     // pending rows are stuck; force-sync stays the default for clean state.
     onNavigateToSyncIssues: (() -> Unit)? = null,
+    // §3.8 L543 — tablet action row: Settings shortcut.
+    onNavigateToSettings: (() -> Unit)? = null,
+    // §3.9 L549 — avatar long-press: switch user / sign out.
+    onSwitchUser: (() -> Unit)? = null,
+    onSignOut: (() -> Unit)? = null,
+    // §3.12 L561 — SMS pill tap → SMS tab.
+    onNavigateToSms: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val currentRange by viewModel.currentRange.collectAsState()
+    // §3.8 L543 — detect tablet to conditionally show action row vs FAB.
+    val windowMode = rememberWindowMode()
+    val isTablet = windowMode != WindowMode.Phone
     // [P1] FAB expand state hoisted so this screen can render a scrim overlay.
     // Passed to DashboardFab as expandedState so both share a single source of truth.
     val fabExpandedState = remember { mutableStateOf(false) }
@@ -634,6 +721,21 @@ fun DashboardScreen(
     val announcement by viewModel.announcement.collectAsState()
     val showCelebratoryModal by viewModel.showCelebratoryModal.collectAsState()
     val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
+
+    // §3.12 — SMS unread + team inbox counts.
+    val unreadSmsCount by viewModel.unreadSmsCount.collectAsState()
+    val teamInboxCount by viewModel.teamInboxCount.collectAsState()
+
+    // §3.8 L557 — Snackbar host for clock-in success toast.
+    val clockSnackbarHostState = remember { SnackbarHostState() }
+
+    // §3.9 — avatar initials: first char of each word in the name portion of the greeting.
+    // The greeting format is "Good morning, Pavel Ivanov" — name is after the comma.
+    val avatarInitials by remember(state.greeting) {
+        val namePart = state.greeting.substringAfter(", ").trim()
+        val words = namePart.split(" ").filter { it.isNotBlank() }
+        mutableStateOf(words.mapNotNull { it.firstOrNull()?.uppercaseChar() }.take(2).joinToString(""))
+    }
 
     // §3 L491 — track which preset is active so the segmented button row
     // highlights the correct button. Defaults to TODAY; set to CUSTOM when
@@ -741,6 +843,7 @@ fun DashboardScreen(
     )
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = clockSnackbarHostState) },
         // [P1] BrandTopAppBar hosts the greeting title and sync badge in the
         // action slot, saving a full row in the LazyColumn and anchoring sync
         // status where every Android app puts it.
@@ -773,7 +876,33 @@ fun DashboardScreen(
                             )
                         }
                     },
+                    // §3.9 L549 — avatar in the navigation slot (phone + tablet).
+                    navigationIcon = {
+                        AvatarLongPressMenu(
+                            initials = avatarInitials.ifBlank { "?" },
+                            onNavigateToProfile = onNavigateToProfile,
+                            onSwitchUser = onSwitchUser,
+                            onSignOut = onSignOut,
+                        )
+                    },
                     actions = {
+                        // §3.8 L543 — Tablet: replace FAB with inline action row.
+                        if (isTablet) {
+                            DashboardTabletActions(
+                                onCreateTicket = onCreateTicket,
+                                onCreateCustomer = onCreateCustomer,
+                                onScanBarcode = onScanBarcode,
+                                onNewSms = onNavigateToSms,
+                                onNavigateToSettings = onNavigateToSettings,
+                            )
+                        }
+                        // §3.12 L561 — SMS unread pill.
+                        if (onNavigateToSms != null) {
+                            UnreadSmsPill(
+                                unreadCount = unreadSmsCount,
+                                onNavigateToSms = onNavigateToSms,
+                            )
+                        }
                         // CROSS22 + CROSS22-badge: bell icon + unread count badge.
                         if (onNavigateToNotifications != null) {
                             val unread by viewModel.unreadNotificationCount.collectAsState(initial = 0)
@@ -806,14 +935,17 @@ fun DashboardScreen(
                 WaveDivider()
             }
         },
+        // §3.8 L543 — FAB only shown on phone; tablet uses action row in TopAppBar.
         floatingActionButton = {
-            DashboardFab(
-                onNewTicket = onCreateTicket,
-                onNewCustomer = onCreateCustomer,
-                onLogSale = onLogSale,
-                onScanBarcode = onScanBarcode,
-                expandedState = fabExpandedState,
-            )
+            if (!isTablet) {
+                DashboardFab(
+                    onNewTicket = onCreateTicket,
+                    onNewCustomer = onCreateCustomer,
+                    onLogSale = onLogSale,
+                    onScanBarcode = onScanBarcode,
+                    expandedState = fabExpandedState,
+                )
+            }
         },
     ) { scaffoldPadding ->
     // [P1] Scrim overlay wraps content so it renders above the list
@@ -890,7 +1022,10 @@ fun DashboardScreen(
         // GET /employees and routes to the dedicated screen on tap.
         if (onClockInOut != null) {
             item {
-                ClockInTile(onOpen = onClockInOut)
+                ClockInTile(
+                    onOpen = onClockInOut,
+                    snackbarHostState = clockSnackbarHostState,
+                )
             }
         }
 
@@ -964,6 +1099,19 @@ fun DashboardScreen(
                 KpiGrid(
                     tiles = kpiTiles,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+        }
+
+        // §3.12 L562 — Team Inbox tile. Hidden when teamInboxCount is null (404).
+        teamInboxCount?.let { inboxCount ->
+            item {
+                TeamInboxTile(
+                    unreadCount = inboxCount,
+                    onNavigateToInbox = {
+                        android.util.Log.i("Dashboard", "team_inbox_tap count=$inboxCount — inbox route not yet available")
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
         }

@@ -18,15 +18,20 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +47,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /**
@@ -56,6 +63,9 @@ import javax.inject.Inject
 data class ClockInTileState(
     val isClockedIn: Boolean? = null,
     val displayName: String = "",
+    /** §3.8 L557 — non-null after a successful toggle; cleared on next tap. */
+    val justClockedInAt: String? = null,
+    val isLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -86,16 +96,59 @@ class ClockInTileViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * §3.8 L557 — One-tap toggle. Calls clock-in or clock-out based on current state.
+     *
+     * On success, sets [ClockInTileState.justClockedInAt] to the current HH:MM so
+     * the Composable can show a Snackbar. On failure, silently falls back to [onOpen].
+     *
+     * @param onFallbackToScreen Called when toggle fails (e.g. PIN required) so the
+     *   caller can navigate to [ClockInOutScreen] for the full flow.
+     * @param onSuccess Callback supplying the clock-in time string ("Clocked in at HH:MM").
+     */
+    fun toggle(
+        onFallbackToScreen: () -> Unit,
+        onSuccess: (String) -> Unit,
+    ) {
+        val currentState = _state.value
+        val userId = authPreferences.userId ?: run { onFallbackToScreen(); return }
+        val isClockedIn = currentState.isClockedIn
+
+        _state.value = currentState.copy(isLoading = true)
+
+        viewModelScope.launch {
+            runCatching {
+                if (isClockedIn == true) {
+                    settingsApi.clockOut(userId, emptyMap())
+                    _state.value = _state.value.copy(isClockedIn = false, isLoading = false)
+                    onSuccess("Clocked out")
+                } else {
+                    settingsApi.clockIn(userId, emptyMap())
+                    val timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                    _state.value = _state.value.copy(isClockedIn = true, justClockedInAt = timeStr, isLoading = false)
+                    onSuccess("Clocked in at $timeStr")
+                }
+            }.onFailure {
+                _state.value = _state.value.copy(isLoading = false)
+                android.util.Log.w("ClockInTile", "toggle failed: ${it.message}")
+                onFallbackToScreen()
+            }
+        }
+    }
 }
 
 @Composable
 fun ClockInTile(
     onOpen: () -> Unit,
+    snackbarHostState: SnackbarHostState? = null,
     viewModel: ClockInTileViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
     val isOn = state.isClockedIn == true
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
 
     Card(
         modifier = modifier
@@ -109,7 +162,21 @@ fun ClockInTile(
                 role = Role.Button
             }
             .pointerHoverIcon(PointerIcon.Hand)
-            .clickable(onClick = onOpen),
+            .clickable {
+                // §3.8 L557 — attempt direct toggle with haptic; fall back to screen.
+                viewModel.toggle(
+                    onFallbackToScreen = onOpen,
+                    onSuccess = { message ->
+                        // Fire CONTEXT_CLICK haptic on success.
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (snackbarHostState != null) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(message)
+                            }
+                        }
+                    },
+                )
+            },
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -154,4 +221,3 @@ fun ClockInTile(
         }
     }
 }
-

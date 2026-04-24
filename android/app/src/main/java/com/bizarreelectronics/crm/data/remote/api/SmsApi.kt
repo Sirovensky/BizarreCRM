@@ -64,4 +64,23 @@ interface SmsApi {
 
     @GET("sms/templates")
     suspend fun getTemplates(): ApiResponse<SmsTemplateListData>
+
+    /**
+     * §3.12 L561 — Count of unread SMS conversations.
+     *
+     * Endpoint: GET /sms/unread-count
+     *
+     * **Graceful degradation**: 404 means the endpoint is not yet implemented.
+     * Callers catch [retrofit2.HttpException] with code 404 and hide the badge.
+     *
+     * Response shape (when live):
+     * ```json
+     * { "success": true, "data": { "count": 3 } }
+     * ```
+     */
+    @GET("sms/unread-count")
+    suspend fun getUnreadCount(): ApiResponse<SmsUnreadCountData>
 }
+
+/** §3.12 — wrapper around the unread SMS count returned by `GET /sms/unread-count`. */
+data class SmsUnreadCountData(val count: Int = 0)
