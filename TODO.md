@@ -1434,7 +1434,9 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.
 
 ### Wave-33 scan-loop findings (2026-04-23) — top impactful
-- [ ] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
+- [x] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts; commit=adad2496 -->
+  - Done 2026-04-23. Extracted `AUTH_REFRESH_PATH` + `AUTH_REFRESH_URL` constants at module top; both refresh POST URL and request-interceptor `includes()` match now reference the shared constant. Typecheck clean.
 
 ### Wave-34 scan-loop findings (2026-04-23)
 - [ ] SCAN-864. **tickets setTimeout at :2118 not via trackInterval** — `packages/server/src/routes/tickets.routes.ts:2118`. Fix: one-shot setTimeout is OK if caller tolerates no shutdown guarantee; verify.
@@ -1469,3 +1471,20 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-928. **[POSSIBLE MEDIUM] syncConflicts resolution declarative-only — no backend enforcement of client replay** — `packages/server/src/routes/syncConflicts.routes.ts:449-451,639-641`. Fix: document SDK contract strongly OR add replay-validate hook.
 - [ ] SCAN-929. **expenses POST `/` accepts `date` field with no temporal bounds — backdating fraud** — `packages/server/src/routes/expenses.routes.ts:139`. Fix: validate date within ±90 days.
 - [ ] SCAN-930. **[LOW-MED] worker pool maxQueue=200 — no early backpressure; cascading failures under spike** — `packages/server/src/db/worker-pool.ts:55-57`. Fix: metrics on queue depth + consider router-level backpressure.
+
+### Wave-47 scan-loop findings (2026-04-23) — web/hooks + web/utils
+- [ ] SCAN-931. **Settings fetched from server aren't validated — bad values slip through and can break settings pages.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:9; fix=zod-or-guard -->
+- [ ] SCAN-932. **POS keyboard shortcut listener re-attaches on every render when callers pass inline handler objects — wasted work on hot screen.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts:64; fix=ref-stable -->
+- [ ] SCAN-933. **Draft autosave writes unbounded text to browser storage — a very long note can fill the quota and break other features.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:44-46; fix=cap-100kb -->
+- [ ] SCAN-934. **Undo action on unmount silently swallows server errors — failures are invisible in prod logs.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:197-199; fix=log-error -->
+- [ ] SCAN-935. **Shared `cn()` helper has no return type on its exported signature — violates project type-safety rule.**
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/cn.ts:4; fix=add-return-string -->
+- [ ] SCAN-936. **Currency formatter silently falls back to USD for unknown codes — misconfigured tenant currency is invisible.**
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/formatCurrency.ts:23-28; fix=log-unknown-code -->
+- [ ] SCAN-937. **`useSettings` swallows fetch errors — callers can't tell empty-settings from failed-load.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:4-19; fix=return-isError -->
+
