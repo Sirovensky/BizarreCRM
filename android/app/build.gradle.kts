@@ -279,6 +279,9 @@ dependencies {
     // Note: the catalog alias `androidx-credentials-play-services-auth` maps to
     // libs.androidx.credentials.play.services.auth in the Kotlin DSL accessor.
 
+    // §28 L2532 — Play Integrity API (device attestation, non-blocking on non-GMS)
+    implementation(libs.play.integrity)
+
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 
