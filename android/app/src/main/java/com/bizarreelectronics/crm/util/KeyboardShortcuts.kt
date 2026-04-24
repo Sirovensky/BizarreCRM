@@ -130,6 +130,8 @@ fun KeyboardShortcutsHost(
     onBack: () -> Unit,
     // L1424 — Ctrl+T jumps to today in the Appointments calendar views
     onJumpToToday: (() -> Unit)? = null,
+    // §54 — Ctrl+K opens the command palette overlay
+    onCommandPalette: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -189,6 +191,9 @@ fun KeyboardShortcutsHost(
                     event.key == Key.Slash -> {
                         showHelp = !showHelp; true
                     }
+                    event.key == Key.K && onCommandPalette != null -> {
+                        onCommandPalette(); true
+                    }
                     else -> false
                 }
             },
@@ -209,6 +214,7 @@ private fun ShortcutHelpTable() {
         "Ctrl+," to "Settings",
         "Escape" to "Back",
         "Ctrl+T" to "Jump to today (Appointments)",
+        "Ctrl+K" to "Command palette",
         "Ctrl+/" to "Show this help",
         // plan:L800 — ticket detail chords
         "Ctrl+D" to "Mark ticket done (ticket detail)",
