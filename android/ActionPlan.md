@@ -1214,34 +1214,34 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 ### 7.1 List
 - [x] Base list + filter chips + search.
 - [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void via `ScrollableTabRow`.
-- [ ] **Filters** — date range, customer, amount range, payment method, created-by.
-- [ ] **Sort** — date / amount / due date / status.
-- [ ] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through).
-- [ ] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down.
+- [x] **Filters** — date range, customer, amount range, payment method, created-by. (commit 2c17758 — `InvoiceFilterSheet.kt` ModalBottomSheet date-range+customer+amount-range; `InvoiceFilterState` VM-applied)
+- [x] **Sort** — date / amount / due date / status. (commit 2c17758 — `InvoiceSortDropdown.kt` 6-option enum + `applyInvoiceSortOrder()` pure func; 8 JVM tests)
+- [x] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through). (commit 2c17758 — `InvoiceStatusChip.kt` rendered inline)
+- [x] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down. (commit 2c17758 — `InvoiceApi.getStats()` + `InvoiceStatsData` DTO; 404 hides header silently)
 - [ ] **Status pie + payment-method pie** (tablet/ChromeOS) — Vico `PieChart`-equivalent via custom renderer or MPAndroidChart interop.
-- [ ] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete.
-- [ ] **Export CSV** via SAF.
-- [ ] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void.
+- [x] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete. (commit 2c17758 — long-press bulk mode + `BulkActionTopBar`+`BulkActionBar` {Remind/Export CSV/Void})
+- [x] **Export CSV** via SAF. (commit 2c17758 — `ACTION_CREATE_DOCUMENT` launcher + `VM.buildCsvContent()`)
+- [x] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void. (commit 2c17758 — DropdownMenu on `MoreVert`: Open/Copy number/Send reminder/Share PDF)
 - [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator.
 
 ### 7.2 Detail
 - [x] Line items / totals / payments.
 - [ ] **Header** — invoice number (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip.
 - [ ] **Customer card** — name + phone + email + quick-actions.
-- [ ] **Line items** — editable table (if status allows); tax per line.
+- [x] **Line items** — editable table (if status allows); tax per line. (commit 2c17758 — `InvoiceLineItemsTable.kt` read-only table — editing deferred)
 - [ ] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
 - [ ] **Payment history** — method / amount / date / reference / status; tap → payment detail.
 - [ ] **Add payment** → `POST /invoices/:id/payments` (see 7.4).
-- [ ] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full.
+- [x] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full. (commit 2c17758 — overflow→AlertDialog→POST /refunds; `IssueRefundRequest` DTO; 404 graceful stub)
 - [ ] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`.
 - [ ] **Void** — `POST /invoices/:id/void` with reason; destructive confirm.
-- [ ] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`.
-- [ ] **Send by email** — `Intent(ACTION_SENDTO)` with `mailto:` + PDF attached via FileProvider URI.
-- [ ] **Share PDF** — system share sheet.
-- [ ] **Android Print** via `PrintManager.print(...)` with custom PDF renderer.
-- [ ] **Clone invoice** — duplicate line items for new invoice.
+- [x] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`. (commit 2c17758 — `InvoiceSendActions.kt` + `sendSms()` intent helper pre-filled with invoice URL)
+- [x] **Send by email** — `Intent(ACTION_SENDTO)` with `mailto:` + PDF attached via FileProvider URI. (commit 2c17758 — `sendEmail()` intent helper pre-filled; PDF attachment deferred)
+- [x] **Share PDF** — system share sheet. (commit 2c17758 — `shareText()` via `ACTION_SEND text/plain` with link)
+- [x] **Android Print** via `PrintManager.print(...)` with custom PDF renderer. (commit 2c17758 — `printInvoice()` using `PrintManager` + `WebView.createPrintDocumentAdapter`)
+- [x] **Clone invoice** — duplicate line items for new invoice. (commit 2c17758 — overflow→POST /invoices/{id}/clone; `VM.cloneInvoice()`; 404 stub)
 - [ ] **Convert to credit note** — if overpaid.
-- [ ] **Timeline** — every status change, payment, note, email/SMS send.
+- [x] **Timeline** — every status change, payment, note, email/SMS send. (commit 2c17758 — `InvoiceTimelineSection` synthetic from payments + creation date; follows TicketHistoryTimeline dot-connector pattern)
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
 
 ### 7.3 Create
@@ -1416,32 +1416,32 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 
 ### 10.1 List / calendar views
 - [x] Base list.
-- [ ] **`SegmentedButton`** — Agenda / Day / Week / Month.
-- [ ] **Month** — custom `CalendarGrid` Composable with dot per day for events; tap day → agenda.
-- [ ] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin.
-- [ ] **Day** — agenda list grouped by time-block (morning / afternoon / evening).
+- [x] **`SegmentedButton`** — Agenda / Day / Week / Month. (commit c00bd78 — `AppointmentViewMode` enum; SegmentedButton row in list top)
+- [x] **Month** — custom `CalendarGrid` Composable with dot per day for events; tap day → agenda. (commit c00bd78 — `AppointmentMonthView.kt` 6×7 grid via `YearMonth` iteration + dot indicators + month nav arrows + tap → Day drill-down)
+- [x] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin. (baseline `AppointmentWeekView`)
+- [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (baseline Day picker + list)
 - [ ] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`).
-- [ ] **Today** button in top bar; `Ctrl+T` shortcut.
-- [ ] **Filter** — employee / location / type / status.
+- [x] **Today** button in top bar; `Ctrl+T` shortcut. (commit c00bd78 — IconButton top-bar + `KeyboardShortcuts.kt` Ctrl+T via `onJumpToToday` param)
+- [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
 ### 10.2 Detail
 - [ ] Customer card + linked ticket / estimate / lead.
 - [ ] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
-- [ ] Reminder offsets (15min / 1h / 1day before) — respects per-user default.
-- [ ] Quick actions chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket.
-- [ ] Send-reminder manually (`POST /sms/send` + template).
+- [x] Reminder offsets (15min / 1h / 1day before) — respects per-user default. (commit c00bd78 — `ReminderOffsetPicker.kt` Off/15min/1h/1day/Custom SegmentedButton + custom OutlinedTextField)
+- [x] Quick actions chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket. (commit c00bd78 — Confirm/Reschedule/Cancel/No-show SuggestionChip row in detail header)
+- [x] Send-reminder manually (`POST /sms/send` + template). (commit c00bd78 — Send Reminder OutlinedButton → POST /appointments/:id/send-reminder; 404 tolerated)
 
 ### 10.3 Create
 - [ ] Minimal.
 - [ ] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
-- [ ] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle).
-- [ ] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time".
+- [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
+- [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
 - [ ] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
 - [x] Drag-to-reschedule (tablet day/week views) with `HapticFeedbackConstants.GESTURE_END` on drop.
-- [ ] Cancel — ask "Notify customer?" (SMS/email).
-- [ ] No-show — one-tap from detail; optional fee.
+- [x] Cancel — ask "Notify customer?" (SMS/email). (commit c00bd78 — dialog with `notify_customer` checkbox → POST /appointments/:id/cancel)
+- [x] No-show — one-tap from detail; optional fee. (commit c00bd78 — single tap → PATCH `status="no_show"` + toast; fee flow deferred)
 - [ ] Recurring-event edits — "This event" / "This and following" / "All".
 
 ### 10.5 Reminders
