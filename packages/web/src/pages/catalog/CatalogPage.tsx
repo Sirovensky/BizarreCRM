@@ -52,6 +52,18 @@ function safeProductUrl(raw: unknown): string | null {
   return null;
 }
 
+// Only `modelResults` benefits from a local shape — the catalog-item and
+// job-row renderers reach into many optional server fields and would bloat a
+// narrow interface. Leaving `items` / `jobs` loose for now; SCAN-992-follow
+// tracks a full-typing pass when the server DTOs stabilise.
+interface CatalogDeviceModel {
+  id: number;
+  name: string;
+  manufacturer_name?: string;
+  ifixit_url?: string | null;
+  [key: string]: unknown;
+}
+
 export function CatalogPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'browse' | 'import'>('browse');
@@ -86,7 +98,7 @@ export function CatalogPage() {
     refetchInterval: 3000,
     staleTime: 2500, // just under the 3s interval
   });
-  const jobs: any[] = (jobsData?.data?.data as any[]) || [];
+  const jobs: any[] = Array.isArray(jobsData?.data?.data) ? (jobsData?.data?.data as any[]) : [];
 
   const { data: catalogData, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog-search', debouncedSearch, activeSource, deviceModelId],
@@ -97,18 +109,21 @@ export function CatalogPage() {
       limit: 60,
     }),
   });
-  const items: any[] = (catalogData?.data?.data?.items as any[]) || [];
+  const items: any[] = Array.isArray(catalogData?.data?.data?.items)
+    ? (catalogData?.data?.data?.items as any[])
+    : [];
   const total: number = (catalogData?.data?.data?.total as number) || 0;
 
   // Device model search for filter
   const [modelSearch, setModelSearch] = useState('');
-  const [modelResults, setModelResults] = useState<any[]>([]);
+  const [modelResults, setModelResults] = useState<CatalogDeviceModel[]>([]);
   const handleModelSearch = async (q: string) => {
     setModelSearch(q);
     if (q.length < 2) { setModelResults([]); return; }
     try {
       const r = await catalogApi.searchDevices({ q, limit: 8 });
-      setModelResults((r.data?.data as any[]) || []);
+      const raw = r.data?.data;
+      setModelResults(Array.isArray(raw) ? (raw as CatalogDeviceModel[]) : []);
     } catch (err) {
       // Surface failures instead of silently returning empty results; users
       // otherwise think "no matches" when the backend is actually 401/down.
@@ -399,7 +414,7 @@ export function CatalogPage() {
             )}
             {modelResults.length > 0 && !deviceModelId && (
               <div className="absolute z-20 top-full mt-1 left-0 right-0 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg max-h-52 overflow-y-auto">
-                {modelResults.map((m: any) => (
+                {modelResults.map((m) => (
                   <div key={m.id} className="flex items-center gap-1 hover:bg-surface-50 dark:hover:bg-surface-700">
                     <button
                       onClick={() => { setDeviceModelId(m.id); setDeviceModelName(`${m.manufacturer_name} ${m.name}`); setModelSearch(''); setModelResults([]); }}
