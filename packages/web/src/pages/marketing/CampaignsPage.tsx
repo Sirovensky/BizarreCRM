@@ -76,26 +76,26 @@ export function CampaignsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; sample: Array<{ rendered_body: string }> } | null>(null);
 
-  const { data: campaignsRes, isLoading } = useQuery({
+  const { data: campaignsRes, isLoading } = useQuery<{ data?: Campaign[] }>({
     queryKey: ['campaigns'],
     queryFn: async () => {
       const res = await campaignsApi.list();
-      return res.data;
+      return res.data as { data?: Campaign[] };
     },
     staleTime: 30_000,
   });
 
-  const { data: segmentsRes } = useQuery({
+  const { data: segmentsRes } = useQuery<{ data?: Segment[] }>({
     queryKey: ['crm', 'segments'],
     queryFn: async () => {
       const res = await crmApi.listSegments();
-      return res.data;
+      return res.data as { data?: Segment[] };
     },
     staleTime: 30_000,
   });
 
-  const campaigns: Campaign[] = (campaignsRes as any)?.data ?? [];
-  const segments: Segment[] = (segmentsRes as any)?.data ?? [];
+  const campaigns: Campaign[] = campaignsRes?.data ?? [];
+  const segments: Segment[] = segmentsRes?.data ?? [];
 
   const runNow = useMutation({
     mutationFn: async (id: number) => {

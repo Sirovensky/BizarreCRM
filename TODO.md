@@ -712,6 +712,4 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:75,86,91; fix=define-Job-Item-Model-interfaces -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
-- [ ] SCAN-999. **Marketing campaigns uses `as any` for server data access — type safety lost.**
-  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:95-96; fix=type-query-return -->
 
