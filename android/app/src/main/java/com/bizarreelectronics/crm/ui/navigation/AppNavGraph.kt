@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketDetailScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerListScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerDetailScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryListScreen
+import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
@@ -124,6 +125,7 @@ sealed class Screen(val route: String) {
     data object InvoiceDetail : Screen("invoices/{id}") {
         fun createRoute(id: Long) = "invoices/$id"
     }
+    data object InvoiceCreate : Screen("invoice-create")
     data object Pos : Screen("pos")
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
@@ -392,6 +394,7 @@ fun AppNavGraph(
             !currentRoute.startsWith("customers/") &&
             currentRoute != Screen.CustomerCreate.route &&
             !currentRoute.startsWith("invoices/") &&
+            currentRoute != Screen.InvoiceCreate.route &&
             !currentRoute.startsWith("inventory/") &&
             !currentRoute.startsWith("inventory-edit/") &&
             currentRoute != Screen.InventoryCreate.route &&
@@ -959,6 +962,7 @@ fun AppNavGraph(
             composable(Screen.Invoices.route) {
                 InvoiceListScreen(
                     onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.InvoiceCreate.route) },
                 )
             }
             composable(Screen.InvoiceDetail.route) { backStackEntry ->
@@ -967,6 +971,16 @@ fun AppNavGraph(
                     invoiceId = invoiceId,
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                )
+            }
+            composable(Screen.InvoiceCreate.route) {
+                InvoiceCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.InvoiceDetail.createRoute(id)) {
+                            popUpTo(Screen.Invoices.route)
+                        }
+                    },
                 )
             }
             composable(Screen.InventoryDetail.route) { backStackEntry ->

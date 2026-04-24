@@ -135,12 +135,24 @@ class InvoiceListViewModel @Inject constructor(
 @Composable
 fun InvoiceListScreen(
     onInvoiceClick: (Long) -> Unit,
+    onCreateClick: (() -> Unit)? = null,
     viewModel: InvoiceListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val statuses = listOf("All", "Paid", "Unpaid", "Partial", "Void")
 
     Scaffold(
+        floatingActionButton = {
+            if (onCreateClick != null) {
+                FloatingActionButton(
+                    onClick = onCreateClick,
+                    modifier = Modifier.semantics { contentDescription = "Create new invoice" },
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.End,
         topBar = {
             // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
             // placement for every list screen so the branded moment sits at the

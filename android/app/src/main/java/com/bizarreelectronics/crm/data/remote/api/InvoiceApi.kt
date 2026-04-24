@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
@@ -17,6 +18,10 @@ interface InvoiceApi {
 
     @GET("invoices/{id}")
     suspend fun getInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>
+
+    /** Create a new invoice. Server requires at least one line item and a valid customer_id. */
+    @POST("invoices")
+    suspend fun createInvoice(@Body body: CreateInvoiceRequest): ApiResponse<InvoiceDetailData>
 
     @POST("invoices/{id}/payments")
     suspend fun recordPayment(@Path("id") id: Long, @Body request: RecordPaymentRequest): ApiResponse<InvoiceDetailData>

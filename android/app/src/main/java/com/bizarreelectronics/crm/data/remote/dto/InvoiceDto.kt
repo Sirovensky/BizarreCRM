@@ -132,3 +132,37 @@ data class RecordPaymentRequest(
     @SerializedName("transaction_id")
     val transactionId: String? = null
 )
+
+// ── Invoice creation DTOs ────────────────────────────────────────────────────
+
+/**
+ * Line-item shape for POST /invoices.
+ * Server accepts `name`, `description`, `quantity`, `unit_price`, and an optional
+ * `tax_class_id`. Tax is recomputed server-side when `tax_class_id` is present.
+ */
+data class CreateLineItemDto(
+    val name: String,
+    val description: String? = null,
+    val quantity: Int = 1,
+    @SerializedName("unit_price")
+    val unitPrice: Double,
+    @SerializedName("tax_class_id")
+    val taxClassId: Long? = null,
+)
+
+/**
+ * Request body for POST /invoices.
+ * Matches server destructure: customer_id, ticket_id, line_items[], notes, due_date.
+ * `discount` and `discount_reason` are intentionally omitted in this wave.
+ */
+data class CreateInvoiceRequest(
+    @SerializedName("customer_id")
+    val customerId: Long,
+    @SerializedName("ticket_id")
+    val ticketId: Long? = null,
+    @SerializedName("line_items")
+    val lineItems: List<CreateLineItemDto>,
+    val notes: String? = null,
+    @SerializedName("due_date")
+    val dueDate: String? = null,
+)
