@@ -1,4 +1,12 @@
 
+## Closed 2026-04-23 (wave-61 web/api — auth store sync on decode fail)
+
+- [x] SCAN-1084. **`scheduleTokenRefresh` removed a malformed token but left the auth store thinking the user was authenticated** — UI rendered protected routes with no `Authorization` header; every outbound request silently failed until the NEXT 401 finally triggered logout. Added `emitLogoutRequired('refresh-failed')` in the catch branch, gated on actually having cleared the token (so a concurrent refresh that replaced the token doesn't get logged out). Reuses the existing `LOGOUT_REQUIRED_EVENT` channel that the store already subscribes to.
+
+## Closed 2026-04-23 (wave-61 server/routes — tickets CSV export hardening)
+
+- [x] SCAN-1073. **`GET /tickets/export` was unguarded** — any authenticated user (including revoked-view roles) could dump all tickets as CSV, and because the handler materialises every row in the filtered set it was also a DoS vector for the async-db worker. Added `requirePermission('tickets.view')` and a per-user `consumeWindowRate('ticket_export', 'u:'+userId, 5, 60_000)`. Over-the-cap responses return `429` with a `Retry-After` header. Reused existing `tickets.view` perm (no new permission string needed — legit exporters already have view).
+
 ## Closed 2026-04-23 (wave-61 server/routes — PO status allowlist)
 
 - [x] SCAN-1076. **`GET /inventory/purchase-orders/list` accepted arbitrary `status` query strings** — no injection (the value was parameterised) but callers could probe for non-domain values and get silent-empty 200s. Added `PO_STATUS_ALLOWLIST = Set(['draft','ordered','partial','received','cancelled'])` and a 400 on out-of-range values. Makes the contract self-documenting and saves an indexed lookup on impossible inputs.

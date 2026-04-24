@@ -117,10 +117,17 @@ function scheduleTokenRefresh() {
     refreshScheduled = false;
     // Clear the malformed token so it doesn't block every subsequent request.
     // Only remove it if it hasn't been replaced by a concurrent refresh.
-    if (localStorage.getItem('accessToken') === token) {
+    const cleared = localStorage.getItem('accessToken') === token;
+    if (cleared) {
       localStorage.removeItem('accessToken');
     }
     console.warn('Could not decode access token for refresh scheduling:', err);
+    // SCAN-1084: a malformed token left the auth store thinking we were
+    // authenticated until the NEXT API call 401'd. During that window the
+    // UI rendered protected routes with no Authorization header and POSTs
+    // silently failed. Emit the same event the 401 interceptor uses so the
+    // store flips immediately.
+    if (cleared) emitLogoutRequired('refresh-failed');
   }
 }
 

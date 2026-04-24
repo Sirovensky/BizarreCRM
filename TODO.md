@@ -727,8 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
-- [ ] SCAN-1073. **[HIGH] `GET /tickets/export` missing permission guard + rate limit — any authenticated user can exfiltrate + DoS.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/tickets.routes.ts:1613; fix=requirePermission('tickets.export')+consumeWindowRate -->
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
 - [ ] SCAN-1078. **[MED] `crashGuardMiddleware` routeId uses `req.path` (with IDs) — crash-attribution never trips auto-disable.**
@@ -743,6 +741,3 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/db; files=packages/server/src/db/migrations/002_device_models_supplier_catalog.sql:38-56; fix=partial-unique-index-WHERE-external_id-IS-NOT-NULL -->
 - [ ] SCAN-1083. **[LOW] `uiStore.matchMedia` listener never detached — stacks under HMR + jsdom.**
   <!-- meta: scope=web/stores; files=packages/web/src/stores/uiStore.ts:88-96; fix=document-or-hoist-handler -->
-- [ ] SCAN-1084. **[MED] `scheduleTokenRefresh` on decode-fail removes token but doesn't flip auth store — stale "authenticated" UI until next 401.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:114-124; fix=forceLogout('refresh-failed')-in-catch -->
-

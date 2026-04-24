@@ -20,7 +20,7 @@ import { calculateActiveRepairTime } from '../utils/repair-time.js';
 import { roundCurrency } from '../utils/currency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
-import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
@@ -1610,8 +1610,23 @@ router.get('/feedback-summary', asyncHandler(async (req: Request, res: Response)
 // ===================================================================
 // GET /export - Export tickets as CSV (no pagination, max 10,000 rows)
 // ===================================================================
-router.get('/export', asyncHandler(async (req: Request, res: Response) => {
+// SCAN-1073: unguarded CSV export was an exfiltration + DoS vector.
+//  - Gate on tickets.view so revoked roles cannot dump all tickets.
+//  - Per-user throttle: 5 exports / 60s. A CSV export materialises every row
+//    in the filtered set and serialises them — a tight loop otherwise ties up
+//    the async-db worker. 60s / 5 is conservative; admins doing legit bulk
+//    work can still paginate via the regular list handler.
+router.get('/export', requirePermission('tickets.view'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
+
+  const userId = req.user?.id;
+  if (userId) {
+    const rate = consumeWindowRate(req.db, 'ticket_export', `u:${userId}`, 5, 60_000);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      throw new AppError(`Too many exports; retry in ${rate.retryAfterSeconds}s`, 429);
+    }
+  }
   const keyword = (req.query.keyword as string || '').trim();
   const statusParam = (req.query.status_id as string || '').trim();
   const statusId = /^\d+$/.test(statusParam) ? parseInt(statusParam) : null;
