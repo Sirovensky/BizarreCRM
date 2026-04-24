@@ -303,14 +303,20 @@ private fun PathTile(
 
 @Composable
 private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit) {
+    // M3 Expressive: MaterialShapes.Cookie12Sided for the hero tile —
+    // distinct brand silhouette that marks this row as the priority action.
+    // Usability guardrail #5 is met: morph shape only on a brand surface
+    // (not on content rows), not on list items.
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+    val heroShape = MaterialShapes.Cookie12Sided.toShape()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.5.dp, MaterialTheme.colorScheme.tertiary, RoundedCornerShape(12.dp))
+            .clip(heroShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.tertiary, heroShape)
             .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.12f))
             .clickable(onClickLabel = "Open ticket ${ticket.ticketId} cart") { onOpen() }
-            .padding(12.dp)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
             .defaultMinSize(minHeight = 60.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
