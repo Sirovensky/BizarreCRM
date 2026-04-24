@@ -19,6 +19,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -212,7 +218,9 @@ fun SmsListScreen(
                         IconButton(onClick = { viewModel.loadConversations() }) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Refresh",
+                                // a11y: specific phrase so TalkBack announces "Refresh messages"
+                                // rather than generic "Refresh" — matches §26 spec.
+                                contentDescription = "Refresh messages",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -227,7 +235,9 @@ fun SmsListScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "New message")
+                // a11y: imperative phrase per §26 spec so TalkBack announces
+                // "Compose new SMS" when the FAB receives focus.
+                Icon(Icons.Default.Edit, contentDescription = "Compose new SMS")
             }
         },
     ) { padding ->
@@ -241,15 +251,32 @@ fun SmsListScreen(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
                 placeholder = "Search conversations...",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    // a11y: explicit label so TalkBack announces "Search conversations"
+                    // when the field gains focus rather than reading the placeholder text.
+                    .semantics { contentDescription = "Search conversations" },
             )
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(rows = 6, modifier = Modifier.fillMaxSize())
+                    // a11y: mergeDescendants + contentDescription collapses shimmer boxes
+                    // into a single "Loading conversations" TalkBack focus node.
+                    Box(modifier = Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Loading conversations"
+                    }) {
+                        BrandSkeleton(rows = 6, modifier = Modifier.fillMaxSize())
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
+                    // user is not left wondering why the list is empty after a network failure.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Something went wrong",
                             onRetry = { viewModel.loadConversations() },
@@ -258,12 +285,16 @@ fun SmsListScreen(
                 }
                 state.conversations.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        EmptyState(
-                            icon = Icons.Default.Forum,
-                            title = "No conversations",
-                            subtitle = "Tap the + button to start a new conversation",
-                            includeWave = false,
-                        )
+                        // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                        // into one TalkBack node so the empty state reads as a single announcement.
+                        Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                            EmptyState(
+                                icon = Icons.Default.Forum,
+                                title = "No conversations",
+                                subtitle = "Tap the + button to start a new conversation",
+                                includeWave = false,
+                            )
+                        }
                     }
                 }
                 else -> {
@@ -275,6 +306,11 @@ fun SmsListScreen(
                             // CROSS16-ext: bottom inset so the last row can
                             // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(bottom = 80.dp),
+                            // a11y: liveRegion=Polite so TalkBack announces new incoming
+                            // messages without stealing focus from whatever the user is reading.
+                            modifier = Modifier.semantics {
+                                liveRegion = LiveRegionMode.Polite
+                            },
                         ) {
                             items(state.conversations, key = { it.convPhone }) { conversation ->
                                 ConversationRow(
@@ -303,6 +339,20 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
 
     val hasUnread = conversation.unreadCount > 0
 
+    // a11y: build the full announcement string once so semantics can reference it.
+    // Unread count is folded in here so the badge dot is NOT a separate speakable node.
+    // Format: "Conversation with NAME. Last message: PREVIEW. N unread. At TIMESTAMP. Tap to open."
+    val contactLabel = displayName ?: conversation.convPhone
+    val preview = conversation.lastMessage?.takeIf { it.isNotBlank() }
+    val timestamp = DateFormatter.formatRelative(conversation.lastMessageAt)
+    val a11yDesc = buildString {
+        append("Conversation with $contactLabel.")
+        if (preview != null) append(" Last message: $preview.")
+        if (hasUnread) append(" ${conversation.unreadCount} unread.")
+        append(" At $timestamp.")
+        append(" Tap to open.")
+    }
+
     // D5-3: explicit interactionSource + ripple() indication so the row
     // flashes on tap. A bare ListItem modifier = .clickable sometimes
     // suppressed the ripple because ListItem renders its own Surface
@@ -310,7 +360,16 @@ private fun ConversationRow(conversation: SmsConversationItem, onClick: () -> Un
     val interactionSource = remember { MutableInteractionSource() }
 
     // 2dp purple left accent bar for unread rows — applied via Box overlay
-    Box(modifier = Modifier.fillMaxWidth()) {
+    // a11y: mergeDescendants=true collapses all child nodes (avatar, name, preview,
+    // timestamp, badge dot) into a single TalkBack focus stop; Role.Button signals
+    // the interactive affordance.
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .semantics(mergeDescendants = true) {
+            contentDescription = a11yDesc
+            role = Role.Button
+        }
+    ) {
         if (hasUnread) {
             Box(
                 modifier = Modifier
