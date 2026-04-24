@@ -82,10 +82,17 @@ function adminOnly(req: Request, _res: Response, next: NextFunction): void {
  * a Content-Disposition header without quoting edge cases.
  */
 function safeFilenameToken(raw: string): string {
-  return raw
+  // SCAN-1141: previous version left leading/trailing/repeated `-` segments
+  // behind, so inputs like `--Foo  Bar!--` rendered `-foo-bar-` inside the
+  // `Content-Disposition` filename. Collapse consecutive dashes and trim
+  // end dashes before the 64-char cap + fallback so the slug is tidy.
+  const collapsed = raw
     .toLowerCase()
     .replace(/[^a-z0-9\-_]+/g, '-')
-    .slice(0, 64) || 'export';
+    .replace(/-+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    .slice(0, 64);
+  return collapsed || 'export';
 }
 
 // ─── POST /api/v1/tenant/export ───────────────────────────────────────────────

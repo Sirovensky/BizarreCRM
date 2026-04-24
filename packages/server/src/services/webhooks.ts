@@ -246,6 +246,16 @@ const RETRY_BACKOFF_MS = [0, 2_000, 8_000] as const;
  * window, no orphan-signature.
  */
 function getOrCreateWebhookSecret(db: any): string {
+  // SCAN-1134: previously generated 32 bytes of entropy on every call,
+  // even though the INSERT OR IGNORE was a no-op 99% of the time (secret
+  // is minted once then reused forever). Read first; only mint + insert
+  // when the row is genuinely missing. Race-safety preserved via the
+  // INSERT OR IGNORE + re-SELECT pattern on the slow path.
+  const existing = db
+    .prepare("SELECT value FROM store_config WHERE key = 'webhook_secret'")
+    .get() as { value?: string } | undefined;
+  if (existing?.value) return existing.value;
+
   const candidate = crypto.randomBytes(32).toString('hex');
   db.prepare(
     "INSERT OR IGNORE INTO store_config (key, value) VALUES ('webhook_secret', ?)"

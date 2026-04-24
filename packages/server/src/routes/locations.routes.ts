@@ -385,37 +385,41 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
     ? validateOptionalFloat(req.body.lng, 'lng', -180, 180)
     : undefined;
 
-  await adb.run(
-    `UPDATE locations SET
-       name         = COALESCE(?, name),
-       address_line = COALESCE(?, address_line),
-       city         = COALESCE(?, city),
-       state        = COALESCE(?, state),
-       postcode     = COALESCE(?, postcode),
-       country      = COALESCE(?, country),
-       phone        = COALESCE(?, phone),
-       email        = COALESCE(?, email),
-       lat          = COALESCE(?, lat),
-       lng          = COALESCE(?, lng),
-       timezone     = COALESCE(?, timezone),
-       notes        = COALESCE(?, notes),
-       updated_at   = ?
-     WHERE id = ?`,
-    name         !== undefined ? name         : null,
-    address_line !== undefined ? address_line : null,
-    city         !== undefined ? city         : null,
-    state        !== undefined ? state        : null,
-    postcode     !== undefined ? postcode     : null,
-    country      !== undefined ? country      : null,
-    phone        !== undefined ? phone        : null,
-    email        !== undefined ? email        : null,
-    lat          !== undefined ? lat          : null,
-    lng          !== undefined ? lng          : null,
-    timezone     !== undefined ? timezone     : null,
-    notes        !== undefined ? notes        : null,
-    now(),
-    id,
-  );
+  // SCAN-1131: `COALESCE(?, field)` collapses "absent" and "explicit null"
+  // into the same NOP, so clients could never unset an optional field
+  // (phone, email, lat, lng, notes, etc). Build the SET clause dynamically
+  // from only the fields the client actually supplied — an explicit `null`
+  // now correctly writes NULL, and omitted fields are left alone.
+  const setParts: string[] = [];
+  const params: unknown[] = [];
+  const addField = (column: string, value: unknown): void => {
+    if (value === undefined) return;
+    setParts.push(`${column} = ?`);
+    params.push(value);
+  };
+  addField('name', name);
+  addField('address_line', address_line);
+  addField('city', city);
+  addField('state', state);
+  addField('postcode', postcode);
+  addField('country', country);
+  addField('phone', phone);
+  addField('email', email);
+  addField('lat', lat);
+  addField('lng', lng);
+  addField('timezone', timezone);
+  addField('notes', notes);
+  if (setParts.length === 0) {
+    // Nothing to update — still bump updated_at so the caller's "last
+    // touched" stamp reflects the no-op write attempt.
+    setParts.push('updated_at = ?');
+    params.push(now());
+  } else {
+    setParts.push('updated_at = ?');
+    params.push(now());
+  }
+  params.push(id);
+  await adb.run(`UPDATE locations SET ${setParts.join(', ')} WHERE id = ?`, ...params);
 
   const updated = await adb.get<LocationRow>('SELECT * FROM locations WHERE id = ?', id);
 

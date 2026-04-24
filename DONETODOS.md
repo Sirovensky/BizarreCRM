@@ -1,4 +1,11 @@
 
+## Closed 2026-04-24 (wave-66 locations PATCH + dunning N+1 + slug + webhook entropy)
+
+- [x] SCAN-1131. **`locations.routes PATCH` built its UPDATE with `COALESCE(?, field)`** — "absent" and "explicit null" collapsed to the same NOP, so clients could never unset optional phone/email/lat/lng/notes fields once they were set. Rewrote as a dynamic SET-clause builder: each `addField(column, value)` call only emits a `column = ?` clause when the client actually supplied that field (including explicit null), so null-writes now actually persist.
+- [x] SCAN-1134. **`getOrCreateWebhookSecret` generated 32 bytes of `crypto.randomBytes` on every call** — the INSERT OR IGNORE was a no-op 99% of the time since the secret is minted once then reused forever. Read first; only mint + insert on the slow path when the row is genuinely missing. Race safety preserved via the INSERT-OR-IGNORE + re-SELECT pattern on the miss branch.
+- [x] SCAN-1140 [perf]. **`dunningScheduler` called `mostRecentInvoiceRunMs(db, invoice.id)` inside the per-invoice loop** — O(N) queries for N eligible invoices per step. Hoisted a bulk `SELECT invoice_id, MAX(executed_at) FROM dunning_runs WHERE invoice_id IN (...) GROUP BY invoice_id` into a `Map<number, number>` before the loop; per-iteration lookup is now O(1). Kept the legacy helper as a fallback on bulk-query failure.
+- [x] SCAN-1141. **`tenantExport.safeFilenameToken` left leading/trailing/repeated dashes in the Content-Disposition slug** — inputs like `--Foo Bar!--` rendered as `-foo-bar-`. Added `-+ → -` collapse + `^[-_]+|[-_]+$ → ''` trim before the 64-char cap + fallback, so slugs are tidy.
+
 ## Closed 2026-04-24 (wave-66 CSV injection + retry cap + error cause)
 
 - [x] SCAN-1130 [HIGH]. **`reports.routes.toCsv` had no guard against CSV formula injection** — any report field starting with `=`, `+`, `-`, `@`, tab, or CR was evaluated as a formula when operators opened the export in Excel / LibreOffice Calc / Google Sheets. An attacker-controlled field (customer name, note, device name) could ship `=HYPERLINK(...)` exfiltration or `=cmd|' /C calc'!A0`-style execution payloads. Added `sanitizeCsvCell` that prefixes any offender with a single quote — the widely-documented "render as literal" convention every spreadsheet honours — and wired it into the per-cell serializer before the existing quote-escape logic.

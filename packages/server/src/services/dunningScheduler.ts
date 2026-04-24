@@ -284,6 +284,34 @@ export async function runDunningOnce(
         )
         .all(seq.id, stepIndex, cutoffIso) as InvoiceRow[];
 
+      // SCAN-1140: hoist the "most recent run per invoice" lookup out of
+      // the loop. Previously every iteration did a SELECT MAX over
+      // `dunning_runs` — O(N) queries for N eligible invoices. One bulk
+      // GROUP BY here plus an O(1) Map lookup below.
+      let lastRunByInvoice: Map<number, number> = new Map();
+      if (eligible.length > 0) {
+        const placeholders = eligible.map(() => '?').join(',');
+        try {
+          const rows = db
+            .prepare(
+              `SELECT invoice_id, MAX(executed_at) AS latest
+                 FROM dunning_runs
+                WHERE invoice_id IN (${placeholders})
+                GROUP BY invoice_id`,
+            )
+            .all(...eligible.map((i) => i.id)) as Array<{ invoice_id: number; latest: string | null }>;
+          for (const r of rows) {
+            if (!r.latest) continue;
+            const ms = new Date(r.latest).getTime();
+            if (Number.isFinite(ms)) lastRunByInvoice.set(r.invoice_id, ms);
+          }
+        } catch {
+          // Fall back to per-row lookup if the bulk query fails (legacy
+          // tenant DB, driver quirk). The helper below still works.
+          lastRunByInvoice = new Map();
+        }
+      }
+
       for (const invoice of eligible) {
         touchedInvoices.add(invoice.id);
 
@@ -292,7 +320,9 @@ export async function runDunningOnce(
         // looked at it — a `skipped` row blocks the UNIQUE constraint for
         // this step forever, which is correct: next tick will look at the
         // NEXT step.
-        const lastInvoiceMs = mostRecentInvoiceRunMs(db, invoice.id);
+        const lastInvoiceMs = lastRunByInvoice.has(invoice.id)
+          ? lastRunByInvoice.get(invoice.id)!
+          : mostRecentInvoiceRunMs(db, invoice.id);
         if (
           lastInvoiceMs !== null &&
           Date.now() - lastInvoiceMs < PER_INVOICE_MIN_GAP_MS
