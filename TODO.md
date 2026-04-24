@@ -718,8 +718,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/api+web/pages; files=BulkSmsModal.tsx:63,CannedResponseHotkeys,CommunicationPage.tsx; fix=export-SmsTemplateListResponse-type -->
 - [ ] SCAN-1009. **Communications `sendMutation` closure captures `selectedPhone` — mid-flight conversation switch invalidates wrong thread cache.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:1085; fix=pass-phone-in-mutation-variables -->
-- [ ] SCAN-1010. **Expenses `exp: any` loop variable + CashRegisterPage `history: any[]` — lost type safety on rendered rows.**
-  <!-- meta: scope=web/pages/expenses; files=ExpensesPage.tsx:196,CashRegisterPage.tsx:22; fix=define-Expense-and-CashRegisterHistory-interfaces -->
+- [ ] SCAN-1010b. **ExpensesPage `exp: any` loop variable — lost type safety on rendered rows (CashRegister half shipped).**
+  <!-- meta: scope=web/pages/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:196; fix=define-Expense-interface -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 

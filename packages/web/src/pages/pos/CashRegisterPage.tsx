@@ -6,6 +6,19 @@ import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
 
+// Each recent cash-drawer event the register endpoint returns. `first_name`/
+// `last_name` come from the joined user row; keeping them optional so the UI
+// still renders if the server dropped the join.
+interface CashRegisterHistoryEntry {
+  id: number;
+  type: 'cash_in' | 'cash_out';
+  amount: number;
+  reason?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  [key: string]: unknown;
+}
+
 export function CashRegisterPage() {
   const queryClient = useQueryClient();
   const [cashAction, setCashAction] = useState<'in' | 'out' | null>(null);
@@ -16,10 +29,13 @@ export function CashRegisterPage() {
     queryKey: ['cash-register'],
     queryFn: () => posApi.register(),
     refetchInterval: 30000,
+    staleTime: 25_000, // just under the 30s interval
   });
 
   const register = data?.data?.data || {};
-  const history: any[] = register.recent || [];
+  const history: CashRegisterHistoryEntry[] = Array.isArray(register.recent)
+    ? (register.recent as CashRegisterHistoryEntry[])
+    : [];
 
   const cashInMut = useMutation({
     mutationFn: () => posApi.cashIn({ amount: parseFloat(amount), reason: reason || undefined }),
@@ -28,7 +44,10 @@ export function CashRegisterPage() {
       toast.success('Cash in recorded');
       setCashAction(null); setAmount(''); setReason('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { message?: string } } } | undefined;
+      toast.error(err?.response?.data?.message || 'Failed');
+    },
   });
 
   const cashOutMut = useMutation({
@@ -38,7 +57,10 @@ export function CashRegisterPage() {
       toast.success('Cash out recorded');
       setCashAction(null); setAmount(''); setReason('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { message?: string } } } | undefined;
+      toast.error(err?.response?.data?.message || 'Failed');
+    },
   });
 
   const handleSubmit = () => {
@@ -124,7 +146,7 @@ export function CashRegisterPage() {
           </div>
         ) : (
           <div className="divide-y divide-surface-100 dark:divide-surface-800">
-            {history.map((entry: any) => (
+            {history.map((entry) => (
               <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                 <div className={cn('flex h-8 w-8 items-center justify-center rounded-full',
                   entry.type === 'cash_in' ? 'bg-green-100 text-green-600 dark:bg-green-900/30' : 'bg-red-100 text-red-600 dark:bg-red-900/30')}>
