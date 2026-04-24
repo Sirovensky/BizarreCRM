@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 /**
  * Track the dismissal state of a UI element (banner, alert, announcement, etc.)
@@ -36,6 +36,19 @@ export function useDismissible(key: string): readonly [boolean, () => void] {
       return false;
     }
   });
+
+  // SCAN-1154: useState initializer runs once on mount, so keys that embed
+  // a version suffix (e.g. `trial-banner-info:${trialEndsAt}`) — which the
+  // JSDoc above actively encourages — never re-read storage when the suffix
+  // changes. A new trial period would keep the old dismissed:true in state
+  // until a reload. Re-sync from storage whenever `storageKey` changes.
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(storageKey) === 'true');
+    } catch {
+      setDismissed(false);
+    }
+  }, [storageKey]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);

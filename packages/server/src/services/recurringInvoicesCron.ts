@@ -169,6 +169,23 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         );
       }
 
+      // SCAN-1159: verify the template's `created_by_user_id` is still active
+      // so a deactivated employee's recurring templates don't keep minting
+      // invoices credited to a ghost user. When the creator is gone we null
+      // the `created_by` on the new invoice — it's a foreign key to users
+      // with ON DELETE SET NULL-equivalent semantics expected by the UI, so
+      // this is safer than failing the run hard.
+      const creator = db.prepare(
+        'SELECT 1 FROM users WHERE id = ? AND is_active = 1',
+      ).get(tpl.created_by_user_id) as { 1: number } | undefined;
+      const resolvedCreatedBy = creator ? tpl.created_by_user_id : null;
+      if (!creator) {
+        logger.warn('recurring invoice: template creator missing/deactivated — crediting as system', {
+          template_id: tpl.id,
+          stale_user_id: tpl.created_by_user_id,
+        });
+      }
+
       // Create the invoice
       const seq = allocateCounter(db, 'invoice_order_id');
       const orderId = formatInvoiceOrderId(seq);
@@ -219,7 +236,7 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         subtotal,          // total (no tax/discount for auto-generated)
         subtotal,          // amount_due
         tpl.notes_template ?? null,
-        tpl.created_by_user_id,
+        resolvedCreatedBy,
       );
 
       invoiceId = invResult.lastInsertRowid as number;

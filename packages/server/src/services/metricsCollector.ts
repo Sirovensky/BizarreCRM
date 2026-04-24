@@ -302,8 +302,14 @@ export function getMetricsHistory(range: string): MetricsDataPoint[] {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-let sampleTimer: ReturnType<typeof setInterval> | null = null;
-let rollupTimer: ReturnType<typeof setInterval> | null = null;
+// SCAN-1160: swapped setInterval for a self-rescheduling setTimeout chain
+// so a slow sample (e.g. during WAL checkpoint) delays the next tick
+// instead of letting Node queue overlapping runs that back-to-back spike
+// CPU. stopMetricsCollector below uses clearTimeout which is the correct
+// pair for setTimeout.
+let sampleTimer: ReturnType<typeof setTimeout> | null = null;
+let rollupTimer: ReturnType<typeof setTimeout> | null = null;
+let collectorStopped = false;
 
 export function startMetricsCollector(): void {
   // Initialize DB eagerly
@@ -323,19 +329,36 @@ export function startMetricsCollector(): void {
     catch (err) { logger.error('metrics_rollup_error', { err: err instanceof Error ? err.message : String(err) }); }
   };
 
-  // Sample immediately so the first data point exists right away
+  // SCAN-1160: self-rescheduling chain — always wait the interval AFTER the
+  // previous run returned. A slow sample can't pile overlapping runs.
+  const scheduleSample = (): void => {
+    if (collectorStopped) return;
+    sampleTimer = setTimeout(() => {
+      safeSample();
+      scheduleSample();
+    }, 60_000);
+    if (typeof sampleTimer.unref === 'function') sampleTimer.unref();
+  };
+  const scheduleRollup = (): void => {
+    if (collectorStopped) return;
+    rollupTimer = setTimeout(() => {
+      safeRollup();
+      scheduleRollup();
+    }, 3600_000);
+    if (typeof rollupTimer.unref === 'function') rollupTimer.unref();
+  };
+
+  // Run once immediately, then chain.
   safeSample();
+  scheduleSample();
 
-  // Then sample every 60 seconds
-  sampleTimer = trackInterval(safeSample, 60_000, { unref: true });
-
-  // Hourly rollup + cleanup (run at startup too for any missed rollups)
   safeRollup();
-  rollupTimer = trackInterval(safeRollup, 3600_000, { unref: true });
+  scheduleRollup();
 }
 
 export function stopMetricsCollector(): void {
-  if (sampleTimer) { clearInterval(sampleTimer); sampleTimer = null; }
-  if (rollupTimer) { clearInterval(rollupTimer); rollupTimer = null; }
+  collectorStopped = true;
+  if (sampleTimer) { clearTimeout(sampleTimer); sampleTimer = null; }
+  if (rollupTimer) { clearTimeout(rollupTimer); rollupTimer = null; }
   if (metricsDb) { metricsDb.close(); metricsDb = null; }
 }

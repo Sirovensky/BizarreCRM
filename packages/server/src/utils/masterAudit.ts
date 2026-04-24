@@ -81,44 +81,56 @@ export function logTenantAuthEvent(
 
 function checkBruteForce(ip: string, tenantId: number | null, tenantSlug: string | null): void {
   if (!masterDb) return;
+  // Bind a non-null local so the nested transaction lambdas below don't
+  // have to re-assert the narrow.
+  const db = masterDb;
   try {
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     // Check IP-wide failures (across all tenants)
-    const ipFailures = (masterDb.prepare(
+    const ipFailures = (db.prepare(
       `SELECT COUNT(*) as c FROM tenant_auth_events WHERE ip_address = ? AND event LIKE '%failed%' AND created_at > ?`
     ).get(ip, fifteenMinAgo) as any).c;
 
+    // SCAN-1157: the dedup SELECT + INSERT used to be unprotected, so two
+    // concurrent failed-login flurries both saw "no existing alert" and
+    // each inserted, producing spammy duplicate critical alerts. Wrap
+    // each check+insert in a single-connection transaction — better-sqlite3
+    // serialises writers so the second caller reads the first caller's
+    // just-inserted row and skips.
     if (ipFailures >= 15) {
-      // Dedup: don't create if similar alert exists within 1 hour
-      const existing = masterDb.prepare(
-        `SELECT id FROM security_alerts WHERE type = 'brute_force_ip' AND ip_address = ? AND created_at > ?`
-      ).get(ip, oneHourAgo);
-      if (!existing) {
-        masterDb.prepare(
-          `INSERT INTO security_alerts (type, severity, ip_address, details) VALUES ('brute_force_ip', 'critical', ?, ?)`
-        ).run(ip, JSON.stringify({ failure_count: ipFailures, window_minutes: 15 }));
-        logger.warn('brute_force_ip alert', { ip, failures: ipFailures, window_minutes: 15 });
-      }
+      db.transaction(() => {
+        const existing = db.prepare(
+          `SELECT id FROM security_alerts WHERE type = 'brute_force_ip' AND ip_address = ? AND created_at > ?`
+        ).get(ip, oneHourAgo);
+        if (!existing) {
+          db.prepare(
+            `INSERT INTO security_alerts (type, severity, ip_address, details) VALUES ('brute_force_ip', 'critical', ?, ?)`
+          ).run(ip, JSON.stringify({ failure_count: ipFailures, window_minutes: 15 }));
+          logger.warn('brute_force_ip alert', { ip, failures: ipFailures, window_minutes: 15 });
+        }
+      })();
     }
 
     // Check tenant-specific failures
     if (tenantId) {
-      const tenantFailures = (masterDb.prepare(
+      const tenantFailures = (db.prepare(
         `SELECT COUNT(*) as c FROM tenant_auth_events WHERE tenant_id = ? AND event LIKE '%failed%' AND created_at > ?`
       ).get(tenantId, fifteenMinAgo) as any).c;
 
       if (tenantFailures >= 10) {
-        const existing = masterDb.prepare(
-          `SELECT id FROM security_alerts WHERE type = 'brute_force_tenant' AND tenant_id = ? AND created_at > ?`
-        ).get(tenantId, oneHourAgo);
-        if (!existing) {
-          masterDb.prepare(
-            `INSERT INTO security_alerts (type, severity, tenant_id, tenant_slug, details) VALUES ('brute_force_tenant', 'warning', ?, ?, ?)`
-          ).run(tenantId, tenantSlug, JSON.stringify({ failure_count: tenantFailures, window_minutes: 15 }));
-          logger.warn('brute_force_tenant alert', { tenant_slug: tenantSlug, failures: tenantFailures, window_minutes: 15 });
-        }
+        db.transaction(() => {
+          const existing = db.prepare(
+            `SELECT id FROM security_alerts WHERE type = 'brute_force_tenant' AND tenant_id = ? AND created_at > ?`
+          ).get(tenantId, oneHourAgo);
+          if (!existing) {
+            db.prepare(
+              `INSERT INTO security_alerts (type, severity, tenant_id, tenant_slug, details) VALUES ('brute_force_tenant', 'warning', ?, ?, ?)`
+            ).run(tenantId, tenantSlug, JSON.stringify({ failure_count: tenantFailures, window_minutes: 15 }));
+            logger.warn('brute_force_tenant alert', { tenant_slug: tenantSlug, failures: tenantFailures, window_minutes: 15 });
+          }
+        })();
       }
     }
   } catch (err: unknown) {

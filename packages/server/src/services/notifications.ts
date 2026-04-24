@@ -421,20 +421,24 @@ export async function sendTicketStatusNotification(db: Database.Database, ctx: N
 
   if (!status?.notify_customer) return; // Status doesn't trigger customer notification
 
-  // Find matching template via the status's notification_template field
-  const templates = db.prepare(
-    'SELECT * FROM notification_templates WHERE send_sms_auto = 1'
-  ).all() as AnyRow[];
-
+  // SCAN-1158: previously loaded ALL send_sms_auto=1 templates into memory
+  // on every status change, then .find()'d by event_key. For tenants with
+  // many templates this was O(n) alloc per flip. Two indexed selects (by
+  // specific event_key if present, fallback to status_changed) touch at
+  // most two rows.
   let template: AnyRow | undefined;
   if (status.notification_template) {
-    template = templates.find(t => t.event_key === status.notification_template);
+    template = db.prepare(
+      'SELECT * FROM notification_templates WHERE send_sms_auto = 1 AND event_key = ? LIMIT 1'
+    ).get(status.notification_template) as AnyRow | undefined;
   }
 
   // Fallback: use a generic status_changed template if no specific one is mapped.
   // The seeded event key (migration 012) is 'status_changed', not 'status_change'.
   if (!template) {
-    template = templates.find(t => t.event_key === 'status_changed');
+    template = db.prepare(
+      "SELECT * FROM notification_templates WHERE send_sms_auto = 1 AND event_key = 'status_changed' LIMIT 1"
+    ).get() as AnyRow | undefined;
   }
 
   if (!template || !template.sms_body) return;
