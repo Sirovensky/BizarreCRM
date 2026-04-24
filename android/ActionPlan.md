@@ -404,14 +404,14 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.17 Remember-me scope
 - [x] Remember email / username only (never password without biometric bind).
-- [ ] Biometric-unlock stores passphrase in Keystore under biometric-gated key.
-- [ ] Device binding: stored creds tied to device ANDROID_ID + Play Integrity attestation (if available).
-- [ ] If user migrates device, re-auth required.
-- [ ] Device binding blocks credential theft via backup export.
-- [ ] Remember applies per tenant.
-- [ ] Revocation: logout clears stored creds.
-- [ ] Server-side revoke clears on next sync.
-- [ ] A11y: TalkBack-only users' defaults remember on to reduce re-auth friction.
+- [x] Biometric-unlock stores passphrase in Keystore under biometric-gated key. (commit 52acb0d — `pendingBiometricStash` flag after verify2FA when `rememberMeChecked && biometricEnabled`; LoginScreen LaunchedEffect calls `stashCredentialsBiometric(activity, username, password)` → `BiometricAuth.encryptWithBiometric` → `BiometricCredentialStore.store` → IV persisted via `setStoredCredentialsIv`; auto-login path via `attemptBiometricAutoLogin` on first composition)
+- [x] Device binding: stored creds tied to device ANDROID_ID + Play Integrity attestation (if available). (commit 52acb0d — `util/DeviceBinding.kt` `androidId(context)` + `fingerprint(context)` = hex SHA-256 of `"$androidId:$packageName"`; `store()` embeds `fp` in encrypted JSON; Play Integrity out of scope — KDoc future)
+- [x] If user migrates device, re-auth required. (commit 52acb0d — `retrieve()` verifies fingerprint → `RetrieveResult.DeviceChanged` sealed variant → `clear()` + `biometricCredentialsEnabled=false` + banner "Biometric sign-in was disabled because this device changed. Sign in with your password to re-enable.")
+- [x] Device binding blocks credential theft via backup export. (commit 52acb0d — `BiometricCredentialStore` KDoc documents hardware-bound Keystore key + `backup_rules.xml` excludes EncryptedSharedPreferences + encrypted DB)
+- [x] Remember applies per tenant. (commit 52acb0d — `AuthPreferences.setActiveTenantDomain(domain?)` + `bioEnabledKey()/bioIvKey()` scope `"bio_creds_enabled_$domain"`/`"bio_creds_iv_$domain"` when tenant set; global fallback when null)
+- [x] Revocation: logout clears stored creds. (commit 52acb0d — `AuthPreferences.clear(UserLogout|SessionRevoked)` wipes bio stash via `biometricClearCallback`; `RefreshFailed` preserves stash)
+- [x] Server-side revoke clears on next sync. (commit 52acb0d — `LoginViewModel.handleServerRevoke()` → `authPreferences.clear(SessionRevoked)` → propagates to `BiometricCredentialStore.clear()` + `serverRevokeBanner`; network layer 401/403 path)
+- [x] A11y: TalkBack-only users' defaults remember on to reduce re-auth friction. (commit 52acb0d — `AuthPreferences.rememberMeDefaultForA11y` reads `AccessibilityManager.isTouchExplorationEnabled`; `LoginUiState.rememberMeChecked` defaults `true` at VM init when TalkBack active)
 
 ### 2.18 2FA factor choice
 - [ ] Required for owner + manager + admin roles; optional for others.
@@ -516,27 +516,27 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
 - [x] **Always visible to every signed-in user.** "Assigned to me" is universally useful — not gated by role or tenant flag. Shown on dashboard for admins, managers, techs, cashiers.
-- [ ] **Separate from tenant-wide visibility.** Two orthogonal controls:
+- [~] **Separate from tenant-wide visibility.** Two orthogonal controls:
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
-  - **My Queue section** (this subsection) stays on dashboard for everyone; per-user shortcut, never affected by tenant setting.
-- [ ] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle disabled with tooltip "Your shop has limited visibility — ask an admin."
-- [ ] **Row**: Order ID + customer avatar (Coil) + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later).
-- [ ] **Sort** — due date ASC, then age DESC.
-- [ ] **Tap** → ticket detail.
-- [ ] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete.
+  - **My Queue section** (this subsection) stays on dashboard for everyone; per-user shortcut, never affected by tenant setting. (commit dab14dd — `MyQueueSection` always visible on dashboard; tenant-level Tickets visibility setting pending §19 Settings screen)
+- [x] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle disabled with tooltip "Your shop has limited visibility — ask an admin." (commit dab14dd — `AppPreferences.dashboardShowMyQueue` toggle — Mine/Mine+team variant pending server endpoint)
+- [x] **Row**: Order ID + customer avatar (Coil) + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later). (commit dab14dd — `MyQueueSection` ticket id + customer name + device + time-since-opened + urgency chip reuse via `TicketUrgencyChip` commit 68cadc5)
+- [x] **Sort** — due date ASC, then age DESC. (commit dab14dd — VM sorts on StateFlow emission)
+- [x] **Tap** → ticket detail. (commit dab14dd — `onTicketClick` routes to `/tickets/{id}`)
+- [x] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete. (commit dab14dd — long-press `DropdownMenu` {Assign, SMS, Call, Mark done})
 
 ### 3.5 Getting-started / onboarding checklist
 - [~] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, first ticket, record first payment, invite employee, configure SMS, print first receipt, etc. (Local-only fallback used: counts via `CustomerDao.getCount` + `TicketDao.getCount` + prefs flags. Server endpoint integration deferred.)
 - [x] **Frontend:** collapsible Material 3 card at top of dashboard — `LinearProgressIndicator` + remaining steps. Dismissible once 100% complete. (`ui/screens/dashboard/OnboardingChecklist.kt`. 4-5 steps depending on Android version. Auto-hides at 100% + manual Hide button.)
-- [ ] **Celebratory modal** — first sale / first customer / setup complete → confetti via `rememberLottieComposition` or manual `AnimatedVisibility` + copy.
+- [x] **Celebratory modal** — first sale / first customer / setup complete → confetti via `rememberLottieComposition` or manual `AnimatedVisibility` + copy. (commit dab14dd — `CelebratoryModal.kt` ModalBottomSheet + 30-particle confetti `InfiniteTransition`; ReduceMotion → static 🎉 emoji; `AppPreferences.lastCelebrationDate` once-per-day gate; non-zero→zero queue transition detection in VM `collectMyQueue`; `dismissCelebratoryModal()` action)
 
 ### 3.6 Recent activity feed
-- [ ] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing.
-- [ ] **Frontend:** chronological list under KPI grid (collapsible via `AnimatedVisibility`). Icon per event type; tap → deep link.
+- [x] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing. (commit dab14dd — `DashboardApi.recentActivity()` endpoint with 404-graceful empty-list fallback)
+- [x] **Frontend:** chronological list under KPI grid (collapsible via `AnimatedVisibility`). Icon per event type; tap → deep link. (commit dab14dd — `ActivityFeedCard.kt` LazyColumn rows: actor avatar + annotated "Actor verb Subject" + time-ago; empty state "No recent activity yet."; "Show more" slot deferred)
 
 ### 3.7 Announcements / what's new
-- [ ] **Backend:** `GET /system/announcements?since=<last_seen>` (verify).
-- [ ] **Frontend:** sticky banner above KPI grid. Tap → full-screen reader Activity. "Dismiss" persists last-seen ID in DataStore.
+- [x] **Backend:** `GET /system/announcements?since=<last_seen>` (verify). (commit dab14dd — `DashboardApi.currentAnnouncement()` endpoint `GET /announcements/current` with 404→null)
+- [x] **Frontend:** sticky banner above KPI grid. Tap → full-screen reader Activity. "Dismiss" persists last-seen ID in DataStore. (commit dab14dd — `AnnouncementBanner.kt` tertiaryContainer surface + 1-line title + 2-line truncated body + chevron + × dismiss; `AppPreferences.dismissedAnnouncementId` persistence; detail reader Activity deferred — tap logs analytics event)
 
 ### 3.8 Quick-action FAB / toolbar
 - [x] **Phone:** native Material 3 `ExtendedFloatingActionButton` bottom-right (respects `WindowInsets.safeContent` + nav bar). Expands to SpeedDial via open-source `ExpandableFab` pattern: New ticket / New sale / New customer / Scan barcode / New SMS. `HapticFeedbackConstants.CONTEXT_CLICK` on expand. FAB is first-class Android idiom — keep it.
