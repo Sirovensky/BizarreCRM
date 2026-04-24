@@ -70,7 +70,9 @@ function isLinkExpired(expiresAt: string | null | undefined): boolean {
 
 function dollarsToCents(amount: unknown): number {
   const dollars = validatePositiveAmount(amount);
-  return Math.round(dollars * 100);
+  // SCAN-893: toFixed(2) eliminates binary-FP drift (e.g. 1.005*100 = 100.499...)
+  // before scaling, so Math.round always gets a value within 0.5 of the true cent.
+  return Math.round(Number(dollars.toFixed(2)) * 100);
 }
 
 // ---------------------------------------------------------------------------

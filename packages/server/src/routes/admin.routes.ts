@@ -27,8 +27,16 @@ const startTime = Date.now();
 type AnyRow = Record<string, any>;
 
 // Token-based admin auth (short-lived, in-memory)
-const adminTokens = new Map<string, { user: string; expires: number }>();
-const TOKEN_TTL = 30 * 60 * 1000; // 30 minutes
+// SCAN-892: store SHA-256 hash of token, not raw token
+// SCAN-896: track created_at for absolute max lifetime
+interface AdminTokenEntry {
+  user: string;
+  expires: number;    // sliding window
+  created_at: number; // absolute max anchor
+}
+const adminTokens = new Map<string, AdminTokenEntry>();
+const TOKEN_TTL = 30 * 60 * 1000;           // 30 min sliding
+const TOKEN_ABSOLUTE_MAX_MS = 8 * 60 * 60 * 1000; // 8h absolute max
 const ADMIN_TOKENS_CAP = 1000;
 
 import crypto from 'crypto';
@@ -49,14 +57,29 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// SCAN-575: sweep expired entries every 5 min so the Map doesn't accumulate stale tokens
-// even when traffic is low (cap-overflow eviction alone only fires under sustained load).
-trackInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of adminTokens) {
-    if (v.expires < now) adminTokens.delete(k);
-  }
-}, 5 * 60 * 1000);
+// SCAN-892: hash helpers — server stores only the hash, client holds raw token
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function verifyToken(token: string, storedHash: string): boolean {
+  const tokenHash = hashToken(token);
+  if (tokenHash.length !== storedHash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(tokenHash, 'utf8'), Buffer.from(storedHash, 'utf8'));
+}
+
+// SCAN-889 + SCAN-575: exported reaper — called from index.ts after server starts.
+// Sweeps expired AND absolute-max-exceeded entries every 5 min.
+export function startAdminTokenReaper(): void {
+  trackInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of adminTokens) {
+      if (v.expires < now || now - v.created_at >= TOKEN_ABSOLUTE_MAX_MS) {
+        adminTokens.delete(k);
+      }
+    }
+  }, 5 * 60 * 1000);
+}
 
 const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
@@ -80,7 +103,9 @@ router.post('/login', async (req: Request, res: Response) => {
   }
   audit(db, 'admin_login_success', null, ip, { username });
   const token = generateToken();
-  addWithCap(adminTokens, token, { user: username, expires: Date.now() + TOKEN_TTL }, ADMIN_TOKENS_CAP);
+  const now = Date.now();
+  // SCAN-892: store hash only; client receives raw token
+  addWithCap(adminTokens, hashToken(token), { user: username, expires: now + TOKEN_TTL, created_at: now }, ADMIN_TOKENS_CAP);
   res.json({ success: true, data: { token } });
 });
 
@@ -88,33 +113,36 @@ router.post('/login', async (req: Request, res: Response) => {
 router.post('/logout', (req: Request, res: Response) => {
   const db = req.db;
   const token = (req.headers['x-admin-token'] as string) || '';
-  const session = adminTokens.get(token);
+  const tokenHash = hashToken(token);
+  const session = adminTokens.get(tokenHash);
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (session) {
     audit(db, 'admin_logout', null, ip, { username: session.user });
   }
-  adminTokens.delete(token);
+  adminTokens.delete(tokenHash);
   res.json({ success: true });
 });
 
 // Auth middleware for all other admin routes
+// SCAN-892: hash lookup + timing-safe verify; SCAN-896: absolute max check
 function adminAuth(req: Request, res: Response, next: NextFunction) {
   const token = (req.headers['x-admin-token'] as string) || '';
-  const session = adminTokens.get(token);
-  if (!session || session.expires < Date.now()) {
-    adminTokens.delete(token);
+  const tokenHash = hashToken(token);
+  const session = adminTokens.get(tokenHash);
+  const now = Date.now();
+  if (!session || !verifyToken(token, tokenHash) || session.expires < now) {
+    adminTokens.delete(tokenHash);
     return res.status(401).json({ success: false, message: 'Not authenticated' });
   }
-  // Extend session on activity
-  session.expires = Date.now() + TOKEN_TTL;
+  // SCAN-896: enforce absolute max lifetime
+  if (now - session.created_at >= TOKEN_ABSOLUTE_MAX_MS) {
+    adminTokens.delete(tokenHash);
+    return res.status(401).json({ success: false, message: 'Session expired — please log in again' });
+  }
+  // Slide expiry immutably (SCAN-896 sliding TTL preserved)
+  adminTokens.set(tokenHash, { ...session, expires: now + TOKEN_TTL });
   next();
 }
-
-// Clean expired tokens periodically
-trackInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of adminTokens) { if (v.expires < now) adminTokens.delete(k); }
-}, 60_000);
 
 // PROD59: Tenant self-service termination uses the tenant JWT (NOT the
 // token-based admin-panel auth above). Mounted BEFORE both kill-switches so

@@ -1,5 +1,8 @@
 import crypto from 'crypto';
 import { config } from '../config.js';
+import { createLogger } from './logger.js';
+
+const logger = createLogger('config-encryption');
 
 /**
  * AES-256-GCM encryption/decryption for sensitive config values stored in store_config.
@@ -66,7 +69,7 @@ export function decryptConfigValue(ciphertext: string): string {
   const version = parseInt(parts[1].slice(1), 10);
   const key = ENCRYPTION_KEYS[version];
   if (!key) {
-    console.error(`[ConfigEncryption] Unknown key version: ${version}`);
+    logger.error('config decrypt failed: unknown key version', { version });
     return ciphertext;
   }
 
@@ -77,7 +80,7 @@ export function decryptConfigValue(ciphertext: string): string {
     // @audit-fixed: Validate IV length (12 bytes for GCM) and tag length (16
     // bytes) before handing them to crypto to avoid tag-stripping attacks.
     if (iv.length !== 12 || tag.length !== 16) {
-      console.error('[ConfigEncryption] Invalid IV or auth tag length');
+      logger.error('config decrypt failed: invalid IV or auth tag length', { version });
       return '';
     }
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -90,7 +93,7 @@ export function decryptConfigValue(ciphertext: string): string {
     // @audit-fixed: Never return the raw ciphertext string on decrypt failure
     // — a caller could leak `enc:v1:...` into an outbound SMS/email template
     // thinking it's plaintext. Return empty string and log the category.
-    console.error('[ConfigEncryption] Decryption failed:', (err as Error).message);
+    logger.error('config decrypt failed', { err: err instanceof Error ? err.message : String(err) });
     return '';
   }
 }

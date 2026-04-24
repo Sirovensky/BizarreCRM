@@ -165,7 +165,7 @@ import { seedDeviceModels } from './db/device-models-seed-runner.js';
 import { initSmsProvider } from './services/smsProvider.js';
 import { startSmsProviderSweep } from './providers/sms/index.js';
 import { startStepUpTotpReaper } from './middleware/stepUpTotp.js';
-import adminRoutes from './routes/admin.routes.js';
+import adminRoutes, { startAdminTokenReaper } from './routes/admin.routes.js';
 import billingRoutes, { webhookHandler as stripeWebhookHandler } from './routes/billing.routes.js';
 import { scheduleBackup } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
@@ -1963,6 +1963,9 @@ server.listen(config.port, config.host, async () => {
 
   // SCAN-668: TOTP replay-prevention reaper (extracted from module scope in middleware/stepUpTotp.ts).
   startStepUpTotpReaper();
+
+  // SCAN-889: admin panel token reaper (extracted from module scope in routes/admin.routes.ts).
+  startAdminTokenReaper();
 
   // SCAN-881: 2FA challenge Map TTL reaper — purges expired entries every 5 min.
   startChallengeReaper();

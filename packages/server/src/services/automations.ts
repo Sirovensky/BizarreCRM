@@ -105,6 +105,21 @@ function interpolate(
   });
 }
 
+/** Returns a copy of vars with phone and email fields redacted — use only in log paths. */
+function maskedVarsForLogging(vars: Record<string, unknown>): Record<string, unknown> {
+  const masked = { ...vars };
+  if (typeof masked.customer_phone === 'string' && masked.customer_phone) {
+    masked.customer_phone = '***' + masked.customer_phone.slice(-4);
+  }
+  if (typeof masked.customer_email === 'string' && masked.customer_email) {
+    const atIdx = masked.customer_email.indexOf('@');
+    const local = atIdx > 0 ? masked.customer_email.slice(0, atIdx) : masked.customer_email;
+    const domain = atIdx > 0 ? masked.customer_email.slice(atIdx) : '';
+    masked.customer_email = local.slice(0, 2) + '***' + domain;
+  }
+  return masked;
+}
+
 /** Build a flat variable map from the trigger context for template interpolation. */
 function buildVars(context: Record<string, unknown>): Record<string, unknown> {
   const vars: Record<string, unknown> = {};
@@ -451,6 +466,29 @@ function executeCreateNotification(
 }
 
 // ---------------------------------------------------------------------------
+// Safe JSON config parsing (SCAN-890)
+// ---------------------------------------------------------------------------
+
+function safeParseConfig(raw: string | null, field: string, ruleId: number): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      logger.warn('automation config not an object', { rule_id: ruleId, field });
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    logger.warn('automation config JSON.parse failed', {
+      rule_id: ruleId,
+      field,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -496,39 +534,6 @@ export function runAutomations(
         depth: ctx.depth,
       });
 
-      // AU-LOOP (rerun §24): count how many automation runs this ticket has
-      // accumulated in the last hour BEFORE we fire any rules. If the ticket is
-      // already over the cap, record a loop_rejected entry per rule and bail.
-      // Using the existing automation_run_log table (migration 081) as the source
-      // of truth — no extra migration needed.
-      const preTarget = extractTarget(context);
-      let ticketHourlyOver = false;
-      if (preTarget.type === 'ticket' && preTarget.id !== null) {
-        try {
-          const row = db
-            .prepare(
-              "SELECT COUNT(*) AS c FROM automation_run_log " +
-                "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
-                "AND created_at > datetime('now','-1 hour')",
-            )
-            .get(preTarget.id) as { c?: number } | undefined;
-          if ((row?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
-            ticketHourlyOver = true;
-            logger.warn('Automation per-ticket hourly cap exceeded — aborting chain', {
-              trigger,
-              ticketId: preTarget.id,
-              runsLastHour: row?.c,
-              cap: MAX_RUNS_PER_TICKET_PER_HOUR,
-            });
-          }
-        } catch (err) {
-          // Missing table (old tenant DB without 081) — fall back to depth guard only.
-          logger.warn('automation_run_log count failed, skipping hourly cap', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-
       for (const rule of rules) {
         const target = extractTarget(context);
         const baseLogEntry = {
@@ -541,19 +546,9 @@ export function runAutomations(
           depth: ctx.depth,
         };
 
-        // AU-LOOP: Enforce the per-ticket per-hour cap uniformly across rules.
-        if (ticketHourlyOver) {
-          logAutomationRun(db, {
-            ...baseLogEntry,
-            status: 'loop_rejected',
-            error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded`,
-          });
-          continue;
-        }
-
         try {
-          const triggerConfig: TriggerConfig = rule.trigger_config ? JSON.parse(rule.trigger_config) : {};
-          const actionConfig: ActionConfig = rule.action_config ? JSON.parse(rule.action_config) : {};
+          const triggerConfig = safeParseConfig(rule.trigger_config, 'trigger_config', rule.id) as TriggerConfig;
+          const actionConfig = safeParseConfig(rule.action_config, 'action_config', rule.id) as ActionConfig;
 
           if (!matchesTrigger(triggerConfig, context)) {
             logAutomationRun(db, { ...baseLogEntry, status: 'skipped', error_message: 'trigger filter not matched' });
@@ -646,11 +641,44 @@ export function runAutomations(
               result = { success: false, error: `unknown action_type: ${rule.action_type}` };
           }
 
-          logAutomationRun(db, {
-            ...baseLogEntry,
-            status: result.success ? 'success' : 'failure',
-            error_message: result.error ?? null,
-          });
+          // AU-LOOP (SCAN-894): count-check + log insert in a single synchronous
+          // transaction so no concurrent evaluation can bypass the hourly cap.
+          // The action has already run above; the tx decides whether to record it
+          // as success/failure or override with loop_rejected.
+          const finalLogEntry = { ...baseLogEntry, status: result.success ? ('success' as RunStatus) : ('failure' as RunStatus), error_message: result.error ?? null };
+          try {
+            db.transaction(() => {
+              if (target.type === 'ticket' && target.id !== null) {
+                const capRow = db
+                  .prepare(
+                    "SELECT COUNT(*) AS c FROM automation_run_log " +
+                      "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
+                      "AND created_at > datetime('now','-1 hour')",
+                  )
+                  .get(target.id) as { c?: number } | undefined;
+                if ((capRow?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
+                  logger.warn('Automation per-ticket hourly cap exceeded — rejecting run', {
+                    trigger,
+                    ticketId: target.id,
+                    runsLastHour: capRow?.c,
+                    cap: MAX_RUNS_PER_TICKET_PER_HOUR,
+                  });
+                  logAutomationRun(db, {
+                    ...baseLogEntry,
+                    status: 'loop_rejected',
+                    error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded`,
+                  });
+                  return;
+                }
+              }
+              logAutomationRun(db, finalLogEntry);
+            })();
+          } catch (txErr) {
+            // automation_run_log table absent (old tenant DB) — log and continue.
+            logger.warn('automation_run_log tx failed, skipping hourly cap check', {
+              error: txErr instanceof Error ? txErr.message : String(txErr),
+            });
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error('Rule failed', { ruleId: rule.id, ruleName: rule.name, error: message });
