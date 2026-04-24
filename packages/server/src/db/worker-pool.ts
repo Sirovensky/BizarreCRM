@@ -105,15 +105,28 @@ function runWithTimeout(task: unknown): Promise<unknown> {
     })
     .catch((err: unknown) => {
       clearTimeout(timer);
-      // Piscina throws "queue is full" when maxQueue is exceeded.
-      const msg = err instanceof Error ? err.message.toLowerCase() : '';
-      const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
-      if (msg.includes('queue is full') || isTimeout) {
+      // SCAN-1094: previously any Error whose message included "queue is full"
+      // OR whose name was TimeoutError/AbortError (including *our own* timeout
+      // and client-triggered aborts) was folded into WorkerPoolQueueFullError,
+      // which the HTTP layer translates to 503 + Retry-After:2. That hid
+      // genuine worker crashes and made observability mush. Tighten the match:
+      //   - true queue-full: exact Piscina message OR err.code === 'QUEUE_FULL'
+      //   - our own per-task timeout: distinct — re-throw as-is so the
+      //     error handler can surface the timeout distinctly
+      //   - caller-cancelled aborts: re-throw as-is so the client sees the
+      //     abort they asked for
+      const msg = err instanceof Error ? err.message : '';
+      const code = (err as { code?: string } | null)?.code;
+      const isQueueFull =
+        code === 'QUEUE_FULL' ||
+        msg === 'Task queue is at limit' ||
+        msg === 'queue is full';
+      if (isQueueFull) {
         throw new WorkerPoolQueueFullError();
       }
       // Log unexpected Piscina-internal errors separately without swallowing them.
-      if (msg.includes('piscina')) {
-        logger.warn('[worker-pool] unexpected Piscina error', { message: msg });
+      if (msg.toLowerCase().includes('piscina')) {
+        logger.warn('[worker-pool] unexpected Piscina error', { message: msg, name: err instanceof Error ? err.name : 'unknown' });
       }
       throw err;
     });

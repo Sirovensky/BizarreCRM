@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-62 worker-pool observability + WS invalidation)
+
+- [x] SCAN-1094. **`worker-pool.runWithTimeout` folded our own task-timeout AbortErrors AND any error whose message contained "queue is full" into `WorkerPoolQueueFullError`** — the HTTP layer translates that to 503 + Retry-After:2, which hid genuine worker crashes and made observability mush for ops. Tightened the classification: only the exact Piscina message (`'Task queue is at limit'` / `'queue is full'`) OR `err.code === 'QUEUE_FULL'` becomes `WorkerPoolQueueFullError`. Timeouts + aborts now re-throw as-is, and the debug `piscina`-substring log keeps the name so ops can diagnose worker-internal failures.
+- [x] SCAN-1086. **`useWebSocket` entity-invalidation used `if (data?.id)` truthy-check** — valid entities with `id=0` (test tenants, synthetic rows) or `id=''` were silently skipped, so per-entity `queryClient.invalidateQueries(['ticket', id])` never ran for those IDs. Replaced with an explicit `!= null && !== ''` check so every defined id, including zero, triggers the invalidation.
+
 ## Closed 2026-04-24 (wave-62 web/hooks + server/middleware + server/routes)
 
 - [x] SCAN-1088. **`useUndoableAction` unmount-fired the destructive action even when the user was closing the tab** — user types "delete ticket", sees 5-second undo toast, changes their mind, closes the tab → deletion still fires through the unmount cleanup. Gated the fire on `document.visibilityState !== 'hidden'` so tab-close skips the commit. SPA-internal unmounts (navigate between routes) still fire so pending user intent is preserved.

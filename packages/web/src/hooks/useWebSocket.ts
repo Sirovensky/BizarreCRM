@@ -278,7 +278,11 @@ export function useWebSocket() {
           }
 
           // Also invalidate specific entity if data.id is present
-          if (data?.id) {
+          // SCAN-1086: `data?.id` truthy-check dropped id=0 and empty-string
+          // ids, so legit entity invalidations were silently skipped. Accept
+          // any defined, non-null id and let the query layer decide what to
+          // match.
+          if (data != null && data.id !== undefined && data.id !== null && data.id !== '') {
             if (type.startsWith('ticket:')) {
               queryClientRef.current.invalidateQueries({ queryKey: ['ticket', String(data.id)] });
               queryClientRef.current.invalidateQueries({ queryKey: ['ticket', Number(data.id)] });
