@@ -61,6 +61,10 @@ import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
+import com.bizarreelectronics.crm.ui.screens.hardware.CameraCaptureScreen
+import com.bizarreelectronics.crm.ui.screens.hardware.DocumentScanScreen
+import com.bizarreelectronics.crm.ui.screens.settings.hardware.HardwareSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.hardware.PrinterDiscoveryScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ForgotPinScreen
@@ -327,6 +331,14 @@ sealed class Screen(val route: String) {
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
 
+    // §17.1-§17.5 — Hardware screens (CameraX, barcode, document scan, printers, terminal)
+    data object CameraCapture : Screen("hardware/camera/{ticketId}/{deviceId}") {
+        fun createRoute(ticketId: Long, deviceId: Long) = "hardware/camera/$ticketId/$deviceId"
+    }
+    data object DocumentScan : Screen("hardware/document-scan")
+    data object HardwareSettings : Screen("settings/hardware")
+    data object PrinterDiscovery : Screen("settings/hardware/printers")
+
     // §36 L585–L588 — Morning-open checklist (staff role, shown once per day).
     data object MorningChecklist : Screen("morning/checklist")
 
@@ -537,7 +549,11 @@ fun AppNavGraph(
             // §2.10 [plan:L343] — setup wizard hides the bottom bar (full-screen flow)
             currentRoute != Screen.Setup.route &&
             // §3.13 L565–L567 — TV queue board is full-screen; no bottom bar.
-            currentRoute != Screen.TvQueueBoard.route
+            currentRoute != Screen.TvQueueBoard.route &&
+            // §17.1-§17.5 — hardware screens are full-frame; no bottom bar.
+            !currentRoute.startsWith("hardware/") &&
+            currentRoute != Screen.HardwareSettings.route &&
+            currentRoute != Screen.PrinterDiscovery.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -1358,6 +1374,8 @@ fun AppNavGraph(
                     onDisplay = { navController.navigate(Screen.DisplaySettings.route) },
                     // §3.19 L613–L616 — Appearance / dashboard density picker.
                     onAppearance = { navController.navigate(Screen.Appearance.route) },
+                    // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
+                    onHardware = { navController.navigate(Screen.HardwareSettings.route) },
                 )
             }
             // §3.13 L565–L567 — Display settings sub-screen.
@@ -1728,6 +1746,52 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.inventory.InventoryEditScreen(
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §17.1-§17.5 Hardware routes ───
+
+            // §17.1 — CameraX capture screen. Route carries ticketId + deviceId so photos
+            // are uploaded to the correct ticket and device_id multipart field.
+            composable(
+                route = Screen.CameraCapture.route,
+                arguments = listOf(
+                    navArgument("ticketId") { type = NavType.LongType },
+                    navArgument("deviceId") { type = NavType.LongType },
+                ),
+            ) { backStackEntry ->
+                val ticketId = backStackEntry.arguments?.getLong("ticketId") ?: 0L
+                val deviceId = backStackEntry.arguments?.getLong("deviceId") ?: 0L
+                CameraCaptureScreen(
+                    ticketId = ticketId,
+                    deviceId = deviceId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // §17.3 — Document scanning screen.
+            composable(Screen.DocumentScan.route) {
+                DocumentScanScreen(
+                    onBack = { navController.popBackStack() },
+                    onDocumentScanned = { _ ->
+                        // URI handled inside the screen (WorkManager upload).
+                        navController.popBackStack()
+                    },
+                )
+            }
+
+            // §17.4/17.5 — Hardware settings hub: printers + BlockChyp terminal.
+            composable(Screen.HardwareSettings.route) {
+                HardwareSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToPrinters = { navController.navigate(Screen.PrinterDiscovery.route) },
+                )
+            }
+
+            // §17.4 — Printer discovery & pairing sub-screen.
+            composable(Screen.PrinterDiscovery.route) {
+                PrinterDiscoveryScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
 

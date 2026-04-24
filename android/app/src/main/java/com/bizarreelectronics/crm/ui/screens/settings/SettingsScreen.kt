@@ -261,6 +261,8 @@ fun SettingsScreen(
     // §3.19 L613–L616 — opens the Appearance / dashboard density picker.
     // Nullable so previews and callers that don't wire it can omit it.
     onAppearance: (() -> Unit)? = null,
+    // §17.4/17.5 — opens the Hardware sub-screen (printers + BlockChyp terminal).
+    onHardware: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -335,6 +337,15 @@ fun SettingsScreen(
                     icon = Icons.Default.Tv,
                     title = "Display",
                     onClick = onDisplay,
+                )
+            }
+
+            // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
+            if (onHardware != null) {
+                SettingsRow(
+                    icon = Icons.Default.Print,
+                    title = "Hardware",
+                    onClick = onHardware,
                 )
             }
 

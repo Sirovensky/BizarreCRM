@@ -193,13 +193,17 @@ dependencies {
     // perf regressions surface in CrashReporter breadcrumbs.
     implementation(libs.androidx.metrics.performance)
 
-    // CameraX (Photo capture)
+    // CameraX (Photo capture + live barcode/document scanning — §17.1/17.2/17.3)
+    implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // ML Kit (Barcode scanning)
+    // ML Kit (Barcode scanning — §17.2 L1870-L1874)
     implementation(libs.mlkit.barcode.scanning)
+
+    // GMS Document Scanner (§17.3 L1877-L1878 — waivers, warranty cards, receipts, IDs)
+    implementation(libs.gms.document.scanner)
 
     // ML Kit (Text recognition — on-device receipt OCR, no Firebase)
     implementation(libs.mlkit.text.recognition)

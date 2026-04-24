@@ -19,9 +19,10 @@ retrofit = "2.11.0"
 okhttp = "4.12.0"
 work-runtime-ktx = "2.10.0"
 metrics-performance = "1.0.0-beta02"
-camerax = "1.4.1"
+camerax = "1.3.4"
 mlkit-barcode = "17.3.0"
 mlkit-text-recognition = "16.0.0"
+gms-document-scanner = "16.0.0-beta1"
 firebase-bom = "33.8.0"
 coil3 = "3.1.0"
 vico = "2.0.1"
@@ -97,9 +98,12 @@ androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx"
 androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "metrics-performance" }
 
 # CameraX
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+# GMS Document Scanner (§17.3 L1877-L1878)
+gms-document-scanner = { group = "com.google.android.gms", name = "play-services-mlkit-document-scanner", version.ref = "gms-document-scanner" }
 
 # ML Kit
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkit-barcode" }
