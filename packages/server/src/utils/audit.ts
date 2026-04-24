@@ -1,6 +1,7 @@
 // @audit-fixed: Cap details JSON at 16KB and strip CR/LF from the event string
 // so callers cannot blow up audit_logs storage with 1MB payloads or inject
 // fake log lines via CRLF in the event name.
+import type Database from 'better-sqlite3';
 import { createLogger } from './logger.js';
 const logger = createLogger('audit');
 const MAX_AUDIT_DETAILS_BYTES = 16 * 1024;
@@ -31,7 +32,7 @@ function serializeDetails(details: Record<string, unknown> | undefined): string 
   return json;
 }
 
-export function audit(db: any, event: string, userId: number | null, ip: string, details?: Record<string, unknown>) {
+export function audit(db: Database.Database, event: string, userId: number | null, ip: string, details?: Record<string, unknown>) {
   try {
     const safeEvent = sanitizeEvent(event);
     // @audit-fixed: Truncate overly long IP values so a forged header can't

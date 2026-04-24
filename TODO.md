@@ -716,8 +716,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/communications; files=CommunicationPage.tsx; fix=type-per-response-interfaces -->
 
 ### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
-- [ ] SCAN-1060. **`audit()`, `getConfigValue()`, `setConfigValue()`, `masterAudit.ts` use `db: any` on security-critical call sites.**
-  <!-- meta: scope=server/utils; files=audit.ts:34,configEncryption.ts:104,114,masterAudit.ts:3; fix=Database.Database -->
 - [ ] SCAN-1061. **`masterAudit.ts` uses raw console.* instead of structured logger — critical-alert branch logs `JSON.stringify(details)` with potential PII.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:59,83,101,106,137,139,142; fix=createLogger -->
 - [ ] SCAN-1062. **`recordWindowFailure` deprecated but still imported by 15+ routes — `@deprecated` JSDoc ignored at compile time.**

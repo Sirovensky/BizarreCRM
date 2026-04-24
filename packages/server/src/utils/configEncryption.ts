@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type Database from 'better-sqlite3';
 import { config } from '../config.js';
 import { createLogger } from './logger.js';
 
@@ -101,7 +102,7 @@ export function decryptConfigValue(ciphertext: string): string {
 /**
  * Helper: read a config value from store_config, auto-decrypting if the key is sensitive.
  */
-export function getConfigValue(db: any, key: string): string | null {
+export function getConfigValue(db: Database.Database, key: string): string | null {
   const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value: string } | undefined;
   if (!row) return null;
   if (ENCRYPTED_CONFIG_KEYS.has(key)) return decryptConfigValue(row.value);
@@ -111,7 +112,7 @@ export function getConfigValue(db: any, key: string): string | null {
 /**
  * Helper: write a config value to store_config, auto-encrypting if the key is sensitive.
  */
-export function setConfigValue(db: any, key: string, value: string): void {
+export function setConfigValue(db: Database.Database, key: string, value: string): void {
   const storedValue = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(value) : value;
   db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run(key, storedValue);
 }
