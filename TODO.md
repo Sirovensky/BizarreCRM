@@ -704,8 +704,8 @@ Verified working. Not TODOs.
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
-- [ ] SCAN-984. **Estimate convert mutation navigates away while concurrent send/approve mutations may still be pending — race condition.**
-  <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
+- [ ] SCAN-984b. **EstimateListPage action buttons still need mutual disable — detail page done (SCAN-984).**
+  <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:392-394; fix=anyMutationPending-gate -->
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
 - [ ] SCAN-992b. **Catalog `jobs` + `items` still `any[]` — narrow interface deferred until server DTOs stabilise. `modelResults` is now typed.**

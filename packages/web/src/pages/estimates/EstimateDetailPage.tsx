@@ -111,6 +111,10 @@ export function EstimateDetailPage() {
 
   const color = STATUS_COLORS[estimate.status] || '#6b7280';
   const lineItems: any[] = estimate.line_items || [];
+  // Mutually exclusive action buttons — without this gate a rapid click on
+  // Convert mid-Send navigates away while the first mutation is still in
+  // flight, leaving the server in an inconsistent state.
+  const anyMutationPending = sendMut.isPending || approveMut.isPending || convertMut.isPending;
 
   return (
     <div>
@@ -147,8 +151,8 @@ export function EstimateDetailPage() {
                 const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
                 if (await confirm(msg)) sendMut.mutate();
               }}
-              disabled={sendMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30"
+              disabled={anyMutationPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:opacity-50"
             >
               {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {estimate.status === 'sent' ? 'Resend' : 'Send'}
@@ -157,8 +161,8 @@ export function EstimateDetailPage() {
           {(estimate.status === 'sent' || estimate.status === 'draft') && (
             <button
               onClick={async () => { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }}
-              disabled={approveMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              disabled={anyMutationPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:opacity-50"
             >
               {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
               Approve
@@ -167,8 +171,8 @@ export function EstimateDetailPage() {
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
               onClick={async () => { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }}
-              disabled={convertMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+              disabled={anyMutationPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:opacity-50"
             >
               {convertMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
               Convert to Ticket
