@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_BASE = '/api/v1';
+const AUTH_REFRESH_PATH = '/auth/refresh';
+const AUTH_REFRESH_URL = `${API_BASE}${AUTH_REFRESH_PATH}`;
 
 /**
  * Logout-required event — emitted when the refresh pipeline has definitively
@@ -61,7 +63,7 @@ async function performRefresh(): Promise<string> {
       // this refresh was initiated by our own JS (not a cross-origin CSRF request).
       const csrfToken = getCsrfTokenCookie();
       const res = await axios.post(
-        `${API_BASE}/auth/refresh`,
+        AUTH_REFRESH_URL,
         {},
         { withCredentials: true, headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {} },
       );
@@ -125,7 +127,7 @@ client.interceptors.request.use((config) => {
   }
   // SEC-H89: Automatically attach the CSRF double-submit token for every
   // POST to /auth/refresh, regardless of which callsite triggered it.
-  if (config.url?.includes('/auth/refresh') && config.method?.toUpperCase() === 'POST') {
+  if (config.url?.includes(AUTH_REFRESH_PATH) && config.method?.toUpperCase() === 'POST') {
     const csrfToken = getCsrfTokenCookie();
     if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
