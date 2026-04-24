@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 
@@ -84,7 +85,7 @@ router.patch(
   '/:id/read',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const userId = req.user!.id;
 
     const existing = await adb.get(

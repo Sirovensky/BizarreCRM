@@ -15,6 +15,7 @@ import {
   validateEmail,
   validatePhoneDigits,
   validateRequiredString,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
@@ -1064,7 +1065,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const customer = await adb.get<AnyRow>(
         `SELECT c.*,
@@ -1167,7 +1168,7 @@ router.put(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const input: UpdateCustomerInput = req.body;
 
     const existing = await adb.get<any>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
@@ -1332,7 +1333,7 @@ router.delete(
     }
 
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const existing = await adb.get<AnyRow>(
       'SELECT id, first_name, last_name FROM customers WHERE id = ? AND is_deleted = 0',
@@ -1389,7 +1390,7 @@ router.get(
   '/:id/analytics',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const stats = await adb.get<any>(`
       SELECT
         COUNT(DISTINCT t.id) AS total_tickets,
@@ -1421,7 +1422,7 @@ router.get(
   '/:id/tickets',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
 
@@ -1472,7 +1473,7 @@ router.get(
   '/:id/invoices',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
 
@@ -1511,7 +1512,7 @@ router.get(
   '/:id/communications',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
     const typeFilter = (req.query.type as string || '').toLowerCase(); // 'sms', 'call', 'email', or '' for all
@@ -1645,7 +1646,7 @@ router.get(
   '/:id/assets',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
@@ -1667,7 +1668,7 @@ router.post(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const { name, device_type, serial, imei, color, notes } = req.body;
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
@@ -1694,7 +1695,7 @@ router.put(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const assetId = Number(req.params.assetId);
+    const assetId = validateId(req.params.assetId, 'assetId');
     const { name, device_type, serial, imei, color, notes } = req.body;
 
     const existing = await adb.get<any>('SELECT * FROM customer_assets WHERE id = ?', assetId);
@@ -1727,7 +1728,7 @@ router.delete(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const assetId = Number(req.params.assetId);
+    const assetId = validateId(req.params.assetId, 'assetId');
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customer_assets WHERE id = ?', assetId);
     if (!existing) throw new AppError('Asset not found', 404);
@@ -1748,7 +1749,7 @@ router.get(
   requireStepUpTotp('GET /customers/:id/export'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const customer = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!customer) throw new AppError('Customer not found', 404);
@@ -1845,7 +1846,7 @@ router.delete(
     // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { password } = req.body;
 
     if (!password) throw new AppError('Password confirmation is required for GDPR erasure', 400);
@@ -2204,7 +2205,7 @@ router.get(
   '/:id/notes',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     if (!Number.isFinite(customerId) || customerId <= 0) {
       throw new AppError('Invalid customer id', 400);
     }
@@ -2237,7 +2238,7 @@ router.post(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     if (!Number.isFinite(customerId) || customerId <= 0) {
       throw new AppError('Invalid customer id', 400);
     }

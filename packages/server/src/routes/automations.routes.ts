@@ -6,6 +6,7 @@ import type { AsyncDb } from '../db/async-db.js';
 import { config } from '../config.js';
 import { isFeatureAllowed } from '@bizarre-crm/shared';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 
@@ -109,7 +110,7 @@ router.put(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -153,7 +154,7 @@ router.delete(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT id FROM automations WHERE id = ?', id);
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -172,7 +173,7 @@ router.patch(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -206,7 +207,7 @@ router.post(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const automation = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!automation) throw new AppError('Automation not found', 404);
 

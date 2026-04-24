@@ -7,6 +7,7 @@ import { createLogger } from '../utils/logger.js';
 import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -224,7 +225,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const employee = await adb.get<any>(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
@@ -281,7 +282,7 @@ router.post(
   '/:id/clock-in',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { pin, location_id: rawLocationId } = req.body;
 
     // Only allow clocking in yourself unless admin
@@ -374,7 +375,7 @@ router.post(
   '/:id/clock-out',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { pin, notes } = req.body;
 
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
@@ -445,7 +446,7 @@ router.get(
   '/:id/hours',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 
@@ -498,7 +499,7 @@ router.get(
   '/:id/commissions',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 
@@ -551,7 +552,7 @@ router.get(
   '/:id/performance',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 

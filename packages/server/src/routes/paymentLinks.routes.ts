@@ -172,14 +172,15 @@ authedRouter.delete('/:id', asyncHandler(async (req: Request, res: Response) => 
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
-  const existing = await req.asyncDb.get<Row>('SELECT status FROM payment_links WHERE id = ?', id);
-  if (!existing) throw new AppError('Payment link not found', 404);
-  if (existing.status === 'paid') throw new AppError('Cannot cancel a paid link', 409);
-
-  await req.asyncDb.run(
-    `UPDATE payment_links SET status = 'cancelled' WHERE id = ?`,
+  const result = await req.asyncDb.run(
+    `UPDATE payment_links SET status = 'cancelled' WHERE id = ? AND status NOT IN ('paid','cancelled')`,
     id,
   );
+  if (result.changes === 0) {
+    const existing = await req.asyncDb.get<Row>('SELECT status FROM payment_links WHERE id = ?', id);
+    if (!existing) throw new AppError('Payment link not found', 404);
+    throw new AppError(`cannot cancel link in ${existing.status} status`, 409);
+  }
 
   audit(req.db, 'payment_link.cancel', req.user?.id ?? null, req.ip ?? '', { id });
 

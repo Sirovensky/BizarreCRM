@@ -12,6 +12,7 @@ import {
   validateArrayBounds,
   validateJsonPayload,
   validateIntegerQuantity,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
@@ -481,7 +482,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const estimate = await adb.get<any>(`
       SELECT e.*,
@@ -520,7 +521,7 @@ router.put(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
@@ -645,7 +646,7 @@ router.get(
   '/:id/versions',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<{ id: number }>('SELECT id FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
@@ -665,8 +666,8 @@ router.get(
   '/:id/versions/:versionId',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
-    const versionId = Number(req.params.versionId);
+    const id = validateId(req.params.id, 'id');
+    const versionId = validateId(req.params.versionId, 'versionId');
 
     const version = await adb.get<any>(
       'SELECT * FROM estimate_versions WHERE id = ? AND estimate_id = ?',
@@ -689,7 +690,7 @@ router.post(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     // SEC-H51: atomic status guard. Two concurrent convert clicks can both
     // read status != 'converted' / != 'cancelled' and each create a ticket
     // — eating two tier slots and producing two tickets from one estimate.
@@ -838,7 +839,7 @@ router.delete(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
@@ -867,7 +868,7 @@ router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const estimate = await adb.get<any>(`
       SELECT e.*, c.first_name, c.last_name, c.phone, c.mobile, c.email
       FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ? AND e.is_deleted = 0
@@ -970,7 +971,7 @@ router.post(
     }
     recordWindowFailure(db, 'estimate_approval', ip, APPROVAL_RATE_WINDOW);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { token } = req.body;
     const estimate = await adb.get<any>(
       'SELECT id, approval_token, approval_token_hash, approval_token_expires_at, approval_token_used_at, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',

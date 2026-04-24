@@ -68,8 +68,9 @@ function managementAudit(action: string, ip: string, details?: Record<string, un
     db.prepare(
       'INSERT INTO master_audit_log (action, details, ip_address) VALUES (?, ?, ?)'
     ).run(action, details ? JSON.stringify(details) : null, ip);
-  } catch (err) {
-    console.error('[ManagementAudit] Failed to write audit log:', err);
+  } catch (err: unknown) {
+    const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : 'UNKNOWN';
+    logger.warn('[ManagementAudit] Failed to write audit log', { code });
   }
 }
 

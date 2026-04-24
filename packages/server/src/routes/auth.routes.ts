@@ -17,6 +17,7 @@ import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTC
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const logger = createLogger('auth');
 
@@ -450,7 +451,7 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
 // Also reports whether the server is running in multi-tenant mode so the web
 // frontend can decide whether the bare hostname should show the SaaS landing
 // page or go straight to the single-tenant first-run wizard.
-router.get('/setup-status', async (req: Request, res: Response) => {
+router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
   res.json({
@@ -460,7 +461,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       isMultiTenant: config.multiTenant === true,
     },
   });
-});
+}));
 
 // POST /setup — First-time shop setup: create the initial admin account.
 //
@@ -481,7 +482,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
 //   - Username ≥ 3 chars, password 8-128 chars.
 //   - A valid email (the single-tenant path mandates it; the multi-tenant
 //     path falls back to `${username}@shop.local` for legacy signups).
-router.post('/setup', async (req: Request, res: Response) => {
+router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
   // Setup rate limiting (3 attempts per hour per IP) — SQLite-backed
@@ -620,9 +621,9 @@ router.post('/setup', async (req: Request, res: Response) => {
   audit(db, 'setup_completed', null, ip, { username: trimmedUsername, mode: isSingleTenant ? 'single' : 'multi' });
 
   res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
-});
+}));
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   // SEC (A5): Anchor min response time at the start of the handler.
   const startNs = process.hrtime.bigint();
   const adb = req.asyncDb;
@@ -803,10 +804,10 @@ router.post('/login', async (req: Request, res: Response) => {
       requiresPasswordSetup: false,
     },
   });
-});
+}));
 
 // POST /login/set-password — First-time password setup
-router.post('/login/set-password', async (req: Request, res: Response) => {
+router.post('/login/set-password', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const { challengeToken, password } = req.body;
@@ -845,10 +846,10 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
   audit(db, 'password_set', userId, req.ip || 'unknown', { first_login: true });
   logTenantAuthEvent('password_set', req, userId, null, { first_login: true });
   res.json({ success: true, data: { challengeToken: newChallenge, message: 'Password set. Now set up 2FA.' } });
-});
+}));
 
 // POST /login/2fa-setup — Get QR code for first-time setup
-router.post('/login/2fa-setup', async (req: Request, res: Response) => {
+router.post('/login/2fa-setup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const { challengeToken } = req.body;
   const pendingSecret = challenges.get(challengeToken)?.pendingTotpSecret;
@@ -879,10 +880,10 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
     if (recoveryEntry) recoveryEntry.pendingTotpSecret = secret;
     res.status(500).json({ success: false, message: 'Failed to generate QR code. Please try again.', data: { challengeToken: recoveryChallenge } });
   }
-});
+}));
 
 // POST /login/2fa-verify — Verify TOTP code and complete login
-router.post('/login/2fa-verify', async (req: Request, res: Response) => {
+router.post('/login/2fa-verify', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   // IP-based rate limit (reuse login rate limiter)
@@ -1015,10 +1016,10 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
 
   const tokens = await issueTokens(adb, user, req, res, { trustDevice: !!trustDevice });
   res.json({ success: true, data: { ...tokens, backupCodes } });
-});
+}));
 
 // POST /login/2fa-backup — Use a backup code instead of TOTP
-router.post('/login/2fa-backup', async (req: Request, res: Response) => {
+router.post('/login/2fa-backup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   // SEC-H5: IP-keyed rate limit BEFORE the user-keyed TOTP limiter. Without this,
@@ -1069,11 +1070,11 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
     try {
       const parsed = JSON.parse(currentBackupCodes);
       if (!Array.isArray(parsed)) {
-        return res.json({ valid: false });
+        res.json({ valid: false }); return;
       }
       hashedCodes = parsed as string[];
     } catch {
-      return res.json({ valid: false });
+      res.json({ valid: false }); return;
     }
     const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
@@ -1127,10 +1128,10 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
 
   const tokens = await issueTokens(adb, user, req, res);
   res.json({ success: true, data: { ...tokens, remainingBackupCodes: remainingAfterConsume } });
-});
+}));
 
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
-router.post('/refresh', async (req: Request, res: Response) => {
+router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -1333,7 +1334,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     });
     res.status(401).json({ success: false, message: 'Invalid refresh token' });
   }
-});
+}));
 
 // POST /logout
 router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
@@ -1554,7 +1555,7 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
 const FORGOT_PASSWORD_MIN_DURATION_MS = 500;
 // $2b$12$ dummy hash; 12 rounds to match real cost (same constant as login).
 const FORGOT_PASSWORD_DUMMY_HASH = '$2b$12$LJ3m4ys3Lhmd0tSwUaGgmeoS89CINnom5eSvnfmEFYKaSwVKbHlrS';
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', asyncHandler(async (req: Request, res: Response) => {
   const startNs = process.hrtime.bigint();
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
@@ -1668,7 +1669,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
   await enforceMinDuration(startNs, FORGOT_PASSWORD_MIN_DURATION_MS);
   res.json({ success: true, data: { message: genericMsg } });
-});
+}));
 
 // ENR-UX19: POST /reset-password — Consume a reset token and set a new password
 // SEC (P2FA1): The column is `password_hash`, NOT `password`. The previous code
@@ -1676,7 +1677,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 // SEC (P2FA2): On successful reset we also delete all existing sessions so a
 //              previously-compromised token can't keep a live session alive.
 // SEC (P2FA8): Reject the new password if it matches any of the last 5 hashes.
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', asyncHandler(async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || typeof token !== 'string' || token.length !== 64) {
     res.status(400).json({ success: false, message: 'Invalid reset token' });
@@ -1764,7 +1765,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   logTenantAuthEvent('password_reset_completed', req, user.id, null, { sessions_revoked: true });
 
   res.json({ success: true, data: { message: 'Password has been reset. You can now log in.' } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // P2FA3: POST /account/2fa/disable
@@ -1930,7 +1931,7 @@ router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, r
 //   - the new password is written to password_hash and recorded in history,
 //   - all existing sessions are revoked,
 //   - 2FA is disabled (user must re-enroll on next login).
-router.post('/recover-with-backup-code', async (req: Request, res: Response) => {
+router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -2067,7 +2068,7 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
       message: 'Password reset and 2FA disabled. Please log in and re-enroll 2FA.',
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /auth/change-password — Authenticated user changes their own password

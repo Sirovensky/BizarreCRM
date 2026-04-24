@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<any>('SELECT * FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 
@@ -119,7 +120,7 @@ router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT id FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 

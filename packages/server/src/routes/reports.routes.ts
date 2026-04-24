@@ -8,6 +8,7 @@ import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 
@@ -1523,7 +1524,7 @@ router.post('/presets', asyncHandler(async (req, res) => {
 router.put('/presets/:presetId', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
-  const presetId = Number(req.params.presetId);
+  const presetId = validateId(req.params.presetId, 'presetId');
   const { name, filters, is_default } = req.body;
 
   const existing = await adb.get<any>(
@@ -1579,7 +1580,7 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
 router.delete('/presets/:presetId', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
-  const presetId = Number(req.params.presetId);
+  const presetId = validateId(req.params.presetId, 'presetId');
 
   const existing = await adb.get<any>(
     'SELECT * FROM report_presets WHERE id = ? AND user_id = ?',
