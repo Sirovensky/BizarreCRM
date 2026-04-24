@@ -28,6 +28,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.screens.auth.BackupCodeRecoveryScreen
@@ -648,6 +649,10 @@ fun AppNavGraph(
                     onForgotPassword = {
                         navController.navigate(Screen.ForgotPassword.route)
                     },
+                    // §2.8 L335 — shown on the 2FA verify step; routes to backup-code recovery
+                    onBackupCodeRecovery = {
+                        navController.navigate(Screen.BackupCodeRecovery.route)
+                    },
                 )
             }
             // §2.1 — Setup-status gate: probes the server before rendering login.
@@ -689,10 +694,16 @@ fun AppNavGraph(
             }
             // §2.8 — Reset password: token arrives via nav arg (App Link or manual entry).
             // On 410/expired the screen shows a CTA that routes back to ForgotPasswordScreen.
+            // Deep links cover both the HTTPS App Link and the custom-scheme variant so the
+            // reset email works regardless of OS App Link verification status.
             composable(
                 route = Screen.ResetPassword.route,
                 arguments = listOf(
                     navArgument("token") { type = NavType.StringType },
+                ),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "https://app.bizarrecrm.com/reset-password/{token}" },
+                    navDeepLink { uriPattern = "bizarrecrm://reset-password/{token}" },
                 ),
             ) {
                 ResetPasswordScreen(
