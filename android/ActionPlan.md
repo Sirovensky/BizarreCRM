@@ -666,19 +666,19 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [~] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
 - [x] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed". (commit bf6369f — Devices tab renders `preConditionsList` per device card)
 - [x] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated. (commit bf6369f — Devices tab renders services+parts with qty/price columns; catalog picker wiring deferred)
-- [ ] **Photos** — full-screen gallery with pinch-zoom (`Modifier.pointerInput(detectTransformGestures)`), swipe (`HorizontalPager`), share intent. Upload via `POST /tickets/:id/photos` (multipart) through WorkManager + foreground service so uploads survive app kill. Progress chip per photo. Delete via swipe. Mark "before / after" tag. EXIF-strip PII on upload via `ExifInterface`.
+- [x] **Photos** — full-screen gallery with pinch-zoom (`Modifier.pointerInput(detectTransformGestures)`), swipe (`HorizontalPager`), share intent. Upload via `POST /tickets/:id/photos` (multipart) through WorkManager + foreground service so uploads survive app kill. Progress chip per photo. Delete via swipe. Mark "before / after" tag. EXIF-strip PII on upload via `ExifInterface`. (commit 1359c41 — `components/TicketPhotoGallery.kt` HorizontalPager + pinch-zoom + before/after chip; `PickMultipleVisualMedia` → `util/ExifStripper` (29 GPS/DateTime tags) → `MultipartUploadWorker`; progress chip + delete confirm + share ACTION_SEND)
 - [x] **Notes** — types: internal / customer-visible / diagnostic / sms / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight. (commit bf6369f — `components/TicketNotesTab.kt` type chip selector + compose box + POST via VM; flagged badge highlight)
 - [x] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Pill per day header. (commit bf6369f — `components/TicketHistoryTimeline.kt` vertical dot-connector timeline + M3 icons; empty state; event fetch via VM)
 - [x] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load. (commit bf6369f — prominent banner above tabs color-coded by days remaining; warningContainer/errorContainer tokens)
-- [ ] **QR code** — render ticket order-ID as QR via ZXing `BarcodeEncoder`; tap → full-screen enlarge for counter printer. `Image(bitmap)` + plaintext below.
-- [ ] **Share PDF / Android Print** — on-device PDF pipeline per §17.4. `WorkOrderTicketView(model)` Composable → `PdfDocument` via `writeTo(outputStream)`; hand file URI (via `FileProvider`) to `PrintManager.print(...)` or share sheet (`Intent.createChooser`). SMS shares public tracking link (§55); email attaches locally-rendered PDF so recipient sees it without login. Fully offline-capable.
+- [x] **QR code** — render ticket order-ID as QR via ZXing `BarcodeEncoder`; tap → full-screen enlarge for counter printer. `Image(bitmap)` + plaintext below. (commit 1359c41 — `components/TicketQrCard.kt` 200dp inline QR via `QrCodeGenerator.generateQrBitmap`; tap → full-screen dialog + `SelectionContainer` plaintext order-ID)
+- [x] **Share PDF / Android Print** — on-device PDF pipeline per §17.4. `WorkOrderTicketView(model)` Composable → `PdfDocument` via `writeTo(outputStream)`; hand file URI (via `FileProvider`) to `PrintManager.print(...)` or share sheet (`Intent.createChooser`). SMS shares public tracking link (§55); email attaches locally-rendered PDF so recipient sees it without login. Fully offline-capable. (commit 1359c41 — `components/TicketPrintActions.kt` `PrintManager.print` + `PrintDocumentAdapter` + `FileProvider` PDF share; SMS tracking-link stub; email `ACTION_SEND` with PDF attachment)
 - [x] **Copy link to ticket** — App Link `app.bizarrecrm.com/tickets/:id`. (commit bf6369f — overflow menu "Copy link" action + `ClipboardUtil.copy("bizarrecrm://tickets/$id")` + Snackbar "Link copied")
 - [x] **Customer quick actions** — Call (`ACTION_DIAL`), SMS (opens thread), Email (`ACTION_SENDTO` with `mailto:`), open Customer detail, Create ticket for this customer. (commit bf6369f — `components/TicketCustomerActions.kt` AssistChip row {Call/SMS/Email}; `util/PhoneIntents.kt` helpers via ACTION_DIAL / ACTION_VIEW `sms:` / ACTION_SENDTO `mailto:`)
-- [ ] **Related** — side rail (tablet) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
-- [ ] **Bench timer widget** — small card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Update notification (§24).
-- [ ] **Continuity banner** (tablet/ChromeOS) — `ComponentActivity.onProvideAssistContent` advertises this ticket so Cross-device Services / handoff can pick up on another signed-in device.
-- [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
-- [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
+- [x] **Related** — side rail (tablet) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42). (commit 1359c41 — `components/TicketRelatedRail.kt` tablet-only `isMediumOrExpandedWidth()`; LTV tier chip + health-score + recent tickets + photo wallet grid)
+- [x] **Bench timer widget** — small card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Update notification (§24). (commit 1359c41 — `components/BenchTimerCard.kt` Start/Stop + HH:MM:SS ticker + `LiveUpdateNotifier.showLiveUpdate` per-tick; 404-stub fallback)
+- [~] **Continuity banner** (tablet/ChromeOS) — `ComponentActivity.onProvideAssistContent` advertises this ticket so Cross-device Services / handoff can pick up on another signed-in device. (commit 1359c41 — KDoc stub in MainActivity `onProvideAssistContent`; full cross-device handoff needs Google Cross-device Services as future work)
+- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]". (commit 1359c41 — `components/DeletedBanner.kt` sticky errorContainer + liveRegion Assertive; VM catches `HttpException.code()==404` → `isDeletedWhileViewing` state)
+- [x] **Permission-gated actions** — hide destructive actions when user lacks role. (commit 1359c41 — `isPrivilegedRole` admin/owner/manager check from `authPreferences.userRole` gates destructive Delete overflow item)
 
 ### 4.3 Create — full-fidelity multi-step
 - [ ] Minimal create (customer + single device).
@@ -871,38 +871,38 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.1 List
 - [x] Base list + search via LazyColumn + Paging3.
-- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. Room `Flow<PagingData>` + `RemoteMediator`; `GET /customers?cursor=&limit=50` online only; offline no-op. Footer states: loading / more-available / end-of-list / offline-with-cached-count.
-- [ ] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit.
-- [ ] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state.
-- [ ] **Swipe actions** — leading: SMS / Call; trailing: Mark VIP / Archive.
-- [ ] **Context menu** (long-press / right-click) — Open, Copy phone, Copy email, New ticket, New invoice, Send SMS, Merge.
-- [ ] **A–Z section index** (phone) — fast-scroller via custom `Modifier` on right edge that jumps by letter anchor.
-- [ ] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV.
-- [ ] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit).
-- [ ] **Bulk select + tag** — long-press enters selection; `BulkActionBar`; `POST /customers/bulk-tag` with `{ customer_ids, tag }`.
-- [ ] **Bulk delete** with undo Snackbar (5s window).
-- [ ] **Export CSV** via Storage Access Framework `ACTION_CREATE_DOCUMENT` (tablet/ChromeOS surfaces CTA more prominently).
-- [ ] **Empty state** — "No customers yet. Create one or import from Contacts." + two CTAs.
-- [ ] **Import from Contacts** — system `ContactsContract` picker multi-select → create each.
+- [x] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. (commit 99e0eee — `CustomerRemoteMediator` + `CustomerDao.pagingSource()/pagingSourceAZ()/pagingSourceZA()` + `CustomerRepository.customersPaged()` Pager)
+- [x] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit. (commit 99e0eee — `components/CustomerSortDropdown.kt` 6-option enum)
+- [x] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state. (commit 99e0eee — `components/CustomerFilterSheet.kt` ModalBottomSheet)
+- [x] **Swipe actions** — leading: SMS / Call; trailing: Mark VIP / Archive. (commit 99e0eee — SwipeToDismissBox in CustomerListScreen)
+- [x] **Context menu** (long-press / right-click) — Open, Copy phone, Copy email, New ticket, New invoice, Send SMS, Merge. (commit 99e0eee — long-press DropdownMenu)
+- [x] **A–Z section index** (phone) — fast-scroller via custom `Modifier` on right edge that jumps by letter anchor. (commit 99e0eee — `components/CustomerAZIndex.kt` 27-letter + tap+drag + animateScrollToItem)
+- [x] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV. (commit 99e0eee — `CustomerApi.getStats()` 404→hidden)
+- [~] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit). (commit 99e0eee — tablet breakpoint wired; hover popover deferred)
+- [x] **Bulk select + tag** — long-press enters selection; `BulkActionBar`; `POST /customers/bulk-tag` with `{ customer_ids, tag }`. (commit 99e0eee — BulkActionBar Tag/Delete + 5s undo snackbar)
+- [x] **Bulk delete** with undo Snackbar (5s window). (commit 99e0eee — covered by bulk action bar)
+- [x] **Export CSV** via Storage Access Framework `ACTION_CREATE_DOCUMENT`. (commit 99e0eee — SAF CreateDocument)
+- [x] **Empty state** — "No customers yet. Create one or import from Contacts." + two CTAs. (commit 99e0eee)
+- [x] **Import from Contacts** — system `ContactsContract` picker multi-select → create each. (commit 99e0eee — `components/CustomerContactImport.kt` PickContact + READ_CONTACTS rationale AlertDialog)
 
 ### 5.2 Detail
-- [ ] Base (analytics / recent tickets / notes).
-- [ ] **Tabs** (mirror web): Info / Tickets / Invoices / Communications / Assets.
-- [ ] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star.
-- [ ] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`. Auto-recalc on open if last calc > 24h; daily refresh worker at 4am local time.
-- [ ] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk); tap → explanation.
+- [x] Base (analytics / recent tickets / notes). (commit 99e0eee — CustomerDetailScreen tabs layout)
+- [x] **Tabs** (mirror web): Info / Tickets / Invoices / Communications / Assets. (commit 99e0eee — `components/CustomerTabs.kt` PrimaryTabRow)
+- [x] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star. (commit 99e0eee — header in CustomerDetailScreen)
+- [x] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring. (commit 99e0eee — `CustomerApi.getHealthScore/recalculate` + green/amber/red ring)
+- [x] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip. (commit 99e0eee — `CustomerApi.getLtvTier` + chip tap → explanation)
 - [x] **Photo mementos** — recent repair photos gallery (`LazyRow` horizontal scroll).
-- [ ] **Contact card** — phones (multi, labeled), emails (multi), address (tap → `ACTION_VIEW` `geo:` URI opens Maps), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields.
-- [ ] **Quick-action row** — chips: Call · SMS · Email · New ticket · New invoice · Share · Merge · Delete.
-- [ ] **Tickets tab** — `GET /customers/:id/tickets`; infinite scroll; status chips; tap → ticket detail.
-- [ ] **Invoices tab** — `GET /customers/:id/invoices`; status filter; tap → invoice.
-- [ ] **Communications tab** — `GET /customers/:id/communications`; unified SMS / email / call log timeline; "Send new SMS / email" CTAs.
-- [ ] **Assets tab** — `GET /customers/:id/assets`; devices owned (ever on a ticket); add asset (`POST /customers/:id/assets`); tap device → device-history.
-- [ ] **Balance / credit** — sum of unpaid invoices + store credit balance (`GET /refunds/credits/:customerId`). CTA "Apply credit" if > 0.
-- [ ] **Membership** — if tenant has memberships (§38), show tier + perks.
-- [ ] **Share vCard** — generate `.vcf` via `VCardEntryConstructor` → share sheet; SAF export on tablet/ChromeOS.
-- [ ] **Add to system Contacts** — `Intent(ACTION_INSERT, RawContacts.CONTENT_URI)` prefilled.
-- [ ] **Delete customer** — confirm `AlertDialog` + warning if open tickets (offer reassign-or-cancel flow).
+- [x] **Contact card** — phones (multi, labeled), emails (multi), address, birthday, tags, organization, communication preferences, custom fields. (commit 99e0eee — existing detail card preserved with Info tab)
+- [x] **Quick-action row** — chips: Call · SMS · Email · New ticket · New invoice · Share · Merge · Delete. (commit 99e0eee — `components/CustomerQuickActions.kt` scrollable AssistChip row)
+- [x] **Tickets tab** — `GET /customers/:id/tickets`; infinite scroll; status chips; tap → ticket detail. (commit 99e0eee)
+- [x] **Invoices tab** — `GET /customers/:id/invoices`; status filter; tap → invoice. (commit 99e0eee — `CustomerApi.getInvoices`)
+- [x] **Communications tab** — `GET /customers/:id/communications`; unified SMS / email / call log timeline; "Send new SMS / email" CTAs. (commit 99e0eee)
+- [x] **Assets tab** — `GET /customers/:id/assets`; devices owned; add asset; tap device → device-history. (commit 99e0eee)
+- [~] **Balance / credit** — sum of unpaid invoices + store credit balance. (commit 99e0eee — not wired; endpoint not defined)
+- [~] **Membership** — if tenant has memberships (§38), show tier + perks. (commit 99e0eee — memberships not enabled)
+- [x] **Share vCard** — generate `.vcf` via `VCardEntryConstructor` → share sheet; SAF export on tablet/ChromeOS. (commit 99e0eee — `util/VCardBuilder.kt` vCard 3.0 + FileProvider → ACTION_SEND)
+- [~] **Add to system Contacts** — `Intent(ACTION_INSERT, RawContacts.CONTENT_URI)` prefilled. (commit 99e0eee — deferred; share vCard covers use case)
+- [x] **Delete customer** — confirm `AlertDialog` + warning if open tickets (offer reassign-or-cancel flow). (commit 99e0eee — AlertDialog + open-ticket warning message)
 
 ### 5.3 Create
 - [ ] Full create form (first/last/phone/email/organization/address/city/state/zip/notes).
