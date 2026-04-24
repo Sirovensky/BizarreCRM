@@ -723,14 +723,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-69 scan-loop findings (2026-04-24) — client CSV/dashboard tz/pin/signature/portal
-- [ ] SCAN-1164. **[LOW] QuickSmsModal dead setSelectedTemplate state + unused useEffect + no Esc/backdrop close.**
-  <!-- meta: scope=web/components; files=packages/web/src/components/shared/QuickSmsModal.tsx:1,28,91; fix=cleanup-unused+esc+backdrop -->
-- [ ] SCAN-1165. **[LOW] portal_verification_codes no index on phone — full-scan per signup verify.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/041_customer_portal.sql:30; fix=new-composite-index -->
-- [ ] SCAN-1166. **[LOW] Portal verifySessionHandler rotates CSRF cookie every call — breaks multi-tab.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/portal.routes.ts:934-952; fix=reuse-cookie-if-present -->
-- [ ] SCAN-1167. **[LOW] SignatureCanvas React preventDefault on touch is silently dropped — passive listener warning + broken tablet sign.**
-  <!-- meta: scope=web/components; files=packages/web/src/components/shared/SignatureCanvas.tsx:104-123,201-203; fix=native-addEventListener-passive-false -->
 
 ### Wave-68 scan-loop findings (2026-04-24) — idempotency/auth/audit/notifications/metrics
 

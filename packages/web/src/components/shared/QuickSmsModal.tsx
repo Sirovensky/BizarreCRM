@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { X, MessageSquare, ChevronDown, Loader2, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,9 +25,21 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   const phone = toPhone || customer.phone || customer.mobile || '';
   const [recipient, setRecipient] = useState(phone);
   const [message, setMessage] = useState('');
-  const [, setSelectedTemplate] = useState<SmsTemplate | null>(null);
+  // SCAN-1164: dropped the dead `selectedTemplate` state — only the setter
+  // was referenced. applyTemplate still fires the content substitution
+  // below; we just don't need to track which template was picked once
+  // the text has been pasted.
   const [showTemplates, setShowTemplates] = useState(false);
   const MAX_CHARS = 160;
+
+  // SCAN-1164: Escape-to-close. Matches sibling modals (PinModal, etc.).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const { data: tplData } = useQuery({
     queryKey: ['sms-templates'],
@@ -48,7 +60,6 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   };
 
   const applyTemplate = (tpl: SmsTemplate) => {
-    setSelectedTemplate(tpl);
     setMessage(substituteTemplate(tpl.content));
     setShowTemplates(false);
   };
@@ -88,8 +99,15 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   }, {});
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-lg">
+    // SCAN-1164: backdrop click closes; inner card stops propagation.
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200 dark:border-surface-700">
           <div className="flex items-center gap-3">

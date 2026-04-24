@@ -948,8 +948,19 @@ async function verifySessionHandler(req: PortalRequest, res: Response, token: st
 
   await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now','utc') WHERE token = ?", token);
 
-  const csrfToken = generateCsrfToken();
-  issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+  // SCAN-1166: don't rotate the CSRF cookie on every verifySession call.
+  // The portal landing flow polls verifySession repeatedly (e.g. after
+  // redirect-back, or during magic-link open in a second tab); if we mint
+  // a fresh token each time, the first tab's in-memory echo stops
+  // matching the now-replaced cookie and every mutation from that tab
+  // fails the double-submit check. Only issue a new cookie when none is
+  // present; otherwise leave the existing one intact so multi-tab
+  // portal sessions keep working.
+  const existingCsrf = (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE_NAME];
+  const csrfToken = existingCsrf && existingCsrf.length > 0 ? existingCsrf : generateCsrfToken();
+  if (!existingCsrf) {
+    issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
+  }
 
   res.json({
     success: true,

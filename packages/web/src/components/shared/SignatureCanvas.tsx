@@ -83,7 +83,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     }
   }, [initialValue, width, height, resolvedPenColor]);
 
-  const getPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  // Accept both React synthetic mouse events and native TouchEvents so the
+  // native touch listener installed below can reuse the same coordinate
+  // extraction logic.
+  const getPos = useCallback((e: React.MouseEvent | TouchEvent) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -101,8 +104,14 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     };
   }, []);
 
-  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+  // SCAN-1167: React synthesises touchstart/touchmove listeners as passive
+  // by default, so `e.preventDefault()` inside the React handler is silently
+  // dropped AND Chrome logs "Unable to preventDefault inside passive event
+  // listener". The `touch-none` class handles scroll-lock, but some iOS
+  // Safari builds still fire page-pinch gestures if preventDefault is
+  // missing. Attach the listeners natively with `{ passive: false }` in a
+  // useEffect below; React handlers only cover mouse events now.
+  const startDraw = useCallback((e: React.MouseEvent) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     const pos = getPos(e);
@@ -112,9 +121,8 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     setHasSignature(true);
   }, [getPos]);
 
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const draw = useCallback((e: React.MouseEvent) => {
     if (!isDrawing) return;
-    e.preventDefault();
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     const pos = getPos(e);
@@ -184,6 +192,56 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     clearRef.current = clear;
   }, [clear]);
 
+  // SCAN-1167: install native touch listeners with `{ passive: false }` so
+  // `preventDefault()` actually runs. React's synthetic touch listeners are
+  // passive by default; calling preventDefault inside them is silently
+  // dropped and logs a console warning. Keep the mouse path on React
+  // props — mouse events don't have this passive-default problem.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handleStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      setIsDrawing(true);
+      setHasSignature(true);
+    };
+    // Grab the live drawing state via ref so the move/end listeners don't
+    // need to be re-installed on every isDrawing flip.
+    let drawingNow = false;
+    const handleMove = (e: TouchEvent) => {
+      if (!drawingNow) return;
+      e.preventDefault();
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    };
+    const handleEnd = () => {
+      drawingNow = false;
+      endDraw();
+    };
+    const trackStart = (e: TouchEvent) => {
+      drawingNow = true;
+      handleStart(e);
+    };
+    canvas.addEventListener('touchstart', trackStart, { passive: false });
+    canvas.addEventListener('touchmove', handleMove, { passive: false });
+    canvas.addEventListener('touchend', handleEnd);
+    canvas.addEventListener('touchcancel', handleEnd);
+    return () => {
+      canvas.removeEventListener('touchstart', trackStart);
+      canvas.removeEventListener('touchmove', handleMove);
+      canvas.removeEventListener('touchend', handleEnd);
+      canvas.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [getPos, endDraw]);
+
   return (
     <div className="space-y-2">
       <div className="relative rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 overflow-hidden"
@@ -198,9 +256,6 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
           onMouseMove={draw}
           onMouseUp={endDraw}
           onMouseLeave={endDraw}
-          onTouchStart={startDraw}
-          onTouchMove={draw}
-          onTouchEnd={endDraw}
         />
       </div>
       {hasSignature && (
