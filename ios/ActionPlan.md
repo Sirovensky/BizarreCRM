@@ -2171,6 +2171,501 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] See §6 for the full list.
 
 ---
+
+### POS redesign wave (2026-04-24 spec)
+
+Sections §§16.21–16.26 document the iOS implementation plan for a ground-up POS rewrite that lands simultaneously on Android and web. The Android counterpart is a full rebuild of `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/*` and introduces a new `ui/screens/checkin/*` package (8 files). This iOS pass is **documentation-only** — no source files are modified this wave. A future iOS agent will implement from these entries. The canonical visual ground truth for every UX decision in §§16.21–16.26 is `../pos-phone-mockups.html` (8 labeled phone frames plus the animated v2b entry). Cream `#fdeed0` replaces the previous orange as the project-wide primary color; the full token set is codified in §16.26.
+
+---
+
+### 16.21 POS Entry screen + animated glass SearchBar
+
+**Reference**
+- Mockup: animated v2b entry frame ("▶ LIVE · bottom-idle → top-focused → reset · 5s loop") and phone frame "1 · Customer attached · choose path" from `../pos-phone-mockups.html`.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosEntryScreen.kt`.
+- Android theme reference: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/theme/Theme.kt` lines 100–154 (cream primary shipped this wave).
+- iOS: `ios/Packages/Pos/Sources/Pos/PosView.swift` (shell exists; entry redesign is additive).
+- iOS tokens: `ios/Packages/DesignSystem/Sources/DesignSystem/Tokens.swift` (`DesignTokens.Motion.snappy = 0.220` matches the 220ms spring).
+
+**Backend**
+- `GET /api/v1/customers` — debounced search (300 ms). Envelope: `{ success, data: Customer[] }` → `res.data.data`. Status: exists.
+- `GET /api/v1/tickets?customerId=&status=ready` — "Ready for pickup" contextual banner. Status: exists.
+- No new endpoints required for the entry screen itself.
+
+**Frontend (iOS)**
+- New view: `PosEntryView` inside `ios/Packages/Pos/Sources/Pos/`. Replaces the current `PosView` empty-cart state for iPhone.
+- `PosEntryViewModel` (`@Observable`) owns: `query: String`, `searchResults: [CustomerSearchResult]`, `recentItems: [RecentEntry]`, `isSearchExpanded: Bool`.
+- `PosSearchBar` component: idle state pins to the **bottom** of the safe area (thumb zone). On focus, animates to top using `.animation(.spring(duration: DesignTokens.Motion.snappy, bounce: 0.15), value: isSearchExpanded)`. Tiles layer fades out simultaneously with `withAnimation(.easeOut(duration: DesignTokens.Motion.snappy))`. Mirrors the Material 3 `SearchBar` docked→expanded behavior shown in the mockup.
+- Liquid Glass: `PosSearchBar` container uses `.brandGlass` only while expanded (nav-chrome equivalent). Idle bottom bar is plain `surface-2` fill per GlassKit rule — glass only on chrome. `GlassBudgetMonitor` must not exceed `DesignTokens.Glass.maxPerScreen = 6`.
+- Three entry-point tiles (idle state, center of screen): "Retail sale" (primary-bordered), "Create repair ticket" (standard), "Store credit / payment" (standard). Tap targets ≥ 68pt height per mockup.
+- "Ready for pickup" contextual green banner: when customer has tickets in `ready` status, appears as success-colored card with "Open cart →" pill.
+- Past repairs section: two rows (`#NNNN · description · date · price`); `.textSelection(.enabled)` on ticket numbers (Mac).
+- Camera icon trailing in search bar → `PosScanSheet` (barcode scan). VoiceOver label: "Scan barcode or QR code".
+- `APIClient` from `ios/Packages/Networking/Sources/Networking/APIClient.swift` — all calls go through `PosRepository`, never bare `APIClient` from a ViewModel.
+- SPM package: `ios/Packages/Pos`. State stored in `@Observable PosEntryViewModel`; iPad layout continues to use `PosView.regularLayout` HStack.
+- Reduce Motion: skip the bottom→top animation; show search bar at top immediately. Reduce Transparency: remove `.brandGlass` from expanded search bar, use opaque `surface` fill.
+
+**Expected UX**
+1. Cashier opens POS tab; sees three large tiles (Retail / Repair / Store credit) with search bar pinned at bottom.
+2. Taps search bar: bar rises to top in 220 ms spring; tiles fade out; keyboard + results list slide up together.
+3. Types "Sarah": customer rows appear with name match highlighted in cream. Ticket match appears below with status chip.
+4. Taps customer row: `PosEntryViewModel.attachCustomer(_:)` fires `.success` haptic (`UIImpactFeedbackGenerator(style: .medium)`); screen transitions to cart with customer header chip.
+5. Taps back gesture: search bar descends back to bottom in 220 ms; tiles fade in.
+6. Empty search: shows "RECENT" chip row (last 3 customers / tickets / walk-ins) as quick-pick.
+7. Empty state (no results): "No customers or tickets match" with "Create new customer" and "Walk-in" CTAs.
+8. Offline: `PosRepository` reads GRDB cache; shows "Offline · showing cached" chip on search bar; remote results suppressed.
+9. Loading: skeleton rows (`.redacted(.placeholder)`) for 300 ms before first result arrives.
+10. Error (5xx): toast "Search unavailable · check connection" with retry.
+- Accessibility: search bar VoiceOver label "Search customer, part, or ticket". Results announced as "N customers, M tickets found". Reduce Motion removes spring, uses fade only.
+- Localization hooks: `NSLocalizedString("pos.entry.search.placeholder", ...)` etc. — strings wired but translations deferred.
+- `[ ]` Blocked on: cream token swap in `Tokens.swift` (§16.26 prerequisite).
+
+**Status**
+- [ ] `PosEntryView` + `PosEntryViewModel` (new files).
+- [ ] `PosSearchBar` animated component with bottom→top spring.
+- [ ] Customer + ticket unified search results list.
+- [ ] "Ready for pickup" contextual banner wiring.
+- [ ] Reduce Motion + Reduce Transparency compliance.
+
+---
+
+### 16.22 Cart line-edit sheet (per-line notes)
+
+**Reference**
+- Mockup: phone frame "4 · Edit line · qty · discount · note" from `../pos-phone-mockups.html`.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/CartLineBottomSheet.kt`.
+- Android cart screen: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosCartScreen.kt` (will land).
+- Server route: `packages/server/src/routes/pos.routes.ts` — POS-NOTES-001 fix shipped this wave: `notes` column is now wired into line items.
+- iOS shell: `ios/Packages/Pos/Sources/Pos/PosCustomLineSheet.swift` (exists — the line-edit sheet replaces/extends this).
+
+**Backend**
+- `POST /api/v1/pos/cart/lines` / `PATCH /api/v1/pos/cart/lines/:id` — line-item upsert. Response: `{ success, data: CartLine }` → `res.data.data`. Status: partial (notes column now wired per POS-NOTES-001; discount per-line deferred server side).
+- No server call needed for in-memory edits until Charge is tapped; cart state is client-authoritative until submission.
+
+**Frontend (iOS)**
+- `CartLineEditSheet` — new file in `ios/Packages/Pos/Sources/Pos/`. Presented via `.sheet(item: $editingLine)` from `PosCartView`.
+- `CartLineEditViewModel` (`@Observable`): `qty: Int`, `unitPriceCents: Int`, `discountMode: DiscountMode` (`.percent5 / .percent10 / .fixed / .custom`), `discountCents: Int`, `note: String`. Pure in-memory — no network call until cart submits.
+- Sheet handle: `RoundedRectangle(cornerRadius: 2).frame(width: 36, height: 4)` in `--outline` color, centered at top of sheet.
+- Background: cart rows visible but dimmed to `opacity(0.35)` and `allowsHitTesting(false)` — matches mockup "Dimmed cart underneath".
+- **Qty stepper**: minus (circle, `surface-2` fill) / value (18pt, bold) / plus (circle, primary fill). Bounds: min 1, max 999. Light haptic (`UIImpactFeedbackGenerator(style: .light)`) on each inc/dec tap.
+- **Unit price row**: read-only display; tapping opens inline `PosEditPriceSheet` (existing, role-gated via `PosTenantLimits`).
+- **Discount row**: four chip-pills (5% / 10% / $ fixed / Custom). Active chip fills with primary. "Custom" expands a `TextField` for cents input. Discount line shows "− $X.XX" in `--success` color.
+- **Note row**: `TextEditor` with `min-height: 44pt`, background `surface-2`, border `outline`. Character counter "N / 500" trailing below. VoiceOver label: "Line note, optional". Dictate microphone button at leading edge (links to iOS dictation).
+- **Remove button**: `.destructive` red fill, full width minus Save; requires `ManagerPinSheet` if `PosAuditLogStore` `deleteLineRequiresPin` is true.
+- **Save button**: primary fill. On tap: `cart.updateLine(id:qty:discount:note:)` → immutable Cart copy (no mutation per coding-style rules) → dismiss sheet. `BrandHaptics.success()`.
+- Liquid Glass: sheet itself is plain `surface` — not a glass surface per GlassKit rule. Only the Charge CTA in the cart below uses glass.
+- Swipe-to-dismiss: standard `.presentationDetents([.medium, .large])` with drag indicator.
+- Offline: line edits are always local; no network call blocked.
+
+**Expected UX**
+1. Cashier taps a cart line in phone frame 3 ("3 · Cart · 3 items · tap line to edit").
+2. Bottom sheet slides up; cart dims behind; sheet handle visible.
+3. Cashier taps "+" twice → qty becomes 3; total updates in real time via `CartMath`.
+4. Taps "10%" chip → discount applies; "− $1.40" appears in success green.
+5. Taps Note field → dictates "Gift wrap · tag for Mia"; character count updates.
+6. Taps Save → sheet dismisses; cart line updates; totals re-derive via `CartMath.totals`.
+7. Swipe-left on line in cart → quick Remove (no sheet required); triggers audit log.
+- Empty note field: placeholder "Optional note prints on receipt".
+- Error: if `unitPriceCents` becomes negative, prevent Save with inline "Price cannot be negative".
+- Haptics: light on qty change, success on Save, warning on Remove confirm.
+- Accessibility: stepper announces "Quantity: 3". Discount chip group has `accessibilityLabel("Discount preset")`. Save button announces "Save changes to USB-C 3ft cable".
+
+**Status**
+- [ ] `CartLineEditSheet` + `CartLineEditViewModel` (new files).
+- [ ] Qty stepper with haptic + bounds.
+- [ ] Discount chip row + custom-amount expansion.
+- [ ] Per-line note field with dictation hook.
+- [ ] Dimmed-background + sheet presentation from `PosCartView`.
+
+---
+
+### 16.23 Tender split view (applied / remaining hero)
+
+**Reference**
+- Mockup: phone frame "5 · Tender · split payment" from `../pos-phone-mockups.html`.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosTenderScreen.kt`.
+- Server routes: `packages/server/src/routes/blockchyp.routes.ts:45-557` (process-payment, void, adjust-tip); `packages/server/src/routes/pos.routes.ts`.
+- iOS: replaces / extends the current `PosChargePlaceholderSheet` (§16.5). The placeholder stays until BlockChyp SDK lands; this section defines the target state.
+
+**Backend**
+- `POST /api/v1/blockchyp/process-payment` — primary card auth. Body: `{ amount, transactionType, terminalName }`. Response: `{ success, data: { approved, authCode, token, last4, brand } }`. Envelope: `res.data.data`. Status: exists (`packages/server/src/services/blockchyp.ts:63-790`).
+- `POST /api/v1/blockchyp/void` — void within batch. Status: exists.
+- `POST /api/v1/blockchyp/adjust-tip` — post-auth tip. Status: exists.
+- `POST /api/v1/invoices/:id/payments` — record tender. Idempotency key required. Status: exists.
+- `POST /api/v1/gift-cards/redeem` — gift card tender. Status: exists.
+- `GET /api/v1/store-credit/:customerId` — balance check. Status: exists.
+- TODO: POS-SMS-001 (SMS receipt after tender — deferred).
+
+**Frontend (iOS)**
+- `PosTenderView` — replaces `PosChargePlaceholderSheet`. Full-screen navigation push (not sheet) so back gesture is always available to return to cart.
+- `PosTenderViewModel` (`@Observable`): `totalCents: Int`, `appliedTenders: [AppliedTender]`, `remainingCents: Int` (derived), `isComplete: Bool` (derived: `remainingCents == 0`).
+- **Hero balance card** (top of screen): `surface` card with `outline` border, `cornerRadius: 12`. Left column: "TOTAL DUE" label (muted, 10pt, spaced) + amount (22pt, weight 800, `--on`). Right column: "REMAINING" label + amount (22pt, weight 800, **primary cream**). Progress bar below: `surface-2` track, `success` fill advancing as tenders land. Below bar: "✓ Paid $X.XX" (success) and "N%" (muted). Animates smoothly on each tender add: `withAnimation(.spring(duration: DesignTokens.Motion.smooth))`.
+- **Applied tenders section**: label "✓ PAID · N" (success, 10pt). Each row: success-tinted background (`rgba(success, 0.08)`), success border, checkmark circle, tender name + detail, amount, "✕" dismiss icon. Tapping "✕" prompts `ManagerPinSheet` if past the checkout commit point (per §16.20 `AppliedTendersListView`).
+- **Add-payment grid**: 2×2 grid of tender type tiles. "Card reader" tile is primary-bordered (highest priority). Others: "Tap to pay", "ACH / check", "Park cart" (layaway). Grid remains accessible until `remainingCents == 0`. Tiles disabled (opacity 0.4, `allowsHitTesting(false)`) once balance reaches zero.
+- **Bottom bar CTA**: disabled state "Remaining $X.XX — add payment to finish" (`surface-2` fill, muted text). Enabled state (when `isComplete`) "Complete sale" (primary cream fill, `on-primary` text). Tap → `PosTenderViewModel.completeSale()` → writes invoice+payment rows → navigate to `PosReceiptView`.
+- Liquid Glass: CTA bar background uses `.brandGlass` (nav chrome role) when `isComplete` to signal the final step. Grid tiles and applied-tender rows stay plain.
+- Haptics: `.success` notification when `remainingCents` first reaches 0; `.warning` notification if void attempted.
+- Offline: Card tender queues via `PosSyncOpExecutor`; cash tender is always local. Gift card requires online (shows "Requires internet to check balance" alert if offline).
+
+**Expected UX**
+1. Cashier taps "Tender · $274.51" from cart (phone frame 3).
+2. `PosTenderView` pushes onto stack; hero card shows $274.51 total / $274.51 remaining.
+3. Cashier taps "Store credit" (not in 2×2 — accessed via overflow or customer's balance auto-prompt); $42.00 applied; progress bar animates to 15%; "✓ Paid $42.00" row appears.
+4. Taps "Card reader" tile; BlockChyp terminal flow initiates (§16.5 / §16.25); on approval $134.51 auth returns; remaining drops to $0; progress bar fills green.
+5. Bottom CTA pulses to "Complete sale" (primary fill); `.success` haptic fires.
+6. Cashier taps "Complete sale"; receipt screen pushes.
+7. Cashier can tap "✕" on cash row to remove a tender (manager PIN required if session committed).
+8. Loading: spinner overlay on tile while BlockChyp call is in flight; other tiles disabled.
+9. Error (decline): "Declined — INSUFFICIENT_FUNDS" toast; card tile returns to normal; remaining unchanged.
+- VoiceOver: remaining amount announced on each tender application: "Remaining: one hundred thirty-four dollars fifty-one cents".
+- iPad: same view but wider progress bar + tender grid can show as 2×3.
+
+**Status**
+- [ ] `PosTenderView` + `PosTenderViewModel` (replaces placeholder).
+- [ ] Hero balance card with animated progress bar.
+- [ ] Applied tenders list with void / ✕ gating.
+- [ ] 2×2 tender grid with disabled state.
+- [ ] `completeSale()` → invoice write → navigation to receipt.
+- [ ] Offline card tender queuing via sync queue.
+
+---
+
+### 16.24 Receipt screen + public tracking URL
+
+**Reference**
+- Mockup: phone frame "6 · Receipt · send / print / next" from `../pos-phone-mockups.html`.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosReceiptScreen.kt`.
+- Server routes:
+  - `packages/server/src/routes/notifications.routes.ts:203-327` — `POST /api/v1/notifications/send-receipt` (email done, SMS as POS-SMS-001 deferred).
+  - `packages/server/src/routes/tracking.routes.ts:232-314` — `POST /api/v1/track/lookup` (phone last-4 + optional order_id).
+  - `packages/server/src/routes/tracking.routes.ts:319-352` — `GET /api/v1/track/token/:token` — public tokenized tracking page.
+  - `packages/server/src/routes/tracking.routes.ts:748-825` — `GET /api/v1/track/portal/:orderId/invoice` — public invoice portal.
+- iOS: `ios/Packages/Pos/Sources/Pos/PosView.swift` (existing shell); receipt logic extends `PosPostSaleView` (§16.8).
+
+**Backend**
+- `POST /api/v1/notifications/send-receipt` — body: `{ invoiceId, channel: 'email'|'sms', destination }`. Response: `{ success, data: { messageId } }`. Email: exists and shipped. SMS: deferred as POS-SMS-001.
+- `GET /api/v1/track/token/:token` — public URL (no auth). Returns tracking page HTML or JSON. The token is embedded in the receipt QR code. Status: exists (`tracking.routes.ts:319-352`).
+- Envelope: all routes follow `{ success, data }` → `res.data.data`. Single unwrap.
+
+**Frontend (iOS)**
+- `PosReceiptView` — new file in `ios/Packages/Pos/Sources/Pos/`. Pushed onto navigation stack after `PosTenderViewModel.completeSale()`.
+- `PosReceiptViewModel` (`@Observable`): `invoice: Invoice`, `trackingURL: URL?`, `sendState: SendState` (`.idle / .sending / .sent / .error`).
+- **Hero success state** (top): 72pt circle with `success` fill, white checkmark, 600ms spring scale-in (`scaleEffect` from 0.5 → 1.0, `BrandMotion`). Below: total in Barlow Condensed (22pt, weight 800), invoice number + customer name (12pt, muted). If repair ticket linked: "Parts reserved to Ticket #NNNN" in teal.
+- **Send receipt section**: label "SEND RECEIPT" (muted, 10pt, spaced). Three rows:
+  - SMS row (primary-bordered, first/default): icon, "SMS", phone number, "via BizarreSMS". Tapping triggers `POST /api/v1/notifications/send-receipt` with `channel: 'sms'`. Disabled with tooltip "POS-SMS-001 pending" until server-side wired.
+  - Email row: icon, "Email", email address. Tapping triggers `POST /api/v1/notifications/send-receipt` with `channel: 'email'`. Status: enabled.
+  - Thermal print row: icon, "Thermal print", printer name. Disabled until §17 printer SDK lands.
+- **QR code**: generated client-side via `CIFilter.qrCodeGenerator` from the `trackingURL` string. Rendered as `Image` in the receipt view. VoiceOver label: "Tracking QR code — customer can scan to track order".
+- **Tracking URL** surface: `GET /api/v1/track/token/:token` token is returned in the invoice response payload. Display as tappable link below QR code (`.textSelection(.enabled)` on Mac).
+- **Next-action CTA bar**: two buttons — "Open ticket #NNNN" (secondary, only if repair ticket linked) and "New sale ↗" (primary cream). "New sale" resets `PosEntryViewModel` and pops to root.
+- Auto-dismiss: 10 seconds after send, if cashier has not interacted, navigate to `PosEntryView` for next customer. Countdown shown as muted "Starting new sale in Ns…" text.
+- Persist receipt model: snapshot `ReceiptModel` to GRDB via `PosReceiptStore` at sale close (per §16.7 deferred item now mandatory for this screen).
+- Liquid Glass: none on receipt content rows. The "New sale" CTA bar uses `.brandGlass` background (sticky nav-chrome role).
+- Haptics: `.success` notification on screen appear (if coming from successful payment).
+- Offline: send-receipt queued via sync queue if no network at moment of sale; "Receipt will send when connected" banner shown.
+
+**Expected UX**
+1. Sale completes; success animation plays (scale + `--success` green).
+2. Invoice number displayed; if ticket linked, teal ticket link shown.
+3. SMS row highlighted as default (customer has phone number on file).
+4. Cashier taps SMS → spinner → "Sent!" chip animates in green (or "POS-SMS-001 pending" toast).
+5. QR code visible; customer can scan immediately for order tracking.
+6. 10s countdown begins: "Starting new sale in 8s…" — tap anywhere to cancel.
+7. "New sale ↗" tapped: cart clears, `PosEntryView` resets, customer header chip drops.
+- Empty state (walk-in, no phone/email): SMS + Email rows grayed with "No contact on file". Print is only option.
+- Error (email send fails): "Email failed — check server connection" toast; row returns to tappable state.
+- VoiceOver: success circle announced as "Sale complete, $274.51". QR announced as "Tracking QR code".
+
+**Status**
+- [ ] `PosReceiptView` + `PosReceiptViewModel`.
+- [ ] Hero success animation (scale spring).
+- [ ] Send-receipt rows (email wired; SMS deferred POS-SMS-001).
+- [ ] QR code generation from tracking token.
+- [ ] `ReceiptModel` GRDB snapshot at sale close.
+- [ ] Auto-dismiss 10s countdown.
+- [ ] "Open ticket" CTA when repair path was used.
+
+---
+
+### 16.25 Repair check-in — 6-step flow
+
+**Reference**
+- Mockup: the "Repair check-in — drop-off flow (6 screens)" section of `../pos-phone-mockups.html`, frames CI-1 through CI-6.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/checkin/*` (8 files).
+- Server routes: `packages/server/src/routes/pos.routes.ts` (ticket draft create/update); `packages/server/src/routes/ticketSignatures.routes.ts:72-87` (`POST /api/v1/tickets/:id/signatures`, base64 PNG, 500 KB budget, data-URL validator lines 39–42).
+- iOS: new SPM package `ios/Packages/CheckIn/Sources/CheckIn/` (to be created). Depends on `Pos`, `Tickets`, `DesignSystem`.
+- Android `SignaturePad.kt`: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/components/SignaturePad.kt` (EXISTS — iOS equivalent is `PKCanvasView` / `CheckInSignaturePad`).
+
+**Backend**
+- Ticket draft: `POST /api/v1/tickets` with `status: 'draft'` — creates ticket in draft state. `PATCH /api/v1/tickets/:id` — autosave on each step navigation. Response: `{ success, data: Ticket }`.
+- Signature: `POST /api/v1/tickets/:id/signatures` — base64 PNG body, max 500 KB enforced by data-URL validator (`ticketSignatures.routes.ts:39-42`). Status: exists.
+- Passcode: stored encrypted server-side; iOS sends via `PATCH /api/v1/tickets/:id` in the `passcode` field (SQLCipher column, TTL = ticket close). Audit log records read access.
+- Parts reserve: `PATCH /api/v1/inventory/:id/reserve` — decrement stock, set `ticket_device_parts.status = 'available'` or `'ordered'`. Status: exists.
+- All endpoints follow `{ success, data }` envelope; single unwrap.
+
+**Frontend (iOS)**
+- `CheckInFlowView` — wizard container with `NavigationStack` + `CheckInStep` enum (`symptoms / details / damage / diagnostic / quote / sign`). Step index drives a 3pt linear progress bar (cream fill, `surface-2` track). Each step is a distinct SwiftUI view; all read/write `CheckInDraft` (an `@Observable` shared model passed through environment).
+- `CheckInFlowViewModel` (`@Observable`): `draft: CheckInDraft`, `currentStep: CheckInStep`, `isSaving: Bool`, `saveError: Error?`. Autosave via `Task { await repo.patchDraft(draft) }` on every step navigation — never blocks the UI.
+- Navigation: "Back" (secondary) + "Next · …step…" (primary cream) pinned at bottom of each step screen. "Next" is disabled until minimum required fields for that step are filled. Progress bar advances on "Next".
+- Autosave chip: "Draft · autosave" in the nav bar (right side, muted chip). Pulses briefly on save.
+- Liquid Glass: progress bar container and bottom nav bar use `.brandGlass` (chrome role). Step content cards are plain `surface`. GlassBudget: both count toward `maxPerScreen`.
+- Offline: draft writes queue via `SyncQueueStore`; autosave chip shows "Draft · queued" when offline.
+
+The six sub-steps follow.
+
+#### 16.25.1 Step 1 — Symptoms
+
+**Reference**: mockup frame "CI-1 · Symptoms · tap what's broken".
+
+**Backend**: `PATCH /api/v1/tickets/:id` with `{ symptoms: string[] }`. No dedicated endpoint; included in ticket patch.
+
+**Frontend (iOS)**
+- `CheckInSymptomsView` — 4×2 grid of symptom tiles: Cracked screen, Battery drain, Won't charge, Liquid damage, No sound, Camera, Buttons, Other. Each tile: `surface` card with `outline` border (unselected) or `primary` border + primary bold label (selected). Multiple selection. Minimum: 1 symptom selected to advance.
+- Tile icons: SF Symbols (`iphone.gen3`, `battery.25`, `bolt.slash`, `drop`, `speaker.slash`, `camera`, `button.horizontal`, `exclamationmark.triangle`).
+- Tap: `CheckInDraft.symptoms.toggle(symptom)` — immutable toggle (new Set created, not mutated). Haptic: `UIImpactFeedbackGenerator(style: .light)` on each toggle.
+- "Other" selected → inline `TextField` expands below grid for free-text description.
+- Localization: `NSLocalizedString("checkin.symptoms.crackedScreen", ...)` per tile.
+- VoiceOver: each tile announces "Cracked screen, selected" / "not selected". Grid has `accessibilityLabel("Select symptoms — tap all that apply")`.
+- Skip: "Skip" secondary button is available; advances without symptoms (cashier can fill later from desktop CRM). Skip logs a `CheckInSkipEvent` for audit.
+- Footer hint: "Next: customer notes, photos, passcode" (muted, 11pt) — matches mockup.
+
+**Status**
+- [ ] `CheckInSymptomsView` + symptom tile grid.
+- [ ] Multi-select with primary-border selected state.
+- [ ] "Other" free-text expansion.
+- [ ] Minimum-1 validation before advancing.
+
+#### 16.25.2 Step 2 — Details
+
+**Reference**: mockup frame "CI-2 · Details · customer notes · internal notes · passcode · photos".
+
+**Backend**: `PATCH /api/v1/tickets/:id` with `{ diagnosticNotes, internalNotes, passcode, passcodeType, photos: base64[] }`. Photos also via `POST /api/v1/tickets/:id/signatures` endpoint patterns.
+
+**Frontend (iOS)**
+- `CheckInDetailsView` — four sections, vertically scrollable.
+- **Diagnostic notes** (`TextEditor`, min-height 72pt, primary-bordered): customer-facing problem description. Character counter "N / 2000" trailing below. Dictation microphone button (teal, leading) links to iOS speech recognition via `SFSpeechRecognizer`. Auto-expands as user types.
+- **Internal notes** (`TextEditor`, min-height 60pt, warning dashed border): tech-only, never shown to customer. Supports `@mention` autocomplete (tech user picker) and `#tag` (issue category). Character counter "N / 5000". Yellow dashed border (`--warning`) distinguishes internal from customer-visible fields.
+- **Passcode** (encrypted): chip row for type selector (None / 4-digit / 6-digit / Alphanumeric / Pattern). Selected type expands a `SecureField` with monospace font. "None" hides the field. Eye toggle to reveal temporarily (auto-hides after 5s). "Auto-deleted when ticket closes" caption (muted, 11pt). Stored via `PATCH /api/v1/tickets/:id` in the encrypted `passcode` column; SQLCipher TTL = ticket close event.
+- **Photos** (horizontal scroll strip): `CameraCaptureView(mode: .multi)` thumbnail strip. Existing photos shown as 72×72pt rounded tiles. "+" tile at end opens camera sheet. `PhotoStore` stages into `tmp/photo-capture/` then promotes to `AppSupport/photos/tickets/{id}/`. Max 10 photos. Each thumbnail tappable for full-screen preview + annotation (`PhotoAnnotationView`).
+- VoiceOver: `@mention` field announces "Internal note — tech only, not shown to customer". Passcode field: "Device passcode — stored encrypted, deleted when ticket closes". Photo strip: "N photos, tap plus to add".
+- Haptic: `BrandHaptics.success()` on passcode field save.
+
+**Status**
+- [ ] `CheckInDetailsView` with four sections.
+- [ ] Diagnostic + internal notes with dictation + @mention.
+- [ ] Passcode type picker + `SecureField` + encrypted patch.
+- [ ] Photo strip via `CameraCaptureView(mode: .multi)`.
+
+#### 16.25.3 Step 3 — Pre-existing damage
+
+**Reference**: mockup frame "CI-3 · Damage we're NOT fixing · liability record".
+
+**Backend**: `PATCH /api/v1/tickets/:id` with `{ preExistingDamage: DamageMarker[], overallCondition, accessories: string[], ldiStatus }`. DamageMarker shape: `{ x, y, type: 'crack'|'scratch'|'dent'|'stain', face: 'front'|'back'|'sides', note? }`.
+
+**Frontend (iOS)**
+- `CheckInDamageView` — three sub-tabs: Front / Back / Sides.
+- **Device diagram**: SVG-rendered phone silhouette using SwiftUI `Canvas`. Tap anywhere on the diagram drops a `DamageMarker` at the normalized `(x, y)` coordinate. A picker popover appears to select marker type (crack ✖ / scratch / / dent ◻ / stain ●). Each marker rendered as colored circle (error = crack, warning = scratch/dent, muted = stain). Long-press on marker → remove. Pinch-to-zoom on the canvas (`MagnificationGesture`). Matches the tappable zones in the CI-3 mockup.
+- **Overall condition** chip row: Mint / Good / Fair / Poor / Salvage. Single-select. Active chip fills primary cream.
+- **Accessories included** chip row: SIM tray / Case / Tempered glass / Charger / Cable. Multi-select. Active chip fills primary.
+- **Liquid damage indicator**: red-tinted card (error background at 10% opacity, error border). Single-select: "Not tested" / "Clean" / "Tripped". Default: "Not tested". When "Tripped" selected, card expands with camera icon ("Photograph LDI").
+- Accessibility: Canvas has `accessibilityLabel("Device diagram — tap to mark pre-existing damage")`. Each marker has `accessibilityElement(children: .ignore)` with label "Crack at top-right front panel".
+- Reduce Motion: markers appear instantly without the pop animation.
+- This step is **skippable** — "Skip" button in nav; tech fills from desktop CRM post-drop-off.
+
+**Status**
+- [ ] `CheckInDamageView` + SVG canvas with `DamageMarker` drop.
+- [ ] Marker type picker + long-press remove + pinch zoom.
+- [ ] Condition + accessories chip rows.
+- [ ] LDI card with camera expand.
+
+#### 16.25.4 Step 4 — Diagnostic
+
+**Reference**: mockup frame "CI-4 · Pre-repair diagnostic · what works now".
+
+**Backend**: `PATCH /api/v1/tickets/:id` with `{ diagnosticResults: DiagnosticResult[] }`. DiagnosticResult shape: `{ item: string, state: 'ok'|'fail'|'untested' }`.
+
+**Frontend (iOS)**
+- `CheckInDiagnosticView` — scrollable checklist.
+- **"Mark all as working" bar**: teal-tinted strip at top with "All OK" secondary button. Tap sets all items to `.ok`. Single haptic on tap.
+- **Checklist items**: Power on / Touchscreen / Face ID / Touch ID / Speakers (earpiece + loud) / Cameras (front + rear) / Wi-Fi + Bluetooth / Cellular / SIM / Battery health. Each row: item name + description (muted, 11pt). Three-state toggle row: ✓ (`success` fill) / ✕ (`error` fill) / ? (`warning` fill). Default: `?` (untested). Three buttons side by side, 30×30pt each with 8pt corner radius.
+- **Battery health**: if device provides MDM or Apple Configurator data, auto-fill "78%" beside Cellular/SIM row as in mockup (teal-colored). Manual entry fallback.
+- **Tri-state rationale**: `?` forces explicit "untested" — no silent assumptions. Required items for cracked-screen tickets: Touchscreen must be set to ✓ or ✕ before advancing (warn if still `?`).
+- **Immutability**: `CheckInDraft.diagnosticResults` is replaced with a new array on each toggle — no in-place mutation per coding-style rules.
+- VoiceOver: each row's state announced as "Power on — OK" / "Touchscreen — Failed" / "Cameras — Untested". Three-state buttons announce "Pass", "Fail", "Untested".
+- Skippable — tech can complete from desktop.
+
+**Status**
+- [ ] `CheckInDiagnosticView` + checklist items.
+- [ ] Tri-state ✓/✕/? toggle row.
+- [ ] "All OK" quick-fill bar.
+- [ ] Required-field warning (touchscreen for cracked-screen tickets).
+
+#### 16.25.5 Step 5 — Quote
+
+**Reference**: mockup frame "CI-5 · Quote · parts reserved · deposit".
+
+**Backend**:
+- `GET /api/v1/repair-pricing/services` — labor line items. Status: exists.
+- `PATCH /api/v1/inventory/:id/reserve` — stock reservation; sets `ticket_device_parts.status = 'available'` or `'ordered'` with supplier ETA. Status: exists.
+- `GET /api/v1/pos/holds` — deposit holds. Status: exists.
+- Quote totals computed client-side (`CartMath`); server re-validates on submit.
+
+**Frontend (iOS)**
+- `CheckInQuoteView` — scrollable with pinned total bar.
+- **Repair lines list**: each line shows: name, stock status chip ("✓ Reserved · stock N→N-1" in success green, or "⏳ Ordered · ETA Mon Apr 27" in warning amber), price in primary cream. Lines are populated from `CheckInDraft.selectedParts + selectedServices`. Editable (swipe to remove, tap to edit price).
+- **ETA card**: if any part is on order, shows "Est. ready: Tue Apr 28, 3pm" with clock icon. ETA computed from: `max(supplier ETA + lead-time, current date + tech queue depth × avg labor minutes)`. Updates live if supplier ETA changes (WebSocket push from `SessionEvents`).
+- **Deposit picker**: chip row — $0 / $25 / $50 / $100 / Full. Active chip fills primary. Below: "N deposit applied · balance due on pickup: $X.XX" (muted).
+- **Pinned totals bar**: Subtotal / Tax (8.5%) / Deposit today (primary colored, minus) / Due on pickup. CTA button: "Get signature & check in →" (cream fill). Disabled until at least one repair line exists.
+- `CartMath.totals` handles all arithmetic (bankers rounding, multi-rate tax). Immutable — new struct on each line change.
+- VoiceOver: totals bar announces "Subtotal $348.00, Tax $29.58, Deposit $50.00, Due on pickup $327.58".
+- Offline: repair lines from GRDB catalog cache; reservation queued via sync queue.
+
+**Status**
+- [ ] `CheckInQuoteView` + repair lines list.
+- [ ] Stock status chips (reserved / ordered / ETA).
+- [ ] Deposit picker chip row.
+- [ ] Pinned totals bar with `CartMath`.
+- [ ] ETA card with WebSocket refresh.
+
+#### 16.25.6 Step 6 — Sign
+
+**Reference**: mockup frame "CI-6 · Terms · signature · create ticket".
+
+**Backend**:
+- `POST /api/v1/tickets/:id/signatures` — base64 PNG, max 500 KB, data-URL validator at `ticketSignatures.routes.ts:39-42`. Response: `{ success, data: { signatureId, url } }`. Status: exists.
+- `POST /api/v1/tickets` (finalize) — `status: 'open'`, deposit payment if applicable → `POST /api/v1/invoices/:id/payments`.
+- `packages/server/src/db/migrations/129_ticket_signatures_receipt_ocr.sql` — schema for signature storage.
+
+**Frontend (iOS)**
+- `CheckInSignView` — final step; progress bar fills green (100%) to signal completion.
+- **Terms summary card** (`surface`, `outline` border, 12pt corner radius): collapsed key-terms bullet list (5 items from mockup). "Read full terms (PDF)" teal link → `SafariViewController` opening the PDF URL. Terms text is shop-configurable (Settings → Repair Terms, versioned). The exact terms version hash is embedded in the signed record.
+- **Acknowledgment checklist**: four checkboxes rendered as `surface` rows with 22×22pt checkbox squares. Three pre-checked (cream fill): "Agree to estimate & terms", "Consent to backup + data handling", "Authorize deposit charge". One opt-in (unchecked default): "Opt in to repair status SMS updates". All four must have the mandatory three explicitly checked to enable signature capture.
+- **Signature pad** (`CheckInSignaturePad`): `PKCanvasView` wrapper, 110pt height, primary-bordered container. Finger or Apple Pencil. Clear button (teal, trailing below). VoiceOver: "Signature area — sign with finger or Apple Pencil". Timestamp + customer name displayed below the canvas. After any stroke, `UINotificationFeedbackGenerator(.success)` fires once to confirm pen-down detection.
+- On "Create ticket · print label" tap:
+  1. `PKCanvasView` drawing → `UIImage` → PNG data → base64 string → `POST /api/v1/tickets/:id/signatures`.
+  2. Budget check: compressed PNG must be ≤ 500 KB (same limit enforced server-side at `ticketSignatures.routes.ts:39`). If over, iteratively reduce `scale` until within budget, max 3 attempts; if still over, show "Signature too large — please clear and sign again".
+  3. Deposit tender if `deposit > 0` → `POST /api/v1/invoices/:id/payments` with idempotency key.
+  4. Ticket status → `open` via `PATCH /api/v1/tickets/:id`.
+  5. Navigate to `PosReceiptView` (drop-off receipt variant — prints label, no sale total).
+- **Print label**: 2×1 inch thermal label — ticket# / QR / customer last-name / device / drop-off date. QR encodes ticket deep-link URL. Print routed through `ReceiptPrinter` (§17).
+- Liquid Glass: none on content. Bottom CTA bar uses `.brandGlass` (chrome role).
+- Offline: signature stored locally in GRDB (`SyncQueueStore`); ticket create queued; "Ticket will sync when connected" banner on receipt.
+- Signature required — cannot skip this step (unlike Steps 3–4). "Create ticket" button disabled until both required checkboxes checked AND canvas has at least one stroke.
+
+**Status**
+- [ ] `CheckInSignView` + terms card + acknowledgment checklist.
+- [ ] `CheckInSignaturePad` (`PKCanvasView` wrapper, cream border, clear button).
+- [ ] Signature → PNG → base64 → `POST /api/v1/tickets/:id/signatures` with 500 KB budget enforcement.
+- [ ] Deposit payment write → ticket finalize → navigation to drop-off receipt.
+- [ ] Print label via `ReceiptPrinter` (§17 dependency).
+
+---
+
+### 16.26 BlockChyp signature routing (terminal preferred, on-phone fallback)
+
+**Reference**
+- Mockup: phone frame "5 · Tender · split payment" — "Card reader" tile initiating the BlockChyp flow, then signature capture after approval.
+- Android will land as `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/util/SignatureRouter.kt`.
+- Android `SignaturePad.kt`: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/components/SignaturePad.kt` (EXISTS).
+- Server: `packages/server/src/routes/blockchyp.routes.ts:45-557` — `POST /api/v1/blockchyp/capture-signature` (route exists); `packages/server/src/services/blockchyp.ts:63-790`.
+- iOS: `ios/Packages/Networking/Sources/Networking/APIClient.swift` (for BlockChyp proxy calls).
+
+**Backend**
+- `POST /api/v1/blockchyp/capture-signature` — instructs the paired BlockChyp terminal to prompt for signature. Body: `{ terminalName, sigFormat: 'PNG', sigWidth: 400 }`. Response: `{ success, data: { sig: base64PNG } }`. Status: exists.
+- `POST /api/v1/blockchyp/process-payment` — main payment auth; response includes `{ sigRequired: bool, terminalName }`. If `sigRequired && terminalName != null`, signature is captured on terminal. If `sigRequired && terminalName == null`, on-phone fallback.
+- `POST /api/v1/invoices/:id/payments` — record with `sigBase64` field. Status: exists.
+
+**Frontend (iOS)**
+- `SignatureRouter` — new struct in `ios/Packages/Pos/Sources/Pos/`. Pure logic, no view. `func route(sigRequired: Bool, terminalAvailable: Bool, terminalName: String?) -> SignatureRoute` where `SignatureRoute` is `.terminal(name:)` or `.onPhone`.
+- **Terminal path** (`.terminal`): after payment approval, `POST /api/v1/blockchyp/capture-signature` is called. `PosTenderViewModel` shows "Customer signing on terminal…" spinner with animated card icon. Polls via 2s retry (max 30s) for signature response. On success: base64 PNG attached to payment record.
+- **On-phone fallback** (`.onPhone`): `SignatureSheet` presented as `.fullScreenCover`. Contains `PKCanvasView` (same `CheckInSignaturePad` component) in a full-screen layout. Customer signs on the iPhone/iPad screen. On "Accept" tap: drawing → PNG → base64 → stored with payment. On "Clear" tap: canvas resets.
+- **Routing logic**: terminal preferred always. Fall back to on-phone if: (a) no terminal paired in Keychain, (b) terminal heartbeat failed (3s timeout), (c) `process-payment` response has `terminalName == null`, (d) user explicitly selects "Sign on phone" from the tender screen overflow menu.
+- `SignatureSheet` Liquid Glass: `.brandGlass` on the top toolbar only (chrome role). Canvas area is plain `surface`. GlassBudget counts as 1.
+- Haptics: `UINotificationFeedbackGenerator(.success)` on signature accepted; `.error` on timeout.
+- Accessibility: `PKCanvasView` VoiceOver label "Customer signature pad — sign here to authorize payment". "Accept" button disabled until at least one stroke. "Clear" always enabled.
+- Offline: on-phone signature always available offline. Terminal path requires network to `capture-signature` endpoint — if offline, `SignatureRouter` auto-routes to `.onPhone`.
+- Audit: both paths log `signature_captured` event to `PosAuditLogStore` with `{ method: 'terminal'|'phone', invoiceId, actorId, timestamp }`.
+
+**Expected UX**
+1. Card payment approved by BlockChyp terminal.
+2. `process-payment` response: `sigRequired: true, terminalName: "counter-1"`.
+3. `SignatureRouter.route(...)` returns `.terminal(name: "counter-1")`.
+4. iOS shows "Customer signing on terminal…" spinner.
+5. Customer signs on the physical terminal PIN pad.
+6. `capture-signature` returns base64 PNG; payment record finalized.
+7. If terminal unreachable after 3s: automatic fallback to `SignatureSheet` on-phone. Cashier hands device to customer.
+8. Customer signs on screen; "Accept" tapped; `.success` haptic fires; sheet dismisses.
+- Error: if both terminal timeout AND on-phone rejected (3 taps of "Clear + Cancel"): offer "Skip signature" with manager PIN + audit log entry.
+- VoiceOver: spinner announces "Waiting for customer signature on terminal. This may take up to 30 seconds."
+
+**Status**
+- [ ] `SignatureRouter` struct + `SignatureRoute` enum (new file).
+- [ ] Terminal path: `POST /api/v1/blockchyp/capture-signature` with 30s polling.
+- [ ] On-phone fallback: `SignatureSheet` with `PKCanvasView`.
+- [ ] Auto-routing logic (terminal preferred, fallback on timeout / no terminal).
+- [ ] Audit log entries for both paths.
+- [ ] Offline: always route to on-phone when network unavailable.
+
+---
+
+### 16.27 Cream primary token swap (`#fdeed0`) across iOS DesignTokens
+
+**Reference**
+- Color token set verbatim from `../pos-phone-mockups.html` top `<style>` block (confirmed as the winning primary per the palette showcase section).
+- Android reference: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/theme/Theme.kt` lines 100–154 (cream already shipped this wave on Android).
+- iOS file: `ios/Packages/DesignSystem/Sources/DesignSystem/Tokens.swift` — add a `BrandColor` enum section. Also `ios/Packages/DesignSystem/Sources/DesignSystem/BrandFonts.swift`, `BrandMotion.swift`, `BrandHaptics.swift` for context (no changes needed in those files).
+- Note: `DesignTokens.swift` is referenced in the task prompt; the actual file path in this codebase is `ios/Packages/DesignSystem/Sources/DesignSystem/Tokens.swift`.
+
+**Backend**
+- No server-side changes. Color tokens are client-only.
+
+**Frontend (iOS)**
+- Add `BrandPalette` enum to `ios/Packages/DesignSystem/Sources/DesignSystem/Tokens.swift` with the following constants, matching the HTML mockup exactly:
+
+```swift
+// MARK: - Brand palette (cream wave — 2026-04-24)
+// Source of truth: ../pos-phone-mockups.html <style> :root block.
+// Android parity: ui/theme/Theme.kt lines 100–154.
+public enum BrandPalette {
+    // Primary action color — warm cream; replaces old orange project-wide.
+    public static let primary    = Color(hex: "#fdeed0")  // --primary
+    public static let onPrimary  = Color(hex: "#2b1400")  // --on-primary
+    // Dark warm backgrounds
+    public static let bg         = Color(hex: "#0f0a14")  // --bg
+    public static let surface    = Color(hex: "#1a1722")  // --surface
+    public static let surface2   = Color(hex: "#241f2e")  // --surface-2
+    public static let outline    = Color(hex: "#332c3f")  // --outline
+    // Text
+    public static let on         = Color(hex: "#ece9f3")  // --on
+    public static let muted      = Color(hex: "#a79fb8")  // --muted
+    // Semantic
+    public static let success    = Color(hex: "#34c47e")  // --success
+    public static let warning    = Color(hex: "#e8a33d")  // --warning
+    public static let error      = Color(hex: "#e2526c")  // --error
+    public static let teal       = Color(hex: "#4db8c9")  // --teal
+}
+```
+
+- `Color(hex:)` extension already exists or must be added to `DesignSystem` (one-liner `init`).
+- SwiftLint rule `forbid_inline_design_values` (referenced in `Tokens.swift` file header) must flag any remaining hardcoded `#FF6600`-style orange values in the `Pos` package after the swap.
+- Asset catalog (`Assets.xcassets`) light/dark variants: `Primary` adaptive color — light mode uses a slightly darker tint `#e8c98a` for contrast; dark mode uses `#fdeed0` directly. Both map through the `BrandPalette.primary` token (never inline hex in views).
+- Migration checklist: search all `Pos` and `CheckIn` package Swift files for `Color(.orange)`, `Color(red:0.9, green:...)`, or hardcoded orange hex values; replace with `BrandPalette.primary`. CI will catch misses via the SwiftLint rule.
+- `GlassKit.swift` tint color: `brandGlass` modifier uses `BrandPalette.primary` for the glass tint layer — update if currently hardcoded to orange.
+
+**Expected UX**
+- Every cream-colored element in the POS flow (Tender CTA, active chips, search bar border, tile prices, "Charge" button) uses `BrandPalette.primary`.
+- `--on-primary` (`#2b1400`) provides accessible dark text on all cream backgrounds. WCAG AA contrast ratio: cream `#fdeed0` on dark brown `#2b1400` = 9.8:1 (passes AAA).
+- No visual change to non-POS screens in this pass — token is additive. The old orange color asset remains until a project-wide audit pass removes it (separate backlog item).
+
+**Status**
+- [ ] `BrandPalette` enum added to `Tokens.swift`.
+- [ ] `Color(hex:)` extension confirmed present in `DesignSystem`.
+- [ ] Asset catalog `Primary` adaptive color entry (cream / dark-mode tint).
+- [ ] SwiftLint sweep of `Pos` + `CheckIn` packages for residual orange values.
+- [ ] `GlassKit.swift` tint updated to `BrandPalette.primary`.
+- [ ] Tests: `DesignTokensTests` — assert `BrandPalette.primary` hex string equals `"#fdeed0"`.
+
+---
 ## §17. Hardware Integrations
 
 _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription`, `NSBluetoothAlwaysUsageDescription`, `NSLocalNetworkUsageDescription`, `NSMicrophoneUsageDescription`, `NFCReaderUsageDescription`. MFi accessories need `UISupportedExternalAccessoryProtocols` array._
@@ -2441,6 +2936,60 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Preview: live in template editor with real tenant + sample data.
 - [ ] Pagination: long invoices span pages with reprinted header + page numbers.
 - [ ] See §30 for the full list.
+
+### 17.11 BlockChyp SDK status parity across iOS / Android
+
+**Reference**
+- Mockup: no dedicated phone frame; relevant via the Card reader tile in "5 · Tender · split payment" and the signature flow documented in §16.26 above.
+- Android counterpart: `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/util/SignatureRouter.kt` (will land this wave) and the card tender tile in `bizarre-crm/android/app/src/main/java/com/bizarreelectronics/crm/ui/screens/pos/PosTenderScreen.kt` (will land).
+- Server completeness: `packages/server/src/routes/blockchyp.routes.ts:45-557` — the following routes **exist and are fully implemented**: `POST /api/v1/blockchyp/test-connection`, `POST /api/v1/blockchyp/capture-signature`, `POST /api/v1/blockchyp/process-payment`, `POST /api/v1/blockchyp/void`, `POST /api/v1/blockchyp/adjust-tip`, `GET /api/v1/blockchyp/status`. Service layer: `packages/server/src/services/blockchyp.ts:63-790` (config, client, payment, signature capture, membership). Migration: `packages/server/src/db/migrations/040_blockchyp.sql`.
+- iOS: `ios/Packages/Networking/Sources/Networking/APIClient.swift` (proxy calls); `ios/Packages/Pos/Sources/Pos/PosView.swift` (POS shell). BlockChyp iOS SDK not yet installed in SPM manifest — see blockers below.
+
+**Backend**
+- Server is **complete** for all six routes listed above. No server work needed in this wave.
+- Envelope: `{ success, data }` on all BlockChyp routes; `res.data.data` single unwrap. Terminal-side errors surfaced as `{ success: false, message }`.
+- Tip adjust: `POST /api/v1/blockchyp/adjust-tip` — body `{ transactionId, tipAmount }`. Called after approval if post-auth tip enabled; must fire before batch close.
+- Void: `POST /api/v1/blockchyp/void` — body `{ transactionId }`. Same-batch only; cross-batch = refund via captured token.
+
+**Frontend (iOS)**
+- **SDK gap**: BlockChyp publishes an iOS SDK (Swift Package). It is not yet added to `ios/Packages/Pos/Package.swift` or the app's `Package.swift`. This is the single largest blocker for all card payment work.
+- **Parity target** (match Android + server): test-connection heartbeat ping on POS mount, process-payment auth, capture-signature (terminal preferred / on-phone fallback per §16.26), void, adjust-tip, status polling.
+- **`BlockChypService`** — new actor in `ios/Packages/Pos/Sources/Pos/`. Wraps the SDK. All calls are `async throws`. Mirrors the server service shape: `testConnection()`, `processPayment(amount:terminalName:idempotencyKey:)`, `captureSignature(terminalName:)`, `void(transactionId:)`, `adjustTip(transactionId:tipAmount:)`, `status(terminalName:)`.
+- **`BlockChypRepository`** — thin layer above `BlockChypService`, adds GRDB persistence (transaction log) + audit logging to `PosAuditLogStore`. Repositories never let raw API calls reach ViewModels.
+- **Terminal pairing** (Settings → Hardware → Terminal): QR scan or manual IP + terminal code entry. Stored in Keychain (`com.bizarrecrm.pos.terminal`). `BlockChypService.testConnection()` called on save; success = green "Connected" badge; failure = red "Unreachable" badge with retry.
+- **Heartbeat**: on POS screen load, `BlockChypRepository.heartbeat()` called; sets `PosTenderViewModel.terminalStatus` to `.online / .offline`. Status badge rendered in POS toolbar (glass chip — chrome role per GlassKit). Polling every 30s while POS screen is active.
+- **Error surface**: all `BlockChypService` errors are mapped to `PosPaymentError` cases — `.declined(reason:)`, `.timeout`, `.networkUnavailable`, `.terminalBusy`, `.voidNotAllowed` (cross-batch). Each case has a localized user-facing message and a recommended action (retry / switch tender / contact admin).
+- **Offline posture**: `processPayment` requires network (BlockChyp is cloud-relay or local-network to terminal, not offline-native). If fully offline, "Card reader unavailable offline" alert with "Use cash or park cart" suggestions.
+- **PCI posture unchanged**: raw PAN never in iOS app memory or server DB. Only `{ token, last4, brand, authCode }` stored. Same as §16.6 sovereignty rules.
+- **Android parity table**:
+  - `test-connection` — Android: will land in `PosTenderScreen.kt`; iOS: `BlockChypRepository.heartbeat()` — [ ] not started.
+  - `process-payment` — Android: will land in `PosTenderScreen.kt`; iOS: `BlockChypRepository.processPayment(...)` — [ ] not started.
+  - `capture-signature` — Android: `SignaturePad.kt` EXISTS; iOS: `CheckInSignaturePad` (§16.26) + `BlockChypService.captureSignature(...)` — [ ] not started.
+  - `void` — Android: will land; iOS: `BlockChypRepository.void(...)` — [ ] not started.
+  - `adjust-tip` — Android: will land; iOS: `BlockChypRepository.adjustTip(...)` — [ ] not started.
+  - `status` — Android: will land; iOS: `BlockChypRepository.heartbeat()` reuses status endpoint — [ ] not started.
+
+**Expected UX**
+1. Admin opens Settings → Hardware → Terminal; scans QR printed on BlockChyp terminal; "test-connection" fires; "Connected · counter-1" green badge appears.
+2. Cashier opens POS; heartbeat runs; terminal status badge shows green in toolbar.
+3. Cashier taps "Card reader" tile in `PosTenderView`; `processPayment` fires; "Insert or tap card" hint shown.
+4. Customer taps/inserts card; approval flows through server to terminal; iOS receives approved response.
+5. If `sigRequired`: `SignatureRouter` routes (§16.26); signature captured; base64 PNG sent to server.
+6. Payment record finalized; `PosTenderView` advances to receipt.
+- Terminal offline: heartbeat fails → red badge → "Card reader" tile disabled with tooltip "Terminal offline"; cashier directed to other tenders.
+- Decline: error toast "Declined — INSUFFICIENT_FUNDS"; tile re-enables immediately for retry.
+- Timeout (60s): cancel sent to terminal; spinner dismissed; tile re-enables.
+
+**Status**
+- [ ] BlockChyp iOS SDK added to `ios/Packages/Pos/Package.swift` (BLOCKER — nothing below can ship without this).
+- [ ] `BlockChypService` actor + `BlockChypRepository`.
+- [ ] Terminal pairing UI (Settings → Hardware → Terminal) with Keychain storage.
+- [ ] Heartbeat on POS load + 30s polling + status chip in toolbar.
+- [ ] `processPayment` with idempotency key.
+- [ ] `captureSignature` wired to `SignatureRouter` (§16.26 dependency).
+- [ ] `void` + `adjustTip` wired from tender / post-approval flows.
+- [ ] `PosPaymentError` enum with localized messages.
+- [ ] Tests: `BlockChypServiceTests` mock SDK calls; assert error-mapping for each decline/timeout case. Coverage ≥ 80%.
 
 ---
 ## §18. Search (Global + Scoped)
