@@ -708,6 +708,4 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:2015-2032; fix=useId+htmlFor -->
 - [ ] SCAN-970. **DangerZone back navigation leaves stale termination token + typed slug in state.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/settings/DangerZoneTab.tsx:131-143; fix=onBack-reset-state -->
-- [ ] SCAN-971. **Dashboard NeedsAttentionCard fires two preference writes without try/catch — UI diverges from server on net error.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:603-613; fix=try-catch+toast-error -->
 

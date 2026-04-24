@@ -602,15 +602,29 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
 
   const toggleCollapsed = async () => {
     const next = !collapsed;
-    await preferencesApi.set('attention_collapsed', next);
-    queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_collapsed'] });
+    try {
+      await preferencesApi.set('attention_collapsed', next);
+      queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_collapsed'] });
+    } catch (err) {
+      // Server write failed — refetch so the UI reflects the unchanged value
+      // instead of silently diverging from the server.
+      console.error('[NeedsAttention] toggle-collapsed failed', err);
+      toast.error('Could not save preference');
+      queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_collapsed'] });
+    }
   };
 
   const handleSnooze = async (key: string, days: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const updated = { ...snoozedMap, [key]: Date.now() + days * 86400_000 };
-    await preferencesApi.set('attention_snoozed', updated);
-    queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_snoozed'] });
+    try {
+      await preferencesApi.set('attention_snoozed', updated);
+      queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_snoozed'] });
+    } catch (err) {
+      console.error('[NeedsAttention] snooze failed', err);
+      toast.error('Could not snooze item');
+      queryClient.invalidateQueries({ queryKey: ['prefs', 'attention_snoozed'] });
+    }
   };
 
   if (loading) {
