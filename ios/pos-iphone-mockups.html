@@ -1177,6 +1177,54 @@
   .light-mode .receipt-list .rl-head div:first-child { color: #1a1816 !important; }
   .light-mode .sheet-title { color: #1a1816 !important; }
   .light-mode .chip.primary { color: #2b1400 !important; }
+
+  /* ─── Option C gate — light-mode overrides ────────────────────────────── */
+  .light-mode .gate-hero-search {
+    background: rgba(30,24,16,0.04) !important;
+    border-color: rgba(30,24,16,0.15) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80), 0 4px 14px rgba(0,0,0,0.07) !important;
+  }
+  .light-mode .gate-hero-search span { color: #5a5550 !important; }
+  .light-mode .gate-btn-create {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.14) !important;
+    color: #1a1816 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.80) !important;
+  }
+  .light-mode .gate-btn-walkin {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.20) !important;
+    color: #5a5550 !important;
+  }
+
+  /* ─── Task 2+3: Tender step light-mode visibility fixes ───────────────── */
+  .light-mode .method .m-name { color: #1a1816 !important; }
+  .light-mode .method .m-sub { color: #5a5550 !important; }
+  .light-mode .method.selected .m-name { color: #ffffff !important; }
+  .light-mode .method.selected .m-sub { color: rgba(255,255,255,0.80) !important; }
+  .light-mode .tender-btn[disabled],
+  .light-mode .tender-btn.disabled {
+    background: #e8e3db !important;
+    color: #5a5550 !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+  }
+  .light-mode .tender-footer .tf-aux {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+  .light-mode .btn.secondary,
+  .light-mode .insp-btn {
+    background: #ffffff !important;
+    color: #1a1816 !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+  /* Task 3 audit — numpad, tender strings, labels */
+  .light-mode .numkey { color: #1a1816 !important; }
+  .light-mode .tender-hero .th-label { color: #5a5550 !important; }
+  .light-mode .tender-footer { color: #1a1816 !important; }
+  .light-mode .sp-method .mn { color: #1a1816 !important; }
 </style>
 </head>
 <body>
@@ -1219,39 +1267,46 @@
 
         <div class="scroll" style="padding: 20px 0 0;">
 
-          <div style="padding: 0 20px 10px;">
+          <div style="padding: 0 20px 14px;">
             <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
+            <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Every sale starts with a customer.</div>
           </div>
 
-          <!-- 3 gate rows, tighter padding, shorter sub-text -->
-          <div class="path-row primary" style="padding: 12px 14px;">
-            <div class="p-icon">👤</div>
-            <div style="flex: 1;">
-              <div class="p-name">Find existing</div>
-              <div class="p-sub">Search name, phone, loyalty ID</div>
+          <!-- Option C: hero search pill + 2 fallback buttons -->
+          <div style="padding: 0 16px 16px;">
+            <div class="gate-hero-search" style="
+              display: flex; align-items: center; gap: 10px;
+              background: rgba(255,255,255,0.07);
+              border: 1.5px solid rgba(253,238,208,0.30);
+              border-radius: 18px;
+              padding: 14px 16px;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.22);
+              min-height: 56px;
+            ">
+              <span style="font-size: 17px; opacity: 0.55;">🔍</span>
+              <span style="flex: 1; font-size: 14px; color: var(--muted);">Search name, phone, email, or loyalty #</span>
+              <span style="font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); padding: 2px 6px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; flex-shrink: 0;">⌘K</span>
             </div>
-            <span class="p-chev">›</span>
           </div>
 
-          <div class="path-row" style="padding: 12px 14px;">
-            <div class="p-icon" style="background: linear-gradient(180deg, #6ed4e3, #4db8c9); color: #002d35; border-color: rgba(255,255,255,0.22);">＋</div>
-            <div style="flex: 1;">
-              <div class="p-name">Create new</div>
-              <div class="p-sub">Name + phone · one-tap add</div>
-            </div>
-            <span class="p-chev">›</span>
+          <div style="text-align: center; font-size: 12px; color: var(--muted-2); margin-bottom: 10px;">Can't find them?</div>
+
+          <div style="display: flex; gap: 10px; padding: 0 16px 20px;">
+            <button class="gate-btn-create" style="
+              flex: 1; padding: 11px 8px;
+              background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+              border-radius: 14px; color: var(--on); font-size: 13px; font-weight: 600;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+              cursor: pointer;
+            ">＋ Create new</button>
+            <button class="gate-btn-walkin" style="
+              flex: 1; padding: 11px 8px;
+              background: rgba(255,255,255,0.04); border: 1.5px dashed rgba(255,255,255,0.18);
+              border-radius: 14px; color: var(--muted); font-size: 13px; font-weight: 600;
+              cursor: pointer;
+            ">🚶 Walk-in</button>
           </div>
 
-          <div class="path-row" style="padding: 12px 14px; border-style: dashed;">
-            <div class="p-icon" style="background: transparent; border: 1.5px dashed rgba(255,255,255,0.2);">🚶</div>
-            <div style="flex: 1;">
-              <div class="p-name">Walk-in · no record</div>
-              <div class="p-sub">Quick sale · no loyalty, no history</div>
-            </div>
-            <span class="p-chev">›</span>
-          </div>
-
-          <div style="height: 20px;"></div>
         </div>
 
         <div class="home-indicator"></div>
@@ -2244,39 +2299,46 @@
 
         <div class="scroll" style="padding: 20px 0 0;">
 
-          <div style="padding: 0 20px 10px;">
+          <div style="padding: 0 20px 14px;">
             <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
+            <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Every sale starts with a customer.</div>
           </div>
 
-          <!-- 3 gate rows, tighter padding, shorter sub-text -->
-          <div class="path-row primary" style="padding: 12px 14px;">
-            <div class="p-icon">👤</div>
-            <div style="flex: 1;">
-              <div class="p-name">Find existing</div>
-              <div class="p-sub">Search name, phone, loyalty ID</div>
+          <!-- Option C: hero search pill + 2 fallback buttons -->
+          <div style="padding: 0 16px 16px;">
+            <div class="gate-hero-search" style="
+              display: flex; align-items: center; gap: 10px;
+              background: rgba(255,255,255,0.07);
+              border: 1.5px solid rgba(253,238,208,0.30);
+              border-radius: 18px;
+              padding: 14px 16px;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.22);
+              min-height: 56px;
+            ">
+              <span style="font-size: 17px; opacity: 0.55;">🔍</span>
+              <span style="flex: 1; font-size: 14px; color: var(--muted);">Search name, phone, email, or loyalty #</span>
+              <span style="font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); padding: 2px 6px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; flex-shrink: 0;">⌘K</span>
             </div>
-            <span class="p-chev">›</span>
           </div>
 
-          <div class="path-row" style="padding: 12px 14px;">
-            <div class="p-icon" style="background: linear-gradient(180deg, #6ed4e3, #4db8c9); color: #002d35; border-color: rgba(255,255,255,0.22);">＋</div>
-            <div style="flex: 1;">
-              <div class="p-name">Create new</div>
-              <div class="p-sub">Name + phone · one-tap add</div>
-            </div>
-            <span class="p-chev">›</span>
+          <div style="text-align: center; font-size: 12px; color: var(--muted-2); margin-bottom: 10px;">Can't find them?</div>
+
+          <div style="display: flex; gap: 10px; padding: 0 16px 20px;">
+            <button class="gate-btn-create" style="
+              flex: 1; padding: 11px 8px;
+              background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+              border-radius: 14px; color: var(--on); font-size: 13px; font-weight: 600;
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+              cursor: pointer;
+            ">＋ Create new</button>
+            <button class="gate-btn-walkin" style="
+              flex: 1; padding: 11px 8px;
+              background: rgba(255,255,255,0.04); border: 1.5px dashed rgba(255,255,255,0.18);
+              border-radius: 14px; color: var(--muted); font-size: 13px; font-weight: 600;
+              cursor: pointer;
+            ">🚶 Walk-in</button>
           </div>
 
-          <div class="path-row" style="padding: 12px 14px; border-style: dashed;">
-            <div class="p-icon" style="background: transparent; border: 1.5px dashed rgba(255,255,255,0.2);">🚶</div>
-            <div style="flex: 1;">
-              <div class="p-name">Walk-in · no record</div>
-              <div class="p-sub">Quick sale · no loyalty, no history</div>
-            </div>
-            <span class="p-chev">›</span>
-          </div>
-
-          <div style="height: 20px;"></div>
         </div>
 
         <div class="home-indicator"></div>
