@@ -109,6 +109,44 @@ if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {
     queryClient.clear();
   });
+
+  // Stale lazy-chunk auto-reload (belt + suspenders with PageErrorBoundary).
+  // React.lazy() rejections surface as render errors that boundaries catch,
+  // but a dynamic `import()` triggered outside the Suspense tree (e.g. from
+  // an event handler or a timer) rejects as an unhandled Promise and never
+  // reaches any boundary. Catch that path here. Sentinel is shared with
+  // PageErrorBoundary so the one-shot guard applies across both paths.
+  const CHUNK_RELOAD_SENTINEL = 'bizarre:chunk-reload-attempted';
+  const looksLikeChunkError = (msg: string): boolean =>
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg) ||
+    /Importing a module script failed/i.test(msg) ||
+    /ChunkLoadError/i.test(msg);
+  const handleChunkReload = (): void => {
+    try {
+      if (!sessionStorage.getItem(CHUNK_RELOAD_SENTINEL)) {
+        sessionStorage.setItem(CHUNK_RELOAD_SENTINEL, String(Date.now()));
+        // eslint-disable-next-line no-console
+        console.warn('[main] stale chunk detected outside React tree — auto-reloading once');
+        window.location.reload();
+      }
+    } catch {
+      /* storage blocked — user will see the manual boundary card */
+    }
+  };
+  window.addEventListener('unhandledrejection', (e) => {
+    const reason = e.reason as { message?: string; name?: string } | undefined;
+    const msg = reason?.message ?? String(reason ?? '');
+    const name = reason?.name ?? '';
+    if (name === 'ChunkLoadError' || looksLikeChunkError(msg)) {
+      handleChunkReload();
+    }
+  });
+  window.addEventListener('error', (e) => {
+    if (looksLikeChunkError(e.message || '')) {
+      handleChunkReload();
+    }
+  });
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -12,8 +12,31 @@ interface State {
 }
 
 /**
+ * Detect "stale lazy-chunk after deploy" — Vite hashes every chunk
+ * filename, so a tab holding pre-deploy HTML will 404 when React.lazy
+ * tries to fetch an old chunk URL. Signatures vary across browsers:
+ *   Chrome/Firefox:  "Failed to fetch dynamically imported module"
+ *   Safari / newer:  "Importing a module script failed"
+ *   Webpack legacy:  error.name === 'ChunkLoadError'
+ */
+export function isChunkLoadError(err: unknown): boolean {
+  if (!err) return false;
+  const name = (err as { name?: string }).name ?? '';
+  const msg = (err as { message?: string }).message ?? '';
+  return (
+    name === 'ChunkLoadError' ||
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg) ||
+    /Importing a module script failed/i.test(msg)
+  );
+}
+
+const CHUNK_RELOAD_SENTINEL = 'bizarre:chunk-reload-attempted';
+
+/**
  * Page-level error boundary that catches render errors in route subtrees
- * and shows a friendly recovery card instead of a blank screen.
+ * and shows a friendly recovery card instead of a blank screen. Also
+ * auto-reloads once per session on stale-chunk errors (deploy rotation).
  */
 export class PageErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null };
@@ -28,6 +51,34 @@ export class PageErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // eslint-disable-next-line no-console
     console.error('PageErrorBoundary caught:', error, info.componentStack);
+
+    // Stale lazy-chunk after deploy: auto-reload once. sessionStorage
+    // sentinel prevents an infinite loop when chunks genuinely 404 (CDN
+    // down, misconfigured hosting) — second hit falls through to the
+    // manual card so the user can diagnose.
+    if (isChunkLoadError(error)) {
+      try {
+        if (!sessionStorage.getItem(CHUNK_RELOAD_SENTINEL)) {
+          sessionStorage.setItem(CHUNK_RELOAD_SENTINEL, String(Date.now()));
+          // eslint-disable-next-line no-console
+          console.warn('[PageErrorBoundary] stale chunk detected — auto-reloading once');
+          window.location.reload();
+        }
+      } catch {
+        // sessionStorage disabled / privacy mode — fall through to manual card.
+      }
+    }
+  }
+
+  componentDidMount(): void {
+    // Clear the reload sentinel on successful mount. If the boundary
+    // children rendered without error, the stale-chunk situation has
+    // resolved and a future deploy is eligible to auto-reload again.
+    try {
+      sessionStorage.removeItem(CHUNK_RELOAD_SENTINEL);
+    } catch {
+      /* ignore */
+    }
   }
 
   private handleReload = () => {
