@@ -34,14 +34,37 @@ data class HandoffEmployee(
 )
 
 /**
+ * §4.9 L770 — Structured handoff reason category.
+ *
+ * The [OTHER] variant requires a non-blank free-text [customText] to be provided
+ * by the user before the dialog can be confirmed.
+ */
+enum class HandoffReason(val label: String) {
+    SHIFT_CHANGE("Shift change"),
+    ESCALATION("Escalation"),
+    OUT_OF_EXPERTISE("Out of expertise"),
+    OTHER("Other…"),
+    ;
+
+    /**
+     * True when this variant requires a supplementary free-text field.
+     */
+    val requiresFreeText: Boolean get() = this == OTHER
+}
+
+/**
  * L722 — Transfer/Handoff dialog.
  *
  * Requires:
- * - A non-blank reason (auto-logged as an internal note by the server).
+ * - A structured [HandoffReason] selection (mandatory, §4.9 L770).
+ * - When [HandoffReason.OTHER] is selected, a non-blank free-text supplement.
  * - An employee selection from [employees].
  *
- * On confirm, calls [onConfirm] with (employeeId, reason). The caller wires
- * this to PUT /tickets/:id with [assigned_to] + the reason posted as a note.
+ * On confirm, calls [onConfirm] with (employeeId, reason). The reason string is
+ * the enum label, or the free-text value when [HandoffReason.OTHER] is chosen.
+ * The caller wires this to PUT /tickets/:id with `assigned_to` + posts the
+ * reason as an internal note. The server also sends an FCM push to the receiving
+ * technician.
  *
  * L723 (location transfer) is exposed via the optional [locations] + [onConfirmLocation]
  * parameters. If [locations] is empty the location section is hidden.
@@ -58,12 +81,20 @@ fun TicketHandoffDialog(
 ) {
     var selectedEmployee by remember { mutableStateOf<HandoffEmployee?>(null) }
     var employeeDropdownExpanded by remember { mutableStateOf(false) }
-    var reason by remember { mutableStateOf("") }
+
+    // §4.9 L770 — reason dropdown
+    var selectedReason by remember { mutableStateOf<HandoffReason?>(null) }
+    var reasonDropdownExpanded by remember { mutableStateOf(false) }
+    var freeTextReason by remember { mutableStateOf("") }
 
     var selectedLocation by remember { mutableStateOf<String?>(null) }
     var locationDropdownExpanded by remember { mutableStateOf(false) }
 
-    val canConfirm = selectedEmployee != null && reason.isNotBlank()
+    // Reason is valid when a category is selected AND (not OTHER, or free-text is filled)
+    val reasonIsValid = selectedReason != null &&
+            (selectedReason != HandoffReason.OTHER || freeTextReason.isNotBlank())
+
+    val canConfirm = selectedEmployee != null && reasonIsValid
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -126,20 +157,59 @@ fun TicketHandoffDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Required reason
-                OutlinedTextField(
-                    value = reason,
-                    onValueChange = { reason = it },
-                    label = { Text("Reason for transfer *") },
-                    placeholder = { Text("e.g. Specialist needed, shift change…") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 4,
-                    isError = reason.isBlank() && selectedEmployee != null,
-                    supportingText = if (reason.isBlank() && selectedEmployee != null) {
-                        { Text("Reason is required") }
-                    } else null,
-                )
+                // §4.9 L770 — structured reason dropdown
+                ExposedDropdownMenuBox(
+                    expanded = reasonDropdownExpanded,
+                    onExpandedChange = { reasonDropdownExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = selectedReason?.label ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Reason *") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = reasonDropdownExpanded) },
+                        isError = selectedReason == null && selectedEmployee != null,
+                        supportingText = if (selectedReason == null && selectedEmployee != null) {
+                            { Text("Reason is required") }
+                        } else null,
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = reasonDropdownExpanded,
+                        onDismissRequest = { reasonDropdownExpanded = false },
+                    ) {
+                        HandoffReason.entries.forEach { reason ->
+                            DropdownMenuItem(
+                                text = { Text(reason.label, style = MaterialTheme.typography.bodyMedium) },
+                                onClick = {
+                                    selectedReason = reason
+                                    reasonDropdownExpanded = false
+                                    if (!reason.requiresFreeText) freeTextReason = ""
+                                },
+                            )
+                        }
+                    }
+                }
+
+                // §4.9 L770 — free-text supplement shown only for OTHER
+                if (selectedReason == HandoffReason.OTHER) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = freeTextReason,
+                        onValueChange = { freeTextReason = it },
+                        label = { Text("Please specify *") },
+                        placeholder = { Text("Describe the reason…") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4,
+                        isError = freeTextReason.isBlank(),
+                        supportingText = if (freeTextReason.isBlank()) {
+                            { Text("Please describe the reason") }
+                        } else null,
+                    )
+                }
 
                 // Location picker (L723 — multi-location tenant only)
                 if (locations.isNotEmpty() && onConfirmLocation != null) {
@@ -180,8 +250,13 @@ fun TicketHandoffDialog(
             TextButton(
                 onClick = {
                     val emp = selectedEmployee ?: return@TextButton
-                    onConfirm(emp.id, reason.trim())
-                    // Also trigger location transfer if selected
+                    val reasonStr = if (selectedReason == HandoffReason.OTHER) {
+                        freeTextReason.trim()
+                    } else {
+                        selectedReason?.label ?: return@TextButton
+                    }
+                    onConfirm(emp.id, reasonStr)
+                    // Also trigger location transfer if selected (L723)
                     selectedLocation?.let { loc -> onConfirmLocation?.invoke(loc) }
                 },
                 enabled = canConfirm,

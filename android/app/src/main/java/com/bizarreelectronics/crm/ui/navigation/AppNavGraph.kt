@@ -85,6 +85,9 @@ import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
 import com.bizarreelectronics.crm.ui.screens.settings.AppearanceScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DisplaySettingsScreen
 import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
+import com.bizarreelectronics.crm.ui.screens.bench.BenchTabScreen
+import com.bizarreelectronics.crm.ui.screens.settings.DeviceTemplatesScreen
+import com.bizarreelectronics.crm.ui.screens.settings.RepairPricingScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
@@ -328,6 +331,15 @@ sealed class Screen(val route: String) {
     // §3.19 L613–L616 — Appearance / dashboard density picker.
     data object Appearance : Screen("settings/appearance")
 
+    // §4.9 L756 — Bench tab: list of current technician's active bench tickets.
+    data object Bench : Screen("bench")
+
+    // §4.9 L762 — Device templates Settings sub-screen.
+    data object DeviceTemplates : Screen("settings/device-templates")
+
+    // §4.9 L766 — Repair pricing catalog Settings sub-screen.
+    data object RepairPricing : Screen("settings/repair-pricing")
+
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
 
@@ -553,7 +565,9 @@ fun AppNavGraph(
             // §17.1-§17.5 — hardware screens are full-frame; no bottom bar.
             !currentRoute.startsWith("hardware/") &&
             currentRoute != Screen.HardwareSettings.route &&
-            currentRoute != Screen.PrinterDiscovery.route
+            currentRoute != Screen.PrinterDiscovery.route &&
+            // §4.9 L756 — bench tab and settings sub-screens hide the bottom bar
+            currentRoute != Screen.Bench.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -1791,6 +1805,29 @@ fun AppNavGraph(
             // §17.4 — Printer discovery & pairing sub-screen.
             composable(Screen.PrinterDiscovery.route) {
                 PrinterDiscoveryScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §4.9 L756 — Bench Tab ───
+            composable(Screen.Bench.route) {
+                BenchTabScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    onNavigateToTemplates = { navController.navigate(Screen.DeviceTemplates.route) },
+                )
+            }
+
+            // ─── §4.9 L762 — Device Templates ───
+            composable(Screen.DeviceTemplates.route) {
+                DeviceTemplatesScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §4.9 L766 — Repair Pricing ───
+            composable(Screen.RepairPricing.route) {
+                RepairPricingScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

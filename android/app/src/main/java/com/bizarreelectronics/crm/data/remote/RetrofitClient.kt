@@ -652,4 +652,8 @@ object RetrofitClient {
     @Provides @Singleton fun provideMorningChecklistApi(retrofit: Retrofit): MorningChecklistApi = retrofit.create(MorningChecklistApi::class.java)
     // §3.16 L592-L599 — activity feed (cursor-paginated) + reactions; all endpoints 404-tolerant
     @Provides @Singleton fun provideActivityApi(retrofit: Retrofit): ActivityApi = retrofit.create(ActivityApi::class.java)
+    // §4.9 L756 — bench-tab workflow; 404-tolerant (falls back to empty list on old server builds)
+    @Provides @Singleton fun provideBenchApi(retrofit: Retrofit): BenchApi = retrofit.create(BenchApi::class.java)
+    // §4.9 L762 — device templates CRUD; 404-tolerant
+    @Provides @Singleton fun provideDeviceTemplateApi(retrofit: Retrofit): DeviceTemplateApi = retrofit.create(DeviceTemplateApi::class.java)
 }
