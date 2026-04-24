@@ -1397,7 +1397,9 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-707. **[LOW] authStore.ts access token persisted to localStorage without encryption — XSS exposure** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: sessionStorage OR in-memory only; refresh via httpOnly cookie only.
 - [ ] SCAN-709. **admin backup download Content-Disposition unquoted filename — special chars break header parsing** — `packages/server/src/routes/admin.routes.ts:381`. Fix: quote + escape filename per RFC 5987.
 - [ ] SCAN-710. **repairDeskImport `RdResponse<T = any>` — third-party API shape unvalidated, silent type confusion risk** — `packages/server/src/services/repairDeskImport.ts:130`. Fix: Zod schema + parse at boundary.
-- [ ] SCAN-713. **[INFO] useWebSocket.ts `localStorage.getItem('accessToken')` — silent fail if token missing; no retry after login** — `packages/web/src/hooks/useWebSocket.ts:202`. Fix: subscribe to auth store + reconnect on token change.
+- [x] SCAN-713. **[INFO] useWebSocket.ts `localStorage.getItem('accessToken')` — silent fail if token missing; no retry after login** — `packages/web/src/hooks/useWebSocket.ts:202`. Fix: subscribe to auth store + reconnect on token change.
+  <!-- meta: scope=web/hooks; files=authStore.ts,useWebSocket.ts; commit=900d184c -->
+  - Done 2026-04-23. authStore emits `bizarre-crm:auth-ready` after login/switchUser/refresh. useWebSocket listens + reconnects.
 - [ ] SCAN-714. **db-worker.mjs LRU eviction close errors silently warned but not metrics-tracked — cache counter drift leaks handles** — `packages/server/src/db/db-worker.mjs:68-76`. Fix: increment metrics counter on eviction failure.
 
 ### Wave-26 scan-loop findings (2026-04-23)
@@ -1487,4 +1489,34 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
   <!-- meta: scope=web/utils; files=packages/web/src/utils/formatCurrency.ts; commit=2453734a -->
 - [x] SCAN-937. **`useSettings` swallows fetch errors — callers can't tell empty-settings from failed-load.**
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts; commit=c5b846d4 -->
+
+### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
+- [ ] SCAN-938. **Super-admin API client has no response interceptor — expired super-admin tokens silently fail every call with no cleanup.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:279-290; fix=add-401-interceptor -->
+- [ ] SCAN-939. **JWT `exp` claim used without numeric validation — a malformed token makes the refresh scheduler fire an immediate refresh on every request.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:95-96; fix=guard-isFinite -->
+- [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
+- [ ] SCAN-941. **Plan-fetch errors silently swallowed — UI cannot tell a failed fetch from an empty plan so feature gates silently deny.**
+  <!-- meta: scope=web/stores; files=packages/web/src/stores/planStore.ts:80-81; fix=expose-error-field -->
+- [ ] SCAN-942. **POS checkout line-item types use `unknown[]` — no compile-time guarantee the shape the server expects matches what the UI sends.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
+
+### Wave-49 scan-loop findings (2026-04-23) — web/components
+- [ ] SCAN-943. **Window.open links to external URLs without noopener/noreferrer — reverse-tabnapping risk.**
+  <!-- meta: scope=web/components; files=team/CommissionPeriodLock.tsx:79,shared/PrintPreviewModal.tsx:39,49; fix=add-noopener-noreferrer -->
+- [ ] SCAN-944. **Impersonation banner exit button is a clickable div without keyboard handler — keyboard users cannot exit impersonation.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/ImpersonationBanner.tsx:82-86; fix=use-real-button -->
+- [ ] SCAN-945. **Quick SMS modal buttons missing `type="button"` — can accidentally submit a parent form.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/QuickSmsModal.tsx:111,127,161,164; fix=add-type-button -->
+- [ ] SCAN-946. **Quick SMS recipient input is not programmatically linked to its label — assistive tech can't associate them.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/QuickSmsModal.tsx:98-104; fix=id-htmlFor -->
+- [ ] SCAN-947. **SMS template data typed as `any[]` throughout QuickSmsModal — type safety lost on a user-facing flow.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/QuickSmsModal.tsx:29,42,69,126; fix=define-SmsTemplate-interface -->
+- [ ] SCAN-948. **DataTable clickable rows + sortable headers have no keyboard handlers — keyboard users can't click into rows or sort columns.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/DataTable.tsx:169-188,197-206; fix=onKeyDown-enter-space -->
+- [ ] SCAN-949. **Getting-started widget recounts trackable steps on every render — unmemoized filter over static array.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/onboarding/GettingStartedWidget.tsx:142; fix=useMemo -->
+- [ ] SCAN-950. **Several onError callbacks in team/inventory components type the error as `any` — bypasses safe narrowing.**
+  <!-- meta: scope=web/components; files=team/CommissionPeriodLock.tsx:62,73,team/TicketHandoffModal.tsx:65,inventory/QuickAddInput.tsx:55; fix=unknown-and-narrow -->
 
