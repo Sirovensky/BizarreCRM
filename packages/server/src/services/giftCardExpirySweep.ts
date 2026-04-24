@@ -70,13 +70,19 @@ function writeExpirySweepAudit(db: Database, count: number): void {
   if (!auditExists?.name) return;
 
   try {
+    // SCAN-1173: don't bind the literal string 'system' to `ip_address` —
+    // downstream filters that assume an IP shape (e.g. `LIKE '%.%.%.%'`)
+    // skip those rows, and a future INET type migration would reject the
+    // value outright. Pass null for ip_address and move the source tag
+    // into details JSON instead.
     const details = JSON.stringify({
+      source: 'system',
       count,
       ran_at: new Date().toISOString(),
     });
     db.prepare(
-      'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, NULL, ?, ?)',
-    ).run('gift_card_expiry_sweep', 'system', details);
+      'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, NULL, NULL, ?)',
+    ).run('gift_card_expiry_sweep', details);
   } catch (err) {
     logger.error('giftCardExpirySweep: audit write failed', {
       count,

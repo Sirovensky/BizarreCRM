@@ -198,12 +198,18 @@ export async function computeSlaForTicket(
   const resolutionDue = toSqliteTimestamp(addHours(base, policy.resolution_hours));
 
   try {
+    // SCAN-1172: don't wipe `sla_breached = 0` here. A priority change on
+    // an already-breached ticket would silently reset the breach flag,
+    // corrupting breach counts + SLA reports. The slaBreachCron
+    // re-evaluates against whatever due-at the row now carries — if the
+    // new due-at pushes the deadline out, the next cron tick will flip
+    // the flag back appropriately; otherwise the existing breach stays
+    // recorded.
     await adb.run(
       `UPDATE tickets
        SET sla_policy_id             = ?,
            sla_first_response_due_at = ?,
-           sla_resolution_due_at     = ?,
-           sla_breached              = 0
+           sla_resolution_due_at     = ?
        WHERE id = ?`,
       policy.id, firstResponseDue, resolutionDue, ticket_id,
     );

@@ -1242,10 +1242,15 @@ app.use('/api/v1', (req, _res, next) => {
 // Inject database connection into every request
 // In single-tenant mode: always the global db
 // In multi-tenant mode: tenantResolver overrides req.db with the tenant's DB
+// SCAN-1175: hoist the default async-db wrapper to module scope so we
+// don't allocate a fresh closure object (4 bound methods) on every
+// request. The underlying worker-pool keys tasks by dbPath string so
+// sharing the wrapper is safe — tenantResolver still replaces req.asyncDb
+// per-request in multi-tenant mode when it switches the tenant DB.
+const defaultAsyncDb = createAsyncDb(config.dbPath);
 app.use((req, _res, next) => {
   req.db = db; // Default to global db (single-tenant fallback)
-  // Async DB: non-blocking worker thread version (for gradual migration)
-  req.asyncDb = createAsyncDb(config.dbPath);
+  req.asyncDb = defaultAsyncDb;
   next();
 });
 app.use(tenantResolver); // In multi-tenant mode, overrides req.db based on subdomain

@@ -278,11 +278,16 @@ export async function runDunningOnce(
             WHERE i.amount_due > 0
               AND i.status IN ('unpaid','overdue','partial')
               AND i.due_date IS NOT NULL
-              AND date(i.due_date) <= date(?)
+              -- SCAN-1174: compare the raw column so SQLite can range-scan
+              -- the i.due_date index. due_date is stored as YYYY-MM-DD
+              -- HH:MM:SS so lex compare equals chrono compare.
+              AND i.due_date <= ?
               AND r.id IS NULL
             LIMIT 500`,
         )
-        .all(seq.id, stepIndex, cutoffIso) as InvoiceRow[];
+        // SCAN-1174: cutoffIso is `YYYY-MM-DD`; due_date carries a time so
+        // append ` 23:59:59` to include any row due on the cutoff date.
+        .all(seq.id, stepIndex, `${cutoffIso} 23:59:59`) as InvoiceRow[];
 
       // SCAN-1140: hoist the "most recent run per invoice" lookup out of
       // the loop. Previously every iteration did a SELECT MAX over

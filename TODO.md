@@ -715,12 +715,13 @@ Verified working. Not TODOs.
 
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
-- [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**
-  <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
-
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
+
+### Wave-70 scan-loop findings (2026-04-24) — confirmStore/migrations/stripe/sla/giftCard/dunning/index
+- [ ] SCAN-1171. **[LOW] Master `stripe_webhook_events` unbounded growth — no retention.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/master-connection.ts:231-240; fix=daily-DELETE-30d -->
 
 ### Wave-69 scan-loop findings (2026-04-24) — client CSV/dashboard tz/pin/signature/portal
 

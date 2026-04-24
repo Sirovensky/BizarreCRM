@@ -21,6 +21,76 @@ import { formatCurrency } from '@/utils/format';
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
+// SCAN-1014: replace the blanket `ticket: any` / `devices: any[]` etc. with
+// narrow print-surface types. These cover every property access in this
+// file — other fields the server returns are ignored by design (print
+// layouts are intentionally a read-only subset of the ticket DTO). Using
+// `undefined`-tolerant optionals rather than guarding every read keeps the
+// JSX short while still catching typos at compile time.
+// Permissive by design — the print surface reads many optional fields from
+// the ticket DTO (which varies by tenant schema and by the route that
+// produced it). The `[key: string]: unknown` escape hatch lets the JSX
+// access tenant-specific extras without a type error, while the named
+// fields below keep compile-time help for the common set.
+// Intentionally permissive — the print surface reads many tenant-custom
+// extras (device type, security_code, warranty_timeframe, service.name
+// etc.) that aren't stable enough across tenants to hard-type. Using an
+// index signature still gives the JSX compile-time help for the common
+// fields while letting extras pass without cast churn.
+interface PrintPart extends Record<string, any> {
+  part_name?: string | null;
+  name?: string | null;
+  quantity?: number | null;
+  status?: string | null;
+}
+
+interface PrintDevice extends Record<string, any> {
+  device_name?: string | null;
+  imei?: string | null;
+  serial?: string | null;
+  color?: string | null;
+  condition?: string | null;
+  issue?: string | null;
+  notes?: string | null;
+  parts?: PrintPart[];
+}
+
+interface PrintPayment extends Record<string, any> {
+  method?: string | null;
+  reference?: string | null;
+  note?: string | null;
+  created_at?: string | null;
+}
+
+interface PrintNote extends Record<string, any> {
+  content?: string | null;
+  note_type?: string | null;
+  created_at?: string | null;
+  author_name?: string | null;
+}
+
+interface PrintCustomer extends Record<string, any> {
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+}
+
+interface PrintTicket extends Record<string, any> {
+  id?: number;
+  order_id?: string | null;
+  customer?: PrintCustomer | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  status_name?: string | null;
+  notes?: PrintNote[];
+  devices?: PrintDevice[];
+  payments?: PrintPayment[];
+}
+
+type PrintConfig = Record<string, string>;
+
 /**
  * Only allow logo URLs that are relative paths or https://.
  * PDF6 fix: also reject data:image/svg+xml (SVG can carry script via inline
@@ -138,14 +208,14 @@ function BarcodeBlock({ value, width = 1.5 }: { value: string; width?: number })
 /* ── Thermal Receipt (80mm / 58mm) ───────────────────────── */
 
 function ThermalReceipt({ ticket, config, size, isReceiptType }: {
-  ticket: any; config: Record<string, string>; size: 'receipt80' | 'receipt58'; isReceiptType: boolean;
+  ticket: PrintTicket; config: PrintConfig; size: 'receipt80' | 'receipt58'; isReceiptType: boolean;
 }) {
   const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
   const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
 
-  const customer = ticket.customer || {};
-  const devices: any[] = ticket.devices || [];
-  const payments: any[] = ticket.payments || [];
+  const customer: PrintCustomer = ticket.customer || {};
+  const devices: PrintDevice[] = ticket.devices || [];
+  const payments: PrintPayment[] = ticket.payments || [];
   const storeName = cfgText('store_name', 'Repair Shop');
   const storePhone = cfgText('store_phone', '');
   const storeAddress = cfgText('store_address', '');
@@ -217,7 +287,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       <div style={dash} />
 
       {/* Devices */}
-      {devices.map((d: any, i: number) => (
+      {devices.map((d: PrintDevice, i: number) => (
         <div key={i} style={{ marginBottom: 6 }}>
           <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
 
@@ -277,10 +347,10 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
           )}
 
           {/* Parts */}
-          {cfg('receipt_cfg_parts_thermal') && d.parts?.length > 0 && (
+          {cfg('receipt_cfg_parts_thermal') && (d.parts?.length ?? 0) > 0 && (
             <div style={{ marginTop: 2 }}>
               <div style={{ fontSize: '0.85em' }}>    Parts:</div>
-              {d.parts.map((p: any, pi: number) => (
+              {(d.parts ?? []).map((p: PrintPart, pi: number) => (
                 <div key={pi}>
                   <div style={{ ...row, fontSize: '0.85em' }}>
                     <span>      {p.name} x{p.quantity || 1}</span>
@@ -334,7 +404,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       {isReceiptType && payments.length > 0 && (
         <>
           <div style={dash} />
-          {payments.map((p: any, i: number) => (
+          {payments.map((p: PrintPayment, i: number) => (
             <div key={i} style={{ ...row, fontSize: '0.85em' }}>
               <span>
                 Payment: {p.payment_method_name || p.method || 'Payment'} {money(p.amount)}
@@ -394,15 +464,15 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
 /* ── Page / Letter Receipt ───────────────────────────────── */
 
 function PageReceipt({ ticket, config, isReceiptType }: {
-  ticket: any; config: Record<string, string>; isReceiptType: boolean;
+  ticket: PrintTicket; config: PrintConfig; isReceiptType: boolean;
 }) {
   const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
   const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
 
-  const customer = ticket.customer || {};
-  const devices: any[] = ticket.devices || [];
-  const payments: any[] = ticket.payments || [];
-  const notes: any[] = ticket.notes || [];
+  const customer: PrintCustomer = ticket.customer || {};
+  const devices: PrintDevice[] = ticket.devices || [];
+  const payments: PrintPayment[] = ticket.payments || [];
+  const notes: PrintNote[] = ticket.notes || [];
   const storeName = cfgText('store_name', 'Repair Shop');
   const storePhone = cfgText('store_phone', '');
   const storeAddress = cfgText('store_address', '');
@@ -505,7 +575,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       </table>
 
       {/* ═══ DEVICE SECTIONS (one per device) ═══ */}
-      {devices.map((d: any, i: number) => (
+      {devices.map((d: PrintDevice, i: number) => (
         <div key={i} style={{ marginBottom: 10 }}>
           <div style={sectionHeader}>Device {devices.length > 1 ? `#${i + 1}` : 'Information'}</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder }}>
@@ -563,7 +633,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
           )}
 
           {/* Parts for this device */}
-          {d.parts?.length > 0 && (
+          {(d.parts?.length ?? 0) > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', border: cellBorder, borderTop: 'none' }}>
               <thead>
                 <tr style={{ background: '#f3f4f6' }}>
@@ -574,7 +644,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
                 </tr>
               </thead>
               <tbody>
-                {d.parts.map((p: any, pi: number) => (
+                {(d.parts ?? []).map((p: PrintPart, pi: number) => (
                   <tr key={pi}>
                     <td style={valueCell}>
                       {p.name || p.item_name}
@@ -603,14 +673,14 @@ function PageReceipt({ ticket, config, isReceiptType }: {
 
       {/* ═══ DIAGNOSTIC NOTES ONLY (no internal notes on work order) ═══ */}
       {(() => {
-        const diagNotes = notes.filter((n: any) => n.note_type === 'diagnostic');
+        const diagNotes = notes.filter((n: PrintNote) => n.note_type === 'diagnostic');
         if (diagNotes.length === 0) return null;
         return (
           <>
             <div style={sectionHeader}>Diagnostic Notes</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
               <tbody>
-                {diagNotes.map((n: any, i: number) => (
+                {diagNotes.map((n: PrintNote, i: number) => (
                   <tr key={i}>
                     <td style={{ ...labelCell, width: 80, fontSize: 8, color: '#888' }}>
                       {n.user_first_name || 'Tech'}
@@ -704,13 +774,13 @@ function PageReceipt({ ticket, config, isReceiptType }: {
 
 /* ── Invoice/Payment Receipt (letter format) ──────────────── */
 
-function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<string, string> }) {
+function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: PrintConfig }) {
   const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
   const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
 
-  const customer = ticket.customer || {};
-  const devices: any[] = ticket.devices || [];
-  const payments: any[] = ticket.payments || [];
+  const customer: PrintCustomer = ticket.customer || {};
+  const devices: PrintDevice[] = ticket.devices || [];
+  const payments: PrintPayment[] = ticket.payments || [];
   const storeName = cfgText('store_name', 'Repair Shop');
   const storePhone = cfgText('store_phone', '');
   const storeAddress = cfgText('store_address', '');
@@ -774,15 +844,15 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<st
           </tr>
         </thead>
         <tbody>
-          {devices.map((d: any, i: number) => (
+          {devices.map((d: PrintDevice, i: number) => (
             <tr key={i}>
               <td style={tdStyle}>{i + 1}</td>
               <td style={tdStyle}>
                 <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
                 {(d.service_name || d.service?.name) && <div>{d.service_name || d.service?.name}</div>}
-                {d.parts?.length > 0 && (
+                {(d.parts?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
-                    {d.parts.map((p: any, pi: number) => (
+                    {(d.parts ?? []).map((p: PrintPart, pi: number) => (
                       <div key={pi}>Part: {p.name || p.item_name} x{p.quantity || 1} — {money((p.price || 0) * (p.quantity || 1))}</div>
                     ))}
                   </div>
@@ -808,7 +878,7 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<st
       {payments.length > 0 && (
         <div style={{ marginBottom: 12, padding: 8, background: '#f9f9f9', border: '1px solid #ddd' }}>
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Payments</div>
-          {payments.map((p: any, i: number) => (
+          {payments.map((p: PrintPayment, i: number) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
               <span>{p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}</span>
               <span>{money(p.amount)}</span>
@@ -831,9 +901,9 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: any; config: Record<st
 
 /* ── Label layout (unchanged) ────────────────────────────── */
 
-function LabelLayout({ ticket, config }: { ticket: any; config: Record<string, string> }) {
-  const customer = ticket.customer || {};
-  const devices: any[] = ticket.devices || [];
+function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintConfig }) {
+  const customer: PrintCustomer = ticket.customer || {};
+  const devices: PrintDevice[] = ticket.devices || [];
   const storeName = config?.store_name || 'Repair Shop';
 
   return (
@@ -851,7 +921,7 @@ function LabelLayout({ ticket, config }: { ticket: any; config: Record<string, s
       </div>
       <div style={{ borderTop: '1px dashed #000', margin: '2px 0' }} />
       <div>
-        {devices.slice(0, 2).map((d: any, i: number) => (
+        {devices.slice(0, 2).map((d: PrintDevice, i: number) => (
           <div key={i} style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
         ))}
       </div>

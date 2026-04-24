@@ -24,6 +24,16 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
 
   confirm: (opts) => {
     return new Promise<boolean>((resolve) => {
+      // SCAN-1169: if a prior confirm is still pending (modal is still open
+      // and its resolver hasn't been called), settle it with `false` before
+      // overwriting the slot. Otherwise the previous promise hangs forever
+      // and any code awaiting it leaks its closure over the session. The
+      // "cancel previous" semantics match what users perceive — the second
+      // call visually replaces the first dialog.
+      const prev = get().resolve;
+      if (prev) {
+        try { prev(false); } catch { /* best-effort */ }
+      }
       set({
         open: true,
         title: opts.title || 'Confirm',
