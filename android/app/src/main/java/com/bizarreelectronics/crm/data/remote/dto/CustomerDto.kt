@@ -218,3 +218,15 @@ data class CustomerNote(
 data class CreateCustomerNoteRequest(
     val body: String,
 )
+
+/**
+ * POS-STORECREDIT-001: response shape for GET /customers/:id/store-credit.
+ * Server returns cents (integer) to avoid float precision loss when the
+ * Android POS entry Store-credit tile prints the balance.
+ */
+data class StoreCreditBalanceData(
+    @SerializedName("customer_id")
+    val customerId: Long,
+    @SerializedName("amount_cents")
+    val amountCents: Long,
+)

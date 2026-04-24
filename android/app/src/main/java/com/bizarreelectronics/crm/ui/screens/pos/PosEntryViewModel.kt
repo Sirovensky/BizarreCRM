@@ -80,6 +80,7 @@ class PosEntryViewModel @Inject constructor(
             )
         }
         loadCustomerHistory(c.id)
+        loadStoreCredit(c.id)
     }
 
     fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {
@@ -103,6 +104,7 @@ class PosEntryViewModel @Inject constructor(
                 )
                 coordinator.attachCustomer(attached)
                 _uiState.update { it.copy(attachedCustomer = attached, searchQuery = "", searchResults = SearchResultGroup()) }
+                loadStoreCredit(detail.id)
             }.onFailure { e ->
                 _uiState.update { it.copy(errorMessage = "Could not create customer: ${e.message}") }
             }
@@ -141,6 +143,20 @@ class PosEntryViewModel @Inject constructor(
 
     private fun clearResults() {
         _uiState.update { it.copy(searchResults = SearchResultGroup(), isSearching = false) }
+    }
+
+    private fun loadStoreCredit(customerId: Long) {
+        viewModelScope.launch {
+            val cents = runCatching { customerApi.getStoreCredit(customerId) }
+                .getOrNull()?.data?.amountCents ?: 0L
+            _uiState.update { s ->
+                val existing = s.attachedCustomer ?: return@update s
+                if (existing.id != customerId) return@update s
+                val updated = existing.copy(storeCreditCents = cents)
+                coordinator.attachCustomer(updated)
+                s.copy(attachedCustomer = updated)
+            }
+        }
     }
 
     private fun loadCustomerHistory(customerId: Long) {

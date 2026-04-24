@@ -318,6 +318,28 @@ router.get(
   }),
 );
 
+// POS-STORECREDIT-001: read-only store-credit balance lookup for POS.
+// Android POS entry screen renders a 'Balance: $X.XX · add funds'
+// subtitle on the Store-credit tile when the attached customer has a
+// row in store_credits. Returns { amount_cents: 0 } when no row
+// exists so the client can render a zero-state without 404 handling.
+router.get(
+  '/:id/store-credit',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new AppError('invalid customer id', 400, ERROR_CODES.ERR_INPUT_VALIDATION);
+    }
+    const row = await adb.get<{ amount: number | null }>(
+      'SELECT amount FROM store_credits WHERE customer_id = ?',
+      id,
+    );
+    const amountCents = Math.round(((row?.amount ?? 0) as number) * 100);
+    res.json({ success: true, data: { customer_id: id, amount_cents: amountCents } });
+  }),
+);
+
 async function likeSearch(adb: AsyncDb, q: string) {
   // Escape %, _, \ so a user typing a raw wildcard can't widen the match
   // (enumeration / DoS). ESCAPE '\' makes SQLite honour the backslashes

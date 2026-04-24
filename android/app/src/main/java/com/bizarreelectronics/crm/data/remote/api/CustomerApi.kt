@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.CustomerPageResponse
 import com.bizarreelectronics.crm.data.remote.dto.CustomerStats
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
+import com.bizarreelectronics.crm.data.remote.dto.StoreCreditBalanceData
 import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import retrofit2.http.Body
@@ -63,6 +64,12 @@ interface CustomerApi {
         @Query("page") page: Int = 1,
         @Query("pagesize") pageSize: Int = 10,
     ): ApiResponse<TicketListData>
+
+    // POS-STORECREDIT-001: balance lookup for the POS entry Store-credit tile.
+    // Returns { customer_id, amount_cents } with amount_cents=0 when the
+    // customer has never had credit applied — no 404 on empty.
+    @GET("customers/{id}/store-credit")
+    suspend fun getStoreCredit(@Path("id") id: Long): ApiResponse<StoreCreditBalanceData>
 
     @POST("customers")
     suspend fun createCustomer(@Body request: CreateCustomerRequest): ApiResponse<CustomerDetail>

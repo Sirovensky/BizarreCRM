@@ -209,10 +209,20 @@ private fun EntryContent(
                 )
             }
             item {
+                // Mockup PHONE 1 post-attach: subtitle reads
+                // 'Balance: <green $X> · add funds'. When balance is zero
+                // we fall back to 'Add funds' so the tile doesn't imply
+                // there's money already loaded.
+                val credit = state.attachedCustomer?.storeCreditCents ?: 0L
+                val storeCreditSubtitle = if (credit > 0L) {
+                    "Balance: ${credit.toDollarString()} · add funds"
+                } else {
+                    "Add funds"
+                }
                 PathTile(
                     emoji = "💳",
                     title = "Store credit · payment",
-                    subtitle = "Balance · add funds",
+                    subtitle = storeCreditSubtitle,
                     isPrimary = false,
                     onClick = onStoreCredit,
                 )
