@@ -183,6 +183,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       next();
     }).catch(() => {
       res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));
+      return;
     });
   } catch (err) {
     res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));

@@ -952,7 +952,7 @@ function normalizeOrigin(raw: string): string {
     const host = isDefaultPort ? url.hostname : `${url.hostname}:${url.port}`;
     return `${url.protocol}//${host}`;
   } catch {
-    return raw;
+    return ''; // reject malformed origin
   }
 }
 
@@ -1149,7 +1149,7 @@ app.use('/api/v1', (req, res, next) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   // Use req.db when available (tenant context), fall back to the module-level db
   // for unauthenticated requests that arrive before tenantResolver runs.
-  const limitDb = (req as any).db ?? db;
+  const limitDb: Database.Database = (req.db as Database.Database | undefined) ?? db;
   const result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
@@ -1481,7 +1481,8 @@ if (config.multiTenant) {
       // Resolve tenant from path param instead of subdomain
       const masterDb = getMasterDb();
       if (!masterDb) return res.status(500).json({ success: false, message: 'Internal error' });
-      const tenant = masterDb.prepare("SELECT id, slug FROM tenants WHERE slug = ? AND status = 'active'").get(slug) as any;
+      interface TenantRow { id: number; slug: string; }
+      const tenant = masterDb.prepare("SELECT id, slug FROM tenants WHERE slug = ? AND status = 'active'").get(slug) as TenantRow | undefined;
       if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' });
       try {
         req.db = getTenantDb(tenant.slug);

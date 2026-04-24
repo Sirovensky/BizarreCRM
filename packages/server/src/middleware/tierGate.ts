@@ -18,9 +18,9 @@ export function requireFeature(feature: keyof PlanFeatures) {
     // silently defaulting to 'free' which could mask bugs.
     if (!req.tenantPlan) {
       logger.warn('tenant_plan_missing', { method: req.method, path: req.path, note: 'middleware chain issue — rejecting' });
-      res.status(500).json(errorBody(
+      res.status(403).json(errorBody(
         ERROR_CODES.ERR_TENANT_CONTEXT_MISSING,
-        'Tenant context not initialized. Please try again.',
+        'Tenant plan context missing.',
         rid,
       ));
       return;
