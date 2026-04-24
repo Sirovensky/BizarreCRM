@@ -62,6 +62,7 @@ import kotlinx.coroutines.withContext
         ExpenseEntity::class,
         DraftEntity::class,
         AppliedMigrationEntity::class,
+        SyncStateEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -81,7 +82,10 @@ import kotlinx.coroutines.withContext
     //
     // Plan §1 L215-L221: bumped from 6 to 7 to add the `applied_migrations`
     // tracking table (AppliedMigrationEntity) for migration discipline.
-    version = 7,
+    //
+    // Plan §1 L180+L183: bumped from 7 to 8 to add `sync_state` table and
+    // `_synced_at` bookkeeping columns on tickets/customers/inventory_items/invoices.
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -102,6 +106,7 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun draftDao(): DraftDao
     abstract fun appliedMigrationDao(): AppliedMigrationDao
+    abstract fun syncStateDao(): SyncStateDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
@@ -114,7 +119,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 7
+        const val SCHEMA_VERSION = 8
     }
 }
 

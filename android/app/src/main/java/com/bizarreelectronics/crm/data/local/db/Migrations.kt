@@ -590,6 +590,98 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 7 → 8: `sync_state` table + `_synced_at` bookkeeping columns.**
+     *
+     * ## What changes
+     *
+     * 1. Creates the `sync_state` table keyed by `(entity, filter_key, parent_id)`.
+     *    Stores server cursor, pagination exhaustion timestamp, oldest-cached
+     *    timestamp, and last-updated timestamp for each sync-able collection.
+     *    A unique index on the composite key enforces one row per logical scope.
+     *
+     * 2. Adds `_synced_at INTEGER NOT NULL DEFAULT 0` to `tickets`, `customers`,
+     *    `inventory_items`, and `invoices`. The column records the epoch-ms
+     *    timestamp of the last successful server write/confirm for each row.
+     *    Rows existing before this migration are back-filled to 0 (= never
+     *    synced), which is the correct conservative default: the sync engine
+     *    will re-confirm them on next sync.
+     *
+     * ## Why NOT a no-op / AutoMigration
+     *
+     * The back-fill `UPDATE … SET _synced_at = 0 WHERE _synced_at IS NULL`
+     * is technically redundant with `DEFAULT 0` on `ALTER TABLE`, but is
+     * included to make the migration's intent explicit and to satisfy
+     * [MigrationRegistry.validateAllStepsPresent] row tracking (a row is
+     * inserted into `applied_migrations` automatically by [TimedMigration]).
+     *
+     * ## Idempotency
+     *
+     * `CREATE TABLE IF NOT EXISTS` and `CREATE UNIQUE INDEX IF NOT EXISTS` are
+     * idempotent. `ALTER TABLE … ADD COLUMN` is NOT idempotent in SQLite, but
+     * Room guarantees each migration runs exactly once per device upgrade path,
+     * so this is safe.
+     *
+     * ## ActionPlan reference
+     *
+     * Plan §1 L180 (sync_state table) + L183 (_synced_at bookkeeping).
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // ── 1. Create sync_state table ────────────────────────────────────
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS sync_state (
+                    entity              TEXT    NOT NULL,
+                    filter_key          TEXT    NOT NULL DEFAULT '',
+                    parent_id           INTEGER NOT NULL DEFAULT 0,
+                    cursor              TEXT,
+                    oldest_cached_at    INTEGER NOT NULL DEFAULT 0,
+                    server_exhausted_at INTEGER,
+                    last_updated_at     INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (entity, filter_key, parent_id)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS index_sync_state_entity_filter_key_parent_id " +
+                    "ON sync_state(entity, filter_key, parent_id)"
+            )
+
+            // ── 2. Add _synced_at to tickets ──────────────────────────────────
+            db.execSQL(
+                "ALTER TABLE tickets ADD COLUMN _synced_at INTEGER NOT NULL DEFAULT 0"
+            )
+            db.execSQL(
+                "UPDATE tickets SET _synced_at = 0 WHERE _synced_at IS NULL"
+            )
+
+            // ── 3. Add _synced_at to customers ────────────────────────────────
+            db.execSQL(
+                "ALTER TABLE customers ADD COLUMN _synced_at INTEGER NOT NULL DEFAULT 0"
+            )
+            db.execSQL(
+                "UPDATE customers SET _synced_at = 0 WHERE _synced_at IS NULL"
+            )
+
+            // ── 4. Add _synced_at to inventory_items ──────────────────────────
+            db.execSQL(
+                "ALTER TABLE inventory_items ADD COLUMN _synced_at INTEGER NOT NULL DEFAULT 0"
+            )
+            db.execSQL(
+                "UPDATE inventory_items SET _synced_at = 0 WHERE _synced_at IS NULL"
+            )
+
+            // ── 5. Add _synced_at to invoices ─────────────────────────────────
+            db.execSQL(
+                "ALTER TABLE invoices ADD COLUMN _synced_at INTEGER NOT NULL DEFAULT 0"
+            )
+            db.execSQL(
+                "UPDATE invoices SET _synced_at = 0 WHERE _synced_at IS NULL"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -598,5 +690,6 @@ object Migrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     )
 }

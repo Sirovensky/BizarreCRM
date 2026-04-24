@@ -103,4 +103,12 @@ data class TicketEntity(
 
     @ColumnInfo(name = "last_synced_at")
     val lastSyncedAt: String? = null,
+
+    /**
+     * Epoch-ms timestamp of the last time this row was successfully written
+     * to or confirmed by the server. 0 = never synced.
+     * Used by the sync engine to detect stale local-only writes.
+     */
+    @ColumnInfo(name = "_synced_at")
+    val syncedAt: Long = 0L,
 )

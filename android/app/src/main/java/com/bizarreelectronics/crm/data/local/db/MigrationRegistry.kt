@@ -113,6 +113,12 @@ object MigrationRegistry {
             name = "applied-migrations-table: migration discipline tracking",
             migration = Migrations.MIGRATION_6_7,
         ),
+        Entry(
+            fromVersion = 7,
+            toVersion = 8,
+            name = "sync-state-table: cursor/pagination bookkeeping + _synced_at columns [plan:L180,L183]",
+            migration = Migrations.MIGRATION_7_8,
+        ),
     )
 
     /**

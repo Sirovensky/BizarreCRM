@@ -97,6 +97,13 @@ data class InventoryItemEntity(
 
     @ColumnInfo(name = "locally_modified")
     val locallyModified: Boolean = false,
+
+    /**
+     * Epoch-ms timestamp of the last time this row was successfully written
+     * to or confirmed by the server. 0 = never synced.
+     */
+    @ColumnInfo(name = "_synced_at")
+    val syncedAt: Long = 0L,
 )
 
 // ─── Backward-compat shims for the old Double API ──────────────────────────────

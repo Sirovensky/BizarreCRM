@@ -133,6 +133,33 @@ class MigrationRegistryTest {
     }
 
     // -------------------------------------------------------------------------
+    // MIGRATION_7_8 specific
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun migration7to8IsPresentInAllEntries() {
+        val entry = MigrationRegistry.ALL_ENTRIES.find { it.fromVersion == 7 && it.toVersion == 8 }
+        assertTrue(
+            "MIGRATION_7_8 (sync_state table + _synced_at columns) must be present in " +
+                "MigrationRegistry.ALL_ENTRIES",
+            entry != null,
+        )
+    }
+
+    @Test
+    fun chainCoversOneToEight() {
+        // Explicit check that 1→8 chain is complete, independent of SCHEMA_VERSION.
+        val entries = MigrationRegistry.ALL_ENTRIES
+        for (v in 1..7) {
+            val found = entries.any { it.fromVersion == v && it.toVersion == v + 1 }
+            assertTrue(
+                "Missing migration step $v → ${v + 1} in ALL_ENTRIES",
+                found,
+            )
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Heavy migration flag
     // -------------------------------------------------------------------------
 
