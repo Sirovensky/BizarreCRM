@@ -87,15 +87,15 @@ fun CheckInHostScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
-            // M3 Expressive: LinearWavyProgressIndicator (1.5.0-alpha18)
-            // matches the multi-minute nature of a check-in flow — the wave
-            // motion reads as "you are making progress" rather than the
-            // busy-spinner connotation of a flat bar. Usability guardrail #4
-            // (WavyProgressIndicator only for bounded long ops ≥ 5s) is met:
-            // each check-in step typically takes 30-60s.
+            // M3 Expressive LinearWavyProgressIndicator with slowed motion.
+            // User feedback 2026-04-24: the default wave speed felt
+            // distracting; `waveSpeed = 5.dp` (≈8x slower than default 40dp/s)
+            // keeps the shape character while making the motion feel
+            // ambient rather than agitated.
             @OptIn(ExperimentalMaterial3ExpressiveApi::class)
             LinearWavyProgressIndicator(
                 progress = { state.progressFraction },
+                waveSpeed = 5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics {
