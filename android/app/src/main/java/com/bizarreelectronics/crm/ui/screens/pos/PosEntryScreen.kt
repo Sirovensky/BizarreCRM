@@ -46,7 +46,7 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 @Composable
 fun PosEntryScreen(
     onNavigateToCart: () -> Unit,
-    onNavigateToCheckin: () -> Unit,
+    onNavigateToCheckin: (Long?) -> Unit,
     viewModel: PosEntryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -64,7 +64,7 @@ fun PosEntryScreen(
             EntryContent(
                 state = state,
                 onRetailSale = onNavigateToCart,
-                onRepairTicket = onNavigateToCheckin,
+                onRepairTicket = { onNavigateToCheckin(state.attachedCustomer?.id?.takeIf { it > 0L }) },
                 onStoreCredit = onNavigateToCart,
                 onOpenPickup = { ticketId ->
                     viewModel.openReadyForPickup(ticketId)

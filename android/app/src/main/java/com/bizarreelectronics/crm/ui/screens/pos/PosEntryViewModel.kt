@@ -145,18 +145,46 @@ class PosEntryViewModel @Inject constructor(
 
     private fun loadCustomerHistory(customerId: Long) {
         viewModelScope.launch {
-            runCatching { customerApi.getTickets(customerId, pageSize = 5) }
-                .getOrNull()?.data?.tickets?.let { tickets ->
-                    val repairs = tickets.map { t ->
-                        PastRepair(
-                            ticketId = t.id,
-                            description = t.firstDevice?.deviceName ?: "Ticket #${t.id}",
-                            date = t.createdAt?.take(10) ?: "",
-                            amountCents = ((t.total ?: 0.0) * 100).toLong(),
-                        )
-                    }
-                    _uiState.update { it.copy(pastRepairs = repairs) }
-                }
+            // Mockup PHONE 1 post-attach renders two buckets side-by-side:
+            // a green "Ready for pickup" hero for open+ready tickets, and a
+            // compact "Past repairs" list for closed+non-cancelled ones.
+            // Pull a single page (size 20) and partition client-side so we
+            // don't need two round-trips.
+            val tickets = runCatching { customerApi.getTickets(customerId, pageSize = 20) }
+                .getOrNull()?.data?.tickets
+                ?: return@launch
+
+            val ready = tickets.filter { t ->
+                val name = t.statusName?.lowercase().orEmpty()
+                val isClosed = (t.status?.isClosed ?: 0) == 1
+                val isCancelled = (t.status?.isCancelled ?: 0) == 1
+                !isClosed && !isCancelled &&
+                    (name.contains("ready") || name.contains("pickup"))
+            }.map { t ->
+                ReadyForPickupTicket(
+                    ticketId = t.id,
+                    orderId = t.orderId,
+                    deviceName = t.firstDevice?.deviceName ?: "Ticket #${t.id}",
+                    dueCents = ((t.total ?: 0.0) * 100).toLong(),
+                )
+            }
+
+            val past = tickets.filter { t ->
+                val isClosed = (t.status?.isClosed ?: 0) == 1
+                val isCancelled = (t.status?.isCancelled ?: 0) == 1
+                isClosed && !isCancelled
+            }.take(5).map { t ->
+                PastRepair(
+                    ticketId = t.id,
+                    description = t.firstDevice?.deviceName ?: "Ticket #${t.id}",
+                    date = t.createdAt?.take(10) ?: "",
+                    amountCents = ((t.total ?: 0.0) * 100).toLong(),
+                )
+            }
+
+            _uiState.update {
+                it.copy(readyForPickupTickets = ready, pastRepairs = past)
+            }
         }
     }
 }

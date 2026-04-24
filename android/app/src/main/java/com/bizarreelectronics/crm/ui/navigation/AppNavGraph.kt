@@ -1167,7 +1167,12 @@ fun AppNavGraph(
             composable(Screen.Pos.route) {
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
-                    onNavigateToCheckin = { navController.navigate(Screen.CheckInEntry.route) },
+                    onNavigateToCheckin = { customerId ->
+                        navController.navigate(
+                            if (customerId != null) Screen.CheckInEntry.createRoute(customerId)
+                            else Screen.CheckInEntry.route
+                        )
+                    },
                 )
             }
             composable(Screen.PosCart.route) { backStack ->
