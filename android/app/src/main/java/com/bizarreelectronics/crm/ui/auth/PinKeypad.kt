@@ -156,14 +156,29 @@ private fun KeyButton(
 }
 
 /**
- * Row of dots representing entered digits. Supports a shake animation fired
- * via `shakeTrigger` — increment it in the caller to retrigger on wrong PIN.
+ * Row of dots representing entered digits.
+ *
+ * Supports:
+ *  - Shake animation fired via [shakeTrigger] — increment to retrigger on wrong PIN.
+ *  - §2.15 tap-hold reveal: when [revealDigits] is true, filled dots are replaced
+ *    with the corresponding digit character from [enteredDigits]. The reveal state
+ *    is driven externally by [PinLockViewModel.onPinRevealStart] / [onPinRevealEnd].
+ *    The caller applies the [pointerInput] modifier via [modifier].
+ *
+ * @param entered       Number of digits entered so far.
+ * @param length        Total PIN length (number of dot slots).
+ * @param shakeTrigger  Increment to trigger the shake animation.
+ * @param revealDigits  When true, show actual digit characters instead of filled dots.
+ * @param enteredDigits The raw digit string entered so far (used when [revealDigits] is true).
+ * @param modifier      Applied to the [Row]; pass the [pointerInput] reveal modifier here.
  */
 @Composable
 fun PinDots(
     entered: Int,
     length: Int,
     shakeTrigger: Int = 0,
+    revealDigits: Boolean = false,
+    enteredDigits: String = "",
     modifier: Modifier = Modifier,
 ) {
     val offset = remember { Animatable(0f) }
@@ -183,15 +198,26 @@ fun PinDots(
     ) {
         repeat(length) { index ->
             val filled = index < entered
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (filled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outlineVariant
-                    ),
-            )
+            if (filled && revealDigits && index < enteredDigits.length) {
+                // §2.15 tap-hold reveal: show the actual digit character.
+                Text(
+                    text = enteredDigits[index].toString(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.width(18.dp),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (filled) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                )
+            }
         }
     }
 }

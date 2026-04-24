@@ -37,6 +37,10 @@ class PinLockViewModel @Inject constructor(
         val setupCandidate: String = "",
         val unlocked: Boolean = false,
         val pinChanged: Boolean = false,
+        /** §2.15 — true when digits should be visible (tap-hold reveal). */
+        val pinsVisible: Boolean = false,
+        /** §2.15 — non-blocking banner when 90-day rotation is due. */
+        val showRotationBanner: Boolean = false,
     ) {
         val isInLockout: Boolean
             get() = lockoutUntilMillis > System.currentTimeMillis()
@@ -108,11 +112,37 @@ class PinLockViewModel @Inject constructor(
         }
     }
 
+    /** §2.15 — reveal digits while the user holds down on the PIN dot row. */
+    fun onPinRevealStart() {
+        _state.value = _state.value.copy(pinsVisible = true)
+    }
+
+    /** §2.15 — hide digits again (called on pointer-up or 3-second auto-hide). */
+    fun onPinRevealEnd() {
+        _state.value = _state.value.copy(pinsVisible = false)
+    }
+
     private suspend fun handleVerify(pin: String) {
+        // §2.15 — offline-ok: try local hash first; skip server round-trip on match.
+        if (pinPrefs.verifyPinLocally(pin)) {
+            pinPrefs.recordSuccess()
+            val rotationDue = pinPrefs.isRotationDue()
+            _state.value = _state.value.copy(
+                isWorking = false,
+                entered = "",
+                unlocked = true,
+                showRotationBanner = rotationDue,
+            )
+            return
+        }
+
         val result = pinRepository.verify(pin)
         val base = _state.value.copy(isWorking = false, entered = "")
         _state.value = when (result) {
-            is PinRepository.VerifyResult.Success -> base.copy(unlocked = true)
+            is PinRepository.VerifyResult.Success -> base.copy(
+                unlocked = true,
+                showRotationBanner = pinPrefs.isRotationDue(),
+            )
             is PinRepository.VerifyResult.WrongPin -> base.copy(
                 wrongShakes = base.wrongShakes + 1,
                 remainingAttempts = result.remaining,

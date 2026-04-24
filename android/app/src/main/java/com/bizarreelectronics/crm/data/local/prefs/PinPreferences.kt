@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.bizarreelectronics.crm.util.Argon2idHasher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -13,10 +14,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Metadata store for §2.5 PIN lock.
+ * Metadata store for §2.5 PIN lock, extended in §2.15 (ActionPlan L382-L391)
+ * with a client-side hash mirror and rotation policy.
  *
- * The PIN itself is verified server-side via `POST /auth/verify-pin`. This
- * class only records:
+ * ## Fields managed here
  *
  *  - [isPinSet]          — whether the current user has completed PIN setup.
  *  - [failedAttempts]    — running count of wrong PINs since last success.
@@ -29,6 +30,18 @@ import javax.inject.Singleton
  *                           background grace, -1 = never (only on cold start).
  *  - [lockGraceMinutes]  — §2.5 slider value: 0 = immediate, 1/5/15 = N min,
  *                           [GRACE_NEVER] (Int.MAX_VALUE) = never mid-session.
+ *
+ * ## §2.15 additions: hash mirror + rotation
+ *
+ *  - [pinHashMirror]     — PBKDF2-SHA256 hash of the PIN stored in
+ *                           EncryptedSharedPreferences as a base64-encoded string.
+ *                           Enables [verifyPinLocally] during cold-start when
+ *                           the server may be unreachable (offline-ok path).
+ *                           The server (bcrypt) is ALWAYS the authority for
+ *                           mutating operations (change-pin, switch-user).
+ *  - [lastPinChangedAt]  — epoch millis of the last successful PIN change.
+ *  - [pinRotationDueAt]  — epoch millis when the 90-day rotation is due (tenant
+ *                           configurable; only advisory — never forced).
  *
  * Nothing here is safety-critical on its own — lockout times are advisory and
  * the server remains the source of truth on the PIN itself. The values live
@@ -185,6 +198,93 @@ class PinPreferences @Inject constructor(
         return next
     }
 
+    // -------------------------------------------------------------------------
+    // §2.15 — client-side hash mirror + rotation policy
+    // -------------------------------------------------------------------------
+
+    /**
+     * The locally stored PBKDF2-SHA256 hash of the PIN.
+     *
+     * Encoded as `"pbkdf2$<iters>$<salt_b64>$<hash_b64>"` (see [Argon2idHasher.PinHash.encode]).
+     * Null when no mirror has been set (e.g. fresh install or after [clearPinHash]).
+     *
+     * NEVER log this value — it contains hash bytes.
+     */
+    val pinHashMirror: Argon2idHasher.PinHash?
+        get() = prefs.getString(KEY_PIN_HASH_MIRROR, null)?.let { Argon2idHasher.decode(it) }
+
+    /**
+     * Persists [pinHash] as the local mirror.
+     *
+     * Called by PinRepository after a successful server PIN set/change so the
+     * offline-verify path has an up-to-date copy.
+     *
+     * NEVER log [pinHash].
+     */
+    fun setPinHash(pinHash: Argon2idHasher.PinHash) {
+        prefs.edit().putString(KEY_PIN_HASH_MIRROR, pinHash.encode()).apply()
+    }
+
+    /** Removes the local hash mirror (e.g. on logout or PIN reset). */
+    fun clearPinHash() {
+        prefs.edit().remove(KEY_PIN_HASH_MIRROR).apply()
+    }
+
+    /**
+     * Verifies [pin] against the locally stored [pinHashMirror] without a
+     * server round-trip — the offline-ok path.
+     *
+     * Returns false (and does NOT record a failure) when no mirror is set.
+     * The caller must fall through to the server verify path in that case.
+     *
+     * NEVER log [pin].
+     */
+    fun verifyPinLocally(pin: String): Boolean {
+        val stored = pinHashMirror ?: return false
+        return Argon2idHasher.verify(pin, stored)
+    }
+
+    /**
+     * Epoch millis of the last successful PIN change.
+     * 0L when the PIN has never been explicitly changed on this device.
+     */
+    var lastPinChangedAt: Long
+        get() = prefs.getLong(KEY_LAST_PIN_CHANGED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_PIN_CHANGED_AT, value).apply()
+
+    /**
+     * Epoch millis when the 90-day rotation reminder becomes active.
+     * Null when no rotation deadline has been scheduled.
+     *
+     * The rotation policy is advisory — the banner appears but the user is
+     * never blocked from unlocking. Setting PIN always resets this deadline.
+     */
+    val pinRotationDueAt: Long?
+        get() {
+            val raw = prefs.getLong(KEY_PIN_ROTATION_DUE_AT, 0L)
+            return if (raw == 0L) null else raw
+        }
+
+    /**
+     * Schedules the next rotation reminder [ROTATION_PERIOD_MS] after [fromMillis].
+     * Pass [System.currentTimeMillis] after a successful PIN change.
+     */
+    fun scheduleRotation(fromMillis: Long = System.currentTimeMillis()) {
+        prefs.edit()
+            .putLong(KEY_LAST_PIN_CHANGED_AT, fromMillis)
+            .putLong(KEY_PIN_ROTATION_DUE_AT, fromMillis + ROTATION_PERIOD_MS)
+            .apply()
+    }
+
+    /**
+     * Returns true when the 90-day rotation deadline has passed AND a deadline
+     * has been scheduled. A null [pinRotationDueAt] means no reminder is due.
+     */
+    fun isRotationDue(now: Long = System.currentTimeMillis()): Boolean {
+        val due = pinRotationDueAt ?: return false
+        return now >= due
+    }
+
     /** Clear on successful re-auth / PIN setup / logout. */
     fun reset() {
         prefs.edit().clear().apply()
@@ -197,6 +297,9 @@ class PinPreferences @Inject constructor(
          */
         const val GRACE_NEVER: Int = Int.MAX_VALUE
 
+        /** Advisory rotation interval: 90 days. */
+        const val ROTATION_PERIOD_MS: Long = 90L * 24 * 60 * 60 * 1_000
+
         private const val KEY_IS_PIN_SET = "is_pin_set"
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
         private const val KEY_LOCKOUT_UNTIL = "lockout_until"
@@ -204,6 +307,9 @@ class PinPreferences @Inject constructor(
         private const val KEY_LOCK_TIMEOUT_MIN = "lock_timeout_min"
         private const val KEY_LOCK_GRACE_MIN = "lock_grace_min"
         private const val KEY_HARD_LOCKOUT = "hard_lockout"
+        private const val KEY_PIN_HASH_MIRROR = "pin_hash_mirror"        // §2.15
+        private const val KEY_LAST_PIN_CHANGED_AT = "last_pin_changed_at" // §2.15
+        private const val KEY_PIN_ROTATION_DUE_AT = "pin_rotation_due_at" // §2.15
 
         private const val DEFAULT_TIMEOUT_MIN = 5
         private const val DEFAULT_GRACE_MIN = 15        // §2.5 default: 15 minutes

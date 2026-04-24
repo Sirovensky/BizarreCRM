@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.data.repository
 
 import com.bizarreelectronics.crm.data.local.prefs.PinPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.util.Argon2idHasher
+import com.bizarreelectronics.crm.util.PinBlocklist
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -96,35 +98,25 @@ class PinRepository @Inject constructor(
         }
         pinPrefs.isPinSet = true
         pinPrefs.recordSuccess()
+        // §2.15 — mirror the new PIN hash locally for offline cold-start verify.
+        // NEVER log newPin or the hash.
+        val pinHash = Argon2idHasher.hash(newPin)
+        pinPrefs.setPinHash(pinHash)
+        pinPrefs.scheduleRotation()
         return ChangeResult.Success
     }
 
     /**
-     * Tiny blocklist to steer users away from the most obvious 4-digit PINs.
-     * Not a substitute for server-side entropy rules — the server still has
-     * the final say.
+     * Validates that [pin] is acceptable before POSTing to the server.
+     * Delegates to [PinBlocklist] for the blocklist + monotonic-run check.
      */
     private fun isAcceptablePin(pin: String): Boolean {
         if (pin.length !in 4..6) return false
         if (!pin.all { it.isDigit() }) return false
-        if (pin in COMMON_PINS) return false
-        // Reject all-same-digit (0000, 1111, …) and strict runs (1234, 4321).
-        if (pin.toSet().size == 1) return false
-        if (isMonotonicRun(pin)) return false
-        return true
-    }
-
-    private fun isMonotonicRun(pin: String): Boolean {
-        val asc = pin.zipWithNext().all { (a, b) -> b.code - a.code == 1 }
-        val desc = pin.zipWithNext().all { (a, b) -> a.code - b.code == 1 }
-        return asc || desc
+        return !PinBlocklist.isBlocked(pin)
     }
 
     private companion object {
         private const val MAX_ATTEMPTS = 5
-        private val COMMON_PINS = setOf(
-            "0000", "1111", "1234", "2222", "4321", "9999",
-            "111111", "123456", "654321", "000000", "222222",
-        )
     }
 }
