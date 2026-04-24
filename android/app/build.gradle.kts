@@ -245,10 +245,21 @@ dependencies {
     // TwoFaVerifyStep field (§2.4 L302).
     implementation(libs.play.services.auth.api.phone)
 
-    // Testing
+    // Testing — unit test baseline
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+
+    // §1.6 Hilt @TestInstallIn scaffold (plan:L223)
+    // hilt-android-testing provides @HiltAndroidTest, HiltAndroidRule, @TestInstallIn.
+    testImplementation(libs.hilt.android.testing)
+    kspTest(libs.hilt.android.compiler.test)
+    // androidx.test runner — required by HiltAndroidRule for component injection.
+    testImplementation(libs.androidx.test.runner)
+    // InstantTaskExecutorRule for LiveData assertions in unit tests.
+    testImplementation(libs.androidx.arch.core.testing)
+    // TestDispatcher / runTest for deterministic coroutine testing.
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 // §32.1 — data-sovereignty Gradle guard rail.
