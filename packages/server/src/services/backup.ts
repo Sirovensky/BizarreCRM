@@ -379,16 +379,16 @@ export async function migrateBackupToV1(encPath: string): Promise<void> {
 
 type AnyRow = Record<string, any>;
 
-function getConfig(db: any, key: string, fallback = ''): string {
+function getConfig(db: Database.Database, key: string, fallback = ''): string {
   const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as AnyRow | undefined;
   return row?.value ?? fallback;
 }
 
-function setConfig(db: any, key: string, value: string): void {
+function setConfig(db: Database.Database, key: string, value: string): void {
   db.prepare('INSERT INTO store_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run(key, value, value);
 }
 
-export function getBackupSettings(db: any) {
+export function getBackupSettings(db: Database.Database) {
   return {
     path: getConfig(db, 'backup_path', ''),
     schedule: getConfig(db, 'backup_schedule', '0 3 * * *'), // default 3 AM daily
@@ -399,7 +399,7 @@ export function getBackupSettings(db: any) {
   };
 }
 
-export function updateBackupSettings(db: any, settings: { path?: string; schedule?: string; retention?: number; encrypt?: boolean }) {
+export function updateBackupSettings(db: Database.Database, settings: { path?: string; schedule?: string; retention?: number; encrypt?: boolean }) {
   if (settings.path !== undefined) setConfig(db, 'backup_path', settings.path);
   if (settings.schedule !== undefined) setConfig(db, 'backup_schedule', settings.schedule);
   if (settings.retention !== undefined) setConfig(db, 'backup_retention', String(settings.retention));
@@ -546,7 +546,7 @@ function runIntegrityCheck(dbPath: string): { ok: boolean; message: string } {
 }
 
 export async function runBackup(
-  db: any,
+  db: Database.Database,
   opts?: { tenantSlug?: string; tenantId?: number; encrypt?: boolean },
 ): Promise<{ success: boolean; message: string; file?: string }> {
   const lockKey = opts?.tenantSlug || SINGLE_TENANT_LOCK_KEY;
@@ -718,7 +718,7 @@ function pruneBackups(dir: string, keep: number) {
   }
 }
 
-export function listBackups(db: any): { name: string; size: number; date: string }[] {
+export function listBackups(db: Database.Database): { name: string; size: number; date: string }[] {
   const backupDir = getConfig(db, 'backup_path', '');
   if (!backupDir || !fs.existsSync(backupDir)) return [];
 
@@ -731,7 +731,7 @@ export function listBackups(db: any): { name: string; size: number; date: string
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export function deleteBackup(db: any, filename: string): boolean {
+export function deleteBackup(db: Database.Database, filename: string): boolean {
   const backupDir = getConfig(db, 'backup_path', '');
   if (!backupDir || !isBackupFile(filename)) return false;
 
@@ -761,7 +761,7 @@ export function deleteBackup(db: any, filename: string): boolean {
  * Resolve a backup filename to an absolute path, enforcing that it stays
  * inside the configured backup directory. Returns null on any violation.
  */
-export function resolveBackupPath(db: any, filename: string): string | null {
+export function resolveBackupPath(db: Database.Database, filename: string): string | null {
   const backupDir = getConfig(db, 'backup_path', '');
   if (!backupDir || !isBackupFile(filename)) return null;
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return null;
@@ -804,7 +804,7 @@ export interface RestoreBackupOptions {
 }
 
 export async function restoreBackup(
-  db: any,
+  db: Database.Database,
   filename: string,
   opts: RestoreBackupOptions,
 ): Promise<{ success: boolean; message: string; safetyBackup?: string; hash?: string; unsigned?: boolean }> {
@@ -968,7 +968,7 @@ export function listDrives(): { path: string; label: string; free: number; total
 // Cron management
 let cronTask: cron.ScheduledTask | null = null;
 
-export function scheduleBackup(db: any) {
+export function scheduleBackup(db: Database.Database) {
   if (cronTask) { cronTask.stop(); cronTask = null; }
   const schedule = getConfig(db, 'backup_schedule', '0 3 * * *');
   const backupPath = getConfig(db, 'backup_path', '');

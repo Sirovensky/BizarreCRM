@@ -15,6 +15,7 @@
 
 import * as cheerio from 'cheerio';
 import { createHash } from 'crypto';
+import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 
@@ -364,7 +365,7 @@ export function parseCompatibleDevices(title: string): string[] {
 }
 
 /** Map parsed device name strings to device_model.id values in our DB */
-function matchDeviceModels(db: any, deviceNames: string[]): number[] {
+function matchDeviceModels(db: Database.Database, deviceNames: string[]): number[] {
   const ids: number[] = [];
   for (const name of deviceNames) {
     const row = db.prepare(`
@@ -460,7 +461,7 @@ async function fetchSearchPage(
  * a locked item MUST NOT have its cost overwritten on sync. We short-circuit
  * upsertProduct in that case so historical cost stays intact.
  */
-function isLinkedInventoryCostLocked(db: any, p: ScrapedProduct): boolean {
+function isLinkedInventoryCostLocked(db: Database.Database, p: ScrapedProduct): boolean {
   try {
     if (p.sku) {
       const bySku = db.prepare(
@@ -485,7 +486,7 @@ function isLinkedInventoryCostLocked(db: any, p: ScrapedProduct): boolean {
  * have not yet run migration 079) by swallowing the insert error.
  */
 function recordPriceHistory(
-  db: any,
+  db: Database.Database,
   catalogId: number,
   source: CatalogSource,
   existing: { external_id?: string; sku?: string | null; name?: string | null; price?: number | null },
@@ -517,7 +518,7 @@ interface UpsertContext {
 }
 
 function upsertProduct(
-  db: any,
+  db: Database.Database,
   source: CatalogSource,
   p: ScrapedProduct,
   ctx: UpsertContext = { changeSource: 'scrape', jobId: null },
@@ -617,7 +618,7 @@ interface ScrapeError {
  *   failed           — zero successful upserts (or hard exception)
  */
 export async function scrapeCatalog(
-  db: any,
+  db: Database.Database,
   source: CatalogSource,
   jobId?: number,
 ): Promise<{ jobId: number; itemsUpserted: number; status: string }> {
@@ -854,7 +855,7 @@ function rateLimitLiveSearch(source: CatalogSource): void {
 }
 
 export async function liveSearchSupplier(
-  db: any,
+  db: Database.Database,
   source: CatalogSource,
   query: string,
 ): Promise<ScrapedProduct[]> {
@@ -874,7 +875,7 @@ export async function liveSearchSupplier(
 // ─── Public: local catalog search ────────────────────────────────────────────
 
 /** Search the local supplier_catalog with optional filters */
-export function searchCatalog(db: any, opts: {
+export function searchCatalog(db: Database.Database, opts: {
   q?: string;
   source?: string;
   deviceModelId?: number;
@@ -945,7 +946,7 @@ export function searchCatalog(db: any, opts: {
  *
  * If local catalog has no results for the query, automatically does a live scrape.
  */
-export async function searchPartsUnified(db: any, opts: {
+export async function searchPartsUnified(db: Database.Database, opts: {
   q: string;
   deviceModelId?: number;
   source?: string;
