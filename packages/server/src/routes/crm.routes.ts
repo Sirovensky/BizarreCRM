@@ -60,6 +60,21 @@ const router = Router();
 //   - health score / LTV / photo mementos reads: manager or admin
 //   - segment CRUD + refresh: admin only (marketing policy)
 //   - wallet pass + referral code: any logged-in user
+// Normalize a stored photo path for client exposure. Strip any occurrence of
+// `/uploads/` (or Windows `\uploads\`) prefix and return the relative tail so
+// the client can prepend its own `/uploads/` base. Falls back to the raw
+// basename if no `/uploads/` segment is present. Prevents absolute server
+// paths from leaking into the JSON response.
+function sanitizeUploadPath(raw: string): string {
+  if (!raw) return '';
+  const normalized = raw.replace(/\\/g, '/');
+  const idx = normalized.lastIndexOf('/uploads/');
+  if (idx !== -1) return normalized.slice(idx + '/uploads/'.length);
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash !== -1) return normalized.slice(lastSlash + 1);
+  return normalized;
+}
+
 function requireManagerOrAdmin(req: any): void {
   const role = req?.user?.role;
   if (role !== 'admin' && role !== 'manager') {
@@ -238,7 +253,16 @@ router.get(
       id,
     );
 
-    res.json({ success: true, data: photos });
+    // Strip any absolute/server-specific prefix before returning — clients
+    // only need the basename-or-relative path under `/uploads/`. Previously
+    // raw `file_path` values (e.g. `C:\var\data\uploads\foo.jpg` on Windows
+    // or absolute POSIX paths) could leak server filesystem layout.
+    const sanitized = photos.map((row) => ({
+      ...row,
+      file_path: sanitizeUploadPath(row.file_path),
+    }));
+
+    res.json({ success: true, data: sanitized });
   }),
 );
 

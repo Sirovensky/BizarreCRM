@@ -5,9 +5,16 @@ import { requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { validatePaginationOffset, validateId } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
+
+// Write-side rate limit — a malicious technician could otherwise create
+// unlimited loaner_history rows against random customer ids. 60/min matches
+// the busiest counter-loading shift.
+const LOANER_WRITE_MAX = 60;
+const LOANER_WRITE_WINDOW_MS = 60_000;
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -106,6 +113,9 @@ router.put('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  // SCAN-1043: per-user write rate limit on loan creation.
+  const rl = consumeWindowRate(db, 'loaner_write', String(req.user!.id), LOANER_WRITE_MAX, LOANER_WRITE_WINDOW_MS);
+  if (!rl.allowed) throw new AppError('Too many loaner operations — please slow down', 429);
   const id = validateId(req.params.id, 'id');
   const { customer_id, ticket_device_id, notes } = req.body;
   if (!customer_id) throw new AppError('customer_id required', 400);
