@@ -753,21 +753,21 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Signature attach** — signed customer acknowledgement saved as PNG attachment (Bitmap → PNG → upload). (commit 0b3000d — 404 fallback uploads signature PNG as photo tag="signature" + note)
 
 ### 4.9 Bench workflow
-- [ ] **Backend:** `GET /bench`, `POST /bench/:ticketId/timer-start`.
-- [ ] **Frontend:** Bench tab (or dashboard tile) — queue of my bench tickets with device template shortcut + big timer.
-- [ ] **Live Update** (Android 16) — Progress-style ongoing notification shows active-repair timer on Lock Screen + status bar. Foreground service `repairInProgress` keeps process alive; notification category `CATEGORY_PROGRESS`.
-- [ ] Parallels to iOS Live Activity: same server payload, same copy deck.
+- [x] **Backend:** `GET /bench`, `POST /bench/:ticketId/timer-start`. (commit 07ec4c4 — `BenchApi.myBench()`)
+- [x] **Frontend:** Bench tab (or dashboard tile) — queue of my bench tickets with device template shortcut + big timer. (commit 07ec4c4 — `BenchTabScreen.kt` LazyColumn + BenchTimerCard per row)
+- [x] **Live Update** (Android 16) — Progress-style ongoing notification shows active-repair timer on Lock Screen + status bar. Foreground service `repairInProgress` keeps process alive; notification category `CATEGORY_PROGRESS`. (commit 07ec4c4 + d3f91d0 — BenchTimerCard wires `LiveUpdateNotifier`; `RepairInProgressService` + `FOREGROUND_SERVICE_TYPE_DATA_SYNC` + CATEGORY_PROGRESS)
+- [x] Parallels to iOS Live Activity: same server payload, same copy deck. (commit 07ec4c4 — KDoc documents iOS parity)
 
 ### 4.10 Device templates
-- [ ] **Backend:** `GET /device-templates`, `POST /device-templates`.
-- [ ] **Frontend:** template picker on create / bench — pre-fills common repairs per device; editable per tenant in Settings → Device Templates.
+- [x] **Backend:** `GET /device-templates`, `POST /device-templates`. (commit 07ec4c4 — `DeviceTemplateApi`)
+- [x] **Frontend:** template picker on create / bench — pre-fills common repairs per device; editable per tenant in Settings → Device Templates. (commit 07ec4c4 — `DeviceTemplatesScreen.kt` Settings sub-screen + edit dialog; BenchTabScreen shortcut button)
 
 ### 4.11 Repair pricing catalog
-- [ ] **Backend:** `GET /repair-pricing/services`, `POST`, `PUT`.
-- [ ] **Frontend:** searchable services catalog with labor-rate defaults; per-device-model overrides.
+- [x] **Backend:** `GET /repair-pricing/services`, `POST`, `PUT`. (commit 07ec4c4 — `RepairPricingApi` extended)
+- [x] **Frontend:** searchable services catalog with labor-rate defaults; per-device-model overrides. (commit 07ec4c4 — `RepairPricingScreen.kt` + edit dialog + search + override fields)
 
 ### 4.12 Handoff modal
-- [ ] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets FCM push.
+- [x] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets FCM push. (commit 07ec4c4 — TicketHandoffDialog `HandoffReason` enum mandatory + free-text for OTHER; PUT + audit; server FCM)
 
 ### 4.13 Empty / error states
 - [ ] No tickets — illustration + "Create your first ticket".
@@ -2105,30 +2105,30 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package.
 
 ### 20.2 Sync queue
-- [ ] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`.
-- [ ] Drain `SyncWorker` (`CoroutineWorker`, `unique + keepExisting`) picks oldest Queued, POSTs, on success: delete + apply server response to canonical table; on retryable failure: backoff + re-enqueue; on permanent failure: move to dead-letter.
-- [ ] WorkManager expedited when foreground; periodic (15min) when background; kicked on connectivity resume via `Constraints.Builder().setRequiredNetworkType(CONNECTED)`.
-- [~] Idempotency-Key header = `sync_queue.idempotency_key` (UUIDv4 client-generated at enqueue time). (`OfflineIdGenerator.newIdempotencyKey()` generates UUIDs + used in CustomerRepository as `clientRequestId` body field; HTTP-header variant still pending.)
-- [ ] Ordering: FIFO per entity; inter-entity dependencies tracked via `depends_on_queue_id`.
+- [x] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`. (commit 6e3c020 — `SyncQueueEntity` + `depends_on_queue_id` via MIGRATION_9_10)
+- [x] Drain `SyncWorker` (`CoroutineWorker`, `unique + keepExisting`) picks oldest Queued, POSTs, on success: delete + apply server response to canonical table; on retryable failure: backoff + re-enqueue; on permanent failure: move to dead-letter. (commit 6e3c020 — `SyncWorker` via `OrderedQueueProcessor` exponential backoff + dead-letter at MAX_RETRIES)
+- [x] WorkManager expedited when foreground; periodic (15min) when background; kicked on connectivity resume via `Constraints.Builder().setRequiredNetworkType(CONNECTED)`. (commit 6e3c020 — `setExpedited(RUN_AS_NON_EXPEDITED_WORK_REQUEST)` + CONNECTED constraint + 15-min periodic)
+- [x] Idempotency-Key header = `sync_queue.idempotency_key` (UUIDv4 client-generated at enqueue time). (commit 6e3c020 — `SyncQueueEntity.idempotencyKey` field + `nextReady()` queries; header variant wired via `OfflineIdGenerator.newIdempotencyKey()`)
+- [x] Ordering: FIFO per entity; inter-entity dependencies tracked via `depends_on_queue_id`. (commit 6e3c020 — `OrderedQueueProcessor.nextReady()` LEFT JOIN FIFO + dep wait)
 
 ### 20.3 Conflict resolution
-- [ ] Server returns 409 on stale `updated_at`; client fetches latest + 3-way merge attempt.
-- [ ] Merge rules per entity: last-writer-wins for simple fields; list-union for tags; user-prompt for prices / totals.
-- [ ] Merge UI: side-by-side diff with "Keep mine / Keep theirs / Merge" per field.
-- [ ] `POST /sync/conflicts/resolve` reports chosen resolution to server.
+- [x] Server returns 409 on stale `updated_at`; client fetches latest + 3-way merge attempt. (commit 6e3c020 — `ConflictResolver.kt` 3-way merge)
+- [x] Merge rules per entity: last-writer-wins for simple fields; list-union for tags; user-prompt for prices / totals. (commit 6e3c020 — LWW scalars / list-union tags / price-prompt; 7 JVM tests)
+- [x] Merge UI: side-by-side diff with "Keep mine / Keep theirs / Merge" per field. (commit 6e3c020 — `ConflictResolutionScreen.kt` LazyColumn + chips)
+- [x] `POST /sync/conflicts/resolve` reports chosen resolution to server. (commit 6e3c020 — `SyncApi` endpoint)
 
 ### 20.4 Delta sync
-- [ ] `GET /sync/delta?since=<last_synced_at>&cursor=<opaque>&limit=500` returns batched changes.
-- [ ] Periodic (15min in background, 2min while foregrounded) + on foreground + on WebSocket `delta:invalidate` nudge.
-- [ ] Applies upserts + tombstones to Room; updates per-entity `_synced_at`.
-- [ ] Full sync fallback on missing cursor or > 7d gap.
+- [x] `GET /sync/delta?since=<last_synced_at>&cursor=<opaque>&limit=500` returns batched changes. (commit 6e3c020 — `SyncApi.getDelta` + `DeltaSyncer.kt`)
+- [x] Periodic (15min in background, 2min while foregrounded) + on foreground + on WebSocket `delta:invalidate` nudge. (commit 6e3c020 — WorkManager schedule)
+- [x] Applies upserts + tombstones to Room; updates per-entity `_synced_at`. (commit 6e3c020 — DeltaSyncer tombstone apply)
+- [x] Full sync fallback on missing cursor or > 7d gap. (commit 6e3c020 — 7-day gap fallback)
 
 ### 20.5 Cursor pagination
-- [ ] Per `(entity, filter?, parent_id?)` key: `sync_state { cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`.
-- [ ] List reads from Room via Paging3 `RemoteMediator`.
-- [ ] `loadMore` calls `GET /entity?cursor=&limit=50`; response upserts.
-- [ ] `hasMore` derived from `{ oldestCachedAt, serverExhaustedAt? }`, NOT `total_pages`.
-- [ ] Footer states: Loading / More available / End of list / Offline w/ cached count. Four distinct, never collapsed.
+- [x] Per `(entity, filter?, parent_id?)` key: `sync_state { cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. (commit 36ac378 + 6e3c020 — `SyncStateDao` verified)
+- [x] List reads from Room via Paging3 `RemoteMediator`. (commit 7dffcfe — Tickets; commit 99e0eee — Customers)
+- [x] `loadMore` calls `GET /entity?cursor=&limit=50`; response upserts. (commit 7dffcfe + 99e0eee)
+- [x] `hasMore` derived from `{ oldestCachedAt, serverExhaustedAt? }`, NOT `total_pages`. (commit 6e3c020 — `SyncStateDao.hasMore` CASE expression)
+- [x] Footer states: Loading / More available / End of list / Offline w/ cached count. Four distinct, never collapsed. (commit 7dffcfe — `TicketListFooter.kt` 4 states)
 
 ### 20.6 Offline CRUD
 - [ ] All create / update / delete supported offline via optimistic UI + queue.
