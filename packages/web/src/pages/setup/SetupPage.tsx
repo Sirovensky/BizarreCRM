@@ -35,6 +35,14 @@ import { SkipToDashboard } from './SkipToDashboard';
  * Skip can be triggered from any phase via the SkipToDashboard button; the
  * user's partial data is still flushed, and wizard_completed='skipped' is set.
  */
+// Shape of the `GET /settings/setup-status` payload used by the wizard.
+interface SetupStatusPayload {
+  wizard_completed?: string | boolean | null;
+  setup_completed?: string | boolean | null;
+  store_name?: string | null;
+  [key: string]: unknown;
+}
+
 export function SetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -52,14 +60,19 @@ export function SetupPage() {
   // Short-circuit: if the wizard gate already decided this user doesn't belong here,
   // redirect them. This handles the case where someone manually navigates to /setup
   // after finishing — they shouldn't be able to re-enter the wizard.
-  const { data: setupData, isLoading: checkingStatus } = useQuery({
+  const { data: setupData, isLoading: checkingStatus } = useQuery<{
+    data?: { data?: SetupStatusPayload };
+  }>({
     queryKey: ['setup-status'],
-    queryFn: () => settingsApi.getSetupStatus(),
+    queryFn: async () => {
+      const res = await settingsApi.getSetupStatus();
+      return res as { data?: { data?: SetupStatusPayload } };
+    },
     staleTime: 10_000,
   });
-  const wizardCompleted = (setupData as any)?.data?.data?.wizard_completed;
-  const setupCompleted = (setupData as any)?.data?.data?.setup_completed;
-  const existingStoreName = (setupData as any)?.data?.data?.store_name;
+  const wizardCompleted = setupData?.data?.data?.wizard_completed;
+  const setupCompleted = setupData?.data?.data?.setup_completed;
+  const existingStoreName = setupData?.data?.data?.store_name;
 
   // Wizard state
   const [phase, setPhase] = useState<WizardPhase>('welcome');

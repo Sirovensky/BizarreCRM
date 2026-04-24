@@ -72,8 +72,13 @@ export function PhotoCapturePage() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
       setUploaded(true);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'Upload failed. Please try again.');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } } | undefined;
+      const msg = err?.response?.data?.message || 'Upload failed. Please try again.';
+      setError(msg);
+      // Mobile users often don't see the inline error banner — a toast makes
+      // the failure impossible to miss even if the page is scrolled.
+      toast.error(msg);
     } finally {
       setUploading(false);
     }

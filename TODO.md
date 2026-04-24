@@ -728,10 +728,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/steps/StepImport.tsx:155; fix=count-consecutive-failures-and-abort -->
 - [ ] SCAN-1016. **Setup import interval captures stale `source` state in closure.**
   <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/steps/StepImport.tsx:134-156; fix=useRef-or-local-const -->
-- [ ] SCAN-1017. **PhotoCapturePage upload `catch (e: any)` with no toast — mobile users miss silent failures.**
-  <!-- meta: scope=web/pages/photo-capture; files=packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:75; fix=unknown+toast-error -->
-- [ ] SCAN-1018. **SetupPage `(setupData as any)` triple-cast for wizard status fields.**
-  <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/SetupPage.tsx:60-62; fix=type-useQuery-generic -->
 - [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
 - [ ] SCAN-1021. **LandingPage uses `window.location.href = 'mailto:…'` instead of real `<a href>` — pattern-fragile.**
