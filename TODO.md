@@ -730,8 +730,6 @@ Verified working. Not TODOs.
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
 - [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
-- [ ] SCAN-1039. **campaigns mass-dispatch endpoints (run-now, birthday, churn-warning) missing rate limiting — unlimited SMS/email blasts.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:660-693,823-867,870-927; fix=consumeWindowRate-3-per-min -->
 - [ ] SCAN-1047. **deposits GET /: LIMIT 500 hardcoded, no pagination — silently drops older deposits for completeness-assuming clients.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/deposits.routes.ts:79-89; fix=parsePage+pagination-envelope -->
 

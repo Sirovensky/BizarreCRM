@@ -48,7 +48,20 @@ import {
   getSmsProvider,
 } from '../services/smsProvider.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { refreshSegmentMembership } from './crm.routes.js';
+
+// SCAN-1039: mass-dispatch endpoints can fire SMS/email to thousands of
+// recipients in one call. Rate-limit per-user so even an admin can't
+// accidentally loop a dispatch and burn a month of SMS credit. 3/min is
+// generous — legitimate use rarely goes above once per several minutes.
+const CAMPAIGN_DISPATCH_MAX = 3;
+const CAMPAIGN_DISPATCH_WINDOW_MS = 60_000;
+function rateLimitCampaignDispatch(req: Request): void {
+  const key = String(req.user?.id ?? 'anon');
+  const rl = consumeWindowRate(req.db, 'campaign_dispatch', key, CAMPAIGN_DISPATCH_MAX, CAMPAIGN_DISPATCH_WINDOW_MS);
+  if (!rl.allowed) throw new AppError('Too many campaign dispatches — please wait a minute before retrying', 429);
+}
 import type { AsyncDb } from '../db/async-db.js';
 
 const log = createLogger('campaigns');
@@ -661,6 +674,7 @@ router.post(
   '/:id/run-now',
   asyncHandler(async (req, res) => {
     requireAdminCampaigns(req);
+    rateLimitCampaignDispatch(req);
     const db = req.db;
     const adb = req.asyncDb;
     const id = Number(req.params.id);
@@ -826,6 +840,7 @@ router.post(
   '/birthday/dispatch',
   asyncHandler(async (req, res) => {
     requireAdminCampaigns(req);
+    rateLimitCampaignDispatch(req);
     const db = req.db;
     const adb = req.asyncDb;
 
@@ -873,6 +888,7 @@ router.post(
   '/churn-warning/dispatch',
   asyncHandler(async (req, res) => {
     requireAdminCampaigns(req);
+    rateLimitCampaignDispatch(req);
     const db = req.db;
     const adb = req.asyncDb;
 
