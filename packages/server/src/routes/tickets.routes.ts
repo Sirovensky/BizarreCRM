@@ -1745,10 +1745,15 @@ router.get('/export', requirePermission('tickets.view'), asyncHandler(async (req
   const rows = await adb.all<AnyRow>(sql, ...params);
 
   // Build CSV
+  // SCAN-1161: prefix any leading `=`, `+`, `-`, `@`, TAB, CR with a single
+  // quote so Excel/Calc/Sheets don't evaluate cell content as a formula —
+  // mirrors the server-side toCsv guard in reports.routes.ts (SCAN-1130).
   const csvHeader = 'Order ID,Customer,Device,Status,Created,Total';
+  const CSV_FORMULA_TRIGGERS = /^[=+\-@\t\r]/;
   const csvRows = rows.map((r) => {
-    const escapeCsv = (val: string) => {
-      if (!val) return '';
+    const escapeCsv = (raw: unknown): string => {
+      if (!raw) return '';
+      const val = CSV_FORMULA_TRIGGERS.test(String(raw)) ? `'${String(raw)}` : String(raw);
       if (val.includes(',') || val.includes('"') || val.includes('\n')) {
         return `"${val.replace(/"/g, '""')}"`;
       }

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { toCsvRow } from '@/utils/csv';
 
 // CROSS3: "service" tab removed — services are non-stockable labor and
 // live in the `repair_services` table, not `inventory_items`. Existing
@@ -301,10 +302,11 @@ export function InventoryListPage() {
   };
 
   // CSV Export
+  // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
   const handleExport = () => {
     const headers = ['id', 'name', 'sku', 'item_type', 'in_stock', 'cost_price', 'retail_price', 'reorder_level', 'manufacturer', 'category'];
-    const rows = items.map(i => headers.map(h => String(i[h] ?? '')));
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const rows = items.map(i => headers.map(h => i[h] ?? ''));
+    const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

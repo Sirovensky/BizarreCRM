@@ -722,6 +722,22 @@ Verified working. Not TODOs.
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
+### Wave-69 scan-loop findings (2026-04-24) — client CSV/dashboard tz/pin/signature/portal
+- [ ] SCAN-1162. **[MED] DashboardPage "Today" uses UTC slice — wrong day in non-UTC tz after 5pm local.**
+  <!-- meta: scope=web/pages/dashboard; files=packages/web/src/pages/dashboard/DashboardPage.tsx:73,1150-1151; fix=local-YMD-helper -->
+- [ ] SCAN-1163. **[MED] PinModal `<input type=password>` saves PIN to browser password manager.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/PinModal.tsx:100-114,EmployeeListPage.tsx:133-145; fix=autoComplete-off+data-lpignore -->
+- [ ] SCAN-1164. **[LOW] QuickSmsModal dead setSelectedTemplate state + unused useEffect + no Esc/backdrop close.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/QuickSmsModal.tsx:1,28,91; fix=cleanup-unused+esc+backdrop -->
+- [ ] SCAN-1165. **[LOW] portal_verification_codes no index on phone — full-scan per signup verify.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/041_customer_portal.sql:30; fix=new-composite-index -->
+- [ ] SCAN-1166. **[LOW] Portal verifySessionHandler rotates CSRF cookie every call — breaks multi-tab.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/portal.routes.ts:934-952; fix=reuse-cookie-if-present -->
+- [ ] SCAN-1167. **[LOW] SignatureCanvas React preventDefault on touch is silently dropped — passive listener warning + broken tablet sign.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/SignatureCanvas.tsx:104-123,201-203; fix=native-addEventListener-passive-false -->
+- [ ] SCAN-1168. **[MED] PinModal client-only lockout state — F5 resets failCount, 5-attempt cap bypassed.**
+  <!-- meta: scope=web/components; files=packages/web/src/components/shared/PinModal.tsx:11-20,60-67; fix=sessionStorage-persist -->
+
 ### Wave-68 scan-loop findings (2026-04-24) — idempotency/auth/audit/notifications/metrics
 
 ### Wave-67 scan-loop findings (2026-04-24) — auth/layout/migrations/public-api

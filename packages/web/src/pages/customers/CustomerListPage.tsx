@@ -41,6 +41,7 @@ import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
+import { toCsvRow } from '@/utils/csv';
 import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
@@ -316,8 +317,9 @@ export function CustomerListPage() {
         if (batch.length === 0) break;
       } while (exportPage <= totalPages);
 
-      const rows = all.map((c: any) => headers.map(h => String(c[h] ?? '')));
-      const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
+      // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
+      const rows = all.map((c: any) => headers.map(h => c[h] ?? ''));
+      const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

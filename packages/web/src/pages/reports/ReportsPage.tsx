@@ -9,6 +9,7 @@ import {
   ShieldAlert, Smartphone, Cpu, UserPlus, Lock,
 } from 'lucide-react';
 import { usePlanStore } from '@/stores/planStore';
+import { toCsvRow } from '@/utils/csv';
 import type { PlanFeatures } from '@bizarre-crm/shared';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -112,10 +113,10 @@ function resolveDateRange(value: { from?: string; to?: string; preset?: string }
 }
 
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
-  const escape = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // SCAN-1161: shared formula-injection-safe row serializer.
   const csvContent = [
-    headers.map(escape).join(','),
-    ...rows.map((row) => row.map(escape).join(',')),
+    toCsvRow(headers),
+    ...rows.map(toCsvRow),
   ].join('\n');
   // RPT-CSV2: Prepend UTF-8 BOM (\uFEFF) so Excel on Windows opens the file
   // with the correct encoding instead of garbling currency symbols and accented

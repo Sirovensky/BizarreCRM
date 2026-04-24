@@ -874,8 +874,13 @@ router.get(
     const csvLines: string[] = [
       'employee_id,first_name,last_name,username,regular_hours,overtime_hours,commissions,tips,gross,period_start,period_end',
     ];
-    const sanitize = (s: string | null | undefined) =>
-      (s ?? '').replace(/[",\n\r]/g, ' ').trim();
+    // SCAN-1161: neutralise leading formula triggers before quoting so an
+    // employee whose first name starts with `=`/`+`/`-`/`@`/TAB/CR doesn't
+    // execute inside Excel/Calc when payroll ops opens the CSV.
+    const sanitize = (s: string | null | undefined) => {
+      const str = (s ?? '').replace(/[",\n\r]/g, ' ').trim();
+      return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    };
     for (const u of users) {
       const h = Number(hMap.get(u.id) ?? 0).toFixed(2);
       const c = Number(cMap.get(u.id) ?? 0).toFixed(2);
