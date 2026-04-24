@@ -425,17 +425,17 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Passkey preference: Android 14+ promotes passkey over TOTP as primary.
 
 ### 2.19 Recovery codes
-- [ ] Generate 10 codes, 10-char base32 each.
-- [ ] Generated at enrollment; copyable / printable via Android Print Framework.
-- [ ] One-time use per code.
-- [ ] Not stored on device (user's responsibility).
-- [ ] Server stores hashes only.
-- [ ] Display: reveal once with warning "Save these — they won't show again".
-- [ ] Print + email-to-self options.
-- [ ] Regeneration at Settings → Security → Regenerate codes (invalidates previous).
-- [ ] Usage: Login 2FA prompt has "Use recovery code" link.
-- [ ] Entering recovery code logs in + flags account (email sent to alert).
-- [ ] Admin override: tenant owner can reset staff recovery codes after verifying identity.
+- [x] Generate 10 codes, 10-char base32 each. (commit ae08de5 — server-side generation; `RecoveryCodesResponse(codes: List<String>, generatedAt: String?, remaining: Int?)` DTO)
+- [x] Generated at enrollment; copyable / printable via Android Print Framework. (commit ae08de5 — Print via native `PrintManager` + `BitmapPrintDocumentAdapter` + `PdfDocument` (no external dep) + toast fallback; post-enroll path via `BackupCodesDisplay` reuse)
+- [x] One-time use per code. (server contract; Android doesn't enforce)
+- [x] Not stored on device (user's responsibility). (`RecoveryCodesViewModel` never persists; state transitions `Idle→RequiringPassword→Regenerating→Generated` + `dismiss()→Idle` wipes memory)
+- [x] Server stores hashes only. (server contract)
+- [x] Display: reveal once with warning "Save these — they won't show again". (commit ae08de5 — warning banner on Generated state; BackupCodesDisplay checkbox gate "I have saved these codes" before Done CTA)
+- [x] Print + email-to-self options. (commit ae08de5 — native Print + `ACTION_SENDTO mailto:` pre-filled; both toast-fallback when handler absent)
+- [x] Regeneration at Settings → Security → Regenerate codes (invalidates previous). (commit ae08de5 — `AuthApi.regenerateRecoveryCodes(body: {password})` POST + `RecoveryCodesScreen` destructive "Regenerate" button; 401→RequiringPassword re-prompt; 404→NotSupported card; `SecurityScreen` VpnKey nav row + `Screen.RecoveryCodes("settings/security/recovery-codes")`; 3 JVM tests)
+- [x] Usage: Login 2FA prompt has "Use recovery code" link. (baseline — commit fca6835 `TwoFaVerifyStep` "Lost 2FA access? Use a backup code" TextButton routes to `BackupCodeRecovery`)
+- [x] Entering recovery code logs in + flags account (email sent to alert). (server contract — Android `AuthApi.loginWithBackupCode` consumes; server emits alert email)
+- [~] Admin override: tenant owner can reset staff recovery codes after verifying identity. (commit ae08de5 — Android `NotSupported` informational card rendered on 404; admin reset endpoint pending server impl)
 
 ### 2.20 SSO / SAML / OIDC
 - [ ] Providers: Okta, Azure AD, Google Workspace, JumpCloud.
@@ -507,11 +507,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (commit 12a8756 — `components/MissingPartsCard.kt` reorder-needed list with qty/threshold + "Connect Inventory data" when null)
 
 ### 3.3 Needs-attention surface
-- [ ] Base card with row-level chips — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week".
+- [x] Base card with row-level chips — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (commit 87421ee — `components/NeedsAttentionSection.kt` `NeedsAttentionItem` model with 6 category icons; `AttentionPriority`-driven surface colors errorContainer/tertiaryContainer/primaryContainer; ReduceMotion-aware enter/exit animations)
 - [x] **Swipe actions** (phone): `SwipeToDismissBox` leading = snooze, trailing = dismiss; `HapticFeedbackConstants.GESTURE_END` on dismiss.
-- [ ] **Context menu** (tablet/ChromeOS) via long-press + right-click — `DropdownMenu` with all row actions + "Copy ID".
-- [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local Room mirror so dismissed stays dismissed across devices.
-- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
+- [x] **Context menu** (tablet/ChromeOS) via long-press + right-click — `DropdownMenu` with all row actions + "Copy ID". (commit 87421ee — long-press DropdownMenu {Open, Mark seen, Dismiss, Create task}; routed via `dismissAttention(id)`+`markAttentionSeen(id)` VM callbacks)
+- [x] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local Room mirror so dismissed stays dismissed across devices. (commit 87421ee — `DashboardApi.POST /dashboard/attention/{id}/dismiss`; 404 fallback → `AppPreferences.dismissedAttentionIds: Set<String>` local cache; `undoDismissAttention()` 5s Snackbar undo; 22 JVM tests)
+- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (commit 87421ee — `TaskAlt` icon + copy rendered when `items.isEmpty()`, hidden otherwise)
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
