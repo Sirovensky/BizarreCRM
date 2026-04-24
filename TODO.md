@@ -729,8 +729,6 @@ Verified working. Not TODOs.
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1073. **[HIGH] `GET /tickets/export` missing permission guard + rate limit — any authenticated user can exfiltrate + DoS.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/tickets.routes.ts:1613; fix=requirePermission('tickets.export')+consumeWindowRate -->
-- [ ] SCAN-1074. **[MED] `GET /tickets/:id` missing `requirePermission('tickets.view')` — sibling writes are gated.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/tickets.routes.ts:1835; fix=add-requirePermission -->
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
 - [ ] SCAN-1076. **[LOW] `GET /inventory/purchase-orders/list` accepts arbitrary `status` query — no domain allowlist.**

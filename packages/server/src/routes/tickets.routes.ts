@@ -1832,7 +1832,10 @@ router.delete('/saved-filters/:id', asyncHandler(async (req: Request, res: Respo
 // ===================================================================
 // GET /:id - Full ticket detail
 // ===================================================================
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+// SCAN-1074: sibling PUT/PATCH/DELETE gate on tickets.edit/delete/change_status,
+// but detail-read was ungated, so a custom role with tickets.view revoked could
+// still fetch any ticket by iterating ids.
+router.get('/:id', requirePermission('tickets.view'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
   if (!ticketId) throw new AppError('Invalid ticket ID');

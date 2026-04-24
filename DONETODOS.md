@@ -1,4 +1,8 @@
 
+## Closed 2026-04-23 (wave-61 server/routes — tickets detail auth gap)
+
+- [x] SCAN-1074. **`GET /tickets/:id` was missing `requirePermission('tickets.view')`** — permission is defined in `roles.routes.ts` but `tickets.routes.ts` only enforced it on writes. A role stripped of `tickets.view` could still read any single ticket by iterating ids. Gated the detail handler. Intentionally did NOT expand to the list/filter/export/stalled/kanban/etc GETs in this commit — atomic per SCAN id. Broader sweep is a follow-up (similar gap across the other 16 GET handlers in the file).
+
 ## Closed 2026-04-23 (wave-61 server/routes — invoices detail auth gap)
 
 - [x] SCAN-1072. **`GET /invoices/:id` was missing `requirePermission('invoices.view')`** — sibling list + stats routes were already gated. Any authenticated user (including custom roles with `invoices.view` stripped) could enumerate every invoice by iterating ids. Added the guard; kept the existing `getInvoiceDetail` call signature (cast `req.params.id as string` to match the two other call sites in the same file).
