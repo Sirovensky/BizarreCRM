@@ -80,7 +80,20 @@ class TicketRepository @Inject constructor(
 
     /** Create a ticket. Online: API call. Offline: local insert + sync queue. */
     suspend fun createTicket(request: CreateTicketRequest): Long {
-        val isOnline = serverMonitor.isEffectivelyOnline.value
+        var isOnline = serverMonitor.isEffectivelyOnline.value
+        // Race-condition guard: if the cached state says offline, do a synchronous
+        // reachability check before falling into the offline branch. This handles the
+        // window between a network-interface-lost event (which eagerly flips
+        // _isServerReachable=false) and the first successful ping completing (which
+        // restores it). A successful HTTP login response will already have called
+        // reportSuccess() — but if the ping loop hasn't fired yet, this ensures we
+        // don't create an OFFLINE- ticket for a user who is clearly online.
+        if (!isOnline) {
+            Log.i(TAG, "TicketCreate: isEffectivelyOnline=false, doing synchronous reachability check...")
+            val reachable = serverMonitor.checkNow()
+            isOnline = reachable
+            Log.i(TAG, "TicketCreate: checkNow()=$reachable → isOnline=$isOnline")
+        }
         Log.i(TAG, "TicketCreate save: isOnline=$isOnline branch=${if (isOnline) "online→API" else "offline→queue"}")
         if (isOnline) {
             try {

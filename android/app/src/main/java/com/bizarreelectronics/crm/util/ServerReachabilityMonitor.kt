@@ -102,9 +102,18 @@ class ServerReachabilityMonitor @Inject constructor(
                     startPinging()
                 } else {
                     stopPinging()
-                    // No interface at all → definitely unreachable, and reset counter
-                    // so we re-ping immediately when an interface comes back.
-                    _isServerReachable.value = false
+                    // No interface at all — reset consecutive-failure counter so the
+                    // ping loop gets a clean slate when an interface comes back.
+                    // NOTE: we deliberately do NOT flip _isServerReachable=false here.
+                    // Flipping eagerly on interface-loss causes a race: if a login
+                    // response lands just as WiFi briefly drops, the next
+                    // createTicket() call reads isEffectivelyOnline=false and opens
+                    // an OFFLINE- ticket even though the server is reachable. The
+                    // ping loop will set _isServerReachable=false itself after
+                    // FAILURES_BEFORE_OFFLINE consecutive failed pings once the
+                    // interface is truly gone. The checkNow() guard in
+                    // TicketRepository.createTicket() provides an additional
+                    // safety net for the narrow startup window.
                     consecutiveFailures = 0
                 }
             }
