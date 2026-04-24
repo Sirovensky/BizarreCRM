@@ -1480,11 +1480,7 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-722. **[INFO] smsAutoResponders regex bounded 500 chars but no complexity metric — bounds don't prevent ReDoS; see SCAN-716** — `packages/server/src/routes/smsAutoResponders.routes.ts:98,103`. Fix: as SCAN-716 (single fix covers both).
 
 ### Wave-27 scan-loop findings (2026-04-23)
-- [ ] SCAN-723. **[HIGH] estimates conversion rate-limit AFTER tier check — concurrent approvals both reserve tier quota before rate-limit rejects** — `packages/server/src/routes/estimates.routes.ts:969`. Fix: rate-limit FIRST, then tier check.
-- [ ] SCAN-724. **[HIGH] estimate `converting` intermediate state has no finally-block rollback — tier-throw after lock acquires strands record** — `packages/server/src/routes/estimates.routes.ts:758-822`. Fix: try/finally to revert to prior status on throw.
-- [ ] SCAN-725. **[HIGH] leads dry-run approval endpoint echoes customer PII (id/first_name/last_name/email/phone/mobile) — non-admin enumeration** — `packages/server/src/routes/leads.routes.ts:237`. Fix: restrict dry-run to manager+ OR redact PII in response.
 - [ ] SCAN-726. **leads lead-to-ticket conversion `Number(d.price)` / `Number(d.tax)` silently coerces NaN → 0 — legacy bad rows poison ticket totals** — `packages/server/src/routes/leads.routes.ts:927-1062`. Fix: Number.isFinite guard + reject 400 on bad row.
-- [ ] SCAN-727. **[HIGH] automations dry-run endpoint no rate-limit — brute-force trigger-rule enumeration** — `packages/server/src/routes/automations.routes.ts:200-295`. Fix: 20/min/user limit.
 - [ ] SCAN-728. **validateId accepts "123abc" via Number(String(x)) parse — passes to SQL as 123** — `packages/server/src/utils/validate.ts:326-332`. Fix: add `/^\d+$/` regex pre-check matching validateQuantity.
 - [ ] SCAN-729. **estimate constantTimeEquals compares base64url token vs SHA-256 hash — lengths mismatch triggers length-check fallback, breaks constant-time intent** — `packages/server/src/routes/estimates.routes.ts:32-38`. Fix: hash token on comparison side too OR compare fixed-length digests.
 - [ ] SCAN-730. **async-db TxQuery `expectChanges` defined but leads conversion never uses — UPDATE affecting 0 rows silently OK** — `packages/server/src/db/async-db.ts:54` + `leads.routes.ts`. Fix: pass expectChanges=1 on lead→ticket UPDATEs.
@@ -1503,11 +1499,9 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 
 ### Wave-29 scan-loop findings (2026-04-23) — top impactful (agent classification downgraded to actual severity)
 - [ ] SCAN-758. **[MEDIUM] portal /login PIN verification has timing-leak: rate-limit consumed after `foundCustomer` lookup — attacker can enumerate valid customer_id by rate-limit response delta** — `packages/server/src/routes/portal.routes.ts:553-572,596`. Fix: constant-time response regardless of customer presence.
-- [ ] SCAN-759. **[HIGH] tickets photo delete `path.join(config.uploadsPath, tenantSlug, photo.file_path)` — file_path from DB without normalize check; corrupted/injected value traverses** — `packages/server/src/routes/tickets.routes.ts:2360`. Fix: path.normalize + assert startsWith(tenant uploads root).
 - [ ] SCAN-761. **refund concurrent cap bypass — prior-read invoice total used for cap check; concurrent refunds over-refund** — `packages/server/src/routes/refunds.routes.ts:187-242`. Fix: atomic UPDATE invoices SET refunded_cents = refunded_cents + ? WHERE refunded_cents + ? <= total + check changes.
 - [ ] SCAN-769. **[MEDIUM] portal /send-code rate-limit defined (SEND_CODE_IP 1/5s) but handler may skip check on some paths — verify enforcement** — `packages/server/src/routes/portal.routes.ts:33`. Fix: grep all send-code paths; ensure checkWindowRate precedes SMS dispatch.
 - [ ] SCAN-773. **[MEDIUM] portal quick-track matches phone by last-4 suffix only — two customers with same last-4 collide; wrong-customer session risk** — `packages/server/src/routes/portal.routes.ts:467`. Fix: also require first-name match OR reject on >1 match.
-- [ ] SCAN-774. **[HIGH] inventory DELETE /:id missing requirePermission gate — destructive op** — `packages/server/src/routes/inventory.routes.ts`. Fix: `requirePermission('inventory.delete')`.
 - [ ] SCAN-775. **RMA POST no supplier_id tenant-ownership check — cross-tenant reference risk in multi-tenant deploys** — `packages/server/src/routes/rma.routes.ts:116-140`. Fix: verify supplier belongs to req.tenantId.
 - [ ] SCAN-777. **portal CSRF cookie — verify SameSite=Strict set; if missing, cross-site replay risk** — `packages/server/src/routes/portal.routes.ts:485`. Fix: confirm issueCsrfCookie includes SameSite attribute.
 - [ ] SCAN-779. **refunds state-machine allows arbitrary status transitions — no assertTransition like RMA** — `packages/server/src/routes/refunds.routes.ts`. Fix: LEGAL_REFUND_TRANSITIONS + enforce.
@@ -1523,20 +1517,15 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-786. **pos counter CRN fallback `.catch()` silently allows duplicate order_id — no UNIQUE constraint on invoice.order_id** — `packages/server/src/routes/pos.routes.ts:2121`. Fix: throw on counter fail OR add UNIQUE migration.
 - [ ] SCAN-787. **pos audit write `.catch(err) { console.error }` silent — failed returns still mutate** — `packages/server/src/routes/pos.routes.ts:2163`. Fix: logger.error + consider DB retry queue.
 - [ ] SCAN-790. **pos /cash-in + /cash-out bounds-checked but non-atomic insert — in_stock math race** — `packages/server/src/routes/pos.routes.ts:202-227`. Fix: adb.transaction wrap.
-- [ ] SCAN-793. **[HIGH] deposits GET / `parseInt(customer_id)` + `parseInt(ticket_id)` no validation — NaN silently matches no rows; should 400** — `packages/server/src/routes/deposits.routes.ts:57-59`. Fix: validateId helper.
 - [ ] SCAN-797. **[MEDIUM SSRF] webhooks URL validation checks DNS for private IPs but not CNAME final target — public CNAME → private IP bypass** — `packages/server/src/services/webhooks.ts:141-200`. Fix: recursive CNAME resolution or fetch follow-redirect disabled.
 - [ ] SCAN-798. **deposits INSERT no transaction — audit-log failure leaves row committed** — `packages/server/src/routes/deposits.routes.ts:142-150`. Fix: adb.transaction wrap or audit-pre-insert.
 - [ ] SCAN-792. **giftCards `parseInt(req.params.id, 10)` no validateId — float/negative silently truncates** — `packages/server/src/routes/giftCards.routes.ts:292-294`. Fix: validateId helper.
 
 ### Wave-31 scan-loop findings (2026-04-23) — OAuth + notifications + bench
 - [ ] SCAN-803. **oauthStates Map unbounded memory leak — 5-min TTL cleaned on 60s interval; attacker floods states faster than cleanup** — `packages/server/src/routes/import.routes.ts:1399`. Fix: hard-cap Map size; evict oldest on over-cap.
-- [ ] SCAN-804. **[HIGH] GET /oauth/callback missing requireAdmin — any authed user can exchange RD auth codes + steal API tokens** — `packages/server/src/routes/import.routes.ts:1420`. Fix: requireAdmin(req).
-- [ ] SCAN-805. **[HIGH] OAuth tokens persisted unencrypted in store_config — DB dump exposes integrations** — `packages/server/src/routes/import.routes.ts:1473-1474`. Fix: encryptConfigValue + include rd* in ENCRYPTED_CONFIG_KEYS.
-- [ ] SCAN-807. **[HIGH] OAuth CSRF state globally scoped not session-bound — state-injection theft possible** — `packages/server/src/routes/import.routes.ts:1412-1438`. Fix: bind state to req.user.id + verify in callback.
 - [ ] SCAN-808. **notifications `Number(req.params.id)` no validation — NaN or 0 matches unintended rows** — `packages/server/src/routes/notifications.routes.ts:87`. Fix: validateId helper.
 - [ ] SCAN-809. **bench timer PUT /stop labor cost write no tx — concurrent invoice-sync double-counts** — `packages/server/src/routes/bench.routes.ts:513-520`. Fix: adb.transaction wrap.
 - [ ] SCAN-810. **notifications /send-receipt no audit log — phishing receipts untraceable** — `packages/server/src/routes/notifications.routes.ts:176-276`. Fix: audit(req.db, {...}) before email send.
-- [ ] SCAN-811. **[HIGH] notifications POST /send-receipt no role gate — any authed user emails arbitrary recipients** — `packages/server/src/routes/notifications.routes.ts:176`. Fix: requireManagerOrAdmin + validate email is on customer record.
 - [ ] SCAN-812. **customers phone-placeholder SQL IN (...) unbounded — 10k phones → memory/timeout** — `packages/server/src/routes/customers.routes.ts:1557+`. Fix: chunk in batches of 1000.
 - [ ] SCAN-813. **notifications PUT /focus-policies no CSRF check — state-change via cross-site form POST** — `packages/server/src/routes/notifications.routes.ts:148`. Fix: CSRF helper or header validation.
 - [ ] SCAN-814. **bench defect photo upload — verify fileUploadValidator is mounted on /bench/defect/* routes** — `packages/server/src/routes/bench.routes.ts:119`. Fix: confirm validator presence.
@@ -1546,7 +1535,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-822. **OAuth POST /oauth/refresh no rate-limit — hammer RD API** — `packages/server/src/routes/import.routes.ts:1492`. Fix: 1/min/user rate-limit.
 
 ### Wave-32 scan-loop findings (2026-04-23)
-- [ ] SCAN-823. **[HIGH] loaners POST create missing requirePermission — any authed user creates assets** — `packages/server/src/routes/loaners.routes.ts:67`. Fix: requirePermission('inventory.adjust') matching sibling GETs.
 - [ ] SCAN-824. **loaners req.params.id unvalidated at 5 sites (52,97,128,145,177)** — `packages/server/src/routes/loaners.routes.ts`. Fix: validateId helper.
 - [ ] SCAN-825. **heldCarts POST / no audit log — POS financial event missing audit** — `packages/server/src/routes/heldCarts.routes.ts:182`. Fix: audit(req.db, {...}).
 - [ ] SCAN-826. **catalog scraper `.catch()` silent swallow — third-party injection bypass** — `packages/server/src/routes/catalog.routes.ts:259`. Fix: logger.warn in catch.
@@ -1563,8 +1551,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.
 
 ### Wave-33 scan-loop findings (2026-04-23) — top impactful
-- [ ] SCAN-841. **[HIGH] pos POST /cash-in + /cash-out no role gate — any authed (incl read-only) posts cash transactions** — `packages/server/src/routes/pos.routes.ts:202,217`. Fix: requireManagerOrAdmin OR requirePermission('pos.cash').
-- [ ] SCAN-842. **[HIGH] pos /workstations POST/PUT + /set-default no role gates visible** — `packages/server/src/routes/pos.routes.ts:2239,2258,2294`. Fix: verify + add requireAdmin.
 - [ ] SCAN-838. **catalog Number(req.query.limit) NaN → invalid LIMIT** — `packages/server/src/routes/catalog.routes.ts:66,108,142`. Fix: Number.isFinite guard + clamp.
 - [ ] SCAN-839. **client.ts JWT atob silent fail — malformed token leaves refreshScheduled=true forever** — `packages/web/src/api/client.ts:87`. Fix: re-throw on decode fail + reset state.
 - [ ] SCAN-840. **ImpersonationBanner localStorage not shape-validated — malicious other-site script can inject tenant_slug** — `packages/web/src/components/ImpersonationBanner.tsx:27`. Fix: Zod shape check + reject on invalid.
@@ -1575,7 +1561,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-847. **SpotlightCoach Promise.resolve().catch() antipattern — rejected promises silently swallowed** — `packages/web/src/components/SpotlightCoach.tsx:370-371,408-409,414-415`. Fix: await + try/catch.
 
 ### Wave-34 scan-loop findings (2026-04-23)
-- [ ] SCAN-858. **[HIGH] tickets parseInt(req.params.linkId) no validation at DELETE /links/:linkId (3770) + POST /merge (3788)** — `packages/server/src/routes/tickets.routes.ts:3770,3788`. Fix: validateId helper.
 - [ ] SCAN-859. **tickets stalled parseInt(req.query.days) NaN fallthrough** — `packages/server/src/routes/tickets.routes.ts:1251`. Fix: Number.isFinite guard + clamp.
 - [ ] SCAN-860. **tickets fire-and-forget .catch(() => {}) at 5 sites — notifications/webhooks silently fail** — `packages/server/src/routes/tickets.routes.ts:1181,1197,2079,2091,3563`. Fix: log.warn with context.
 - [ ] SCAN-861. **auth.routes challenges Map sort() on every over-cap insert — O(n log n) at 10k+ size** — `packages/server/src/routes/auth.routes.ts:150-152`. Fix: FIFO eviction via Map iteration (keys().next() — insertion order guaranteed).
