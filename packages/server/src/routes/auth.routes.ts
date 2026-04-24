@@ -50,7 +50,17 @@ const PASSWORD_HISTORY_DEPTH = 5;
 
 // SECURITY: Derived key for device trust cookies — separate from JWT signing key
 // Prevents a JWT token from being reused as a device trust cookie or vice versa
-const deviceTrustKey = crypto.createHmac('sha256', config.jwtSecret).update('device-trust-v1').digest('hex');
+//
+// SCAN-904: Prefer a dedicated DEVICE_TRUST_SECRET env var so the device-trust
+// key can be rotated independently of JWT secrets (SEC-H103).
+// If unset, falls back to jwtSecret (existing behaviour — no cookie breakage).
+// WARNING: changing DEVICE_TRUST_SECRET invalidates all existing device-trust
+// cookies; users will need to re-confirm trusted devices on next 2FA login.
+const _deviceTrustBase = process.env.DEVICE_TRUST_SECRET || config.jwtSecret;
+if (!process.env.DEVICE_TRUST_SECRET) {
+  logger.warn('DEVICE_TRUST_SECRET not set; device-trust cookies share key material with JWT — set DEVICE_TRUST_SECRET to a dedicated 64-byte hex for independent rotation (SEC-H103)');
+}
+const deviceTrustKey = crypto.createHmac('sha256', _deviceTrustBase).update('device-trust-v1').digest('hex');
 
 // AES-256-GCM encryption for TOTP secrets (versioned keys for future rotation)
 //
@@ -394,12 +404,15 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // would allow cross-site top-level navigations to carry the cookie, giving
   // attackers a window for CSRF on sensitive cookie-bound flows. Strict has
   // no functional downside here because the SPA and API share an origin.
-  // PROD33: Secure flag gated on production so dev (which also runs HTTPS with
-  // a self-signed cert, but some test tooling talks plain HTTP) doesn't silently
-  // drop the cookie. In prod the browser MUST see Secure or refuse the cookie.
+  // SCAN-905: Use req.secure (which honours trust-proxy / X-Forwarded-Proto)
+  // OR fall back to nodeEnv === 'production'. This ensures staging environments
+  // running HTTPS with nodeEnv != 'production' still set the Secure flag.
+  // NOTE: for req.secure to reflect HTTPS behind a reverse proxy, ensure
+  // `app.set('trust proxy', 'loopback')` (or similar) is enabled in index.ts.
+  const isSecureConnection = req.secure || config.nodeEnv === 'production';
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
     path: '/',
@@ -417,7 +430,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   const csrfToken = crypto.randomBytes(24).toString('base64url');
   res.cookie('csrf_token', csrfToken, {
     httpOnly: false,                               // must be readable by JS
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,    // lifetime matches refreshToken
     path: '/',
@@ -1021,10 +1034,11 @@ router.post('/login/2fa-verify', asyncHandler(async (req: Request, res: Response
       { ...JWT_SIGN_OPTIONS, expiresIn: '90d' }
     );
     // SEC-H17: SameSite=Strict to match refreshToken — device trust is first-party only.
-    // PROD33: Secure flag gated on production (see issueTokens() for rationale).
+    // SCAN-905: req.secure honours trust-proxy / X-Forwarded-Proto; production fallback
+    // ensures the flag is set even if req.secure is somehow false in prod.
     res.cookie('deviceTrust', deviceToken, {
       httpOnly: true,
-      secure: config.nodeEnv === 'production',
+      secure: req.secure || config.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 90 * 24 * 60 * 60 * 1000,
       path: '/',
@@ -1306,10 +1320,11 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: originalWindowSec }
     );
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
-    // PROD33: Secure flag gated on production to match the issue-time cookie.
+    // SCAN-905: use req.secure so staging/dev HTTPS also sets the Secure flag.
+    const isSecureConnection = req.secure || config.nodeEnv === 'production';
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: config.nodeEnv === 'production',
+      secure: isSecureConnection,
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
       path: '/',
@@ -1318,7 +1333,7 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
     const newCsrfToken = crypto.randomBytes(24).toString('base64url');
     res.cookie('csrf_token', newCsrfToken, {
       httpOnly: false,
-      secure: config.nodeEnv === 'production',
+      secure: isSecureConnection,
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
       path: '/',
@@ -1489,10 +1504,11 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
-  // PROD33: Secure flag gated on production.
+  // SCAN-905: req.secure honours trust-proxy; production fallback as safety net.
+  const isSecureConnection = req.secure || config.nodeEnv === 'production';
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/',
@@ -1505,7 +1521,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   const switchCsrfToken = crypto.randomBytes(24).toString('base64url');
   res.cookie('csrf_token', switchCsrfToken, {
     httpOnly: false,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000,
     path: '/',

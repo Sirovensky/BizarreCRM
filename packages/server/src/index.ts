@@ -193,7 +193,7 @@ import { setMasterDb } from './utils/masterAudit.js';
  * handlers. The pool handles WAL+pragma setup, LRU eviction, and health checks. The callback
  * MUST NOT close the handle — the pool owns it.
  */
-function forEachDb(callback: (slug: string | null, tenantDb: any) => void): void {
+async function forEachDb(callback: (slug: string | null, tenantDb: any) => void): Promise<void> {
   if (!config.multiTenant) {
     callback(null, db);
     return;
@@ -204,7 +204,7 @@ function forEachDb(callback: (slug: string | null, tenantDb: any) => void): void
   for (const t of tenants) {
     try {
       // SEC-BG6: reuse the connection from tenant-pool.ts instead of opening a new handle.
-      const pooled = getTenantDb(t.slug);
+      const pooled = await getTenantDb(t.slug);
       callback(t.slug, pooled);
     } catch (err) {
       // Surface structured so ops can see when a tenant DB is unreachable.
@@ -251,7 +251,7 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
   for (const t of tenants) {
     try {
       // SEC-BG6: reuse the pooled connection.
-      const pooled = getTenantDb(t.slug);
+      const pooled = await getTenantDb(t.slug);
       // SEC-M31: race the callback against a timeout so one hung tenant
       // can't stall the whole iteration.
       const outcome = await withTimeout(callback(t.slug, pooled), PER_TENANT_CRON_TIMEOUT_MS, t.slug);
@@ -1478,7 +1478,7 @@ app.get('/api/v1/voice/instructions/:action', webhookRateLimit, voiceInstruction
 // The tenantResolver middleware handles DB routing via subdomain. These explicit slug routes
 // are for providers that don't support custom subdomains (use path-based routing instead):
 if (config.multiTenant) {
-  const webhookTenantResolver = (req: any, res: any, next: any) => {
+  const webhookTenantResolver = async (req: any, res: any, next: any) => {
     const { slug } = req.params;
     if (!slug || !req.tenantSlug) {
       // Resolve tenant from path param instead of subdomain
@@ -1488,7 +1488,7 @@ if (config.multiTenant) {
       const tenant = masterDb.prepare("SELECT id, slug FROM tenants WHERE slug = ? AND status = 'active'").get(slug) as TenantRow | undefined;
       if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' });
       try {
-        req.db = getTenantDb(tenant.slug);
+        req.db = await getTenantDb(tenant.slug);
         req.tenantSlug = tenant.slug;
         req.tenantId = tenant.id;
       } catch {
@@ -3364,7 +3364,7 @@ server.listen(config.port, config.host, async () => {
 
           for (const t of rows) {
             try {
-              const tenantDb = getTenantDb(t.slug);
+              const tenantDb = await getTenantDb(t.slug);
               const tzRow = tenantDb
                 .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
                 .get() as { value?: string } | undefined;
@@ -3498,7 +3498,7 @@ server.listen(config.port, config.host, async () => {
           // Serial — never parallel. SQLite single-writer + worker-pool budget
           // mean parallel fleets only create lock contention.
           try {
-            const tenantDbHandle = getTenantDb(t.slug); // pool-owned, do not close
+            const tenantDbHandle = await getTenantDb(t.slug); // pool-owned, do not close
             const tzRow = tenantDbHandle
               .prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
               .get() as { value?: string } | undefined;

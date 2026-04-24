@@ -218,11 +218,13 @@ async function postPaymentSideEffects({
     metadata: { amount_cents: toCents(paymentAmount), method: paymentMethod },
   }).catch(() => {});
 
-  // Webhook
+  // Webhook (SCAN-900: fireWebhook internally wraps async errors — no outer .catch needed;
+  // SCAN-907: idempotency_key enables consumer-side deduplication on retry)
   fireWebhook(db, 'payment_received', {
     invoice_id: Number(invoice.id),
     amount: paymentAmount,
     method: paymentMethod,
+    idempotency_key: `payment:${invoice.id}:${paymentId}`,
   });
 }
 
@@ -534,6 +536,9 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   // back off the `invoice` detail row (which was typed `any` via `adb.get<any>`).
   // That removes the `as any` cast at the broadcast boundary without changing
   // semantics — `orderId` is the exact value we just INSERTed.
+  // SCAN-900: both fireWebhook and runAutomations wrap async in an internal
+  // (async () => { try { ... } catch { logger.warn } })() — errors are already
+  // surfaced inside those helpers; no additional .catch needed at the call site.
   fireWebhook(db, 'invoice_created', { invoice_id: invoiceId, order_id: orderId });
 
   // Fire automations (async, non-blocking)

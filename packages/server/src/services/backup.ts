@@ -1031,7 +1031,7 @@ export function scheduleMultiTenantBackups(
 
       for (const t of tenants) {
         try {
-          const tenantDb = getTenantDb(t.slug);
+          const tenantDb = await getTenantDb(t.slug);
           if (!tenantDb) continue;
           const result = await runBackup(tenantDb, { tenantSlug: t.slug, tenantId: t.id });
           if (result.success) {

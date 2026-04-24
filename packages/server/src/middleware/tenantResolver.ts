@@ -261,7 +261,7 @@ const RESERVED_SLUGS = new Set([
  * - Path traversal is blocked by the tenant pool (verifies resolved path stays within tenantDataDir)
  * - Reserved subdomains (www, api, admin, master) are skipped
  */
-export function tenantResolver(req: Request, res: Response, next: NextFunction): void {
+export async function tenantResolver(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Skip in single-tenant mode
   if (!config.multiTenant) {
     next();
@@ -494,7 +494,7 @@ export function tenantResolver(req: Request, res: Response, next: NextFunction):
   // Open tenant DB first — only cache plan on successful connection
   try {
     // SECURITY: getTenantDb validates slug format again and verifies path is within tenantDataDir
-    req.db = getTenantDb(tenant.slug);
+    req.db = await getTenantDb(tenant.slug);
     // Async DB for worker-thread based queries (gradual migration)
     const tenantDbPath = path.join(config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'), `${tenant.slug}.db`);
     req.asyncDb = createAsyncDb(tenantDbPath);

@@ -701,7 +701,7 @@ export interface TenantDataExport {
  * caller. Tables that do not exist on older tenant DBs are silently skipped
  * rather than erroring, so the export is robust to schema drift.
  */
-export function exportTenantData(tenantId: number): TenantDataExport | null {
+export async function exportTenantData(tenantId: number): Promise<TenantDataExport | null> {
   const masterDb = getMasterDb();
   if (!masterDb) return null;
 
@@ -710,7 +710,7 @@ export function exportTenantData(tenantId: number): TenantDataExport | null {
     .get(tenantId) as { id: number; slug: string } | undefined;
   if (!tenant) return null;
 
-  const db = getTenantDb(tenant.slug);
+  const db = await getTenantDb(tenant.slug);
   if (!db) return null;
 
   const safeSelectAll = (sql: string): unknown[] => {

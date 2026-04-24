@@ -658,7 +658,7 @@ function startAutoClockoutSweep(): void {
             .all() as { slug: string }[];
           for (const t of tenants) {
             try {
-              const pooled = getTenantDb(t.slug);
+              const pooled = await getTenantDb(t.slug);
               const tenantAdb = createAsyncDb(pooled.name);
               const closed = await autoClockOutStaleSessions(tenantAdb, pooled);
               if (closed > 0) {

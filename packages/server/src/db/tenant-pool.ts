@@ -26,6 +26,37 @@ const pool = new Map<string, PoolEntry>();
 // in the pool, and refcounts entries are removed when a handle is closed.
 const refcounts = new Map<string, number>();
 
+// ─── per-slug serialization mutex ────────────────────────────────────────────
+//
+// SCAN-898 / SCAN-902: Without serialization, two concurrent callers for the
+// same slug can both see a stale/missing pool entry and both open a new handle,
+// OR both see pool.size === MAX_POOL_SIZE-1 and both skip eviction, driving the
+// pool to MAX_POOL_SIZE+1.  A per-slug promise chain makes open+health-check+
+// insert atomic with respect to other callers for the same slug.
+//
+// Node.js is single-threaded, so "concurrent" here means two async callers
+// that both reach getTenantDb before either has inserted into the pool (e.g.
+// two overlapping cron ticks, WS + HTTP arriving in the same turn, etc.).
+
+const slugLocks = new Map<string, Promise<void>>();
+
+function withSlugLock<T>(slug: string, fn: () => Promise<T>): Promise<T> {
+  const prev = slugLocks.get(slug) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((r) => { release = r; });
+  // Chain: next turn waits for prev to settle before fn() runs.
+  slugLocks.set(slug, prev.then(() => next));
+  return prev.then(async () => {
+    try {
+      return await fn();
+    } finally {
+      release();
+      // Remove the chain tail once this lock is released so the Map doesn't grow unbounded.
+      if (slugLocks.get(slug) === next) slugLocks.delete(slug);
+    }
+  });
+}
+
 // ─── internal helpers ─────────────────────────────────────────────────────────
 
 function openDb(slug: string): Database.Database {
@@ -114,56 +145,77 @@ function evictLRU(): boolean {
  *   evict it on release (evict-on-release path in releaseTenantDb).
  *   This prevents a slow-request flood from starving new tenants while
  *   still bounding steady-state memory.
+ *
+ * CALLER CONTRACT: always pair getTenantDb() with releaseTenantDb() in a
+ * try/finally block.  Failure to release leaks the refcount and prevents
+ * LRU eviction of that handle.  Node's FinalizationRegistry is NOT used
+ * here because it fires non-deterministically; caller-side try/finally is
+ * the only guarantee.
+ *
+ * SCAN-898 / SCAN-902 / SCAN-906: The open+health-check+insert path is
+ * serialized per slug via withSlugLock() so two concurrent callers cannot
+ * both open a new handle or both skip the eviction step.
  */
-export function getTenantDb(slug: string): Database.Database {
-  const now = Date.now();
-  const entry = pool.get(slug);
+export function getTenantDb(slug: string): Promise<Database.Database> {
+  return withSlugLock(slug, async () => {
+    const now = Date.now();
+    const entry = pool.get(slug);
 
-  if (entry) {
-    // Periodically verify the cached connection is still usable
-    // (DB file may have been deleted or corrupted externally)
-    if (now - entry.lastHealthCheck > HEALTH_CHECK_INTERVAL_MS) {
-      try {
-        entry.db.prepare('SELECT 1').get();
-        entry.lastHealthCheck = now;
-      } catch {
-        // Connection is dead — remove from pool and re-open below
-        closeEntry(slug, entry);
-        // Fall through to open a fresh handle
-        return getTenantDb(slug);
+    if (entry) {
+      // Periodically verify the cached connection is still usable
+      // (DB file may have been deleted or corrupted externally)
+      if (now - entry.lastHealthCheck > HEALTH_CHECK_INTERVAL_MS) {
+        try {
+          entry.db.prepare('SELECT 1').get();
+          entry.lastHealthCheck = now;
+        } catch {
+          // Connection is dead — remove from pool and re-open below.
+          // SCAN-898: recursive call is now safe; withSlugLock serializes
+          // concurrent openers so only one reaches openDb() at a time.
+          closeEntry(slug, entry);
+          // Fall through to open a fresh handle (no recursive call needed;
+          // the pool entry was just deleted so the code below will open it).
+        }
+      }
+      // Re-read after potential closeEntry above.
+      const current = pool.get(slug);
+      if (current) {
+        current.lastUsed = now;
+        current.refcount += 1;
+        refcounts.set(slug, current.refcount);
+        return current.db;
       }
     }
-    entry.lastUsed = now;
-    entry.refcount += 1;
-    refcounts.set(slug, entry.refcount);
-    return entry.db;
-  }
 
-  // Pool is at capacity — try to evict an idle handle first.
-  if (pool.size >= MAX_POOL_SIZE) {
-    const evicted = evictLRU();
-    if (!evicted) {
-      // All handles are in use (refcount > 0). Open an extra handle and
-      // mark it for immediate evict-on-release so it doesn't permanently
-      // bloat the pool.
-      console.warn(
-        `[tenant-pool] pool exhausted (${pool.size}/${MAX_POOL_SIZE}, all in use) — ` +
-        `opening extra handle for ${slug}; will close on release. ` +
-        'Consider raising TENANT_MAX_POOL_SIZE if this is frequent.'
-      );
-      const db = openDb(slug);
-      const overflowEntry: PoolEntry = { db, lastUsed: now, lastHealthCheck: now, refcount: 1 };
-      pool.set(slug, overflowEntry);
-      refcounts.set(slug, 1);
-      return db;
+    // Pool is at capacity — try to evict an idle handle first.
+    // SCAN-902: this check+evict+insert is now atomic per slug because we
+    // are inside withSlugLock; no second concurrent caller for this slug
+    // can reach this point until we return.
+    if (pool.size >= MAX_POOL_SIZE) {
+      const evicted = evictLRU();
+      if (!evicted) {
+        // All handles are in use (refcount > 0). Open an extra handle and
+        // mark it for immediate evict-on-release so it doesn't permanently
+        // bloat the pool.
+        console.warn(
+          `[tenant-pool] pool exhausted (${pool.size}/${MAX_POOL_SIZE}, all in use) — ` +
+          `opening extra handle for ${slug}; will close on release. ` +
+          'Consider raising TENANT_MAX_POOL_SIZE if this is frequent.'
+        );
+        const db = openDb(slug);
+        const overflowEntry: PoolEntry = { db, lastUsed: now, lastHealthCheck: now, refcount: 1 };
+        pool.set(slug, overflowEntry);
+        refcounts.set(slug, 1);
+        return db;
+      }
     }
-  }
 
-  const db = openDb(slug);
-  const newEntry: PoolEntry = { db, lastUsed: now, lastHealthCheck: now, refcount: 1 };
-  pool.set(slug, newEntry);
-  refcounts.set(slug, 1);
-  return db;
+    const db = openDb(slug);
+    const newEntry: PoolEntry = { db, lastUsed: now, lastHealthCheck: now, refcount: 1 };
+    pool.set(slug, newEntry);
+    refcounts.set(slug, 1);
+    return db;
+  });
 }
 
 /**

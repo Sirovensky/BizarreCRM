@@ -223,7 +223,7 @@ async function isTenantOriginAllowed(
     // Lazy import keeps ws/server.ts free of DB concerns on the hot path for
     // non-auth messages and avoids a circular init in single-tenant mode.
     const { getTenantDb } = await import('../db/tenant-pool.js');
-    const tdb = getTenantDb(tenantSlug);
+    const tdb = await getTenantDb(tenantSlug);
     if (!tdb) return true;
 
     const row = tdb

@@ -719,14 +719,14 @@ router.post('/tenants', async (req, res) => {
   res.status(201).json({ success: true, data: { tenant_id: result.tenantId, slug: result.slug, url: baseUrl, setup_url: setupUrl } });
 });
 
-router.get('/tenants/:slug', (req, res) => {
+router.get('/tenants/:slug', async (req, res) => {
   const masterDb = getMasterDb()!;
   const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
   if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
 
   let userCount = 0, ticketCount = 0, customerCount = 0;
   try {
-    const tdb = getTenantDb(tenant.slug);
+    const tdb = await getTenantDb(tenant.slug);
     userCount = (tdb.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
     ticketCount = (tdb.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
     customerCount = (tdb.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
@@ -1171,7 +1171,7 @@ router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_
 //   - Everything is written to master_audit_log with before/after fields,
 //     including the tenant slug, target user id + username, and the super
 //     admin actor — a full paper trail for post-incident review.
-router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), (req, res) => {
+router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), async (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) {
     return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
@@ -1201,7 +1201,7 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
 
   let tdb;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
     logger.error('Failed to open tenant DB for 2FA force-disable', {
       slug,
@@ -1657,7 +1657,7 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
 // queued. Useful for triaging "the customer didn't get the SMS"
 // reports without SSHing into the tenant DB.
 
-router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
+router.get('/tenants/:slug/notifications', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1668,7 +1668,7 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
 
   let tdb: import('better-sqlite3').Database;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
     logger.error('super-admin: tenant notification-queue DB open failed', {
       err: err instanceof Error ? err.message : String(err),
@@ -1727,7 +1727,7 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
 // were exhausted, so this list shows permanent failures the operator
 // probably needs to investigate on the downstream side.
 
-router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
+router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1738,7 +1738,7 @@ router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
 
   let tdb: import('better-sqlite3').Database;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
     logger.error('super-admin: tenant webhook-failures DB open failed', {
       err: err instanceof Error ? err.message : String(err),
@@ -1803,7 +1803,7 @@ router.post(
     if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
     let tdb: import('better-sqlite3').Database;
-    try { tdb = getTenantDb(slug); }
+    try { tdb = await getTenantDb(slug); }
     catch (err) {
       logger.error('super-admin: tenant webhook-failure retry DB open failed', {
         err: err instanceof Error ? err.message : String(err),
@@ -1826,7 +1826,7 @@ router.post(
 
 // ─── Automation Run Log (per-tenant automation execution history) ─
 
-router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
+router.get('/tenants/:slug/automation-runs', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1837,7 +1837,7 @@ router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
 
   let tdb: import('better-sqlite3').Database;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
     logger.error('super-admin: tenant automation-runs DB open failed', {
       err: err instanceof Error ? err.message : String(err),
@@ -1931,7 +1931,7 @@ function clearRateLimitsOnDb(
 // Read-only inspector — shows currently throttled or recently locked rate
 // limit entries across master + every tenant DB. Operator can decide whether
 // to nuke them with the reset tool or wait for the cool-down to expire.
-router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
+router.get('/admin-tools/rate-limits', async (req: Request, res: Response) => {
   const lockedOnly = req.query.lockedOnly === 'true';
   const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '200'), 10) || 200));
   const masterDb = getMasterDb()!;
@@ -1969,7 +1969,7 @@ router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
   const tenants = masterDb.prepare('SELECT slug FROM tenants WHERE status = ?').all('active') as Array<{ slug: string }>;
   for (const t of tenants) {
     try {
-      const tdb = getTenantDb(t.slug);
+      const tdb = await getTenantDb(t.slug);
       readDb(tdb, `tenant:${t.slug}`);
     } catch { /* ignore unavailable tenant DB */ }
   }
@@ -1995,7 +1995,7 @@ router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
 router.post(
   '/admin-tools/reset-rate-limits',
   requireStepUpTotpSuperAdmin('super_admin_reset_rate_limits'),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
     const all = req.body?.all === true;
     if (tenantSlug && !/^[a-z0-9-]{1,64}$/.test(tenantSlug)) {
@@ -2012,7 +2012,7 @@ router.post(
         return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
       }
       try {
-        const tdb = getTenantDb(tenant.slug);
+        const tdb = await getTenantDb(tenant.slug);
         results.push(clearRateLimitsOnDb(tdb, `tenant:${tenant.slug}`, categories));
       } catch (err) {
         results.push({
@@ -2028,7 +2028,7 @@ router.post(
       const tenants = masterDb.prepare('SELECT slug FROM tenants').all() as Array<{ slug: string }>;
       for (const t of tenants) {
         try {
-          const tdb = getTenantDb(t.slug);
+          const tdb = await getTenantDb(t.slug);
           results.push(clearRateLimitsOnDb(tdb, `tenant:${t.slug}`, categories));
         } catch (err) {
           results.push({
@@ -2158,7 +2158,7 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
 
   let targetUser: { id: number; username: string; role: string } | undefined;
   try {
-    const tdb = getTenantDb(slug);
+    const tdb = await getTenantDb(slug);
     // Prefer an admin user; fall back to any active user.
     targetUser =
       (tdb.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??

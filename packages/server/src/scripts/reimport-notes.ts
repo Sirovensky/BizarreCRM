@@ -69,7 +69,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
  * file. In single-tenant mode the script refuses to run — the whole point of
  * the flag is to prevent accidental writes to the template/main DB.
  */
-function resolveTenantDb(slug: string): Database.Database {
+async function resolveTenantDb(slug: string): Promise<Database.Database> {
   if (!config.multiTenant) {
     throw new Error(
       'reimport-notes requires multi-tenant mode (MULTI_TENANT=true). ' +
@@ -94,7 +94,7 @@ function resolveTenantDb(slug: string): Database.Database {
     throw new Error(`Tenant ${slug} is not active (status=${row.status})`);
   }
 
-  return getTenantDb(slug);
+  return await getTenantDb(slug);
 }
 
 let args: CliArgs;
@@ -118,16 +118,20 @@ if (!API_KEY) {
 
 log.info('Starting re-import for tenant', { tenant: args.tenant });
 
-let db: Database.Database;
-try {
-  db = resolveTenantDb(args.tenant);
-} catch (err) {
-  log.error('Failed to resolve tenant DB', {
-    tenant: args.tenant,
-    error: err instanceof Error ? err.message : String(err),
-  });
-  process.exit(1);
-}
+// resolveTenantDb is async; use a synchronous-looking placeholder that is
+// immediately overwritten by the IIFE below before any prepared statements run.
+let db: Database.Database = null!;
+await (async () => {
+  try {
+    db = await resolveTenantDb(args.tenant);
+  } catch (err) {
+    log.error('Failed to resolve tenant DB', {
+      tenant: args.tenant,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    process.exit(1);
+  }
+})();
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
