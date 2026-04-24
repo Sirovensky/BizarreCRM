@@ -17,20 +17,20 @@
        • Barlow Condensed hero numerics.
      ═════════════════════════════════════════════════════════════════════ */
   :root {
-    --bg-deep: #0a0710;
-    --bg: #120c1a;
-    --surface-solid: #1a1422;
-    --surface-elev: #231a2e;
-    --surface-glass: rgba(36, 31, 46, 0.55);
-    --outline: rgba(255, 255, 255, 0.08);
-    --outline-bright: rgba(255, 255, 255, 0.16);
+    --bg-deep: #0a0908;
+    --bg: #14120f;
+    --surface-solid: #1a1816;
+    --surface-elev: #221f1c;
+    --surface-glass: rgba(38, 35, 32, 0.55);
+    --outline: rgba(255, 250, 240, 0.08);
+    --outline-bright: rgba(255, 250, 240, 0.14);
     --primary: #fdeed0;
     --primary-bright: #fff7e0;
     --primary-soft: rgba(253, 238, 208, 0.14);
     --on-primary: #2b1400;
     --on: #f2eef9;
-    --muted: #b4adc5;        /* nudged up from #a79fb8 to clear AAA on glass */
-    --muted-2: #7e778e;
+    --muted: #a8a4a0;
+    --muted-2: #7e7a76;
     --success: #34c47e;
     --warning: #e8a33d;
     --error: #e2526c;
@@ -49,8 +49,8 @@
   html, body {
     margin: 0; padding: 0;
     background:
-      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.06), transparent 50%),
-      radial-gradient(ellipse at 110% 100%, rgba(77,184,201,0.10), transparent 60%),
+      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.06), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.03), transparent 60%),
       var(--bg-deep);
     color: var(--on);
     font-family: var(--font-text);
@@ -62,7 +62,7 @@
     text-align: center;
     padding: 32px 16px 6px; margin: 0;
     font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
-    background: linear-gradient(180deg, #fff, #cfc3dd);
+    background: linear-gradient(180deg, #fff, #d4cfc8);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .intro {
@@ -170,7 +170,7 @@
     padding: 8px 16px 4px;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    background: rgba(18,12,26,0.55);
+    background: rgba(20,18,15,0.55);
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .nav-title-row {
@@ -281,7 +281,7 @@
      ───────────────────────────────────────────────────────────── */
   .cart-strip {
     padding: 10px 16px; display: flex; align-items: center; gap: 10px;
-    background: rgba(36,31,46,0.35);
+    background: rgba(32,29,26,0.35);
     backdrop-filter: blur(14px) saturate(180%);
     -webkit-backdrop-filter: blur(14px) saturate(180%);
     border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -403,7 +403,7 @@
   /* Safe-area tender section */
   .tender-safearea {
     padding: 10px 16px 26px;
-    background: linear-gradient(180deg, rgba(18,12,26,0.0), rgba(18,12,26,0.88) 35%);
+    background: linear-gradient(180deg, rgba(20,18,15,0.0), rgba(20,18,15,0.88) 35%);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-top: 1px solid rgba(255,255,255,0.06);
@@ -475,7 +475,7 @@
   .sheet {
     position: absolute; left: 0; right: 0; bottom: 0;
     padding-bottom: 22px;
-    background: rgba(24,18,32,0.85);
+    background: rgba(26,22,18,0.85);
     backdrop-filter: blur(28px) saturate(180%);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     border-top-left-radius: 28px; border-top-right-radius: 28px;
@@ -712,7 +712,7 @@
     padding: 18px 20px;
     border-radius: 18px;
     position: relative;
-    background: rgba(36,31,46,0.60);
+    background: rgba(32,29,26,0.60);
     backdrop-filter: blur(22px) saturate(180%);
     -webkit-backdrop-filter: blur(22px) saturate(180%);
     border: 1px solid rgba(255,255,255,0.12);
@@ -871,7 +871,7 @@
     margin: 10px 16px;
     padding: 12px 14px;
     border-radius: 14px;
-    background: rgba(28, 22, 38, 0.80);
+    background: rgba(26, 22, 18, 0.80);
     border: 1px solid rgba(255,255,255,0.08);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.06),
@@ -1024,6 +1024,49 @@
             <span class="p-chev">›</span>
           </div>
 
+          <!-- Ready-for-pickup list · compact vertical rows · ≤200pt total -->
+          <div class="sect-label" style="padding-top: 16px;">Ready for pickup · 3</div>
+
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 7px;">
+
+            <div style="background: rgba(52,196,126,0.08); border: 1.5px solid rgba(52,196,126,0.4); border-radius: 14px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg,#4ad088,#34c47e); color: #002817; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; flex-shrink: 0; box-shadow: 0 4px 12px rgba(52,196,126,0.32);">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;">Sarah M. <span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 8.5px; padding: 1px 5px; border-radius: 99px; font-weight: 800;">GOLD</span></div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4829 · iPhone 14 screen</div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$274</div>
+                <div style="background: rgba(52,196,126,0.15); border: 1px solid rgba(52,196,126,0.35); color: var(--success); font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 99px; margin-top: 2px; white-space: nowrap;">Open cart →</div>
+              </div>
+            </div>
+
+            <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 9px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 10px; background: rgba(52,196,126,0.18); border: 1px solid rgba(52,196,126,0.3); color: var(--success); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700;">Marco D.</div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4831 · Samsung S23 battery</div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$142</div>
+                <div style="background: rgba(52,196,126,0.12); border: 1px solid rgba(52,196,126,0.28); color: var(--success); font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 99px; margin-top: 2px; white-space: nowrap;">Open cart →</div>
+              </div>
+            </div>
+
+            <div style="background: rgba(52,196,126,0.05); border: 1px solid rgba(52,196,126,0.28); border-radius: 14px; padding: 9px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 10px; background: rgba(52,196,126,0.18); border: 1px solid rgba(52,196,126,0.3); color: var(--success); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;">Nora P. <span style="background: rgba(77,184,201,0.18); border: 1px solid rgba(77,184,201,0.35); color: var(--teal); font-size: 8.5px; padding: 1px 5px; border-radius: 99px; font-weight: 800;">SILVER</span></div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4833 · iPad port clean</div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$68</div>
+                <div style="background: rgba(52,196,126,0.12); border: 1px solid rgba(52,196,126,0.28); color: var(--success); font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 99px; margin-top: 2px; white-space: nowrap;">Open cart →</div>
+              </div>
+            </div>
+
+          </div>
+
           <!-- Recent customers — avatar-only horizontal scroll, tap → attach -->
           <div class="sect-label" style="padding-top: 18px;">Recent today</div>
 
@@ -1059,6 +1102,335 @@
   </div>
 
   <!-- ════════════════════════════════════════════════════════════════════
+       REPAIR TICKET PATH — 4 steps (1b→1e)
+       Inserted between customer gate and catalog per §22.1 plan.
+       On iPhone: full-screen NavigationStack frames with back chevron.
+       ════════════════════════════════════════════════════════════════════ -->
+
+</div><!-- close grid -->
+<div class="section-label">Repair ticket path · 4 steps · 1b → 1e</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1b — Repair 1 · Pick device (saved devices on file + Add new + Scan IMEI)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1b · Repair — Pick device · customer attached · saved devices on file + add new + scan IMEI</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Back</span>
+            <div class="nav-title">Pick device</div>
+            <div class="chip" style="font-size: 11px;">Sarah M.</div>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <div class="sect-label">On file · 2</div>
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.38); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">iPhone 14 Pro</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">IMEI 359…8821 · Space Black · 256 GB</div>
+                <div style="font-size: 10px; color: var(--success); margin-top: 2px;">Under warranty until 2026-08-14</div>
+              </div>
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--on-primary); font-weight: 900;">✓</div>
+            </div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">Apple Watch Series 8</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Serial FH7…921 · 45mm Aluminum</div>
+              </div>
+              <div style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+            </div>
+          </div>
+
+          <div class="sect-label" style="padding-top: 16px;">Add new</div>
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: transparent; border: 1.5px dashed rgba(253,238,208,0.4); border-radius: 14px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: 0 4px 12px rgba(253,238,208,0.22);">+</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--primary);">Add new device</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Scan IMEI/serial, pick model, condition</div>
+              </div>
+              <span style="color: var(--primary); font-size: 18px;">›</span>
+            </div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">📷</div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700;">Scan IMEI</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Auto-fills make / model / year</div>
+              </div>
+              <span style="color: var(--muted); font-size: 18px;">›</span>
+            </div>
+          </div>
+
+          <div style="height: 20px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Continue → describe issue</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1c — Repair 2 · Describe issue (symptom textarea + condition + quick chips)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1c · Repair — Describe issue · symptom text · device condition dropdown · quick-pick chips</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Device</span>
+            <div class="nav-title">Issue · Step 2/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 33%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 14px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">What's the problem?</div>
+            <div style="border: 1.5px solid rgba(253,238,208,0.35); border-radius: 14px; padding: 12px; background: rgba(255,255,255,0.03); min-height: 80px; font-size: 13.5px; line-height: 1.5;">
+              Dropped on sidewalk. Screen flickers on calls. Battery also dies fast.<span style="color: var(--primary);">|</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+              <span style="color: var(--teal); font-size: 11px;">🎤 Dictate</span>
+              <span style="color: var(--muted); font-size: 11px;">87 / 2000</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Device condition</div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13.5px; font-weight: 600;">Poor — visible damage</span>
+              <span style="color: var(--muted); font-size: 16px;">⌄</span>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Quick-pick symptom</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Screen cracked</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Won't charge</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Water damage</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Battery</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Other</div>
+            </div>
+          </div>
+
+          <div style="padding: 8px 16px 6px;">
+            <div class="sect-label" style="padding: 0 0 6px;">Internal notes (tech-only)</div>
+            <div style="border: 1px dashed rgba(232,163,61,0.45); border-radius: 12px; padding: 10px 12px; background: rgba(232,163,61,0.04); font-size: 13px; color: var(--muted);">Prior non-OEM repair visible on frame. <span style="color: var(--warning);">|</span></div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Next → diagnostic quote</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1d — Repair 3 · Diagnostic + quote (checklist + parts + running price + CTA split)
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1d · Repair — Diagnostic &amp; quote · suggested parts + labor pre-populated · running price · Save quote vs Continue to deposit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Issue</span>
+            <div class="nav-title">Quote · Step 3/4</div>
+            <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 66%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll" style="padding: 0 0 8px;">
+
+          <div style="padding: 12px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Diagnostic notes</div>
+            <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); font-size: 13px; color: var(--muted);">Screen flex confirmed faulty. Battery at 61% health. OLED bleed visible top-left.<span style="color: var(--primary);">|</span></div>
+          </div>
+
+          <div style="padding: 8px 16px 4px;">
+            <div class="sect-label" style="padding: 0 0 8px;">Suggested parts + labor</div>
+
+            <!-- Part row checkable -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">OEM grade · 22 in stock</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$189</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · screen replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~45 min</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$60</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">iPhone 14 Battery</div>
+                  <div style="font-size: 10.5px; color: var(--muted); color: var(--warning);">3 in stock — low</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$79</div>
+              </div>
+              <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; opacity: 0.65;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Labor · battery replace</div>
+                  <div style="font-size: 10.5px; color: var(--muted);">~20 min · add if replacing battery</div>
+                </div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--muted);">$35</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Running price estimate -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.10), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; justify-content: space-between; align-items: baseline;">
+            <div>
+              <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">Estimate · 3 items</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">+tax · final at pickup</div>
+            </div>
+            <div style="font-family: var(--font-display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--primary);">$327</div>
+          </div>
+
+          <div style="height: 16px;"></div>
+        </div>
+
+        <!-- Split footer CTA -->
+        <div class="tender-safearea" style="padding-top: 8px;">
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 12px;">Save as quote</button>
+          </div>
+          <button class="tender-btn">
+            <span>Continue → deposit</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1e — Repair 4 · Deposit tender (reuse tender UI — showing "Deposit · $50 of $327")
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1e · Repair — Deposit tender · Cash selected · "Deposit · $50 of $327" · same numpad UI as full tender</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Quote</span>
+            <div class="nav-title">Deposit</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$327</span>
+          </div>
+        </div>
+        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+          <div style="height: 100%; width: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
+        </div>
+
+        <div class="scroll">
+          <!-- Selected method strip -->
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Deposit · $50 of $327</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Balance due at pickup · enter cash received below</div>
+            </div>
+            <span class="chip success" style="font-size: 10px;">Active</span>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$50<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$0.00</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount selected">$50</div>
+            <div class="quick-amount">$60</div>
+            <div class="quick-amount">$75</div>
+            <div class="quick-amount">$100</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Confirm deposit</span>
+            <span class="tb-amount">$50.00</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- close repair grid -->
+<div class="section-label">Main sale flow · 7 screens (continued)</div>
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
        2 — Catalog · customer attached · cart strip · pinned tender
        ════════════════════════════════════════════════════════════════════ -->
   <div>
@@ -1082,12 +1454,12 @@
           </div>
         </div>
 
-        <!-- Cart strip · membership chip surfaced -->
+        <!-- Cart strip · minimal (name + phone only) -->
         <div class="cart-strip">
           <div class="avatar-mini">SM</div>
           <div>
-            <div class="cs-name" style="display: flex; align-items: center; gap: 5px;">Sarah M. <span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 800; letter-spacing: 0.04em;">★ GOLD</span></div>
-            <div class="cs-meta">230 loyalty pts · 10% member discount auto</div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">(555) 214-8801</div>
           </div>
           <div class="cs-total">$274.51</div>
         </div>
@@ -1223,7 +1595,7 @@
 
         <div class="tender-safearea">
           <div class="totals-row"><span>Subtotal</span><span>$263.00</span></div>
-          <div class="totals-row" style="color: var(--success);"><span>★ GOLD member · 10%</span><span>− $10.00</span></div>
+          <div class="totals-row" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
           <div class="totals-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
           <div class="total-line"><span class="tl-label">Total</span><span class="tl-amount">$274.51</span></div>
           <button class="tender-btn">
@@ -1330,7 +1702,7 @@
           <div style="padding: 28px 24px 20px; text-align: center; position: relative;">
             <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
             <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">Sarah M. · 3 items · incl. 10% GOLD discount</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">Sarah M. · 3 items</div>
           </div>
 
           <!-- Membership banner -->

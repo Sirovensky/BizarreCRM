@@ -380,6 +380,84 @@
     --sp-cream-glow: rgba(253,238,208,0.24);
   }
 
+  /* ═════════════════════════════════════════════════════════════════════
+     LIGHT THEME VARIANTS
+     ═════════════════════════════════════════════════════════════════════ */
+
+  /* LIGHT A — Light warm graphite */
+  .theme-light-graphite {
+    --sp-on: #1a1816;
+    --sp-muted: #5a5550;
+    --sp-bg-base: #faf8f5;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #f5f2ed;
+    --sp-surface-glass-soft: rgba(255,250,245,0.72);
+    --sp-glass-bg: rgba(255,250,245,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials: none;
+    --sp-ring: rgba(43,20,0,0.15);
+    --sp-cream-glow: rgba(253,238,208,0.35);
+  }
+
+  /* LIGHT B — Light warm graphite + cream radial */
+  .theme-light-graphite-cream {
+    --sp-on: #1a1816;
+    --sp-muted: #5a5550;
+    --sp-bg-base: #faf8f4;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #f5f0e8;
+    --sp-surface-glass-soft: rgba(255,248,238,0.75);
+    --sp-glass-bg: rgba(255,250,245,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.45), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.20), transparent 60%);
+    --sp-ring: rgba(43,20,0,0.15);
+    --sp-cream-glow: rgba(253,238,208,0.40);
+  }
+
+  /* LIGHT C — Light slate + cream radial */
+  .theme-light-slate-cream {
+    --sp-on: #1a2030;
+    --sp-muted: #5a6070;
+    --sp-bg-base: #f4f7fa;
+    --sp-surface-solid: #ffffff;
+    --sp-surface-elev: #edf1f7;
+    --sp-surface-glass-soft: rgba(240,245,255,0.75);
+    --sp-glass-bg: rgba(240,245,255,0.82);
+    --sp-glass-border: rgba(0,0,0,0.08);
+    --sp-glass-hl: rgba(255,255,255,0.90);
+    --sp-outline: rgba(0,0,0,0.08);
+    --sp-search-bg: rgba(0,0,0,0.04);
+    --sp-radials:
+      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.35), transparent 55%);
+    --sp-ring: rgba(43,20,0,0.12);
+    --sp-cream-glow: rgba(253,238,208,0.35);
+  }
+
+  /* Light sampler surface overrides — text / borders need inversion */
+  .theme-light-graphite .sp-title,
+  .theme-light-graphite-cream .sp-title,
+  .theme-light-slate-cream .sp-title { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-cart-name,
+  .theme-light-graphite-cream .sp-cart-name,
+  .theme-light-slate-cream .sp-cart-name { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-name,
+  .theme-light-graphite-cream .sp-name,
+  .theme-light-slate-cream .sp-name { color: var(--sp-on); }
+
+  .theme-light-graphite .sp-method .mn,
+  .theme-light-graphite-cream .sp-method .mn,
+  .theme-light-slate-cream .sp-method .mn { color: var(--sp-on); }
+
   /* OPTION H — Slate + cream radial: cool base with cream warmth */
   .theme-slate-cream {
     --sp-on: #eceff4;
@@ -406,6 +484,122 @@
 <p class="intro">
   Cream primary <code>#fdeed0</code> stays constant across every option. Only the base surface + glass tint + ambient radials change. Pick one and the full mockups adopt it. <code>theme-current</code> is the existing warm plum you asked to replace.
 </p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     LIGHT THEME — system toggle
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div style="text-align:center; padding:18px 24px 6px; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600;">Light theme (system toggle)</div>
+<p style="text-align:center; color:#9a9ba5; padding:0 24px 20px; font-size:13.5px; line-height:1.55; max-width:780px; margin:0 auto;">
+  Light mode uses inverted surface colors. Cream primary <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">#fdeed0</code> stays constant — it reads as a warm highlight against light backgrounds. Glass uses <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">rgba(255,250,245,0.82)</code> instead of dark tinted glass.
+</p>
+
+<div class="grid" style="margin-bottom:0; padding-bottom:20px;">
+
+  <!-- LIGHT A -->
+  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a1816;">LA · Light warm graphite</span><span class="recommend">Recommended</span></div>
+      <div class="option-hex">bg #faf8f5 · no radials</div>
+    </div>
+    <div class="option-note" style="color:#5a5550;">Clean warm-white surface. Cream primary reads as a warm highlight chip and CTA. Matches Apple's light material vocab. Ideal for well-lit retail counters.</div>
+    <div class="sampler theme-light-graphite" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- LIGHT B -->
+  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a1816;">LB · Light warm graphite + cream radial</span><span class="recommend">Strong pick</span></div>
+      <div class="option-hex">bg #faf8f4 · cream radials in corners</div>
+    </div>
+    <div class="option-note" style="color:#5a5550;">Same warm-white base but cream radials bloom in the corners, giving the screen a warm glow that mirrors the dark G option. Best if the brand identity relies on cream atmosphere.</div>
+    <div class="sampler theme-light-graphite-cream" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(253,238,208,0.30); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+  <!-- LIGHT C -->
+  <div class="option" style="background:rgba(238,242,248,0.9); border-color:rgba(0,0,0,0.07);">
+    <div class="option-head">
+      <div><span class="option-name" style="color:#1a2030;">LC · Light slate + cream radial</span></div>
+      <div class="option-hex">bg #f4f7fa · cream top-left radial</div>
+    </div>
+    <div class="option-note" style="color:#5a6070;">Cool blue-white base — mirrors the dark H option. Cream radial adds warmth without going full warm-white. Good pairing if the dark mode uses H or B (slate family).</div>
+    <div class="sampler theme-light-slate-cream" style="border-color:rgba(0,0,0,0.1);">
+      <div class="radials"></div>
+      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
+        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
+        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
+      </div>
+      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
+        <div class="sp-avatar">SM</div>
+        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
+        <div class="sp-total">$274.51</div>
+      </div>
+      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
+        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
+        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
+        <div class="sp-cart-price">$189</div>
+      </div>
+      <div class="sp-methods">
+        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
+        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
+      </div>
+      <div class="sp-cta">Charge · $274.51</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Divider -->
+<div style="max-width:900px; margin:24px auto 0; padding:0 32px;">
+  <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">
+    <div style="text-align:center; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600; margin-bottom:4px;">Dark theme (system toggle)</div>
+    <p style="text-align:center; color:#9a9ba5; font-size:13px; margin:0 0 20px;">The existing 9 dark options below. Option A is currently applied to the iPhone + iPad mockups.</p>
+  </div>
+</div>
 
 <div class="grid">
 
