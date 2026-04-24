@@ -229,7 +229,12 @@ class PosEntryViewModel @Inject constructor(
                     ticketId = t.id,
                     orderId = t.orderId,
                     deviceName = t.firstDevice?.deviceName ?: "Ticket #${t.id}",
-                    dueCents = ((t.total ?: 0.0) * 100).toLong(),
+                    // Prefer the unpaid-balance aggregate (POS-DUE-001) so the
+                    // hero card reflects what the customer still owes after
+                    // any deposit they paid at check-in. Falls back to gross
+                    // total when the JOIN returned no row (legacy tickets
+                    // without an invoice attached).
+                    dueCents = (((t.amountDue ?: t.total ?: 0.0)) * 100).toLong(),
                 )
             }
 

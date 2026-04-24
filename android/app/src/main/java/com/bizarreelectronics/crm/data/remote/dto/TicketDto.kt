@@ -47,6 +47,9 @@ data class TicketListItem(
     @SerializedName("device_count")
     val deviceCount: Int?,
     val total: Double?,
+    /** POS-DUE-001: unpaid+partial invoice balance for this ticket (dollars). */
+    @SerializedName("amount_due")
+    val amountDue: Double? = null,
     @SerializedName("created_at")
     val createdAt: String?,
     @SerializedName("updated_at")

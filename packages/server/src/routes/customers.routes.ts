@@ -1486,15 +1486,26 @@ router.get(
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
+    // POS-DUE-001: aggregate outstanding invoice balance per ticket so the
+    // POS Ready-for-pickup hero on Android shows the actual unpaid amount,
+    // not the gross ticket total (which double-counts collected deposits).
+    // Sum of unpaid + partial invoice amount_due, joined by ticket_id.
     const rows = await adb.all<any>(
         `SELECT t.*,
                 ts.name AS status_name, ts.color AS status_color, ts.is_closed, ts.is_cancelled,
-                td.device_name AS first_device_name
+                td.device_name AS first_device_name,
+                COALESCE(due.amount_due_dollars, 0) AS amount_due_dollars
          FROM tickets t
          LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
          LEFT JOIN (
            SELECT ticket_id, device_name FROM ticket_devices GROUP BY ticket_id
          ) td ON td.ticket_id = t.id
+         LEFT JOIN (
+           SELECT ticket_id, SUM(amount_due) AS amount_due_dollars
+           FROM invoices
+           WHERE status IN ('unpaid', 'partial')
+           GROUP BY ticket_id
+         ) due ON due.ticket_id = t.id
          WHERE t.customer_id = ? AND t.is_deleted = 0
          ORDER BY t.created_at DESC
          LIMIT ? OFFSET ?`,
@@ -1502,6 +1513,7 @@ router.get(
 
     const tickets = rows.map((r: any) => ({
       ...r,
+      amount_due: Number(r.amount_due_dollars ?? 0),
       status: { name: r.status_name, color: r.status_color, is_closed: r.is_closed, is_cancelled: r.is_cancelled },
       devices: r.first_device_name ? [{ device_name: r.first_device_name }] : [],
     }));
