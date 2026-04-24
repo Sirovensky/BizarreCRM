@@ -477,7 +477,10 @@ private fun SearchResultsContent(
 ) {
     if (isSearching) {
         Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            // M3 Expressive LoadingIndicator morphs between shapes during short
+            // (<5s) waits per Phase 4 guardrail. Replaces CircularProgressIndicator.
+            @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+            LoadingIndicator(modifier = Modifier.size(40.dp))
         }
         return
     }

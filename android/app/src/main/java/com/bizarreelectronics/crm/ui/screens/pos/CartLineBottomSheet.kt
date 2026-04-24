@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.HapticFeedbackConstantsCompat
 import androidx.core.view.ViewCompat
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 /**
  * Bottom sheet shown when user taps a cart line.
@@ -132,7 +133,7 @@ fun CartLineBottomSheet(
                     Text(
                         "− ${discountCents.toDollarString()}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        color = LocalExtendedColors.current.success,
                     )
                 }
                 // M3 Expressive: ButtonGroup renders segmented-connected

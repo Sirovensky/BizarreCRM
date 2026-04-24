@@ -209,7 +209,12 @@ private fun SendRow(
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         when (sendState) {
-            SendState.SENDING -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            SendState.SENDING -> {
+                // Send row is a bounded surface — ContainedLoadingIndicator
+                // per Phase 4 decision table for in-surface short waits.
+                @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+                ContainedLoadingIndicator(modifier = Modifier.size(24.dp))
+            }
             SendState.SENT -> Text("✓", style = MaterialTheme.typography.bodyLarge, color = LocalExtendedColors.current.success, fontWeight = FontWeight.Bold)
             SendState.ERROR -> Text("!", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
             SendState.IDLE -> Text("›", style = MaterialTheme.typography.bodyLarge, color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
