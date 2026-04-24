@@ -19,6 +19,8 @@ data class PosCartLineDto(
     @SerializedName("discount_cents") val discountCents: Long = 0L,
     @SerializedName("tax_class_id") val taxClassId: Long? = null,
     @SerializedName("tax_rate") val taxRate: Double = 0.0,
+    // POS-NOTES-001: server INSERT now includes notes column; max 1000 chars.
+    val notes: String? = null,
 )
 
 data class PosSaleRequest(

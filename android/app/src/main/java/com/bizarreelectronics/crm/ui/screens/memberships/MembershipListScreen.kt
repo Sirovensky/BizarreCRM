@@ -96,7 +96,6 @@ fun MembershipListScreen(
                 ErrorState(
                     message = state.message,
                     onRetry = { viewModel.load() },
-                    modifier = Modifier.padding(padding),
                 )
             }
 

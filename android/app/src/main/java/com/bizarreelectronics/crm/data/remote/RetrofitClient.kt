@@ -679,6 +679,13 @@ object RetrofitClient {
     // §51 — Data Export API; manager+-only; 404-tolerant
     @Provides @Singleton fun provideExportApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ExportApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ExportApi::class.java)
 
+    // Phase 2 — POS sale + receipt endpoints
+    @Provides @Singleton fun providePosApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PosApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.PosApi::class.java)
+    // POS-SMS-001: client stub for SMS receipt endpoint (server not yet deployed; 404 degrades gracefully)
+    @Provides @Singleton fun provideReceiptNotificationApi(retrofit: Retrofit): com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi =
+        retrofit.create(com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi::class.java)
+
     // Phase 4 — BlockChyp payment terminal proxy (BlockChypModule.kt provides the typed
     // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).
     // BlockChypApi is provided directly in BlockChypModule to keep terminal-related

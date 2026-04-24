@@ -144,6 +144,7 @@ fun DataImportScreen(
 
 // ── Wizard content ────────────────────────────────────────────────────────────
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ImportWizardContent(
     state: DataImportUiState,

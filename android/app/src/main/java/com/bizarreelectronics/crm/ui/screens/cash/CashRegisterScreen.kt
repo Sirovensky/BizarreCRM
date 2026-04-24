@@ -84,7 +84,6 @@ fun CashRegisterScreen(
                 ErrorState(
                     message = state.message,
                     onRetry = { viewModel.loadCurrentShift() },
-                    modifier = Modifier.padding(padding),
                 )
             }
 
@@ -182,7 +181,7 @@ private fun NoShiftPanel(onOpenShift: () -> Unit, modifier: Modifier = Modifier)
                 modifier = Modifier.size(56.dp),
             )
             Text("No shift open", style = MaterialTheme.typography.titleMedium)
-            BrandPrimaryButton(text = "Open shift", onClick = onOpenShift)
+            BrandPrimaryButton(onClick = onOpenShift) { Text("Open shift") }
         }
     }
 }

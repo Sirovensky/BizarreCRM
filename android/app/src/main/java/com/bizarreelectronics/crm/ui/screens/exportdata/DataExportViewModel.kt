@@ -57,7 +57,7 @@ data class DataExportUiState(
  * §51 — Data Export ViewModel
  *
  * Role gate: manager+ for exports (staff cannot export).
- * 404-tolerant: server not implementing /exports/* → serverUnsupported = true.
+ * 404-tolerant: server not implementing the exports API → serverUnsupported = true.
  *
  * Flow:
  *  1. User configures entities, format, date range.

@@ -50,8 +50,11 @@ import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryDetailScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosEntryScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosCartScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosTenderScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosReceiptScreen
 import com.bizarreelectronics.crm.ui.screens.pos.CheckoutScreen
-import com.bizarreelectronics.crm.ui.screens.pos.PosScreen
 import com.bizarreelectronics.crm.ui.screens.pos.TicketSuccessScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsListScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsThreadScreen
@@ -170,6 +173,11 @@ sealed class Screen(val route: String) {
     }
     data object InvoiceCreate : Screen("invoice-create")
     data object Pos : Screen("pos")
+    data object PosCart : Screen("pos/cart")
+    data object PosTender : Screen("pos/tender")
+    data object PosReceipt : Screen("pos/receipt/{orderId}") {
+        fun createRoute(orderId: String) = "pos/receipt/${Uri.encode(orderId)}"
+    }
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
             val encodedName = Uri.encode(customerName)
@@ -1146,10 +1154,40 @@ fun AppNavGraph(
                     },
                 )
             }
+            // Phase 2: POS entry → cart → tender → receipt sub-flow
             composable(Screen.Pos.route) {
-                PosScreen(
-                    onNavigateToTicketCreate = { navController.navigate(Screen.TicketCreate.route) },
-                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                PosEntryScreen(
+                    onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
+                    onNavigateToCheckin = { navController.navigate(Screen.TicketCreate.route) },
+                )
+            }
+            composable(Screen.PosCart.route) {
+                PosCartScreen(
+                    onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.PosTender.route) {
+                PosTenderScreen(
+                    onNavigateToReceipt = { orderId ->
+                        navController.navigate(Screen.PosReceipt.createRoute(orderId)) {
+                            popUpTo(Screen.Pos.route)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.PosReceipt.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) {
+                PosReceiptScreen(
+                    onOpenTicket = { ticketId -> navController.navigate(Screen.TicketDetail.createRoute(ticketId)) },
+                    onNewSale = {
+                        navController.navigate(Screen.Pos.route) {
+                            popUpTo(Screen.Pos.route) { inclusive = true }
+                        }
+                    },
                 )
             }
             // AND-20260414-H4: declare typed nav arguments so `ticketId` arrives

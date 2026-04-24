@@ -19,6 +19,7 @@ import com.bizarreelectronics.crm.ui.screens.importdata.ImportSource
  * Step 1 — Source picker card.
  * Shows all [ImportSource] options as selectable chips.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SourcePickerCard(
     selected: ImportSource,

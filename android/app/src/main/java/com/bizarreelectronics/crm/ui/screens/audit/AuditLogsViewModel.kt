@@ -108,7 +108,11 @@ class AuditLogsViewModel @Inject constructor(
                     cursor = null,
                     limit = PAGE_SIZE,
                 )
-                val page = response.data
+                val page = response.data ?: run {
+                    _items.value = emptyList()
+                    _hasMore.value = false
+                    return@launch
+                }
                 _items.value = page.items
                 nextCursor = page.nextCursor
                 _hasMore.value = page.nextCursor != null
@@ -146,7 +150,7 @@ class AuditLogsViewModel @Inject constructor(
                     cursor = cursor,
                     limit = PAGE_SIZE,
                 )
-                val page = response.data
+                val page = response.data ?: return@launch
                 _items.value = _items.value + page.items
                 nextCursor = page.nextCursor
                 _hasMore.value = page.nextCursor != null

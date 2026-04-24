@@ -88,7 +88,7 @@ data class DataImportUiState(
  * Wizard steps: SOURCE → FILE → SCOPE → COLUMN_MAP → PREVIEW → PROGRESS → DONE
  *
  * Role gate: admin only. Non-admin users see an "access denied" empty state.
- * 404-tolerant: if the server doesn't have /imports/*, sets serverUnsupported=true.
+ * 404-tolerant: if the server doesn't have the imports API, sets serverUnsupported=true.
  */
 @HiltViewModel
 class DataImportViewModel @Inject constructor(

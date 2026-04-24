@@ -140,6 +140,7 @@ fun DataExportScreen(
 
 // ── Configuration form ─────────────────────────────────────────────────────────
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ExportConfigContent(
     state: DataExportUiState,

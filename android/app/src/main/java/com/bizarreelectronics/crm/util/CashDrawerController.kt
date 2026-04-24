@@ -8,8 +8,8 @@ import android.bluetooth.BluetoothSocket
 import android.content.Context
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
-import com.bizarreelectronics.crm.ui.screens.pos.PosCartState
-import com.bizarreelectronics.crm.ui.screens.pos.components.CashDrawerControllerStub
+import com.bizarreelectronics.crm.ui.screens.pos.CashDrawerControllerStub
+import com.bizarreelectronics.crm.ui.screens.pos.PrintableReceipt
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -45,14 +45,7 @@ class CashDrawerController @Inject constructor(
 
     // ─── Public API ───────────────────────────────────────────────────────────
 
-    /**
-     * Kick the cash drawer via ESC/POS. Resolves [Result.success] on success,
-     * [Result.failure] with an explanatory message if no printer is available
-     * or the command times out.
-     *
-     * Caller should fall back to PDF-save on failure.
-     */
-    suspend fun openDrawer(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun openDrawer(): Result<Unit> = withContext(Dispatchers.IO) {
         val socket = findPrinterSocket()
             ?: return@withContext Result.failure(IOException("No Bluetooth receipt printer paired"))
 
@@ -67,44 +60,23 @@ class CashDrawerController @Inject constructor(
         } ?: Result.failure(IOException("Cash drawer kick timed out (2 s)"))
     }
 
-    /**
-     * Admin-only manual-open: kicks the drawer AND writes an audit log entry
-     * to the sync_queue for server-side recording.
-     *
-     * @param reason Human-readable reason entered by the admin.
-     * @param adminUserId The authenticated user's id for audit trail.
-     */
-    suspend fun manualOpen(reason: String, adminUserId: Long): Result<Unit> {
-        // Audit log first (fire-and-forget tolerated on failure)
+    override suspend fun manualOpen(operatorId: String): Result<Unit> {
         runCatching {
             syncQueueDao.insert(
                 SyncQueueEntity(
                     entityType = "cash_drawer_manual_open",
-                    entityId = adminUserId,
+                    entityId = 0L,
                     operation = "manual_open",
-                    payload = gson.toJson(
-                        mapOf(
-                            "admin_user_id" to adminUserId,
-                            "reason" to reason,
-                            "timestamp" to System.currentTimeMillis(),
-                        )
-                    ),
+                    payload = gson.toJson(mapOf("operator" to operatorId, "timestamp" to System.currentTimeMillis())),
                 )
             )
         }
         return openDrawer()
     }
 
-    /** Implements [CashDrawerControllerStub.hasPrinter] — true when a paired BT printer exists. */
-    override fun hasPrinter(): Boolean {
-        return findPrinterDevice() != null
-    }
+    override fun hasPrinter(): Boolean = findPrinterDevice() != null
 
-    /**
-     * Implements [CashDrawerControllerStub.printReceipt] — sends receipt text to
-     * the paired BT printer. Falls back gracefully on any error.
-     */
-    override suspend fun printReceipt(cart: PosCartState, giftReceipt: Boolean): Result<Unit> =
+    override suspend fun printReceipt(receipt: PrintableReceipt, giftReceipt: Boolean): Result<Unit> =
         withContext(Dispatchers.IO) {
             val socket = findPrinterSocket()
                 ?: return@withContext Result.failure(IOException("No Bluetooth receipt printer paired"))
@@ -114,15 +86,11 @@ class CashDrawerController @Inject constructor(
                     socket.use { s ->
                         s.connect()
                         val out = s.outputStream
-                        // Initialize printer
                         out.write(byteArrayOf(0x1B, 0x40))
-                        // Write receipt text
-                        val text = buildReceiptText(cart, giftReceipt)
+                        val text = buildReceiptText(receipt, giftReceipt)
                         out.write(text.toByteArray(Charsets.US_ASCII))
-                        // Feed and cut
                         out.write(byteArrayOf(0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x41, 0x10))
                         out.flush()
-                        // Kick drawer after print
                         out.write(ESC_POS_KICK)
                         out.flush()
                     }
@@ -137,7 +105,6 @@ class CashDrawerController @Inject constructor(
         val btManager = context.getSystemService(BluetoothManager::class.java) ?: return null
         val adapter: BluetoothAdapter = btManager.adapter ?: return null
         if (!adapter.isEnabled) return null
-        // Heuristic: find first paired device whose name contains "printer" or "receipt"
         return adapter.bondedDevices.firstOrNull { device ->
             val name = device.name?.lowercase() ?: ""
             name.contains("printer") || name.contains("receipt") ||
@@ -154,13 +121,13 @@ class CashDrawerController @Inject constructor(
         }.getOrNull()
     }
 
-    private fun buildReceiptText(cart: PosCartState, giftReceipt: Boolean): String {
+    private fun buildReceiptText(receipt: PrintableReceipt, giftReceipt: Boolean): String {
         val sb = StringBuilder()
-        sb.append("\u001B\u0045\u0001")  // ESC E 1 = bold on
+        sb.append("\u001B\u0045\u0001")
         sb.appendLine("Bizarre Electronics")
-        sb.append("\u001B\u0045\u0000")  // ESC E 0 = bold off
+        sb.append("\u001B\u0045\u0000")
         sb.appendLine("===================")
-        for (line in cart.lines) {
+        for (line in receipt.lines) {
             if (giftReceipt) {
                 sb.appendLine("  ${line.name} x${line.qty}")
             } else {
@@ -170,7 +137,7 @@ class CashDrawerController @Inject constructor(
         }
         if (!giftReceipt) {
             sb.appendLine("-------------------")
-            val total = "${cart.totalCents / 100}.${(cart.totalCents % 100).toString().padStart(2, '0')}"
+            val total = "${receipt.totalCents / 100}.${(receipt.totalCents % 100).toString().padStart(2, '0')}"
             sb.appendLine("TOTAL: \$$total")
         }
         sb.appendLine()
