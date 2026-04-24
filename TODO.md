@@ -702,8 +702,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
-- [ ] SCAN-965. **Customer list + groups queries have no staleTime — every nav refetches fresh data even on ms-old cache.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:149,172; fix=staleTime-10000 -->
 - [ ] SCAN-966. **Customer CSV import preview typed as `any[]` — malformed/injected rows flow to server untyped.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:80,220; fix=Record<string,string>[] -->
 - [ ] SCAN-967. **[CRITICAL] DashboardPage declares hooks AFTER an early `if (role==='technician') return <TechDashboard/>` — Rules of Hooks violation.**

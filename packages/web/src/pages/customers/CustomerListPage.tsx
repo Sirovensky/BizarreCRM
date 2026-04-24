@@ -167,11 +167,15 @@ export function CustomerListPage() {
         to_date: searchParams.get('to_date') || undefined,
         has_open_tickets: searchParams.get('has_open_tickets') || undefined,
       } as any),
+    staleTime: 10_000,
   });
 
   const { data: groupsData } = useQuery({
     queryKey: ['customer-groups'],
     queryFn: () => settingsApi.getCustomerGroups(),
+    // Groups change rarely; bump stale window so the filter dropdown doesn't
+    // refetch on every keystroke-triggered refocus.
+    staleTime: 5 * 60_000,
   });
 
   const customers: Customer[] = data?.data?.data?.customers || [];
