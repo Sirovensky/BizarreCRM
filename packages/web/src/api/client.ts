@@ -197,9 +197,9 @@ client.interceptors.response.use(
     try {
       const data = error.response?.data;
       if (data && typeof data === 'object') {
-        const code = typeof (data as any).code === 'string' ? (data as any).code : null;
-        const requestId =
-          typeof (data as any).request_id === 'string' ? (data as any).request_id : null;
+        const envelope = data as { code?: unknown; request_id?: unknown };
+        const code = typeof envelope.code === 'string' ? envelope.code : null;
+        const requestId = typeof envelope.request_id === 'string' ? envelope.request_id : null;
         if (code) error.errorCode = code;
         if (requestId) error.requestId = requestId;
       }
