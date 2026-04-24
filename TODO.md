@@ -737,8 +737,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:187-205; fix=gate-on-document.visibilityState -->
 - [ ] SCAN-1089. **[LOW] `useDefaultTaxRate` has dead `data.data.data` triple-envelope fallback + any shape.**
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDefaultTaxRate.ts:24-25; fix=drop-fallback+type-response -->
-- [ ] SCAN-1090. **[HIGH] `tenantResolver` trust-proxy check fails on IPv4-mapped IPv6 (`::ffff:10.0.0.1`) — proxy-listed IPs bypassed on dual-stack.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/tenantResolver.ts:68-81; fix=strip-ffff-prefix-before-includes -->
 - [ ] SCAN-1091. **[LOW] `idempotency.hashRequest` includes query string — `?_=cachebust` breaks replay.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/idempotency.ts:43-55; fix=hash-baseUrl+path-only -->
 - [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
@@ -749,8 +747,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/db; files=packages/server/src/db/worker-pool.ts:108-118; fix=tighten-match-to-exact-QUEUE_FULL -->
 - [ ] SCAN-1095. **[LOW] `snippets.routes.ts` no length/shape validation on `category` — 1MB strings can be stored per row.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/snippets.routes.ts:39,59,79,105; fix=validate-category-length<=64 -->
-- [ ] SCAN-1096. **[LOW] `tradeIns.routes.ts` `req.params.id` used raw in 7 handlers — malformed ids leak 500 instead of 400.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/tradeIns.routes.ts:106,175,237,356,367,370,373; fix=validateId-per-handler -->
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**

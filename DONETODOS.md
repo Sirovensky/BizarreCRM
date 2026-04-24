@@ -1,4 +1,12 @@
 
+## Closed 2026-04-24 (wave-62 server/routes — tradeIns id validation)
+
+- [x] SCAN-1096. **`tradeIns.routes.ts` used `req.params.id` raw in GET/PATCH/DELETE** — malformed ids (`/trade-ins/abc`) surfaced as generic 500s when they reached SQLite or when `Number('abc')` produced NaN in the audit payload. Replaced every raw read with `validateId(req.params.id, 'id')` at handler entry, dropped the ad-hoc `Number(req.params.id)` calls, and reused the validated number through the body of each handler. Now returns 400 with a clear message.
+
+## Closed 2026-04-24 (wave-62 server/middleware — tenantResolver IPv4-mapped trust-proxy)
+
+- [x] SCAN-1090. **`tenantResolver` trust-proxy check failed on IPv4-mapped IPv6 peers** — on a dual-stack Node listener the kernel reports IPv4 clients as `::ffff:10.0.0.1`, but operators typically list the bare IPv4 in `config.trustedProxyIps`. The exact-string `includes` check missed them, so X-Forwarded-Host from the real reverse proxy was ignored and every request fell back to the raw Host header. Multi-tenant routing broke and the proxy's tenant decisions were silently dropped. Introduced `normalizeProxyIp()` that strips a leading `::ffff:` and lowercases both sides before compare; applied symmetrically to config and the socket address so either direction of mapping matches. HIGH because it's on the trust-boundary path for tenant lookup.
+
 ## Closed 2026-04-24 (wave-61 server/middleware + server/db — requestLogger attribution + mig-138 FK check)
 
 - [x] SCAN-1079. **`requestLogger` collapsed every unresolvable-host request into the single `'bare-domain'` bucket** — ops dashboards couldn't tell a DDoS against `evil.com` apart from legitimate landing-page traffic. Fallback now uses `host:<hostname>` (stripped of port, lowercased) when `tenantSlug` is null, so attribution survives tenant-resolver misses. Existing matched-tenant slugs are unchanged.

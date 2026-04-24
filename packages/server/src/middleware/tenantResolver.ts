@@ -64,9 +64,23 @@ function isAllowedHostname(host: string, baseDomain: string): boolean {
  * the effective host ourselves from the raw `Host` header and only trust
  * `X-Forwarded-Host` when the socket's IP appears in `config.trustedProxyIps`.
  */
+// SCAN-1090: on a dual-stack listener the kernel reports IPv4 peers as
+// IPv4-mapped IPv6 (e.g. `::ffff:10.0.0.1`). Operators routinely list the
+// bare IPv4 in `trustedProxyIps` config — the exact-string `includes` check
+// missed those peers and X-Forwarded-Host from the real proxy was ignored,
+// defeating the trust-proxy bypass check for multi-tenant routing. Strip a
+// leading `::ffff:` before comparing; also accept the reverse case where
+// config carries the mapped form but the socket reports raw v4.
+function normalizeProxyIp(ip: string): string {
+  if (!ip) return '';
+  const lower = ip.toLowerCase();
+  if (lower.startsWith('::ffff:')) return lower.slice('::ffff:'.length);
+  return lower;
+}
+
 function resolveEffectiveHost(req: Request): string {
-  const trustedIps = config.trustedProxyIps;
-  const socketIp = req.socket?.remoteAddress || '';
+  const trustedIps = config.trustedProxyIps.map(normalizeProxyIp);
+  const socketIp = normalizeProxyIp(req.socket?.remoteAddress || '');
   const remoteIsTrusted = trustedIps.length > 0 && trustedIps.includes(socketIp);
 
   if (remoteIsTrusted) {

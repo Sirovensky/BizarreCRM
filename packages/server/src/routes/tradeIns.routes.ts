@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
-import { validatePaginationOffset } from '../utils/validate.js';
+import { validatePaginationOffset, validateId } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
@@ -97,13 +97,16 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/:id', asyncHandler(async (req, res) => {
   // SCAN-557: IMEI/serial/phone/email — restrict to manager/admin
   requireManagerOrAdmin(req);
+  // SCAN-1096: validate id up front — malformed ids previously reached SQLite
+  // as the string form and surfaced as a generic 500.
+  const tradeInId = validateId(req.params.id, 'id');
   const adb = req.asyncDb;
   const ti = await adb.get(`
     SELECT ti.*, c.first_name, c.last_name, c.phone, c.email
     FROM trade_ins ti
     LEFT JOIN customers c ON c.id = ti.customer_id
     WHERE ti.id = ? AND ti.is_deleted = 0
-  `, req.params.id);
+  `, tradeInId);
   if (!ti) throw new AppError('Trade-in not found', 404);
   res.json({ success: true, data: ti });
 }));
@@ -152,6 +155,9 @@ router.post('/', asyncHandler(async (req, res) => {
 // hard-cap accepted_price to (0, 100_000] so a typo can't issue a $1M payout
 // and a sign-flip can't mint negative inventory value.
 router.patch('/:id', asyncHandler(async (req, res) => {
+  // SCAN-1096: validate id first so a malformed param returns 400, not a 500
+  // from the SQLite comparison or a later Number('abc')=NaN.
+  const tradeInId = validateId(req.params.id, 'id');
   // SCAN-556: rate-limit write path — 30 updates per user per minute
   if (!checkWindowRate(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_MAX, TRADE_IN_WRITE_WINDOW_MS)) {
     throw new AppError('Too many trade-in updates. Please wait before trying again.', 429);
@@ -172,7 +178,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     accepted_price: number | null;
   }>(
     'SELECT id, status, customer_id, device_name, condition, accepted_price FROM trade_ins WHERE id = ? AND is_deleted = 0',
-    req.params.id,
+    tradeInId,
   );
   if (!existing) throw new AppError('Trade-in not found', 404);
   // @audit-fixed: §37 — validate status + condition + price fields against
@@ -234,7 +240,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   // override or existing row value) must be > 0. When customer_id is null we
   // skip the credit leg but still INSERT the inventory row — the shop can
   // re-attach the credit later via manual adjustment.
-  const tradeInId = Number(req.params.id);
+  // tradeInId already validated at handler entry (SCAN-1096).
   const effectiveAcceptedPrice = accepted_price != null
     ? Number(accepted_price)
     : (existing.accepted_price ?? 0);
@@ -350,10 +356,12 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // so the row is excluded from all normal list/detail queries but remains in
 // the database for audit and reconciliation purposes.
 router.delete('/:id', asyncHandler(async (req, res) => {
+  // SCAN-1096: validate id up front so malformed params 400 cleanly.
+  const tradeInId = validateId(req.params.id, 'id');
   const adb = req.asyncDb;
   const existing = await adb.get<{ id: number; status: string }>(
     'SELECT id, status FROM trade_ins WHERE id = ? AND is_deleted = 0',
-    req.params.id,
+    tradeInId,
   );
   if (!existing) throw new AppError('Trade-in not found', 404);
   if (existing.status === 'accepted') {
@@ -364,13 +372,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     `UPDATE trade_ins
         SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_user_id = ?
       WHERE id = ? AND is_deleted = 0`,
-    req.user!.id, req.params.id,
+    req.user!.id, tradeInId,
   );
   audit(req.db, 'trade_in_soft_deleted', req.user!.id, req.ip || 'unknown', {
-    trade_in_id: Number(req.params.id),
+    trade_in_id: tradeInId,
     status: existing.status,
   });
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+  res.json({ success: true, data: { id: tradeInId } });
 }));
 
 export default router;
