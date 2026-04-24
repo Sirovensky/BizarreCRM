@@ -113,18 +113,19 @@ export class LRUCache<T = unknown> {
 
     // Start a new loader and register it before the first await so that
     // any synchronous continuations in the same microtask queue see it.
-    const promise: Promise<T> = loader().then(
-      (value) => {
-        this.inflight.delete(key);
-        this.set(key, value, ttlMs);
-        return value;
-      },
-      (err: unknown) => {
-        // Always clean up so future misses can retry. Never cache the error.
-        this.inflight.delete(key);
-        throw err;
-      },
-    );
+    // SCAN-1071: use a single `finally` on the outer promise for the
+    // inflight cleanup so a synchronous re-entrant caller can't observe a
+    // stale inflight entry after rejection.
+    const promise: Promise<T> = loader().then((value) => {
+      this.set(key, value, ttlMs);
+      return value;
+    });
+    promise.finally(() => {
+      this.inflight.delete(key);
+    });
+    // Swallow the rejection of the side-chain `.finally` so we don't trigger
+    // an unhandled-rejection; the original `promise` still rejects to waiters.
+    promise.catch(() => { /* handled by waiters */ });
 
     this.inflight.set(key, promise);
     return promise;

@@ -722,8 +722,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:43; fix=remove-or-tsdoc-deprecated -->
 - [ ] SCAN-1063. **[HIGH/SSRF] `fetchWithSsrfGuard` checks DNS then fetches original hostname — DNS rebinding window open.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/ssrfGuard.ts:185-198; fix=use-resolved-ip-with-Host-header -->
-- [ ] SCAN-1064. **`db-worker.mjs` `execute()` accepts arbitrary task shape without validation — `db.prepare(undefined)` possible.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/db-worker.mjs:102-145; fix=allowlist-op+typeof-guards -->
 - [ ] SCAN-1065. **`checkWindowRate` SELECT + `recordWindowFailure` INSERT are not transactional — TOCTOU race.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:18-36; fix=use-consumeWindowRate-or-tx -->
 - [ ] SCAN-1066. **WS broadcast iterates global allClients set per event — O(totalSockets), not O(tenantSockets).**
@@ -734,10 +732,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/utils; files=packages/server/src/utils/fileValidation.ts:204-232; fix=startup-env-check -->
 - [ ] SCAN-1069. **`logTenantAuthEvent` runs `checkBruteForce` synchronously on every failed login — 2-4 SQLite round-trips in auth hot path.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:54-56; fix=setImmediate-or-queue -->
-- [ ] SCAN-1070. **`createLogger` return type inferred — no stable Logger interface for mocks/consumers.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/logger.ts:114; fix=export-Logger-interface -->
-- [ ] SCAN-1071. **`LRUCache.getCached` inflight cleanup on rejection can race re-entrant callers — stale inflight entries.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/cache.ts:105-131; fix=use-finally -->
 
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing

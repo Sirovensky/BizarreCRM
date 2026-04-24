@@ -99,7 +99,39 @@ process.on('exit', () => {
   cache.clear();
 });
 
+// SCAN-1064: allow-list + shape checks on the Piscina task payload. Without
+// them a malformed worker message reaches `db.prepare(undefined)` and throws
+// an opaque better-sqlite3 error; explicit validation gives us a clean
+// E_BAD_TASK error the caller can map to a 500 without ambiguity.
+const KNOWN_OPS = new Set(['get', 'all', 'run', 'transaction']);
+function assertTask(task) {
+  if (!task || typeof task !== 'object') {
+    throw Object.assign(new Error('db-worker: task must be an object'), { code: 'E_BAD_TASK' });
+  }
+  if (typeof task.dbPath !== 'string' || task.dbPath.length === 0) {
+    throw Object.assign(new Error('db-worker: task.dbPath must be a non-empty string'), { code: 'E_BAD_TASK' });
+  }
+  if (typeof task.op !== 'string' || !KNOWN_OPS.has(task.op)) {
+    throw Object.assign(new Error(`db-worker: unknown op: ${String(task.op)}`), { code: 'E_BAD_TASK' });
+  }
+  if (task.op === 'transaction') {
+    if (!Array.isArray(task.queries)) {
+      throw Object.assign(new Error('db-worker: transaction requires queries array'), { code: 'E_BAD_TASK' });
+    }
+    for (const q of task.queries) {
+      if (!q || typeof q.sql !== 'string') {
+        throw Object.assign(new Error('db-worker: transaction query.sql must be a string'), { code: 'E_BAD_TASK' });
+      }
+    }
+  } else {
+    if (typeof task.sql !== 'string' || task.sql.length === 0) {
+      throw Object.assign(new Error('db-worker: task.sql must be a non-empty string'), { code: 'E_BAD_TASK' });
+    }
+  }
+}
+
 export default function execute(task) {
+  assertTask(task);
   const db = getConnection(task.dbPath);
 
   switch (task.op) {
@@ -140,6 +172,8 @@ export default function execute(task) {
       return results;
     }
     default:
-      throw new Error(`Unknown op: ${task.op}`);
+      // Unreachable — assertTask already rejects unknown ops — but keep for
+      // exhaustiveness.
+      throw Object.assign(new Error(`db-worker: unknown op: ${task.op}`), { code: 'E_BAD_TASK' });
   }
 }

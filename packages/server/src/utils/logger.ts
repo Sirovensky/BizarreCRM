@@ -111,7 +111,17 @@ function formatOutput(entry: LogEntry): string {
   return parts.join(' ');
 }
 
-export function createLogger(module: string) {
+// Stable public contract for the app logger. Exporting this as an explicit
+// interface means test doubles / mocks and future `logger.X = ...` sites
+// don't silently drift from the real implementation.
+export interface Logger {
+  debug(message: string, meta?: Record<string, unknown>): void;
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+}
+
+export function createLogger(module: string): Logger {
   return {
     debug(message: string, meta?: Record<string, unknown>) {
       if (shouldLog('debug')) console.debug(formatOutput(buildEntry('debug', module, message, meta)));
