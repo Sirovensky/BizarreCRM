@@ -2998,7 +2998,7 @@ server.listen(config.port, config.host, async () => {
 
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
-            console.log(`[StaleTicket${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for ticket ${ticket.order_id}`);
+            log.info('StaleTicket: rate-limited, skipping', { tenantSlug: slug, ticketOrderId: ticket.order_id, toRedacted: redactPhone(phone) });
             continue;
           }
 
@@ -3017,7 +3017,7 @@ server.listen(config.port, config.host, async () => {
             log.error('StaleTicket: SMS send failed', {
               tenantSlug: slug,
               ticketId: ticket.id,
-              phone,
+              toRedacted: redactPhone(phone),
               error: err instanceof Error ? err.message : String(err),
             });
           }
@@ -3079,7 +3079,7 @@ server.listen(config.port, config.host, async () => {
 
           // ENR-A5: Rate limit check
           if (!isAutoSmsAllowed(tenantDb, phone)) {
-            console.log(`[InvoiceReminder${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for invoice ${inv.order_id}`);
+            log.info('InvoiceReminder: rate-limited, skipping', { tenantSlug: slug, invoiceOrderId: inv.order_id, toRedacted: redactPhone(phone) });
             continue;
           }
 
@@ -3104,7 +3104,7 @@ server.listen(config.port, config.host, async () => {
             log.error('InvoiceReminder: SMS send failed', {
               tenantSlug: slug,
               invoiceId: inv.id,
-              phone,
+              toRedacted: redactPhone(phone),
               error: err instanceof Error ? err.message : String(err),
             });
           }
@@ -3158,7 +3158,7 @@ server.listen(config.port, config.host, async () => {
           if (est.sms_opt_in === 0 || est.sms_consent_transactional === 0) continue;
 
           if (!isAutoSmsAllowed(tenantDb, phone)) {
-            console.log(`[EstimateFollowup${slug ? `:${slug}` : ''}] Rate-limited: skipping ${phone} for estimate ${est.order_id}`);
+            log.info('EstimateFollowup: rate-limited, skipping', { tenantSlug: slug, estimateOrderId: est.order_id, toRedacted: redactPhone(phone) });
             continue;
           }
 
@@ -3175,7 +3175,7 @@ server.listen(config.port, config.host, async () => {
             log.error('EstimateFollowup: SMS send failed', {
               tenantSlug: slug,
               estimateId: est.id,
-              phone,
+              toRedacted: redactPhone(phone),
               error: err instanceof Error ? err.message : String(err),
             });
           }

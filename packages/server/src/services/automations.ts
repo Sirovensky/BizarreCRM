@@ -19,7 +19,7 @@
  *     including success, failure, skipped (conditions not met), and loop_rejected.
  */
 
-import { sendSms } from './smsProvider.js';
+import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
@@ -305,12 +305,14 @@ async function executeSendSms(
   }
 
   try {
-    // AU5: await the send + propagate the error to the caller so it can be logged.
-    await sendSms(to, body);
+    // SCAN-585 / AU5: use sendSmsTenant so the per-tenant provider + TCPA quiet-hours
+    // guard are applied. tenantSlug flows through buildVars from the trigger context.
+    const tenantSlug = typeof vars.tenantSlug === 'string' ? vars.tenantSlug : null;
+    await sendSmsTenant(db, tenantSlug, to, body);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('send_sms failed', { to, error: message });
+    logger.error('send_sms failed', { toRedacted: to.slice(-4), error: message });
     return { success: false, error: message };
   }
 }

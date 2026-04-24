@@ -108,6 +108,124 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
   return { ...invoice, line_items, payments, deposit_invoices };
 }
 
+interface PostPaymentSideEffectsArgs {
+  adb: AsyncDb;
+  db: import('better-sqlite3').Database;
+  invoice: any;
+  paymentId: number;
+  paymentAmount: number;
+  paymentMethod: string;
+  userId: number;
+}
+
+/**
+ * Fire all post-payment side effects that must run after both single-invoice
+ * and bulk mark-paid commits.  Every call is best-effort — failures are logged
+ * but never block the response.
+ *
+ * Covers SCAN-623 (accruePaymentPoints + writeCommission) and
+ * SCAN-627 (logActivity + fireWebhook).
+ */
+async function postPaymentSideEffects({
+  adb,
+  db,
+  invoice,
+  paymentId,
+  paymentAmount,
+  paymentMethod,
+  userId,
+}: PostPaymentSideEffectsArgs): Promise<void> {
+  // Loyalty points accrual
+  try {
+    await accruePaymentPoints({
+      adb,
+      customerId: invoice.customer_id,
+      invoiceId: Number(invoice.id),
+      paymentAmount,
+    });
+  } catch (err: unknown) {
+    logger.warn('[invoices] postPaymentSideEffects: loyalty accrual failed', {
+      invoice_id: invoice.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Commission writing
+  if (invoice.created_by) {
+    try {
+      const createdByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
+        'SELECT commission_type, commission_rate FROM users WHERE id = ?',
+        invoice.created_by,
+      );
+      const cType = createdByRow?.commission_type ?? null;
+      const cRate = Number(createdByRow?.commission_rate ?? 0);
+      if (cType && cType !== 'none' && cRate > 0) {
+        const invTotal = Number(invoice.total ?? 0);
+        const invTax = Number(invoice.total_tax ?? 0);
+        const invPreTax = roundCents(Math.max(0, invTotal - invTax));
+        let shouldWrite = false;
+        let paymentPreTaxBaseCents = 0;
+        if (cType === 'percent_ticket' || cType === 'percent_service') {
+          if (invTotal > 0 && invPreTax > 0) {
+            const paymentFraction = Math.min(1, paymentAmount / invTotal);
+            const paymentPreTax = roundCents(invPreTax * paymentFraction);
+            if (paymentPreTax > 0) {
+              shouldWrite = true;
+              paymentPreTaxBaseCents = toCents(paymentPreTax);
+            }
+          }
+        } else if (cType === 'flat_per_ticket') {
+          const existing = await adb.get<{ id: number }>(
+            `SELECT id FROM commissions
+               WHERE invoice_id = ?
+                 AND COALESCE(type, '') != 'reversal'
+               LIMIT 1`,
+            invoice.id,
+          );
+          if (!existing) {
+            shouldWrite = true;
+            paymentPreTaxBaseCents = 1;
+          }
+        }
+        if (shouldWrite) {
+          await writeCommission(adb, {
+            userId: invoice.created_by,
+            source: 'invoice_payment',
+            invoiceId: Number(invoice.id),
+            ticketId: invoice.ticket_id ?? null,
+            commissionableAmountCents: paymentPreTaxBaseCents,
+          });
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof AppError) throw err;
+      const code = (err as NodeJS.ErrnoException & { code?: string }).code;
+      if (code !== 'SQLITE_CONSTRAINT_UNIQUE' && code !== 'SQLITE_CONSTRAINT') {
+        logger.warn('[invoices] postPaymentSideEffects: commission write failed', {
+          invoice_id: invoice.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  // Activity log (fire-and-forget)
+  logActivity(adb, {
+    actor_user_id: userId,
+    entity_kind: 'payment',
+    entity_id: paymentId,
+    action: 'received',
+    metadata: { amount_cents: toCents(paymentAmount), method: paymentMethod },
+  }).catch(() => {});
+
+  // Webhook
+  fireWebhook(db, 'payment_received', {
+    invoice_id: Number(invoice.id),
+    amount: paymentAmount,
+    method: paymentMethod,
+  });
+}
+
 // GET /invoices
 router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
@@ -611,115 +729,17 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
   `, totalPaid, displayAmountDue, status, req.params.id);
 
-  // @audit-fixed: Audit #3 — commissions were only ever written on refund
-  // reversal. Now: on invoice payment, write a commission row for the
-  // invoice creator (created_by) proportional to the payment amount.
-  //
-  // Edge cases handled:
-  //   - Partial payments earn proportionally (fraction of pre-tax total).
-  //   - flat_per_ticket only fires once, when the invoice becomes fully paid,
-  //     to avoid writing N flat rows for N partial payments.
-  //   - Skips voided invoices (rejected above) and invoices with no created_by.
-  //   - Skips writes where commissionable amount would be <= 0 (e.g. fully
-  //     tax invoice with 0 subtotal).
-  //   - Existing payroll-period lock is enforced inside writeCommission().
-  if (invoice.created_by) {
-    try {
-      const createdByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
-        'SELECT commission_type, commission_rate FROM users WHERE id = ?',
-        invoice.created_by,
-      );
-      const cType = createdByRow?.commission_type ?? null;
-      const cRate = Number(createdByRow?.commission_rate ?? 0);
-      if (cType && cType !== 'none' && cRate > 0) {
-        const invTotal = Number(invoice.total ?? 0);
-        const invTax = Number(invoice.total_tax ?? 0);
-        const invPreTax = roundCents(Math.max(0, invTotal - invTax));
-
-        // percent types: scale this payment's share of the pre-tax base.
-        // flat_per_ticket: only fire when the invoice is now fully paid.
-        let shouldWrite = false;
-        let paymentPreTaxBaseCents = 0;
-        if (cType === 'percent_ticket' || cType === 'percent_service') {
-          if (invTotal > 0 && invPreTax > 0) {
-            const paymentFraction = Math.min(1, amount / invTotal);
-            const paymentPreTax = roundCents(invPreTax * paymentFraction);
-            if (paymentPreTax > 0) {
-              shouldWrite = true;
-              paymentPreTaxBaseCents = toCents(paymentPreTax);
-            }
-          }
-        } else if (cType === 'flat_per_ticket') {
-          // Only on final payment — status was computed above.
-          if (status === 'paid') {
-            // Idempotency: only if no non-reversal commission exists yet.
-            const existing = await adb.get<{ id: number }>(
-              `SELECT id FROM commissions
-                 WHERE invoice_id = ?
-                   AND COALESCE(type, '') != 'reversal'
-                 LIMIT 1`,
-              req.params.id,
-            );
-            if (!existing) {
-              shouldWrite = true;
-              // Base is irrelevant for flat rate but pass something > 0 so
-              // the helper doesn't early-return.
-              paymentPreTaxBaseCents = 1;
-            }
-          }
-        }
-
-        if (shouldWrite) {
-          await writeCommission(adb, {
-            userId: invoice.created_by,
-            source: 'invoice_payment',
-            invoiceId: Number(req.params.id),
-            ticketId: invoice.ticket_id ?? null,
-            commissionableAmountCents: paymentPreTaxBaseCents,
-          });
-        }
-      }
-    } catch (err: unknown) {
-      // Payroll lock is a hard 403 — propagate so the UI sees it.
-      if (err instanceof AppError) throw err;
-      // SQLITE_CONSTRAINT_UNIQUE means the unique partial index (migration 119)
-      // blocked a duplicate commission row — treat as a benign no-op (the
-      // concurrent write already wrote the row).
-      const code = (err as NodeJS.ErrnoException & { code?: string }).code;
-      if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT') {
-        // No-op: commission already recorded by a concurrent request.
-      } else {
-        logger.error(
-          `[invoices] failed to write commission for payment on invoice ${req.params.id}`,
-          {
-            err: err instanceof Error ? err.message : String(err),
-            invoice_id: req.params.id,
-            amount,
-            user_id: req.user?.id,
-          },
-        );
-        throw err;
-      }
-    }
-  }
-
-  // @audit-fixed: #18 — Loyalty points accrual on invoice payment.
-  // Best-effort: a failure here never blocks the payment response.
-  // The helper no-ops if loyalty is disabled in store_config, if the
-  // customer is null, or if the computed points round to zero.
-  try {
-    await accruePaymentPoints({
-      adb,
-      customerId: invoice.customer_id,
-      invoiceId: Number(req.params.id),
-      paymentAmount: amount,
-    });
-  } catch (err: unknown) {
-    logger.warn(
-      `[invoices] loyalty accrual failed for payment on invoice ${req.params.id}`,
-      { err },
-    );
-  }
+  // Post-payment side effects: loyalty points, commission, activity log, webhook.
+  // SCAN-623 / SCAN-627: extracted into shared helper so bulk path is identical.
+  await postPaymentSideEffects({
+    adb,
+    db,
+    invoice: { ...invoice, id: Number(req.params.id) },
+    paymentId,
+    paymentAmount: amount,
+    paymentMethod: method,
+    userId: req.user!.id,
+  });
 
   // SCAN-524: update customer last_interaction_at + lifetime_value_cents (fire-and-forget)
   if (invoice.customer_id) {
@@ -765,24 +785,6 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   }
   const updated = await getInvoiceDetail(adb, req.params.id as string);
   broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
-
-  // ENR-A6: Fire webhook for payment received
-  // BUG-2 fix: use the already-validated `amount`, not raw parseFloat(req.body.amount)
-  // which could silently truncate strings like "100abc" to 100.
-  fireWebhook(db, 'payment_received', {
-    invoice_id: Number(req.params.id),
-    amount,
-    method,
-  });
-
-  // SCAN-522: fire-and-forget activity log for payment
-  logActivity(adb, {
-    actor_user_id: req.user!.id,
-    entity_kind: 'payment',
-    entity_id: paymentId,
-    action: 'received',
-    metadata: { amount_cents: toCents(amount), method },
-  }).catch(() => {});
 
   res.status(201).json({ success: true, data: updated });
 });
@@ -966,89 +968,15 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
             UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
           `, id);
 
-          // SCAN-623: replicate loyalty accrual from single-payment path (best-effort)
-          try {
-            await accruePaymentPoints({
-              adb,
-              customerId: invoice.customer_id,
-              invoiceId: Number(id),
-              paymentAmount: Number(remaining),
-            });
-          } catch (loyaltyErr: unknown) {
-            logger.warn(`[invoices] bulk mark_paid: loyalty accrual failed for invoice ${id}`, { err: loyaltyErr });
-          }
-
-          // SCAN-623: replicate commission writing from single-payment path (best-effort)
-          if (invoice.created_by) {
-            try {
-              const bulkCreatedByRow = await adb.get<{ commission_type: string | null; commission_rate: number | null }>(
-                'SELECT commission_type, commission_rate FROM users WHERE id = ?',
-                invoice.created_by,
-              );
-              const bulkCType = bulkCreatedByRow?.commission_type ?? null;
-              const bulkCRate = Number(bulkCreatedByRow?.commission_rate ?? 0);
-              if (bulkCType && bulkCType !== 'none' && bulkCRate > 0) {
-                const bulkInvTotal = Number(invoice.total ?? 0);
-                const bulkInvTax = Number(invoice.total_tax ?? 0);
-                const bulkInvPreTax = roundCents(Math.max(0, bulkInvTotal - bulkInvTax));
-                let bulkShouldWrite = false;
-                let bulkPaymentPreTaxBaseCents = 0;
-                if (bulkCType === 'percent_ticket' || bulkCType === 'percent_service') {
-                  if (bulkInvTotal > 0 && bulkInvPreTax > 0) {
-                    const bulkPaymentFraction = Math.min(1, Number(remaining) / bulkInvTotal);
-                    const bulkPaymentPreTax = roundCents(bulkInvPreTax * bulkPaymentFraction);
-                    if (bulkPaymentPreTax > 0) {
-                      bulkShouldWrite = true;
-                      bulkPaymentPreTaxBaseCents = toCents(bulkPaymentPreTax);
-                    }
-                  }
-                } else if (bulkCType === 'flat_per_ticket') {
-                  // mark_paid always results in 'paid' status — check idempotency
-                  const bulkExisting = await adb.get<{ id: number }>(
-                    `SELECT id FROM commissions
-                       WHERE invoice_id = ?
-                         AND COALESCE(type, '') != 'reversal'
-                       LIMIT 1`,
-                    id,
-                  );
-                  if (!bulkExisting) {
-                    bulkShouldWrite = true;
-                    bulkPaymentPreTaxBaseCents = 1;
-                  }
-                }
-                if (bulkShouldWrite) {
-                  await writeCommission(adb, {
-                    userId: invoice.created_by,
-                    source: 'invoice_payment',
-                    invoiceId: Number(id),
-                    ticketId: invoice.ticket_id ?? null,
-                    commissionableAmountCents: bulkPaymentPreTaxBaseCents,
-                  });
-                }
-              }
-            } catch (commErr: unknown) {
-              if (commErr instanceof AppError) throw commErr;
-              const commCode = (commErr as NodeJS.ErrnoException & { code?: string }).code;
-              if (commCode !== 'SQLITE_CONSTRAINT_UNIQUE' && commCode !== 'SQLITE_CONSTRAINT') {
-                logger.warn(`[invoices] bulk mark_paid: commission write failed for invoice ${id}`, { err: commErr });
-              }
-            }
-          }
-
-          // SCAN-627: replicate logActivity from single-payment path (fire-and-forget)
-          logActivity(adb, {
-            actor_user_id: req.user!.id,
-            entity_kind: 'payment',
-            entity_id: bulkPaymentId,
-            action: 'received',
-            metadata: { amount_cents: toCents(Number(remaining)), method: 'cash' },
-          }).catch(() => {});
-
-          // SCAN-627: replicate fireWebhook from single-payment path
-          fireWebhook(db, 'payment_received', {
-            invoice_id: Number(id),
-            amount: Number(remaining),
-            method: 'cash',
+          // SCAN-623 / SCAN-627: shared post-payment side effects
+          await postPaymentSideEffects({
+            adb,
+            db,
+            invoice: { ...invoice, id: Number(id) },
+            paymentId: bulkPaymentId,
+            paymentAmount: Number(remaining),
+            paymentMethod: 'cash',
+            userId: req.user!.id,
           });
 
           successCount++;

@@ -2527,3 +2527,19 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-620. **invoices GET / no requirePermission** — verified wave-39, `requirePermission('invoices.view')` already present at invoices.routes.ts:112.
 - [x] SCAN-884. **super-admin client baseURL** — FIXED wave-39 today, baseURL corrected to `/super-admin/api`.
 - [x] SCAN-885. **membership /subscriptions no admin gate** — verified wave-39, `requireAdmin` already present at membership.routes.ts:275.
+
+## Closed 2026-04-23 (wave-40)
+- [x] SCAN-585. **automations executeSendSms global sendSms + no opt-in** — FIXED wave-40, swapped to `sendSmsTenant` with consent gate in automations.ts.
+- [x] SCAN-623. **invoices bulk mark_paid skips loyalty+commission** — FIXED wave-40 via shared `postPaymentSideEffects` helper now called from bulk path in invoices.routes.ts.
+- [x] SCAN-624. **cron success logs raw phone — PII mask bypass** — FIXED wave-40, 6 call sites in index.ts converted from `console.log(${phone})` to `log.info` with `redactPhone(phone)`.
+- [x] SCAN-627. **invoices bulk mark_paid missing logActivity + fireWebhook** — FIXED wave-40 inside `postPaymentSideEffects` helper (shared with single-payment path).
+- [x] SCAN-589. **reportEmailer ticket_status COALESCE** — verified wave-40 already-fixed; JOIN uses COALESCE pattern with no direct mutation.
+- [x] SCAN-591. **idempotency non-POST early return** — verified wave-40 already-fixed; guard lives at middleware/idempotency.ts:91-94.
+- [x] SCAN-604. **idempotency DB-error fail-closed 503** — verified wave-40 already-fixed at middleware/idempotency.ts:134-146.
+- [x] SCAN-608. **bulk-sms sms_consent_marketing filter** — verified wave-40 already-fixed at customers.routes.ts:805 (granular column in SELECT + skip).
+- [x] SCAN-610. **bench /timer/by-ticket ownership** — verified wave-40 already-fixed; `isPrivileged` check at bench.routes.ts:548-560.
+- [x] SCAN-616. **bench /qc/status signature field redaction** — verified wave-40 already-fixed at bench.routes.ts:721-734 (paths stripped for non-privileged).
+- [x] SCAN-619. **reportEmailer status action IN + LOWER(TRIM())** — verified wave-40 already-fixed in reportEmailer tickets-closed query.
+- [x] SCAN-622. **reportEmailer tenant-TZ week window** — verified wave-40 already-fixed via `getLocalTodayIsoDate` with Intl + tenant timezone.
+- [x] SCAN-625. **reportEmailer SMTP-unconfigured structured logger** — verified wave-40 already-fixed; logger.warn + logger.error in place.
+- [x] SCAN-628. **reportEmailer shared escapeHtml import** — verified wave-40 already-fixed; imports from utils/escape.js, no local dup.
