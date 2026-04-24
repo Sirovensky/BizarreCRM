@@ -3089,47 +3089,47 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 41. Payment Links & Public Pay Page
 
 ### 41.1 Payment link
-- [ ] Create: from invoice detail or standalone (amount + memo + customer).
-- [ ] `POST /payment-links` → `{ url, id }`.
-- [ ] Share: SMS / email / copy to clipboard / QR display.
-- [ ] Expiration + max uses + partial-allowed flag.
+- [x] Create: from invoice detail or standalone (amount + memo + customer).
+- [x] `POST /payment-links` → `{ url, id }`.
+- [x] Share: SMS / email / copy to clipboard / QR display.
+- [x] Expiration + max uses + partial-allowed flag.
 
 ### 41.2 Status tracking
-- [ ] `GET /payment-links/:id/status` polled or WebSocket push.
-- [ ] Status: pending / paid / expired / cancelled.
-- [ ] Paid triggers invoice update.
+- [x] `GET /payment-links/:id/status` polled or WebSocket push.
+- [x] Status: pending / paid / expired / cancelled.
+- [~] Paid triggers invoice update.
 
 ### 41.3 Public pay page
-- [ ] Served by tenant server on web; Android provides deep link only.
-- [ ] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form.
+- [x] Served by tenant server on web; Android provides deep link only.
+- [~] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form.
 
 ### 41.4 Request-for-payment push
-- [ ] "Send payment request" → customer receives SMS with link + FCM push if customer has our app.
+- [x] "Send payment request" → customer receives SMS with link + FCM push if customer has our app.
 
 ---
 ## 42. Voice & Calls
 
 ### 42.1 Phone dial-out
-- [ ] `Intent(ACTION_DIAL, Uri.parse("tel:..."))` from any customer row. Use `ACTION_CALL` only with `CALL_PHONE` permission if tenant configures auto-dial.
-- [ ] Caller ID shows customer name via contacts role (privacy-aware).
+- [x] `Intent(ACTION_DIAL, Uri.parse("tel:..."))` from any customer row. Use `ACTION_CALL` only with `CALL_PHONE` permission if tenant configures auto-dial.
+- [~] Caller ID shows customer name via contacts role (privacy-aware).
 
 ### 42.2 VoIP calling (if tenant uses)
-- [ ] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)`.
-- [ ] Incoming via PushKit-analog (FCM high-priority data) → `ConnectionService.onCreateIncomingConnection`.
-- [ ] CallKit-parallel: full-screen notification with accept / decline.
-- [ ] In-call UI: mute, speaker, hold, transfer, DTMF keypad.
-- [ ] Records: `POST /call-logs` entries synced to tenant.
+- [~] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)` (stubbed — CallInProgressActivity instead).
+- [x] Incoming via PushKit-analog (FCM high-priority data) → `ConnectionService.onCreateIncomingConnection`.
+- [x] CallKit-parallel: full-screen notification with accept / decline.
+- [~] In-call UI: mute, speaker, hold, transfer, DTMF keypad (Answer/Decline/Hangup only).
+- [x] Records: `POST /call-logs` entries synced to tenant.
 
 ### 42.3 Call recording
-- [ ] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement).
-- [ ] Playback via ExoPlayer.
-- [ ] Transcription via tenant server (not on-device).
+- [~] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement).
+- [~] Playback via ExoPlayer (ACTION_VIEW intent stub; ExoPlayer integration TBD).
+- [x] Transcription via tenant server (not on-device) — stub endpoint wired.
 
 ### 42.4 Voicemail
-- [ ] Fetched via tenant server (third-party VoIP provider); UI similar to SMS.
+- [~] Fetched via tenant server (third-party VoIP provider); UI similar to SMS.
 
 ### 42.5 Click-to-call from anywhere
-- [ ] Customer chip tap → dial prompt with recent numbers.
+- [~] Customer chip tap → dial prompt with recent numbers.
 
 ---
 ## 43. Bench Workflow (technician-focused)
