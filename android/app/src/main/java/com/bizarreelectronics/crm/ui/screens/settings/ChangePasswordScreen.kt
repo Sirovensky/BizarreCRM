@@ -44,9 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -376,7 +374,8 @@ fun ChangePasswordScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics {
-                        role = Role.Switch // forces TalkBack to announce "Password, hidden"
+                        // a11y: contentDescription surfaces hide/show state to TalkBack;
+                        //       Role.Switch was incorrect here (this is a TextField, not a toggle).
                         contentDescription = "Current password, ${if (showCurrent) "shown" else "hidden"}"
                     },
                 keyboardOptions = KeyboardOptions(
@@ -483,9 +482,16 @@ fun ChangePasswordScreen(
 
             // ── sign-out other sessions ───────────────────────────────
             Card(modifier = Modifier.fillMaxWidth()) {
+                // a11y: mergeDescendants collapses label + subtitle + Switch into one node
+                //       so TalkBack reads the full context before announcing the toggle state.
+                val sessionsToggleState = if (state.signOutOtherSessions) "toggled on" else "toggled off"
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Sign out other sessions, $sessionsToggleState. " +
+                                "Revoke access on all other devices"
+                        }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -526,7 +532,10 @@ fun ChangePasswordScreen(
                 enabled = viewModel.canSubmit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    // a11y: explicit contentDescription so TalkBack announces the action
+                    //       regardless of whether the button child is text or a spinner.
+                    .semantics { contentDescription = "Update password" },
             ) {
                 if (state.isLoading) {
                     CircularProgressIndicator(
@@ -560,6 +569,26 @@ private fun PasswordStrengthMeter(strength: PasswordStrength) {
         else -> MaterialTheme.colorScheme.error
     }
 
+    // a11y: derive a human-readable strength label and list unmet criteria
+    //       so screen-reader users know exactly what the bar represents.
+    val strengthLabel = when {
+        strength.allPassed          -> "strong"
+        strength.progress >= 0.6f   -> "medium"
+        else                         -> "weak"
+    }
+    val missing = buildList {
+        if (!strength.hasMinLength) add("at least 8 characters")
+        if (!strength.hasUppercase) add("uppercase letter")
+        if (!strength.hasLowercase) add("lowercase letter")
+        if (!strength.hasDigit)     add("number")
+        if (!strength.hasSymbol)    add("symbol")
+    }
+    val strengthDesc = if (missing.isEmpty()) {
+        "Password strength: $strengthLabel"
+    } else {
+        "Password strength: $strengthLabel. Missing: ${missing.joinToString(", ")}"
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -568,7 +597,8 @@ private fun PasswordStrengthMeter(strength: PasswordStrength) {
             progress = { strength.progress },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp),
+                .height(4.dp)
+                .semantics { contentDescription = strengthDesc },
             color = progressColor,
         )
 

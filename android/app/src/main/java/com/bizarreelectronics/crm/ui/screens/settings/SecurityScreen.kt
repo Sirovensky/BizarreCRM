@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -566,8 +567,15 @@ private fun SecurityPreferenceRow(
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true,
 ) {
+    // a11y: merge so TalkBack reads the whole row as one node; contentDescription
+    //       tells users both the toggle state and the descriptive subtitle.
+    val toggleState = if (checked) "toggled on" else "toggled off"
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title, $toggleState. $subtitle"
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -605,6 +613,8 @@ private fun SecurityNavRow(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
+    // a11y: mergeDescendants collapses icon + text + chevron into one node;
+    //       contentDescription gives a fully descriptive label for each action row.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -612,7 +622,10 @@ private fun SecurityNavRow(
                 if (enabled) Modifier.clickable { onClick() }
                 else Modifier
             )
-            .semantics(mergeDescendants = true) { role = Role.Button }
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = "$title. $subtitle"
+            }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

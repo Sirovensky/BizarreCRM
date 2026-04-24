@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -166,11 +167,17 @@ private fun LanguageRow(
     selected: Boolean,
     onSelect: () -> Unit,
 ) {
+    // a11y: mergeDescendants collapses RadioButton + language name into one node;
+    //       contentDescription announces selection state so users know the active language.
+    val selectionState = if (selected) "selected" else "not selected"
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onSelect)
-            .semantics(mergeDescendants = true) { role = Role.RadioButton }
+            .semantics(mergeDescendants = true) {
+                role = Role.RadioButton
+                contentDescription = "${language.displayName}, $selectionState"
+            }
             .padding(horizontal = 24.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

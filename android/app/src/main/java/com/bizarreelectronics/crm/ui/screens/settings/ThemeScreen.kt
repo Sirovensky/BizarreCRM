@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -206,13 +207,21 @@ fun ThemeScreen(
                             text = "Color",
                             style = MaterialTheme.typography.titleSmall,
                         )
+                        // a11y: merge icon + label + subtitle + Switch so TalkBack reads
+                        //       the full context and toggle state as a single node.
+                        val dynamicToggleState = if (state.dynamicColor) "toggled on" else "toggled off"
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = "Dynamic color (Material You), " +
+                                        "$dynamicToggleState. Derive the color scheme from your wallpaper"
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
                                 Icons.Default.Palette,
-                                contentDescription = "Dynamic color",
+                                contentDescription = null, // decorative — row description covers it
                                 modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -257,11 +266,17 @@ private fun ThemeRadioRow(
     selected: Boolean,
     onSelect: () -> Unit,
 ) {
+    // a11y: mergeDescendants collapses icon + label + description + RadioButton into one node.
+    //       contentDescription announces selection state so users know the current choice.
+    val selectionState = if (selected) "selected" else "not selected"
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onSelect)
-            .semantics(mergeDescendants = true) { role = Role.RadioButton }
+            .semantics(mergeDescendants = true) {
+                role = Role.RadioButton
+                contentDescription = "$label, $selectionState. $description"
+            }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

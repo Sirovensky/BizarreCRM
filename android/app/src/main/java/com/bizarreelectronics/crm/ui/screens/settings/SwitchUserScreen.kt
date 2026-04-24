@@ -35,6 +35,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -404,7 +406,13 @@ private fun SwitchUserContent(
 
         // Keypad or progress indicator while server call is in-flight.
         if (state.isWorking) {
-            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+            // a11y: announce that a verification is in progress so TalkBack users
+            //       know why the keypad disappeared.
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(32.dp)
+                    .semantics { contentDescription = "Verifying PIN, please wait" },
+            )
         } else {
             PinKeypad(
                 enabled = state.lockoutRemainingSeconds == 0,
