@@ -702,10 +702,6 @@ Verified working. Not TODOs.
 ### Wave-52 scan-loop findings (2026-04-23) — web/layout + web/auth
 - [ ] SCAN-972. **AppShell config query triple-cast via `as any` — type safety lost on settings payload.**
   <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/AppShell.tsx:52; fix=type-settings-getConfig-response -->
-- [ ] SCAN-973. **LoginPage three `catch (err: any)` blocks in auth-critical code — bypass error narrowing.**
-  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:202,232,261; fix=catch-unknown+formatApiError -->
-- [ ] SCAN-974. **ResetPasswordPage `catch (err: any)` — same unsafe pattern as login.**
-  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/ResetPasswordPage.tsx:71; fix=catch-unknown+formatApiError -->
 - [ ] SCAN-976. **Header `notifEntityIcons` declared between component bodies — confusing placement; move to top-level frozen const.**
   <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:492-497; fix=move-to-top-or-useMemo -->
 - [ ] SCAN-977. **Header "Mark all read" swallows server errors — optimistic UI never rolls back.**

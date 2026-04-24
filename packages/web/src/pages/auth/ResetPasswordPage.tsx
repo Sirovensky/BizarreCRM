@@ -68,8 +68,9 @@ export function ResetPasswordPage() {
       setTimeout(() => {
         navigate('/login', { replace: true });
       }, 3000);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to reset password. The link may have expired.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } } | undefined;
+      setError(e?.response?.data?.message || 'Failed to reset password. The link may have expired.');
     } finally {
       setLoading(false);
     }

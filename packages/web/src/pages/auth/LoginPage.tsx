@@ -199,14 +199,15 @@ export function LoginPage() {
       } else {
         setStep('verify');
       }
-    } catch (err: any) {
-      if (!err?.response) {
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number } } | undefined;
+      if (!e?.response) {
         setErrorKind('network');
         setError('Cannot connect to server. Check your network connection.');
-      } else if (err.response.status === 429) {
+      } else if (e.response.status === 429) {
         setErrorKind('rate-limit');
         setError('Too many login attempts. Please try again later.');
-      } else if (err.response.status === 401) {
+      } else if (e.response.status === 401) {
         setErrorKind('credentials');
         setError('Invalid username or password.');
       } else {
@@ -229,9 +230,10 @@ export function LoginPage() {
       const data = res.data.data;
       completeLogin(data.accessToken, data.refreshToken, data.user);
       navigate('/');
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = formatApiError(err) || 'Invalid code';
-      const newToken = err?.response?.data?.data?.challengeToken;
+      const e = err as { response?: { data?: { data?: { challengeToken?: string } } } } | undefined;
+      const newToken = e?.response?.data?.data?.challengeToken;
       if (newToken) setChallengeToken(newToken);
       setError(msg);
       setTotpCode('');
@@ -258,7 +260,7 @@ export function LoginPage() {
       setQrUrl(setupData.qr);
       setManualSecret(setupData.secret);
       setStep('setup');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(formatApiError(err) || 'Failed to set password');
     } finally {
       setLoading(false);
@@ -363,7 +365,7 @@ export function LoginPage() {
                 // Wipe credentials from memory immediately — section 41 fix.
                 setSetupPassword('');
                 window.history.replaceState(null, '', '/login');
-              } catch (err: any) {
+              } catch (err: unknown) {
                 setError(formatApiError(err) || 'Setup failed');
               } finally {
                 setLoading(false);
