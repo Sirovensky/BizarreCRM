@@ -23,6 +23,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -192,20 +197,11 @@ private fun EntryContent(
             ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
         }
 
-        // Walk-in shortcut if no customer attached
+        // Walk-in "ghost" tile — dashed-border per pos-phone-mockups.html.
+        // Visually demoted vs the three primary path tiles to signal it's
+        // the no-record shortcut. Only shown when no customer is attached.
         if (state.attachedCustomer == null) {
-            item {
-                TextButton(
-                    onClick = onWalkIn,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        "Walk-in customer · quick sale no record",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            item { GhostWalkInTile(onWalkIn = onWalkIn) }
         }
 
         // ── Past repairs compact list ────────────────────────────────────────
@@ -298,6 +294,80 @@ private fun PathTile(
             style = MaterialTheme.typography.titleMedium,
             color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun GhostWalkInTile(onWalkIn: () -> Unit) {
+    val dashed = MaterialTheme.colorScheme.outline
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(onClickLabel = "Walk-in customer") { onWalkIn() }
+            .drawBehind {
+                // Dashed outline via drawBehind + Stroke.dashPathEffect. No
+                // Modifier.dashedBorder helper in Compose; inline avoids an
+                // extra util file for a one-off.
+                val strokeWidth = 1.5.dp.toPx()
+                val dashEffect = PathEffect.dashPathEffect(
+                    floatArrayOf(12f, 8f),
+                    0f,
+                )
+                drawRoundRect(
+                    color = dashed,
+                    size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                    topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+                    cornerRadius = CornerRadius(14.dp.toPx() - strokeWidth / 2),
+                    style = Stroke(width = strokeWidth, pathEffect = dashEffect),
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .defaultMinSize(minHeight = 60.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        // Ghost icon container: dashed square matches the tile's silhouette.
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .drawBehind {
+                    val strokeWidth = 1.5.dp.toPx()
+                    val dashEffect = PathEffect.dashPathEffect(
+                        floatArrayOf(8f, 6f),
+                        0f,
+                    )
+                    drawRoundRect(
+                        color = dashed,
+                        size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                        topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+                        cornerRadius = CornerRadius(12.dp.toPx()),
+                        style = Stroke(width = strokeWidth, pathEffect = dashEffect),
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "👥",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Walk-in customer",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "No customer record · quick sale",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
