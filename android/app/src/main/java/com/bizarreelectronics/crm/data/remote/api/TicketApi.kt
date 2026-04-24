@@ -96,11 +96,16 @@ interface TicketApi {
     // Uses multipart field name "photos" per upload.array('photos', 20).
     // Return type is Unit — the PhotoCaptureViewModel only cares whether the
     // upload succeeded, not the server-assigned photo id(s).
+    //
+    // bug:gallery-400 fix: server route requires `ticket_device_id` in the
+    // request body (line 2422: if (!ticket_device_id) throw AppError('ticket_device_id
+    // is required')). Without it the server returns HTTP 400. Added @Part for it.
     @Multipart
     @POST("tickets/{id}/photos")
     suspend fun uploadTicketPhotos(
         @Path("id") ticketId: Long,
         @Part photos: List<MultipartBody.Part>,
         @Part("type") type: RequestBody,
+        @Part("ticket_device_id") ticketDeviceId: RequestBody,
     ): ApiResponse<Unit>
 }

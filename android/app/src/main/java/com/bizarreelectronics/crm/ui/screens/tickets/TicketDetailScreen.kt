@@ -471,7 +471,9 @@ fun TicketDetailScreen(
     // gallery upload screen for this ticket. Registered in AppNavGraph as
     // `Screen.TicketPhotos`. Optional so previews and tests that don't
     // care about photos can omit it; the entry point is hidden when null.
-    onAddPhotos: ((Long) -> Unit)? = null,
+    // bug:gallery-400 fix: second Long is the ticket_device_id required by
+    // the server upload endpoint.
+    onAddPhotos: ((ticketId: Long, deviceId: Long) -> Unit)? = null,
     // AND-20260414-H4: route into the payment screen. Callback receives the
     // resolved total (from the TicketDetail DTO) + the customer display name
     // so the checkout summary card and payment-method gating are populated
@@ -887,7 +889,7 @@ private fun TicketDetailContent(
     padding: PaddingValues,
     onNavigateToCustomer: (Long) -> Unit,
     onEditDevice: (Long) -> Unit = {},
-    onAddPhotos: ((Long) -> Unit)? = null,
+    onAddPhotos: ((ticketId: Long, deviceId: Long) -> Unit)? = null,
     serverUrl: String = "",
 ) {
     LazyColumn(
@@ -1158,15 +1160,25 @@ private fun TicketDetailContent(
                         fontWeight = FontWeight.SemiBold,
                     )
                     if (canAddPhotos) {
-                        TextButton(onClick = { onAddPhotos?.invoke(ticketId) }) {
-                            Icon(
-                                Icons.Default.AddAPhoto,
-                                // decorative — TextButton's "Add Photo" Text supplies the accessible name
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Photo")
+                        // bug:gallery-400 fix: pass the first device's id as deviceId.
+                        // The server upload endpoint requires ticket_device_id in the
+                        // multipart body; without it it returns HTTP 400. We use the
+                        // first device because tickets in this shop typically have one
+                        // device, and the server validates that the device belongs to
+                        // the ticket. If the ticket has no devices yet the button is
+                        // hidden to avoid a dead upload path.
+                        val firstDeviceId = devices.firstOrNull()?.id
+                        if (firstDeviceId != null) {
+                            TextButton(onClick = { onAddPhotos?.invoke(ticketId, firstDeviceId) }) {
+                                Icon(
+                                    Icons.Default.AddAPhoto,
+                                    // decorative — TextButton's "Add Photo" Text supplies the accessible name
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add Photo")
+                            }
                         }
                     }
                 }

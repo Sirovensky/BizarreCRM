@@ -109,8 +109,12 @@ sealed class Screen(val route: String) {
     // detail, so technicians could not attach new repair photos even though
     // the API endpoint and viewmodel were wired. This route + an
     // `onAddPhotos` callback from TicketDetailScreen close that gap.
-    data object TicketPhotos : Screen("tickets/{ticketId}/photos") {
-        fun createRoute(ticketId: Long) = "tickets/$ticketId/photos"
+    //
+    // bug:gallery-400 fix: route now carries `deviceId` because the server's
+    // POST /:id/photos endpoint requires ticket_device_id in the body. The
+    // caller (TicketDetailScreen) passes the first device's id when navigating.
+    data object TicketPhotos : Screen("tickets/{ticketId}/photos/{deviceId}") {
+        fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/photos/$deviceId"
     }
     data object Customers : Screen("customers")
     data object CustomerDetail : Screen("customers/{id}") {
@@ -760,11 +764,11 @@ fun AppNavGraph(
                         navController.navigate(Screen.TicketDeviceEdit.createRoute(ticketId, deviceId))
                     },
                     // AND-20260414-M1: navigate to the photo gallery / capture
-                    // screen bound to this ticket id. Keeps the upload contract
-                    // identical to PhotoCaptureScreen's existing VM which reads
-                    // `ticketId` and posts to `uploadTicketPhotos`.
-                    onAddPhotos = { id ->
-                        navController.navigate(Screen.TicketPhotos.createRoute(id))
+                    // screen bound to this ticket + device id. bug:gallery-400 fix:
+                    // the server's POST /:id/photos route requires ticket_device_id
+                    // in the body, so we thread deviceId through the route.
+                    onAddPhotos = { id, deviceId ->
+                        navController.navigate(Screen.TicketPhotos.createRoute(id, deviceId))
                     },
                     // AND-20260414-H4: wire the payment screen so the top-bar
                     // Checkout action can reach it. The detail screen pulls
@@ -792,12 +796,16 @@ fun AppNavGraph(
                 )
             }
             // AND-20260414-M1: photo upload / gallery picker for a ticket.
-            // Reads `ticketId` from the route path; the VM owns the upload
-            // state, so we only need to pass the id + a back callback.
+            // Reads `ticketId` and `deviceId` from the route path; the VM owns
+            // the upload state, so we only need to pass the ids + a back callback.
+            // bug:gallery-400 fix: deviceId is now part of the route so the VM
+            // can include it in the multipart body as ticket_device_id.
             composable(Screen.TicketPhotos.route) { backStackEntry ->
                 val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
+                val deviceId = backStackEntry.arguments?.getString("deviceId")?.toLongOrNull() ?: return@composable
                 PhotoCaptureScreen(
                     ticketId = ticketId,
+                    deviceId = deviceId,
                     onBack = { navController.popBackStack() },
                 )
             }
