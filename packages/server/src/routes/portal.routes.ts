@@ -1565,6 +1565,7 @@ function getWidgetScript(): string {
 
   if (!server) { console.error('[BizarrePortal] data-server attribute is required'); return; }
   server = server.replace(/\\/$/, '');
+  if (!/^https?:\\/\\//.test(server)) { server = 'https://' + server; }
 
   // SEC-L27: validate the data-server attribute against a canonical CNAME
   // pattern (\`https://<sub>.<domain>.<tld>[/path]\` OR \`http://localhost...\`
@@ -1630,9 +1631,7 @@ function getWidgetScript(): string {
       window.addEventListener('message', function(e) {
         var expectedOrigin;
         try { expectedOrigin = new URL(server).origin; } catch(ex) { return; }
-        var incomingOrigin;
-        try { incomingOrigin = new URL(e.origin).origin; } catch(ex) { return; }
-        if (incomingOrigin !== expectedOrigin) return;
+        if (e.origin !== expectedOrigin) return;
         if (e.data && e.data.type === 'bizarre-portal-resize') {
           iframe.style.height = e.data.height + 'px';
         }
