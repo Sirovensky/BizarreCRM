@@ -65,7 +65,7 @@ struct RootView: View {
                 MainShellView(onSignOut: {
                     appState.phase = .unauthenticated
                 })
-                .overlay(alignment: .top) { ConnectivityChip() }
+                .overlay(alignment: .topTrailing) { ConnectivityChip() }
             }
         }
         .task { await listenForSessionEvents() }
@@ -426,26 +426,82 @@ struct MoreMenuView: View {
     }
 }
 
-/// Reactive chip rendered over the authenticated shell. Polls the
-/// reachability observable + sync queue pending count every few seconds
-/// (the values update infrequently so a 2s cadence is cheap).
+/// Reactive chip rendered over the authenticated shell. Two-phase UI:
+///
+/// 1. **Expanded** (first ~3.5 s after state enters a visible mode) — full
+///    glass chip with icon + text. Grabs attention.
+/// 2. **Compact** (after the grace window) — icon-only circle tucked in the
+///    top-trailing corner. Tap to re-expand for 4 more seconds.
+///
+/// Uses `.overlay(alignment: .topTrailing)` at the call site so the chip is
+/// floating chrome and never pushes surrounding layout — important because
+/// the `MainShellView` is a `NavigationSplitView` on iPad and a top-center
+/// overlay would collide with per-column nav bars.
+///
+/// Polls `Reachability.shared` + `SyncQueueStore.shared` every 2 s. Both are
+/// actor/observable; polling is cheap and avoids a Combine pipeline for a
+/// tiny chip.
 private struct ConnectivityChip: View {
     @State private var isOffline: Bool = false
     @State private var pendingCount: Int = 0
+    @State private var expanded: Bool = true
+    /// Monotonic task generation so we can cancel an in-flight collapse when
+    /// the user taps to re-expand without racing with an old timer.
+    @State private var collapseTaskId: Int = 0
+
+    private var isVisible: Bool { isOffline || pendingCount > 0 }
 
     var body: some View {
-        OfflineBanner(isOffline: isOffline, pendingCount: pendingCount)
-            .padding(.top, BrandSpacing.sm)
-            .task { await monitor() }
+        Group {
+            if isVisible {
+                OfflineBanner(
+                    isOffline: isOffline,
+                    pendingCount: pendingCount,
+                    expanded: expanded
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { reExpand() }
+            }
+        }
+        .padding(.top, BrandSpacing.sm)
+        .padding(.trailing, BrandSpacing.base)
+        .task { await monitor() }
     }
 
-    /// Watch Reachability + SyncQueueStore. Both are actor/observable, so
-    /// we just refresh at a comfortable cadence rather than wiring up a
-    /// full publisher pipeline for a tiny chip.
+    private func reExpand() {
+        expanded = true
+        scheduleCollapse()
+    }
+
+    private func scheduleCollapse() {
+        collapseTaskId &+= 1
+        let id = collapseTaskId
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard id == collapseTaskId else { return }
+            expanded = false
+        }
+    }
+
+    /// Watch Reachability + SyncQueueStore. Kick off the monitor defensively —
+    /// `start()` is idempotent, so the extra call only matters if the bootstrap
+    /// path somehow failed to warm it up before the authenticated shell
+    /// mounted.
     private func monitor() async {
+        Reachability.shared.startIfNeeded()
+        var wasVisible = false
         while !Task.isCancelled {
             isOffline = !Reachability.shared.isOnline
             pendingCount = (try? await SyncQueueStore.shared.pendingCount()) ?? 0
+            let nowVisible = isOffline || pendingCount > 0
+            if nowVisible && !wasVisible {
+                // Transitioned from hidden → visible: show expanded, start
+                // collapse timer. Matches the "grab attention, then tuck"
+                // pattern the user asked for.
+                expanded = true
+                scheduleCollapse()
+            }
+            wasVisible = nowVisible
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
     }

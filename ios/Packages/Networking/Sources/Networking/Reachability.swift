@@ -20,7 +20,12 @@ public final class Reachability {
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            let online = path.status == .satisfied
+            // Treat `.requiresConnection` as online too — on iPads tethered
+            // via USB/AirPlay or on wifi networks without an immediate
+            // upstream probe, NWPathMonitor sometimes reports
+            // `.requiresConnection` even though the app can reach the server.
+            // Only `.unsatisfied` means definitively offline.
+            let online = path.status != .unsatisfied
             let expensive = path.isExpensive
             Task { @MainActor in
                 self?.isOnline = online
@@ -33,6 +38,12 @@ public final class Reachability {
         guard !started else { return }
         started = true
         monitor.start(queue: queue)
+    }
+
+    /// Idempotent alias — callable from any view that needs to make sure the
+    /// monitor has been warmed up. Safe to call many times.
+    public func startIfNeeded() {
+        start()
     }
 
     public func stop() {
