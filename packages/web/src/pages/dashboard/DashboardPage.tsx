@@ -1542,7 +1542,24 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
   );
 }
 
+/**
+ * Thin role router. Keeps the technician-only dashboard and the admin/manager
+ * full dashboard as separate components so each gets a stable list of hooks
+ * on every render. Previously the technician branch returned AFTER several
+ * hooks had run, but BEFORE ~30 more hooks in the full dashboard body —
+ * switching role mid-session would change the hook call count and trip
+ * React's Rules of Hooks (SCAN-967).
+ */
 export function DashboardPage() {
+  const user = useAuthStore((s) => s.user);
+  const role = user?.role ?? 'technician';
+  if (role === 'technician' && user?.id) {
+    return <TechDashboard userId={user.id} />;
+  }
+  return <AdminOrManagerDashboard />;
+}
+
+function AdminOrManagerDashboard() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const role = user?.role ?? 'technician';
@@ -1574,12 +1591,9 @@ export function DashboardPage() {
 
   const { from, to } = useMemo(() => getDateRange(datePreset), [datePreset]);
 
-  // Technician gets a simplified dashboard
-  if (role === 'technician' && user?.id) {
-    return <TechDashboard userId={user.id} />;
-  }
-
-  // admin and manager see the full dashboard
+  // admin and manager see the full dashboard (technician is routed away at
+  // the DashboardPage level, so no early return here — keeps the hook list
+  // stable across every render of this body).
   const showFinancials = role === 'admin' || role === 'manager';
 
   // Fetch KPIs
