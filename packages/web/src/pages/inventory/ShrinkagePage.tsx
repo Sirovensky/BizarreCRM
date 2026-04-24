@@ -11,6 +11,20 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
 
+// Returns the given path only if it's safe to render as an `<a href>` target.
+// Accepts relative paths starting with `/` (typical uploads location) and
+// absolute http/https URLs. Anything else (e.g. `javascript:` / `data:`) is
+// stripped out so a poisoned server value can't execute in the user's tab.
+function safeHref(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.startsWith('/')) return raw;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+  } catch { /* fall through */ }
+  return null;
+}
+
 interface ShrinkageRow {
   id: number;
   inventory_item_id: number;
@@ -206,13 +220,16 @@ export function ShrinkagePage() {
                 </td>
                 <td className="px-3 py-2 text-xs max-w-xs truncate">{r.notes || '—'}</td>
                 <td className="text-center px-3 py-2">
-                  {r.photo_path ? (
-                    <a href={r.photo_path} target="_blank" rel="noreferrer" className="text-primary-600 text-xs">
-                      View
-                    </a>
-                  ) : (
-                    '—'
-                  )}
+                  {(() => {
+                    const href = safeHref(r.photo_path);
+                    return href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary-600 text-xs">
+                        View
+                      </a>
+                    ) : (
+                      '—'
+                    );
+                  })()}
                 </td>
               </tr>
             ))}

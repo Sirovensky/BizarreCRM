@@ -704,10 +704,6 @@ Verified working. Not TODOs.
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
-- [ ] SCAN-982. **[HIGH] Inventory list opens supplier_url in new tab without protocol check — `javascript:`/`data:` URLs execute.**
-  <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:592; fix=validate-https-only -->
-- [ ] SCAN-983. **[HIGH] Shrinkage page renders server photo_path as `<a href>` without protocol sanitization — open redirect / javascript:.**
-  <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/ShrinkagePage.tsx:210; fix=validate-protocol-or-relative -->
 - [ ] SCAN-984. **Estimate convert mutation navigates away while concurrent send/approve mutations may still be pending — race condition.**
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
 - [ ] SCAN-985. **Inventory + estimates queries missing staleTime — focus events re-fetch 250-row pages unnecessarily.**

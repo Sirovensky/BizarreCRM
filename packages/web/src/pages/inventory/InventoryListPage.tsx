@@ -587,14 +587,27 @@ export function InventoryListPage() {
                           const plpItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts');
                           const msItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'mobilesentrix');
                           let opened = 0;
-                          // Open each supplier URL (browsers may block after first few)
+                          let skipped = 0;
+                          // Open each supplier URL. Validate protocol first so
+                          // a poisoned `javascript:` / `data:` URL from the
+                          // catalog can't execute code in the new window.
                           for (const item of [...plpItems, ...msItems].slice(0, 20)) {
-                            window.open(item.supplier_url, '_blank');
-                            opened++;
+                            try {
+                              const parsed = new URL(String(item.supplier_url));
+                              if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                                skipped++;
+                                continue;
+                              }
+                              window.open(parsed.href, '_blank', 'noopener,noreferrer');
+                              opened++;
+                            } catch {
+                              skipped++;
+                            }
                           }
                           if (opened > 0) toast.success(`Opened ${opened} supplier pages`);
                           if (plpItems.length + msItems.length > 20) toast(`Showing first 20 of ${plpItems.length + msItems.length}. Open rest manually.`);
-                          if (opened === 0) toast.error('No supplier URLs found for these items');
+                          if (skipped > 0) toast.error(`Skipped ${skipped} item${skipped > 1 ? 's' : ''} with invalid supplier URL`);
+                          if (opened === 0 && skipped === 0) toast.error('No supplier URLs found for these items');
                         }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-teal-600 text-white hover:bg-teal-700 transition-colors"
                       >
