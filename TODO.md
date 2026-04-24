@@ -740,7 +740,6 @@ Verified working. Not TODOs.
 ## AUDIT CYCLE 3 — 2026-04-23 (parallel discovery wave 1: routes security + perf, web pages, DB schema, build/infra)
 
 ### Server routes — security/authz (12 findings)
-- [ ] SCAN-001. **[SEC] admin backup settings accepts raw body with no allowlist** — `packages/server/src/routes/admin.routes.ts:503` passes entire `req.body` to `updateBackupSettings`. Fix: allowlist accepted fields (backup_enabled, backup_path, backup_schedule) before write.
 - [ ] SCAN-002. **[SEC] admin /drives/browse has no rate-limit — fs enumeration** — `packages/server/src/routes/admin.routes.ts:275` rapid calls walk filesystem. Fix: `checkWindowRate` IP/session keyed.
 - [ ] SCAN-003. **[SEC] sms PATCH /conversations/:phone/flag|pin|archive no format/ownership check** — `packages/server/src/routes/sms.routes.ts:334` any auth user flags other tenants phones. Fix: E.164 validate + scope to tenants sms_messages.
 - [ ] SCAN-004. **[SEC] sms POST /templates unbounded name/content length** — `packages/server/src/routes/sms.routes.ts:850` no cap → DB bloat. Fix: name ≤200, content ≤1600.
@@ -958,7 +957,6 @@ Verified working. Not TODOs.
 - [ ] SCAN-191. **crashResiliency uses module-level `currentRequestRoute` — interleaved requests misattribute crash routes** — `packages/server/src/middleware/crashResiliency.ts:17,34`. Fix: AsyncLocalStorage or res.locals.
 - [ ] SCAN-192. **requestLogger SENSITIVE_HEADER_NAMES declared + `void` suppressed — never applied to log meta** — `packages/server/src/middleware/requestLogger.ts:141-142`. Fix: apply redaction or remove dead set.
 - [ ] SCAN-193. **tenantResolver dev-mode DEV_TENANT_SLUG not regex-validated before query** — `packages/server/src/middleware/tenantResolver.ts:325`. Fix: regex guard matching normal slug rules.
-- [ ] SCAN-194. **[SEC] stepUpTotp audit log IP from req.ip (XFF-spoofable) — audit trails unreliable** — `packages/server/src/middleware/stepUpTotp.ts:154,289`. Fix: req.socket.remoteAddress or validate XFF against trusted proxy allowlist.
 
 ### Server WebSocket + startup (7 findings)
 - [ ] SCAN-196. **WS heartbeat terminate path never decrements wsConnsByIp/wsConnsByTenant — counter bloat blocks reconnects** — `packages/server/src/ws/server.ts:582-607`. Fix: explicit decrement or shared close-cleanup helper.
@@ -1090,7 +1088,6 @@ Verified working. Not TODOs.
 
 ### PWA / manifest / shared types / robots (8 findings)
 - [ ] SCAN-300. **manifest.json name/short_name/description/colors hard-coded single-tenant — every tenant gets wrong branding in PWA install** — `packages/web/public/manifest.json:2`. Fix: dynamic `/api/manifest.json` from store settings or per-tenant Vite build.
-- [ ] SCAN-301. **manifest.json start_url="/" + no `scope` — installed PWA covers /super-admin routes** — `packages/web/public/manifest.json:5`. Fix: `scope:"/app/"` + `start_url:"/app/"`.
 - [ ] SCAN-302. **index.html SW-cleanup script unregisters + deletes all caches, but /public/sw.js still served — perpetual install/unregister loop** — `packages/web/index.html:43`. Fix: remove sw.js + script after all clients migrated, or stop serving sw.js.
 - [ ] SCAN-303. **cleanup sw.js not versioned + no `updateViaCache` — future real SW re-enablement will stale-pin** — `packages/web/public/sw.js:1`. Fix: any replacement must use `updateViaCache:'none'` + versioned cache name.
 - [ ] SCAN-304. **shared Customer interface missing is_active/last_ticket_date/health_score — fields returned by server, untyped at web consumer** — `packages/shared/src/types/customer.ts:1`. Fix: add optional fields matching server response.
@@ -1339,7 +1336,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 ### Wave-7 scan-loop + helpers audit findings (2026-04-23)
 
 ### Wave-8 scan-loop findings (2026-04-23)
-- [ ] SCAN-549. **[SEC] fileUploadValidator adjustFileCounter TOCTOU race — concurrent uploads both read current=99, both write 100 — quota erodes silently** — `packages/server/src/middleware/fileUploadValidator.ts:157-178`. Fix: OS-level O_EXCL lock or move counter to SQLite with atomic UPDATE SET counter=counter+?.
 
 ### Wave-9 scan findings (2026-04-23)
 - [ ] SCAN-554. **[SEC-H34] membership 4 money columns `REAL` (monthly_price, discount_pct, last_charge_amount, subscription_payments.amount) — floating-point drift on recurring bills** — `packages/server/src/db/migrations/068_membership_system.sql:6,7,33,48`. Fix: migrate → INTEGER cents + app cents/dollars conversion.
@@ -1355,7 +1351,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-574. **backup filename prefix not run through `assertSafePath` — slug edge-cases could confuse `isBackupFile` regex** — `packages/server/src/services/backup.ts:607-610`. Fix: `/^[a-z0-9-]+$/` assertion on prefix.
 
 ### Wave-11 scan findings (2026-04-23)
-- [ ] SCAN-580. **[SEC] stocktake POST / (open session) no role gate — technician opens session + scans variances + manager unknowingly commits** — `packages/server/src/routes/stocktake.routes.ts:87-122`. Fix: admin|manager gate at handler top.
 - [ ] SCAN-581. **[SEC] stocktake POST /:id/counts (scan entry) no role gate** — `packages/server/src/routes/stocktake.routes.ts:169-247`. Fix: admin|manager|technician minimum.
 - [ ] SCAN-583. **dunningScheduler sendSmsTenant return typed `any`; fragile `.success === false` check passes undefined → every SMS logged dispatched even on silent fail** — `packages/server/src/services/dunningScheduler.ts:617`. Fix: assert provider-specific success field OR check `!result`.
 
@@ -1369,16 +1364,7 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 ### Wave-14 scan findings (2026-04-23)
 
 ### Wave-15 scan findings (2026-04-23)
-- [ ] SCAN-629. **refunds reverseCommission called OUTSIDE approval tx — 403 from locked-payroll-period propagates as unhandled 500 AFTER refund already committed → caller thinks failed, retries** — `packages/server/src/routes/refunds.routes.ts:287`. Fix: wrap in try/catch, 200 with `commission_reversal_skipped:true` on AppError 403.
-- [ ] SCAN-630. **portal consumeRate non-atomic check+record — two concurrent /login or /register/send-code both pass → maxAttempts+1 actual** — `packages/server/src/routes/portal.routes.ts:84,87`. Fix: use `consumeWindowRate` (atomic, already used on some paths).
-- [ ] SCAN-631. **portal /login success doesn't clear `portal_pin_verify` bucket — legitimate user can't log in from 2nd device within 10min window after correct PIN on attempt 4** — `packages/server/src/routes/portal.routes.ts:626-652`. Fix: `clearRateLimit(req.db, RL.PIN_VERIFY, customer.id)` on success.
-- [ ] SCAN-632. **portal idle-timeout parses `last_used_at + 'Z'` — if server tz != UTC, idle window drifts ±14h** — `packages/server/src/routes/portal.routes.ts:135`. Fix: use `datetime('now', 'utc')` at store time OR parse without appending 'Z'.
-- [ ] SCAN-633. **db-worker.ts dead code shadows db-worker.mjs — TS file lacks expectChanges guard; build misconfig silently drops rollback protection on refunds/stock** — `packages/server/src/db/db-worker.ts:41-73`. Fix: delete db-worker.ts OR compile-time assert only .mjs used.
-- [ ] SCAN-634. **blockchyp getClient accepts `db: any` — callers may pass req.asyncDb accidentally, runtime crash on `.prepare()`** — `packages/server/src/services/blockchyp.ts:105-151`. Fix: type as `Database.Database`.
-- [ ] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template-literal SQL (`-${STUCK_PENDING_THRESHOLD_MINUTES} minutes`) — pattern risk for future config-driven values** — `packages/server/src/services/blockchyp.ts:820,817`. Fix: parameterize via `datetime('now', ? || ' minutes')`.
-- [ ] SCAN-636. **[SEC] dunning GET /sequences no role gate — cashier reads collection cadence + contact strategy** — `packages/server/src/routes/dunning.routes.ts:49-63`. Fix: `requireAdmin(req)` (matches sibling writes).
 - [ ] SCAN-638. **web ReportsPage useEffect risk of loop — openUpgradeModal not in deps + isReportTabLocked not memoized + eslint-disable suppresses exhaustive-deps warning** — `packages/web/src/pages/reports/ReportsPage.tsx:1144-1153`. Fix: `useCallback` isReportTabLocked + include openUpgradeModal in deps (or ref) + drop lint-disable.
-- [ ] SCAN-639. **portal embed-config uses dynamic `import('../utils/rateLimiter.js')` at request time — overhead + theoretical failure lets request pass without rate-limit** — `packages/server/src/routes/portal.routes.ts:1487`. Fix: use static top-of-file import (already exists at line 9).
 
 ### Wave-16 scan findings (2026-04-23)
 
@@ -1402,7 +1388,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 ### Wave-22 scan-loop findings (2026-04-23)
 - [ ] SCAN-690. **[POSSIBLE] SMS rate-limit category keys inconsistent across endpoints — attacker might switch routes to evade per-destination throttle** — `packages/server/src/routes/sms.routes.ts:96`. Fix: enumerate all SMS category strings + normalize shared family to same key.
 - [ ] SCAN-694. **[LOW] import oauth callback sends inline JS setTimeout via `res.send()` — safe now but fragile pattern** — `packages/server/src/routes/import.routes.ts:1481-1488`. Fix: migrate to res.render OR sanitized template.
-- [ ] SCAN-695. **db/worker-pool "queue is full" detection via substring match — brittle if Piscina error text changes** — `packages/server/src/db/worker-pool.ts:106-110`. Fix: check `err.name` or `err instanceof` Piscina QueueFullError if exported.
 - [ ] SCAN-699. **rateLimiter category collisions — creditNotes + recurringInvoices both use userId-keyed bucket; same user hits both → shared limit** — `packages/server/src/routes/creditNotes.routes.ts,recurringInvoices.routes.ts`. Fix: scope category string per family.
 - [ ] SCAN-703. **[LOW] stepUpTotp replay check uses `Date.now() / 30_000` bucket — clock skew + leap second drift; otplib window-tolerance handles verify but not replay bucket** — `packages/server/src/middleware/stepUpTotp.ts:80`. Fix: accept otplib's validation as sufficient OR add skew tolerance.
 
@@ -1412,159 +1397,75 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-707. **[LOW] authStore.ts access token persisted to localStorage without encryption — XSS exposure** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: sessionStorage OR in-memory only; refresh via httpOnly cookie only.
 - [ ] SCAN-709. **admin backup download Content-Disposition unquoted filename — special chars break header parsing** — `packages/server/src/routes/admin.routes.ts:381`. Fix: quote + escape filename per RFC 5987.
 - [ ] SCAN-710. **repairDeskImport `RdResponse<T = any>` — third-party API shape unvalidated, silent type confusion risk** — `packages/server/src/services/repairDeskImport.ts:130`. Fix: Zod schema + parse at boundary.
-- [ ] SCAN-711. **[POSSIBLE LOW] email.ts subject passed to nodemailer without \r\n sanitization — header injection if future caller supplies user input** — `packages/server/src/services/email.ts:161`. Fix: strip \r\n from subject prophylactically.
-- [ ] SCAN-712. **email.ts html→text fallback `.replace(/<[^>]+>/g, '')` — malformed tags leak script fragments** — `packages/server/src/services/email.ts:161`. Fix: html-to-text parser library.
 - [ ] SCAN-713. **[INFO] useWebSocket.ts `localStorage.getItem('accessToken')` — silent fail if token missing; no retry after login** — `packages/web/src/hooks/useWebSocket.ts:202`. Fix: subscribe to auth store + reconnect on token change.
 - [ ] SCAN-714. **db-worker.mjs LRU eviction close errors silently warned but not metrics-tracked — cache counter drift leaks handles** — `packages/server/src/db/db-worker.mjs:68-76`. Fix: increment metrics counter on eviction failure.
 
 ### Wave-26 scan-loop findings (2026-04-23)
-- [ ] SCAN-715. **[MEDIUM] voice.routes callback URL uses `http://<lanIp>:<port>` for non-production — plaintext telephony webhooks on LAN; misconfig → unencrypted call metadata leak** — `packages/server/src/routes/voice.routes.ts:121`. Fix: require HTTPS even in dev OR explicit warning.
-- [ ] SCAN-716. **[LOW ReDoS] smsAutoResponders user-supplied regex validated via `new RegExp(obj.match)` — no complexity cap; pathological `(a+)+b` patterns stall event loop** — `packages/server/src/routes/smsAutoResponders.routes.ts:103`. Fix: wrap pattern in Worker thread OR use safe-regex library OR catch + refuse via complexity heuristic.
 - [ ] SCAN-717. **[LOW] Vonage webhook signature uses MD5 (`crypto.createHash('md5')`) — provider-enforced; check if SHA256 option exists** — `packages/server/src/services/vonage.ts:242`. Fix: if SHA256 available on Vonage signature scheme, migrate.
 - [ ] SCAN-718. **[INFO] authStore.accessToken in localStorage — XSS-exfiltrable; refresh cookie is httpOnly (partial mitigation)** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: in-memory only + silent refresh via httpOnly cookie cycle.
-- [ ] SCAN-719. **[POSSIBLE] voice.routes POST /voice/call no explicit rate-limit — authenticated users can trigger high-cost telephony in bulk; credit-depletion DoS risk** — `packages/server/src/routes/voice.routes.ts:75`. Fix: checkWindowRate 10/min/user.
-- [ ] SCAN-720. **[LOW] portal session idle-timeout parses `last_used_at` with manual space→T — driver change / non-UTC format silently skips check** — `packages/server/src/routes/portal.routes.ts:134`. Fix: parse with strict ISO OR enforce UTC at store time.
-- [ ] SCAN-721. **[POSSIBLE] voice recording res.redirect(call.recording_url) — revalidation happens on fetch path (line 407) but not on redirect (line 258)** — `packages/server/src/routes/voice.routes.ts:258`. Fix: validateRecordingUrl before redirect too.
-- [ ] SCAN-722. **[INFO] smsAutoResponders regex bounded 500 chars but no complexity metric — bounds don't prevent ReDoS; see SCAN-716** — `packages/server/src/routes/smsAutoResponders.routes.ts:98,103`. Fix: as SCAN-716 (single fix covers both).
 
 ### Wave-27 scan-loop findings (2026-04-23)
 - [ ] SCAN-726. **leads lead-to-ticket conversion `Number(d.price)` / `Number(d.tax)` silently coerces NaN → 0 — legacy bad rows poison ticket totals** — `packages/server/src/routes/leads.routes.ts:927-1062`. Fix: Number.isFinite guard + reject 400 on bad row.
-- [ ] SCAN-728. **validateId accepts "123abc" via Number(String(x)) parse — passes to SQL as 123** — `packages/server/src/utils/validate.ts:326-332`. Fix: add `/^\d+$/` regex pre-check matching validateQuantity.
-- [ ] SCAN-729. **estimate constantTimeEquals compares base64url token vs SHA-256 hash — lengths mismatch triggers length-check fallback, breaks constant-time intent** — `packages/server/src/routes/estimates.routes.ts:32-38`. Fix: hash token on comparison side too OR compare fixed-length digests.
 - [ ] SCAN-730. **async-db TxQuery `expectChanges` defined but leads conversion never uses — UPDATE affecting 0 rows silently OK** — `packages/server/src/db/async-db.ts:54` + `leads.routes.ts`. Fix: pass expectChanges=1 on lead→ticket UPDATEs.
 - [ ] SCAN-731. **email from_email validation log truncated, no tenant context** — `packages/server/src/services/email.ts:74-77`. Fix: include tenantSlug or tenantId in log.
 - [ ] SCAN-732. **WS server origin allowlist check AFTER per-tenant counter increment — rejected connection leaks counter** — `packages/server/src/ws/server.ts:449-473,430`. Fix: origin check before increment.
 - [ ] SCAN-733. **[POSSIBLE] leads dry-run trigger match never populates `context.to_status_id` — condition skipped** — `packages/server/src/routes/leads.routes.ts:254`. Fix: verify intent; populate or remove branch.
 - [ ] SCAN-734. **[POSSIBLE] estimate token legacy-plaintext fallback race — two concurrent approvals both take fallback, hash-migration UPDATE second silently affects 0 rows** — `packages/server/src/routes/estimates.routes.ts:1065-1078`. Fix: transaction + expectChanges=1 on migration UPDATE.
-- [ ] SCAN-735. **[LOW] estimate_versions snapshot no shape validation — generic JSON parse accepts any payload** — `packages/server/src/routes/estimates.routes.ts:543-546`. Fix: Zod schema for estimate shape.
-- [ ] SCAN-736. **[LOW] leads addMonthsClamped doesn't document DST skip/repeat behavior** — `packages/server/src/routes/leads.routes.ts:559-566`. Fix: comment OR migrate to date-fns.
 - [ ] SCAN-737. **[LOW] email SMTP transporter cache 5-min TTL — password change in store_config silently fails auth vs stale transporter** — `packages/server/src/services/email.ts:115-126`. Fix: invalidate on store_config write OR shorten TTL.
 
 ### Wave-28 scan-loop findings (2026-04-23)
-- [ ] SCAN-740. **[LOW] signup `new Date(admin.locked_until) > new Date()` assumes ISO — comparison fragile** — `packages/server/src/routes/signup.routes.ts:290`. Fix: timestamp math via Date.parse.
-- [ ] SCAN-742. **[LOW] customers mergeCustomer normalizePhone() can return empty — !keepPhoneSet.has('') passes vacuously** — `packages/server/src/routes/customers.routes.ts:530-535`. Fix: skip empty values.
-- [ ] SCAN-753. **signup dev-mode skip email verification based on nodeEnv — misconfig bypasses gate** — `packages/server/src/routes/signup.routes.ts:456-580`. Fix: explicit SKIP_EMAIL_VERIFICATION env var.
 
 ### Wave-29 scan-loop findings (2026-04-23) — top impactful (agent classification downgraded to actual severity)
-- [ ] SCAN-758. **[MEDIUM] portal /login PIN verification has timing-leak: rate-limit consumed after `foundCustomer` lookup — attacker can enumerate valid customer_id by rate-limit response delta** — `packages/server/src/routes/portal.routes.ts:553-572,596`. Fix: constant-time response regardless of customer presence.
-- [ ] SCAN-761. **refund concurrent cap bypass — prior-read invoice total used for cap check; concurrent refunds over-refund** — `packages/server/src/routes/refunds.routes.ts:187-242`. Fix: atomic UPDATE invoices SET refunded_cents = refunded_cents + ? WHERE refunded_cents + ? <= total + check changes.
 - [ ] SCAN-769. **[MEDIUM] portal /send-code rate-limit defined (SEND_CODE_IP 1/5s) but handler may skip check on some paths — verify enforcement** — `packages/server/src/routes/portal.routes.ts:33`. Fix: grep all send-code paths; ensure checkWindowRate precedes SMS dispatch.
-- [ ] SCAN-773. **[MEDIUM] portal quick-track matches phone by last-4 suffix only — two customers with same last-4 collide; wrong-customer session risk** — `packages/server/src/routes/portal.routes.ts:467`. Fix: also require first-name match OR reject on >1 match.
 - [ ] SCAN-775. **RMA POST no supplier_id tenant-ownership check — cross-tenant reference risk in multi-tenant deploys** — `packages/server/src/routes/rma.routes.ts:116-140`. Fix: verify supplier belongs to req.tenantId.
-- [ ] SCAN-777. **portal CSRF cookie — verify SameSite=Strict set; if missing, cross-site replay risk** — `packages/server/src/routes/portal.routes.ts:485`. Fix: confirm issueCsrfCookie includes SameSite attribute.
-- [ ] SCAN-779. **refunds state-machine allows arbitrary status transitions — no assertTransition like RMA** — `packages/server/src/routes/refunds.routes.ts`. Fix: LEGAL_REFUND_TRANSITIONS + enforce.
 - [ ] SCAN-782. **[MEDIUM] inventory auto-PO generated on reorder_level without approval flow — misconfig → mass orders silently** — `packages/server/src/routes/inventory.routes.ts:326-400`. Fix: require manager approval OR PO_AUTO_APPROVE cap.
 - [ ] SCAN-764. **webhooks fireWebhook fire-and-forget — retry state volatile; process crash mid-backoff loses in-flight delivery** — `packages/server/src/services/webhooks.ts:10-30`. Fix: DB-backed delivery_queue with attempts counter.
 - [ ] SCAN-772. **webhook IPv6 SSRF guard misses zone-id syntax `fe80::1%eth0` — zone IDs pass simple fe80::/10 string match** — `packages/server/src/services/webhooks.ts:80-104`. Fix: strip zone-id before parse + validate.
 - [ ] SCAN-776. **[LOW] backup wipe filename uses 3-byte random (24-bit) — same-second wipe collision possible** — `packages/server/src/services/backup.ts:606`. Fix: crypto.randomBytes(8).
-- [ ] SCAN-780. **[LOW] portal widget script `res.send(getWidgetScript())` no CSP header — embedded on customer sites** — `packages/server/src/routes/portal.routes.ts:1503`. Fix: setHeader CSP + X-Content-Type-Options.
 
 ### Wave-30 scan-loop findings (2026-04-23) — top impactful
-- [ ] SCAN-783. **giftCards `new Date(card.expires_at)` no null guard — expired cards may bypass check** — `packages/server/src/routes/giftCards.routes.ts:225,311`. Fix: null check + Date.parse.
-- [ ] SCAN-785. **paymentLinks 3 `new Date(row.expires_at)` sites no null guard — auto-expire silently fails** — `packages/server/src/routes/paymentLinks.routes.ts:250,279,333`. Fix: Date.parse guard.
-- [ ] SCAN-786. **pos counter CRN fallback `.catch()` silently allows duplicate order_id — no UNIQUE constraint on invoice.order_id** — `packages/server/src/routes/pos.routes.ts:2121`. Fix: throw on counter fail OR add UNIQUE migration.
-- [ ] SCAN-787. **pos audit write `.catch(err) { console.error }` silent — failed returns still mutate** — `packages/server/src/routes/pos.routes.ts:2163`. Fix: logger.error + consider DB retry queue.
-- [ ] SCAN-790. **pos /cash-in + /cash-out bounds-checked but non-atomic insert — in_stock math race** — `packages/server/src/routes/pos.routes.ts:202-227`. Fix: adb.transaction wrap.
-- [ ] SCAN-797. **[MEDIUM SSRF] webhooks URL validation checks DNS for private IPs but not CNAME final target — public CNAME → private IP bypass** — `packages/server/src/services/webhooks.ts:141-200`. Fix: recursive CNAME resolution or fetch follow-redirect disabled.
-- [ ] SCAN-798. **deposits INSERT no transaction — audit-log failure leaves row committed** — `packages/server/src/routes/deposits.routes.ts:142-150`. Fix: adb.transaction wrap or audit-pre-insert.
-- [ ] SCAN-792. **giftCards `parseInt(req.params.id, 10)` no validateId — float/negative silently truncates** — `packages/server/src/routes/giftCards.routes.ts:292-294`. Fix: validateId helper.
 
 ### Wave-31 scan-loop findings (2026-04-23) — OAuth + notifications + bench
-- [ ] SCAN-803. **oauthStates Map unbounded memory leak — 5-min TTL cleaned on 60s interval; attacker floods states faster than cleanup** — `packages/server/src/routes/import.routes.ts:1399`. Fix: hard-cap Map size; evict oldest on over-cap.
-- [ ] SCAN-808. **notifications `Number(req.params.id)` no validation — NaN or 0 matches unintended rows** — `packages/server/src/routes/notifications.routes.ts:87`. Fix: validateId helper.
-- [ ] SCAN-809. **bench timer PUT /stop labor cost write no tx — concurrent invoice-sync double-counts** — `packages/server/src/routes/bench.routes.ts:513-520`. Fix: adb.transaction wrap.
-- [ ] SCAN-810. **notifications /send-receipt no audit log — phishing receipts untraceable** — `packages/server/src/routes/notifications.routes.ts:176-276`. Fix: audit(req.db, {...}) before email send.
-- [ ] SCAN-812. **customers phone-placeholder SQL IN (...) unbounded — 10k phones → memory/timeout** — `packages/server/src/routes/customers.routes.ts:1557+`. Fix: chunk in batches of 1000.
 - [ ] SCAN-813. **notifications PUT /focus-policies no CSRF check — state-change via cross-site form POST** — `packages/server/src/routes/notifications.routes.ts:148`. Fix: CSRF helper or header validation.
 - [ ] SCAN-814. **bench defect photo upload — verify fileUploadValidator is mounted on /bench/defect/* routes** — `packages/server/src/routes/bench.routes.ts:119`. Fix: confirm validator presence.
-- [ ] SCAN-815. **stripe webhook event.created future-timestamp not rejected — attacker can backdate to bypass age check** — `packages/server/src/services/stripe.ts:711`. Fix: also assert event.created <= now.
-- [ ] SCAN-816. **scheduledReports resolveRecipients no email validation — past-admin personal email leaks reports indefinitely** — `packages/server/src/services/scheduledReports.ts:217-220`. Fix: validate domain or tenant-owned recipient.
-- [ ] SCAN-817. **bench timer elapsed seconds no cap — 100-yr sessions overflow labor cost** — `packages/server/src/routes/bench.routes.ts:207-222`. Fix: cap at 24h per session.
-- [ ] SCAN-822. **OAuth POST /oauth/refresh no rate-limit — hammer RD API** — `packages/server/src/routes/import.routes.ts:1492`. Fix: 1/min/user rate-limit.
 
 ### Wave-32 scan-loop findings (2026-04-23)
-- [ ] SCAN-824. **loaners req.params.id unvalidated at 5 sites (52,97,128,145,177)** — `packages/server/src/routes/loaners.routes.ts`. Fix: validateId helper.
-- [ ] SCAN-825. **heldCarts POST / no audit log — POS financial event missing audit** — `packages/server/src/routes/heldCarts.routes.ts:182`. Fix: audit(req.db, {...}).
-- [ ] SCAN-826. **catalog scraper `.catch()` silent swallow — third-party injection bypass** — `packages/server/src/routes/catalog.routes.ts:259`. Fix: logger.warn in catch.
-- [ ] SCAN-827. **automations dry-run `Number()` at 3 sites — NaN queries return undefined silently** — `packages/server/src/routes/automations.routes.ts:222,227,232`. Fix: validateId optional.
-- [ ] SCAN-828. **voice webhook JSON.parse transcription_text no try/catch** — `packages/server/src/routes/voice.routes.ts:529`. Fix: wrap + log.
-- [ ] SCAN-829. **customers .catch(() => {}) silent at line 1045** — `packages/server/src/routes/customers.routes.ts:1045`. Fix: logger.warn.
-- [ ] SCAN-830. **creditNotes apply check-then-update race — tx scope doesn't cover pre-read** — `packages/server/src/routes/creditNotes.routes.ts:256-283`. Fix: conditional UPDATE + changes check.
-- [ ] SCAN-831. **Vonage webhook fallback console.warn on missing rawBody — no hard reject; unsigned webhooks proceed** — `packages/server/src/providers/sms/vonage.ts:214`. Fix: throw + fail closed.
-- [ ] SCAN-832. **Telnyx webhook same pattern as SCAN-831 — console.warn no throw on missing rawBody** — `packages/server/src/providers/sms/telnyx.ts:100`. Fix: throw + fail closed.
-- [ ] SCAN-833. **auth.routes parseInt(req.params.userId) no isInteger check at :1878** — `packages/server/src/routes/auth.routes.ts:1878`. Fix: validateId.
-- [ ] SCAN-834. **heldCarts GET /:id Number(req.params.id) no validation at :93** — `packages/server/src/routes/heldCarts.routes.ts:93`. Fix: validateId.
 - [ ] SCAN-835. **[LOW] audit.ts details truncated at 16KB silently; consumer has no way to detect loss** — `packages/server/src/utils/audit.ts:27`. Fix: log.warn on truncate + include `truncated_bytes_dropped` metric.
-- [ ] SCAN-836. **Vonage signature method fallback returns true on unknown method — config mismatch allows unsigned** — `packages/server/src/providers/sms/vonage.ts:246`. Fix: fail closed (return false).
 - [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.
 
 ### Wave-33 scan-loop findings (2026-04-23) — top impactful
-- [ ] SCAN-838. **catalog Number(req.query.limit) NaN → invalid LIMIT** — `packages/server/src/routes/catalog.routes.ts:66,108,142`. Fix: Number.isFinite guard + clamp.
-- [ ] SCAN-839. **client.ts JWT atob silent fail — malformed token leaves refreshScheduled=true forever** — `packages/web/src/api/client.ts:87`. Fix: re-throw on decode fail + reset state.
-- [ ] SCAN-840. **ImpersonationBanner localStorage not shape-validated — malicious other-site script can inject tenant_slug** — `packages/web/src/components/ImpersonationBanner.tsx:27`. Fix: Zod shape check + reject on invalid.
-- [ ] SCAN-843. **CommandPalette sessionStorage JSON.parse silent — search history drops silently on corruption** — `packages/web/src/components/CommandPalette.tsx:48,62`. Fix: log + clear corrupted entry.
-- [ ] SCAN-844. **catalog Number(req.params.id) at several sites — no validateId** — `packages/server/src/routes/catalog.routes.ts:108`. Fix: validateId.
-- [ ] SCAN-845. **inventory /image-upload reserveStorage doesn't verify item_id belongs to tenant** — `packages/server/src/routes/inventory.routes.ts:916`. Fix: SELECT id FROM inventory_items WHERE id = ? (per-tenant DB already isolates; verify ok).
 - [ ] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
-- [ ] SCAN-847. **SpotlightCoach Promise.resolve().catch() antipattern — rejected promises silently swallowed** — `packages/web/src/components/SpotlightCoach.tsx:370-371,408-409,414-415`. Fix: await + try/catch.
 
 ### Wave-34 scan-loop findings (2026-04-23)
-- [ ] SCAN-859. **tickets stalled parseInt(req.query.days) NaN fallthrough** — `packages/server/src/routes/tickets.routes.ts:1251`. Fix: Number.isFinite guard + clamp.
-- [ ] SCAN-860. **tickets fire-and-forget .catch(() => {}) at 5 sites — notifications/webhooks silently fail** — `packages/server/src/routes/tickets.routes.ts:1181,1197,2079,2091,3563`. Fix: log.warn with context.
-- [ ] SCAN-861. **auth.routes challenges Map sort() on every over-cap insert — O(n log n) at 10k+ size** — `packages/server/src/routes/auth.routes.ts:150-152`. Fix: FIFO eviction via Map iteration (keys().next() — insertion order guaranteed).
-- [ ] SCAN-863. **audit.ts audit-write failure logged to console.error not logger** — `packages/server/src/utils/audit.ts:42`. Fix: createLogger + structured.
 - [ ] SCAN-864. **tickets setTimeout at :2118 not via trackInterval** — `packages/server/src/routes/tickets.routes.ts:2118`. Fix: one-shot setTimeout is OK if caller tolerates no shutdown guarantee; verify.
 
 ### Wave-35 scan-loop findings (2026-04-23)
-- [ ] SCAN-865. **[HIGH] 500 response leaks err.message at admin/super-admin 5 sites — file paths + DB errors + system details exposed** — `packages/server/src/routes/admin.routes.ts:359`, `super-admin.routes.ts:1673,1739,1800,1830`. Fix: route through errorHandler OR redact message.
-- [ ] SCAN-866. **[POSSIBLE HIGH] smsAutoResponderMatcher tenant_id query check needed in multi-tenant mode — verify req.db is per-tenant before confirming safe** — `packages/server/src/services/smsAutoResponderMatcher.ts`. Fix: audit; confirm caller passes per-tenant adb.
 - [ ] SCAN-867. **adminTokens + challenges Map cap attack risk — attacker floods legitimate tokens via insertion-order eviction** — `packages/server/src/routes/admin.routes.ts:30,40` + `super-admin.routes.ts:157,162`. Fix: rate-limit on token issuance + eviction-logger alert threshold.
-- [ ] SCAN-868. **receiptOcrCron setInterval(() => void tick()) swallows errors — next tick retries same bad row** — `packages/server/src/services/receiptOcrCron.ts:183`. Fix: track failed row IDs + exponential backoff.
-- [ ] SCAN-869. **index.ts JSON.parse on store_config.value + media rows at :1719,2781-2782 no try/catch** — `packages/server/src/index.ts`. Fix: wrap + log.warn + safe fallback.
-- [ ] SCAN-870. **recurringInvoicesCron subtotalCents/lineTotal no Number.isFinite — overflow to Infinity on malicious large qty/price** — `packages/server/src/services/recurringInvoicesCron.ts:146-177`. Fix: cap total + assert isFinite.
 - [ ] SCAN-871. **[LOW] super-admin failed-login audit includes username — enables enumeration if audit log accessible** — `packages/server/src/routes/super-admin.routes.ts:292`. Fix: mask to first-4 chars + hash tail.
 - [ ] SCAN-872. **index.ts mutable module state (isReady, shuttingDown)** — `packages/server/src/index.ts:348,3559`. Fix: ensure writers happen in one event-loop tick; readers tolerate transient stale.
 - [ ] SCAN-873. **slaBreachCron WS broadcast errors silently swallowed** — `packages/server/src/services/slaBreachCron.ts:117-131`. Fix: logger.warn already present; no action OR add metrics counter.
 
 ### Wave-36 scan-loop findings (2026-04-23)
-- [ ] SCAN-874. **management setup rate-limit in-memory Map — flood between boot + operator setup steals super-admin slot** — `packages/server/src/routes/management.routes.ts:135-156`. Fix: DB-backed rate-limit for setup OR one-time token issued at install.
-- [ ] SCAN-875. **dunningScheduler parseSteps JSON.parse silent on fail + no bounds** — `packages/server/src/services/dunningScheduler.ts:400-405`. Fix: log on fail + MAX_STEPS cap.
 - [ ] SCAN-876. **[LOW] WS SENSITIVE_CUSTOMER_FIELDS doesn't scrub company_name/website** — `packages/server/src/ws/server.ts:20-41`. Fix: review if company data should broadcast to non-finance.
 - [ ] SCAN-877. **idempotency purge race — simultaneous retry between DELETE + INSERT could double-process** — `packages/server/src/utils/idempotency.ts`. Fix: atomic UPSERT pattern.
-- [ ] SCAN-878. **billing Stripe checkout/portal POST missing CSRF double-submit** — `packages/server/src/routes/billing.routes.ts:43-94`. Fix: align with auth.routes SEC-H89 pattern.
 - [ ] SCAN-879. **[POSSIBLE] webhooks payload.timestamp uses ISO string — clock jumps may fail replay-window** — `packages/server/src/services/webhooks.ts:479`. Fix: use unix-seconds + document drift.
 - [ ] SCAN-880. **[LOW] dunning template {key} regex unbounded key lengths — no recursive expansion (current), but fragile** — `packages/server/src/services/dunningScheduler.ts:496`. Fix: cap key length.
-- [ ] SCAN-881. **auth.routes challenges Map no TTL sweep — only evicted on new-token over-cap insert** — `packages/server/src/routes/auth.routes.ts:144-146`. Fix: trackInterval reaper every 5 min.
-- [ ] SCAN-882. **tenantResolver plan cache invalidation race — stale trial_active served between clearPlanCache + recompute** — `packages/server/src/middleware/tenantResolver.ts:221-230`. Fix: version counter OR atomic swap.
-- [ ] SCAN-883. **auth /forgot-password sends email without audit log — reset attempts untraceable** — `packages/server/src/routes/auth.routes.ts:1526`. Fix: audit('password_reset_requested', ...) before send.
 
 ### Wave-40 scan-loop findings (2026-04-23)
-- [ ] SCAN-889. **admin.routes.ts:92 bare setInterval — not via trackInterval** — `packages/server/src/routes/admin.routes.ts:92`. Fix: wrap via trackInterval + export start function.
-- [ ] SCAN-890. **automations.ts JSON.parse(rule.trigger_config) at :485-486 no try/catch** — `packages/server/src/services/automations.ts:485-486`. Fix: wrap + log + fallback {}.
-- [ ] SCAN-891. **automations buildVars interpolates raw customer_phone/email into templates — logs expose PII on template-render failure** — `packages/server/src/services/automations.ts:124-127`. Fix: mask in log path.
-- [ ] SCAN-892. **admin token stored plaintext in Map — memory dump / log-accident exposes** — `packages/server/src/routes/admin.routes.ts:29`. Fix: store sha256 hash, timing-safe compare.
-- [ ] SCAN-893. **paymentLinks dollars→cents uses Math.round — floating-point 19.99*100=1998.999 rounds down** — `packages/server/src/routes/paymentLinks.routes.ts:63-65`. Fix: (dollars*100 + Number.EPSILON) pattern OR explicit toFixed(2).
-- [ ] SCAN-894. **automations hourly cap count outside rule execution tx — race between count-check + fire** — `packages/server/src/services/automations.ts:437-460`. Fix: atomic check-and-mark within tx.
-- [ ] SCAN-895. **configEncryption console.error not structured — prod log filter suppresses crypto errors** — `packages/server/src/utils/configEncryption.ts:69,80,93`. Fix: logger.error.
-- [ ] SCAN-896. **admin token sliding TTL — unlimited duration if active; no absolute max** — `packages/server/src/routes/admin.routes.ts:87`. Fix: absolute-max check (8h or 24h).
 - [ ] SCAN-897. **tenant-pool evict-on-release without pre-return health check** — `packages/server/src/db/tenant-pool.ts:143-159`. Fix: quick PRAGMA quick_check before cache return.
 
 ### Wave-41 scan-loop findings (2026-04-23)
-- [ ] SCAN-898. **[HIGH] tenant-pool health check + recursive reopen race** — `packages/server/src/db/tenant-pool.ts:133`. Fix: CAS / mutex per-slug.
 - [ ] SCAN-899. **retentionSweeper whereExtra SQL template — safe-static but fragile** — `packages/server/src/services/retentionSweeper.ts:401-402`. Fix: document invariant OR parameterize.
-- [ ] SCAN-900. **invoices fireWebhook + runAutomations fire-and-forget no catch** — `packages/server/src/routes/invoices.routes.ts:222,537,541`. Fix: `.catch(logger.warn)` or `await` in helper.
-- [ ] SCAN-901. **[MEDIUM] legacy TOTP v1/v2 raw SHA-256 derivation (v3 HKDF)** — `packages/server/src/routes/auth.routes.ts:63-70`. Fix: migrate legacy secrets to v3 over time.
-- [ ] SCAN-902. **tenant-pool MAX_POOL_SIZE race — both skip eviction at size=50** — `packages/server/src/db/tenant-pool.ts:143-144`. Fix: atomic check+evict via mutex.
-- [ ] SCAN-903. **[POSSIBLE] postPaymentSideEffects called without await + .catch — loyalty/commission silently fail** — `packages/server/src/routes/invoices.routes.ts:220`. Fix: await or .catch(logger.error).
-- [ ] SCAN-904. **device trust cookie key derived from jwtSecret only** — `packages/server/src/routes/auth.routes.ts:36`. Fix: bind ACCESS_JWT_SECRET + superAdminSecret in derivation.
-- [ ] SCAN-905. **cookie secure flag gated on nodeEnv, not x-forwarded-proto** — `packages/server/src/routes/auth.routes.ts:402`. Fix: check req.secure OR trust X-Forwarded-Proto.
-- [ ] SCAN-906. **tenant-pool refcount-increment before caller return — exception leaks refcount** — `packages/server/src/db/tenant-pool.ts:137`. Fix: try/finally at caller.
-- [ ] SCAN-907. **invoices fireWebhook no idempotency key on retry — duplicate payment_received** — `packages/server/src/routes/invoices.routes.ts:537`. Fix: pass invoice_id+payment_id as idempotency key.
 - [ ] SCAN-908. **super-admin challenge cleanup 60s — manual delete sits in Map up to 60s** — `packages/server/src/routes/super-admin.routes.ts:156-159`. Fix: explicit delete on manual OR accept as minor.
 
 ### Wave-42 scan-loop findings (2026-04-23)
 - [ ] SCAN-910. **portal widget console.error exposes config + data-server URL to DevTools** — `packages/server/src/routes/portal.routes.ts:1514,1527`. Fix: silent fail in prod builds OR structured logger.
 - [ ] SCAN-911. **db-worker.mjs console.warn on eviction + shutdown** — `packages/server/src/db/db-worker.mjs:75,96`. Fix: structured logger via parentPort message.
-- [ ] SCAN-912. **[POSSIBLE] ws isTenantOriginAllowed JSON.parse catch logs + continues; returns true on empty allowlist** — `packages/server/src/ws/server.ts:170,235-239`. Fix: verify fail-closed behavior; document.
 - [ ] SCAN-915. **portal lockout SMS fire-and-forget** — `packages/server/src/routes/portal.routes.ts:598-602`. Fix: already logged; accept as low-priority.
-- [ ] SCAN-916. **portal /embed/config queries portal_embed_enabled separately from getStoreConfig** — `packages/server/src/routes/portal.routes.ts:215-225,1480`. Fix: add to getStoreConfig helper.
+
+### Wave-46 scan-loop findings (2026-04-23)
+- [ ] SCAN-926. **[CRITICAL] expenses /mileage + /perdiem accept client-supplied `incurred_at` with only length validation — backdate/forward-date for tax fraud possible** — `packages/server/src/routes/expenses.routes.ts:271,329`. Fix: validate `Math.abs(Date.parse(incurred_at) - Date.now()) <= 90 * 86400000`.
+- [ ] SCAN-927. **idempotency response body capped at 64KB via capBody — truncated JSON on retry breaks contract** — `packages/server/src/middleware/idempotency.ts:182`. Fix: reject upfront OR validate JSON parseable before store.
+- [ ] SCAN-928. **[POSSIBLE MEDIUM] syncConflicts resolution declarative-only — no backend enforcement of client replay** — `packages/server/src/routes/syncConflicts.routes.ts:449-451,639-641`. Fix: document SDK contract strongly OR add replay-validate hook.
+- [ ] SCAN-929. **expenses POST `/` accepts `date` field with no temporal bounds — backdating fraud** — `packages/server/src/routes/expenses.routes.ts:139`. Fix: validate date within ±90 days.
+- [ ] SCAN-930. **[LOW-MED] worker pool maxQueue=200 — no early backpressure; cascading failures under spike** — `packages/server/src/db/worker-pool.ts:55-57`. Fix: metrics on queue depth + consider router-level backpressure.

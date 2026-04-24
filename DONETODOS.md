@@ -1,4 +1,12 @@
 
+## Closed 2026-04-23 (wave-46 final-sweep)
+
+Final-sweep pass verifying wave-41..42 findings not covered by earlier retro-sweep. Code at each referenced site inspected; fix is visibly in place. Also dropped 103 pure-duplicate SCAN items from TODO.md that were already marked `[x]` in previous waves. Moved from TODO.md with no code changes this wave.
+
+- [x] SCAN-901. **legacy TOTP v1/v2 raw SHA-256** — verified wave-46 final-sweep; v3 HKDF + AAD bind + legacy decrypt-only documented in SEC-M51 comment at `routes/auth.routes.ts:65-97`.
+- [x] SCAN-912. **ws isTenantOriginAllowed fail-closed** — verified wave-46 final-sweep; JSON.parse catch returns `false`, outer catch returns `false` + `log.warn` at `ws/server.ts:236-256`.
+- [x] SCAN-916. **portal embed_enabled separate from getStoreConfig** — verified wave-46 final-sweep; `store.portal_embed_enabled !== '1'` checked from single `getStoreConfig(adb)` call at `routes/portal.routes.ts:1524-1525`.
+
 ## Closed 2026-04-23 (wave-46 retro-sweep)
 
 Retroactive sweep of SCAN-301..600 (waves 11-45 stale-state audit). Skipped SCAN-491..498 (parity/web UI). Code at each referenced site inspected; fix is visibly in place. Moved from TODO.md with no code changes this wave.
