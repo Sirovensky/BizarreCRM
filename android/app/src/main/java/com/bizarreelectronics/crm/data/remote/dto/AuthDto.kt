@@ -123,6 +123,33 @@ data class SwitchUserResponse(
 )
 
 /**
+ * §2.7-L327 — Response from POST /api/v1/signup (tenant / shop creation).
+ *
+ * Android-side contract (server-side TODO: SIGNUP-AUTO-LOGIN-TOKENS):
+ *   - [accessToken]  : when present, the server issued a valid session immediately
+ *                      after creating the shop. Android MUST store it via
+ *                      `AuthPreferences.saveUser()` and skip the login step entirely.
+ *   - [refreshToken] : optional companion token; stored when present.
+ *   - [user]         : populated alongside [accessToken]; null when the server does not
+ *                      auto-issue a session (legacy / not-yet-deployed flag).
+ *   - [message]      : human-readable confirmation text; always present on success.
+ *
+ * Fallback: when [accessToken] is null (server predates this feature or the feature
+ * flag is off), Android falls back to `POST /auth/login` with the registered
+ * credentials and pre-fills username from `admin_email` / `username`.
+ */
+data class SetupResponse(
+    @SerializedName("accessToken")
+    val accessToken: String? = null,
+    @SerializedName("refreshToken")
+    val refreshToken: String? = null,
+    @SerializedName("user")
+    val user: UserDto? = null,
+    @SerializedName("message")
+    val message: String? = null,
+)
+
+/**
  * §2.1 — Response from GET /auth/setup-status.
  *
  * Server returns exactly two fields:
