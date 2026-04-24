@@ -82,10 +82,28 @@ function evaluateRule(rule: AutoResponderRule, body: string): boolean {
   }
 
   if (rule.type === 'regex') {
+    // SCAN-1100 [HIGH/ReDoS]: admin-authored regexes are compiled + run
+    // synchronously against inbound SMS bodies. A pathological pattern
+    // like `(a+)+$` against a long `a…` body pins the Node event loop for
+    // seconds/minutes and stalls the whole webhook queue (shared by the
+    // entire tenant). Defence in depth:
+    //   (1) Reject nested-quantifier shapes (`(…+)+`, `(…*)+`, etc) at
+    //       compile time. This is a heuristic — not every dangerous regex
+    //       matches, but the most common ReDoS foot-guns do.
+    //   (2) Cap body length at 1600 chars (GSM-7 concat ceiling). SMS
+    //       gateways truncate at ~1600 anyway; any longer content is
+    //       already meaningless for keyword/auto-reply matching.
     try {
+      if (/\([^)]*[+*][^)]*\)[+*]/.test(rule.match)) {
+        logger.warn('sms auto-responder: rejecting regex with nested quantifiers (ReDoS guard)', {
+          match: rule.match,
+        });
+        return false;
+      }
       const flags = caseSensitive ? '' : 'i';
       const re = new RegExp(rule.match, flags);
-      return re.test(body);
+      const capped = body.length > 1600 ? body.slice(0, 1600) : body;
+      return re.test(capped);
     } catch (err) {
       logger.warn('sms auto-responder: invalid regex in rule', {
         match: rule.match,

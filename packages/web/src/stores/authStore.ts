@@ -79,6 +79,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   switchUser: async (pin: string) => {
+    // SCAN-1107: `completeLogin` emits `authCleared` so planStore / WS /
+    // queryClient drop the prior user's state before the new credentials
+    // are stored. `switchUser` was skipping that step, so a kiosk "switch
+    // via PIN" flow inherited the previous user's React Query cache
+    // (ticket/customer lists) and the WS socket kept subscriptions from
+    // the outgoing user. Emit the clear BEFORE calling the API so listeners
+    // tear down state while the PIN is still being validated.
+    emitAuthCleared();
     const res = await api.post('/auth/switch-user', { pin });
     const { accessToken, user } = res.data.data;
     localStorage.setItem('accessToken', accessToken);

@@ -729,8 +729,6 @@ Verified working. Not TODOs.
 ### Wave-63 scan-loop findings (2026-04-24) — routes + services + authStore
 - [ ] SCAN-1099. **[HIGH] `roles.routes.ts PERMISSION_KEYS` drifted from shared `PERMISSIONS` — custom roles silently ineffective.**
   <!-- meta: scope=server/routes+shared; files=packages/server/src/routes/roles.routes.ts:23-39; fix=use-Object.values(PERMISSIONS) -->
-- [ ] SCAN-1100. **[HIGH/ReDoS] SMS auto-responder compiles admin-stored regex with no timeout — pathological pattern stalls webhook queue.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/smsAutoResponderMatcher.ts:84-95; fix=cap-body-length+nested-quantifier-guard -->
 - [ ] SCAN-1101. **[MED] RMA create loop not transactional — orphan header + partial items on mid-loop failure.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/rma.routes.ts:154-169; fix=wrap-in-adb.transaction -->
 - [ ] SCAN-1102. **[MED] Loaner UPDATE + history INSERT split — device stuck `loaned` if insert fails, no return path.**
@@ -743,8 +741,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/bookingPublic.routes.ts:43-49; fix=use-req.ip-first -->
 - [ ] SCAN-1106. **[MED] `email.ts transporterCache` uncapped + not cleared on cred rotation — unbounded growth + stale creds.**
   <!-- meta: scope=server/services; files=packages/server/src/services/email.ts:21,99-128; fix=LRU-cap+wire-clearEmailCache-on-config-PUT -->
-- [ ] SCAN-1107. **[MED] `authStore.switchUser` skips `emitAuthCleared` — kiosk user switch inherits prior user's cache + WS channels.**
-  <!-- meta: scope=web/stores; files=packages/web/src/stores/authStore.ts:81-87; fix=emitAuthCleared-first-line -->
 
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
 

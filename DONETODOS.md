@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-63 server/services + web/stores — ReDoS guard + switch-user cache leak)
+
+- [x] SCAN-1100 [HIGH]. **SMS auto-responder compiled admin-stored regex and ran it synchronously against inbound SMS bodies** — a pattern like `(a+)+$` against a long `a…` body pins the Node event loop for seconds/minutes, stalling the whole webhook queue for the tenant. Added two layers of defence: (1) a nested-quantifier heuristic that rejects `( … [+*] … )[+*]`-shaped patterns at compile time, and (2) a 1600-char body cap so even a non-rejected pattern operates on bounded input. Matches the hardening pattern already in place for other admin-authored regex surfaces.
+- [x] SCAN-1107. **`authStore.switchUser` skipped `emitAuthCleared`** — on a kiosk PIN-switch flow the new user inherited the previous user's React Query cache (ticket/customer lists) and the WS socket kept subscriptions from the outgoing user. Emit the clear BEFORE calling the `/auth/switch-user` endpoint so listeners (planStore, WS, queryClient) tear down state while the PIN is still being validated.
+
 ## Closed 2026-04-24 (wave-63 server/routes — auth gaps + bcrypt DoS)
 
 - [x] SCAN-1097 [CRIT]. **`GET /payment-links` was ungated** — `SELECT pl.*` returns the raw token column, which is the bearer secret for the public payment page. Any authenticated user (cashier/technician) could enumerate active tokens and either impersonate the link or redirect payment. Added `requireManagerOrAdmin(req)` as the first line of the handler, matching the existing gate on `GET /:id`.
