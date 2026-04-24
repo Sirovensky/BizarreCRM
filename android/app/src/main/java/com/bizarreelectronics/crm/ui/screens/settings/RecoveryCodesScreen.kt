@@ -82,6 +82,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.components.SensitiveScreenGuard
+import com.bizarreelectronics.crm.ui.components.Sensitivity
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.auth.BackupCodesDisplay
 
@@ -101,6 +103,8 @@ fun RecoveryCodesScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    // §2.16 L401 — require biometric re-auth on entry (Billing tier → Password level).
+    SensitiveScreenGuard(sensitivity = Sensitivity.Billing) {
     Scaffold(
         topBar = {
             BrandTopAppBar(
@@ -170,6 +174,7 @@ fun RecoveryCodesScreen(
             }
         }
     }
+    } // end SensitiveScreenGuard
 }
 
 // ---------------------------------------------------------------------------

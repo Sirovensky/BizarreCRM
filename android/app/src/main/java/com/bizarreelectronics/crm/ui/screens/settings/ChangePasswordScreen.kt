@@ -57,6 +57,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.ui.components.SensitiveScreenGuard
+import com.bizarreelectronics.crm.ui.components.Sensitivity
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -317,6 +319,8 @@ fun ChangePasswordScreen(
         onDispose { viewModel.clearSensitiveFields() }
     }
 
+    // §2.16 L401 — require biometric re-auth on entry (Billing tier → Password level).
+    SensitiveScreenGuard(sensitivity = Sensitivity.Billing) {
     Scaffold(
         topBar = {
             BrandTopAppBar(
@@ -551,6 +555,7 @@ fun ChangePasswordScreen(
             Spacer(Modifier.height(16.dp))
         }
     }
+    } // end SensitiveScreenGuard
 }
 
 // ---------------------------------------------------------------------------

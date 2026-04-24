@@ -29,6 +29,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.ui.components.SensitiveScreenGuard
+import com.bizarreelectronics.crm.ui.components.Sensitivity
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
@@ -289,6 +291,8 @@ fun CheckoutScreen(
         }
     }
 
+    // §2.16 L401 — require biometric re-auth on entry to the payment surface.
+    SensitiveScreenGuard(sensitivity = Sensitivity.Payment) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -414,6 +418,7 @@ fun CheckoutScreen(
             }
         }
     }
+    } // end SensitiveScreenGuard
 }
 
 // ─── Invalid-args guard screen ───────────────────────────────────────

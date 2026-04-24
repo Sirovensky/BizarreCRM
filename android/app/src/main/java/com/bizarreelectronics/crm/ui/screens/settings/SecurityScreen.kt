@@ -44,6 +44,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.PinPreferences.Companion.GRACE_NEVER
+import com.bizarreelectronics.crm.ui.components.SensitiveScreenGuard
+import com.bizarreelectronics.crm.ui.components.Sensitivity
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -465,6 +467,8 @@ fun SecurityScreen(
         }
     } }
 
+    // §2.16 L401 — require biometric re-auth on entry (DangerZone tier → Full level).
+    SensitiveScreenGuard(sensitivity = Sensitivity.DangerZone) {
     Scaffold(
         topBar = {
             BrandTopAppBar(
@@ -624,6 +628,7 @@ fun SecurityScreen(
             isDestructive = false,
         )
     }
+    } // end SensitiveScreenGuard
 }
 
 // ---------------------------------------------------------------------------
