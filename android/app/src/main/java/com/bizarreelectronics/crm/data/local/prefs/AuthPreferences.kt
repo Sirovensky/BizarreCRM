@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.local.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import android.view.accessibility.AccessibilityManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,7 +35,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class AuthPreferences @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
 ) {
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -257,8 +258,104 @@ class AuthPreferences @Inject constructor(
 
     // endregion
 
+    // region — per-tenant scoping (§2.17-L411)
+
+    /**
+     * The active tenant domain (e.g. `"myshop.bizarrecrm.com"`) used to scope
+     * biometric credential preference keys. `null` = no tenant (single-shop mode, uses
+     * the global key).
+     *
+     * Changing the tenant does NOT clear the previous tenant's credential scope —
+     * each tenant's remember-me state survives tenant switches and can be reused when
+     * the user switches back.
+     *
+     * ## Key naming
+     *
+     * The biometric IV and enabled flag for a given tenant are stored under:
+     *   - `"bio_creds_enabled_<domain>"` — per-tenant enabled flag
+     *   - `"bio_creds_iv_<domain>"` — per-tenant IV
+     *
+     * The global keys [KEY_BIO_CREDS_ENABLED] / [KEY_BIO_IV] remain in use when
+     * [activeTenantDomain] is `null`.
+     */
+    private var _activeTenantDomain: String? =
+        prefs.getString(KEY_ACTIVE_TENANT_DOMAIN, null)
+
+    val activeTenantDomain: String?
+        get() = _activeTenantDomain
+
+    /**
+     * Sets the active tenant domain and persists it. A `null` [domain] clears the
+     * tenant scope and reverts to the global (single-tenant) key space.
+     *
+     * Does NOT migrate credential data between key scopes — existing scoped data is
+     * preserved and can be accessed by switching back to the same domain.
+     */
+    fun setActiveTenantDomain(domain: String?) {
+        _activeTenantDomain = domain
+        if (domain == null) {
+            prefs.edit().remove(KEY_ACTIVE_TENANT_DOMAIN).apply()
+        } else {
+            prefs.edit().putString(KEY_ACTIVE_TENANT_DOMAIN, domain).apply()
+        }
+    }
+
+    /** Computes the per-tenant biometric-enabled pref key for the current tenant. */
+    private fun bioEnabledKey(): String {
+        val domain = _activeTenantDomain
+        return if (domain.isNullOrBlank()) KEY_BIO_CREDS_ENABLED
+        else "bio_creds_enabled_$domain"
+    }
+
+    /** Computes the per-tenant biometric-IV pref key for the current tenant. */
+    private fun bioIvKey(): String {
+        val domain = _activeTenantDomain
+        return if (domain.isNullOrBlank()) KEY_BIO_IV
+        else "bio_creds_iv_$domain"
+    }
+
+    // endregion
+
+    // region — TalkBack / a11y default (§2.17-L414)
+
+    /**
+     * Returns `true` when TalkBack (touch exploration) is active on first launch so that
+     * LoginScreen can auto-enable the "Remember me" checkbox, reducing the number of taps
+     * required for a user relying on TalkBack.
+     *
+     * This is a read-only heuristic computed at call time — it does not persist a value.
+     * The LoginScreen reads it once on composition and applies it only if the user has not
+     * already toggled the checkbox.
+     */
+    val rememberMeDefaultForA11y: Boolean
+        get() {
+            val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+            return am?.isTouchExplorationEnabled == true
+        }
+
+    // endregion
+
     val isLoggedIn: Boolean
         get() = accessToken != null
+
+    /**
+     * Optional callback invoked by [clear] when the biometric credential stash must also be
+     * wiped (UserLogout or SessionRevoked). Registered once by the DI graph (via
+     * [BiometricCredentialStore]) to avoid a circular constructor-injection dependency.
+     *
+     * Invoke [setBiometricClearCallback] from the Application or a Hilt initializer after both
+     * singletons are created.
+     */
+    private var biometricClearCallback: (() -> Unit)? = null
+
+    /**
+     * Registers the callback that [clear] will invoke when biometric credentials must be wiped.
+     * Safe to call multiple times (last wins). Designed for [BiometricCredentialStore] to wire
+     * itself in after Hilt constructs both singletons.
+     */
+    fun setBiometricClearCallback(callback: () -> Unit) {
+        biometricClearCallback = callback
+    }
 
     /**
      * Clears auth + user identity fields. Deliberately preserves the
@@ -266,11 +363,15 @@ class AuthPreferences @Inject constructor(
      * so that after logout the user can log straight back in without
      * reconfiguring the server or breaking telemetry continuity.
      *
-     * Biometric credential IV and enabled flag are preserved across server-forced
-     * clears (so the same user can re-authenticate with biometrics) but wiped on
-     * explicit [ClearReason.UserLogout] because a different user may log in next.
-     * The ciphertext itself lives in [BiometricCredentialStore]'s own prefs file —
-     * callers are responsible for calling [BiometricCredentialStore.clear] on UserLogout.
+     * ## Biometric credential lifecycle (§2.17-L412)
+     *
+     * - [ClearReason.UserLogout] / [ClearReason.SessionRevoked]: wipes biometric IV,
+     *   enabled flag, and invokes [biometricClearCallback] to wipe the Keystore key +
+     *   ciphertext from [BiometricCredentialStore]. A server-revoked session is treated
+     *   as an untrusted state; the stash must not survive it.
+     * - [ClearReason.RefreshFailed]: preserves biometric IV and enabled flag so the
+     *   same user can re-authenticate with biometrics immediately after a token refresh
+     *   failure (e.g. network timeout mid-session).
      */
     fun clear(reason: ClearReason = ClearReason.UserLogout) {
         val preservedUrl = prefs.getString(KEY_SERVER_URL, null)
@@ -286,14 +387,19 @@ class AuthPreferences @Inject constructor(
         } else {
             null
         }
-        // Preserve biometric IV + enabled flag across session-revoke / refresh-fail
-        // so the user can log back in with biometrics. Wipe on explicit logout.
-        val preservedBioEnabled = if (reason != ClearReason.UserLogout) {
+
+        // §2.17-L412 — biometric stash survival policy:
+        //   UserLogout    → wipe (different user may log in next)
+        //   SessionRevoked → wipe (server-side revoke = untrusted state)
+        //   RefreshFailed  → preserve (transient network failure; same user)
+        val wipeBio = reason == ClearReason.UserLogout || reason == ClearReason.SessionRevoked
+
+        val preservedBioEnabled = if (!wipeBio) {
             prefs.getBoolean(KEY_BIO_CREDS_ENABLED, false)
         } else {
             null
         }
-        val preservedBioIv = if (reason != ClearReason.UserLogout) {
+        val preservedBioIv = if (!wipeBio) {
             prefs.getString(KEY_BIO_IV, null)
         } else {
             null
@@ -310,6 +416,12 @@ class AuthPreferences @Inject constructor(
         if (preservedBioEnabled != null) restore.putBoolean(KEY_BIO_CREDS_ENABLED, preservedBioEnabled)
         if (preservedBioIv != null) restore.putString(KEY_BIO_IV, preservedBioIv)
         restore.apply()
+
+        // §2.17-L412 — propagate wipe to BiometricCredentialStore (Keystore key + ciphertext).
+        if (wipeBio) {
+            biometricClearCallback?.invoke()
+            _biometricCredentialsEnabled.value = false
+        }
 
         _authCleared.tryEmit(reason)
     }
@@ -351,6 +463,9 @@ class AuthPreferences @Inject constructor(
         // Biometric credential store
         private const val KEY_BIO_CREDS_ENABLED = "bio_creds_enabled"
         private const val KEY_BIO_IV = "bio_creds_iv"
+
+        // §2.17-L411 — per-tenant scoping: persisted active tenant domain
+        private const val KEY_ACTIVE_TENANT_DOMAIN = "active_tenant_domain"
 
         private const val HMAC_ALGORITHM = "HmacSHA256"
         private const val INSTALL_SECRET_BYTES = 32

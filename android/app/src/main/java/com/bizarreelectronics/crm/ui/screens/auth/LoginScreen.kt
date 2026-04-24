@@ -46,6 +46,9 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
 import android.app.Activity
+import androidx.fragment.app.FragmentActivity
+import com.bizarreelectronics.crm.data.local.prefs.BiometricCredentialStore
+import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
@@ -165,6 +168,25 @@ data class LoginUiState(
     val registerFirstName: String = "",
     val registerLastName: String = "",
     val registerUsername: String = "",
+    // §2.17-L407 — remember-me + biometric stash toggles on the CREDENTIALS step.
+    // rememberMeChecked defaults to false; LoginScreen sets it to true on first
+    // composition when rememberMeDefaultForA11y (TalkBack) is active (L414).
+    val rememberMeChecked: Boolean = false,
+    val biometricEnabled: Boolean = false,
+    // §2.17-L409 — device-changed banner: shown when BiometricCredentialStore.retrieve()
+    // returns DeviceChanged. Cleared when dismissed or re-enabled by the user.
+    val deviceChangedBanner: Boolean = false,
+    // §2.17-L413 — server-revoke banner: shown when GET /auth/me returns 401/403.
+    val serverRevokeBanner: Boolean = false,
+    // §2.17 — true while the auto-login biometric prompt is in flight on first launch.
+    val isBiometricAutoLoginInFlight: Boolean = false,
+    // §2.17-L407 — set to true after verify2FA when rememberMe + biometric are enabled.
+    // LoginScreen reacts to this flag by launching the biometric stash prompt, then
+    // calls viewModel.clearPendingBiometricStash() + navigates to dashboard.
+    val pendingBiometricStash: Boolean = false,
+    // Carries the credentials to stash — cleared immediately after the prompt.
+    val pendingStashUsername: String = "",
+    val pendingStashPassword: String = "",
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -174,6 +196,8 @@ class LoginViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val authApi: AuthApi,
     private val networkMonitor: NetworkMonitor,
+    private val biometricCredentialStore: BiometricCredentialStore,
+    private val biometricAuth: BiometricAuth,
 ) : ViewModel() {
 
     companion object {
@@ -265,6 +289,11 @@ class LoginViewModel @Inject constructor(
         // storage beyond the already-saved `username` in AuthPreferences, so
         // no new persistence keys are introduced.
         username = authPreferences.username.orEmpty(),
+        // §2.17-L407/L408 — restore biometric stash preferences from prefs.
+        biometricEnabled = authPreferences.biometricCredentialsEnabled,
+        // §2.17-L414 — default remember-me to true when TalkBack is active.
+        rememberMeChecked = authPreferences.biometricCredentialsEnabled
+            || authPreferences.rememberMeDefaultForA11y,
     ))
     val state = _state.asStateFlow()
 
@@ -854,8 +883,27 @@ class LoginViewModel @Inject constructor(
                 )
 
                 val codes = data.backupCodes
+                // §2.17-L407 — if remember-me + biometric enabled, set pendingBiometricStash
+                // so the LoginScreen composable can trigger the biometric prompt with an Activity
+                // reference before navigating to the dashboard.
+                val s2 = _state.value
+                val shouldStash = s2.rememberMeChecked && s2.biometricEnabled
                 if (!codes.isNullOrEmpty()) {
-                    _state.value = _state.value.copy(isLoading = false, showBackupCodes = codes)
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        showBackupCodes = codes,
+                        pendingBiometricStash = shouldStash,
+                        pendingStashUsername = if (shouldStash) s2.username.trim() else "",
+                        pendingStashPassword = if (shouldStash) s2.password else "",
+                    )
+                } else if (shouldStash) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        pendingBiometricStash = true,
+                        pendingStashUsername = s2.username.trim(),
+                        pendingStashPassword = s2.password,
+                    )
+                    // onSuccess is called by LoginScreen after the stash prompt resolves.
                 } else {
                     onSuccess()
                 }
@@ -910,6 +958,155 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(challengeExpired = false)
     }
 
+    // region — §2.17 Remember-me / biometric stash
+
+    /** Toggles the "Remember me" checkbox on the CREDENTIALS step. */
+    fun toggleRememberMe() {
+        _state.value = _state.value.copy(rememberMeChecked = !_state.value.rememberMeChecked)
+    }
+
+    /**
+     * §2.17-L407 — called by the UI after the biometric stash prompt is resolved
+     * (success or cancelled). Clears the pending stash flag and any sensitive field.
+     */
+    fun clearPendingBiometricStash() {
+        _state.value = _state.value.copy(
+            pendingBiometricStash = false,
+            pendingStashUsername = "",
+            pendingStashPassword = "",
+        )
+    }
+
+    /** Toggles the "Use biometrics" option on the CREDENTIALS step. */
+    fun toggleBiometricEnabled() {
+        val newValue = !_state.value.biometricEnabled
+        authPreferences.biometricCredentialsEnabled = newValue
+        _state.value = _state.value.copy(biometricEnabled = newValue)
+    }
+
+    /**
+     * §2.17-L409 — dismisses the device-changed banner and ensures biometric login is
+     * disabled so the user is not confused by a stale toggle state.
+     */
+    fun dismissDeviceChangedBanner() {
+        _state.value = _state.value.copy(deviceChangedBanner = false)
+    }
+
+    /**
+     * §2.17-L413 — dismisses the server-revoke banner (user acknowledged the sign-out).
+     */
+    fun dismissServerRevokeBanner() {
+        _state.value = _state.value.copy(serverRevokeBanner = false)
+    }
+
+    /**
+     * §2.17-L407 — called after a successful `verify2FA` if the user has opted into
+     * biometric-gated credential storage. Launches a BiometricPrompt to encrypt the
+     * credentials and stores them via [BiometricCredentialStore].
+     *
+     * The IV returned by the Cipher after encryption is persisted via
+     * [AuthPreferences.setStoredCredentialsIv] so [attemptBiometricAutoLogin] can
+     * reconstruct the decrypt cipher on next launch.
+     *
+     * No password is ever written to Logcat. Failure is silent — the user simply
+     * falls back to password login next time.
+     */
+    fun stashCredentialsBiometric(activity: FragmentActivity, username: String, password: String) {
+        viewModelScope.launch {
+            runCatching {
+                val encryptCipher = biometricCredentialStore.createEncryptCipher()
+                val authenticatedCipher = biometricAuth.encryptWithBiometric(activity, encryptCipher)
+                    ?: return@launch // user cancelled — no-op
+                val stored = biometricCredentialStore.store(username, password, authenticatedCipher)
+                if (stored) {
+                    authPreferences.setStoredCredentialsIv(authenticatedCipher.iv)
+                    authPreferences.biometricCredentialsEnabled = true
+                    _state.value = _state.value.copy(biometricEnabled = true)
+                }
+            }
+            // Swallow any Keystore/crypto errors — biometric stash is best-effort.
+        }
+    }
+
+    /**
+     * §2.17-L407 — attempts biometric auto-login on first launch when stored credentials
+     * are available and the user has enabled biometric login. Triggers BiometricPrompt; on
+     * success decrypts + replays the stored credentials via the normal login flow.
+     *
+     * Handles [BiometricCredentialStore.RetrieveResult.DeviceChanged] and [Invalidated]:
+     * clears the credential stash, disables biometric login, and surfaces the appropriate
+     * banner so the user re-enables it after a password login (§2.17-L409).
+     *
+     * On [RetrieveResult.DeviceChanged] the banner text is:
+     * "Biometric sign-in was disabled because this device changed. Sign in with your
+     *  password to re-enable."
+     */
+    fun attemptBiometricAutoLogin(activity: FragmentActivity, onSuccess: () -> Unit) {
+        if (!authPreferences.biometricCredentialsEnabled) return
+        val iv = authPreferences.getStoredCredentialsIv() ?: return
+        if (!biometricCredentialStore.hasStoredCredentials) return
+
+        _state.value = _state.value.copy(isBiometricAutoLoginInFlight = true)
+        viewModelScope.launch {
+            runCatching {
+                val decryptCipher = biometricCredentialStore.createDecryptCipher(iv)
+                val authenticatedCipher = biometricAuth.decryptWithBiometric(activity, decryptCipher, iv)
+                if (authenticatedCipher == null) {
+                    // User cancelled — fall back to password form.
+                    _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+                    return@launch
+                }
+                when (val result = biometricCredentialStore.retrieve(authenticatedCipher)) {
+                    is BiometricCredentialStore.RetrieveResult.Success -> {
+                        // Replay login with decrypted credentials — full 2FA flow
+                        val creds = result.credentials
+                        _state.value = _state.value.copy(
+                            username = creds.username,
+                            password = creds.password,
+                            isBiometricAutoLoginInFlight = false,
+                        )
+                        login() // kicks off the normal password → 2FA → verify flow
+                    }
+                    BiometricCredentialStore.RetrieveResult.DeviceChanged,
+                    BiometricCredentialStore.RetrieveResult.Invalidated -> {
+                        // Wipe stash and disable biometric login.
+                        biometricCredentialStore.clear()
+                        authPreferences.biometricCredentialsEnabled = false
+                        authPreferences.setStoredCredentialsIv(null)
+                        _state.value = _state.value.copy(
+                            biometricEnabled = false,
+                            deviceChangedBanner = result == BiometricCredentialStore.RetrieveResult.DeviceChanged,
+                            isBiometricAutoLoginInFlight = false,
+                        )
+                    }
+                    else -> {
+                        _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+                    }
+                }
+            }.onFailure {
+                _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+            }
+        }
+    }
+
+    /**
+     * §2.17-L413 — called when GET /auth/me returns 401 or 403 (server-side revoke).
+     * Wipes the biometric credential stash, clears the session, and surfaces the
+     * "Signed out on another device" banner. The [AuthPreferences.clear] call with
+     * [ClearReason.SessionRevoked] propagates to [BiometricCredentialStore.clear] via
+     * the registered [AuthPreferences.setBiometricClearCallback].
+     */
+    fun handleServerRevoke() {
+        authPreferences.clear(AuthPreferences.ClearReason.SessionRevoked)
+        _state.value = _state.value.copy(
+            serverRevokeBanner = true,
+            biometricEnabled = false,
+            step = SetupStep.CREDENTIALS,
+        )
+    }
+
+    // endregion
+
     private fun extractErrorMessage(e: Exception): String {
         // Try to extract server error message from Retrofit HttpException
         if (e is retrofit2.HttpException) {
@@ -945,6 +1142,7 @@ fun LoginScreen(
     setupToken: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -983,6 +1181,31 @@ fun LoginScreen(
                 duration = SnackbarDuration.Short,
             )
             viewModel.clearChallengeExpired()
+        }
+    }
+
+    // §2.17-L407 — biometric stash: launch the encrypt prompt once verify2FA sets the flag.
+    val pendingStash = state.pendingBiometricStash
+    LaunchedEffect(pendingStash) {
+        if (pendingStash) {
+            val activity = (context as? FragmentActivity)
+            if (activity != null) {
+                viewModel.stashCredentialsBiometric(
+                    activity = activity,
+                    username = state.pendingStashUsername,
+                    password = state.pendingStashPassword,
+                )
+            }
+            viewModel.clearPendingBiometricStash()
+            onLoginSuccess()
+        }
+    }
+
+    // §2.17-L407 — biometric auto-login: attempt on first composition when stored creds exist.
+    LaunchedEffect(Unit) {
+        val activity = (context as? FragmentActivity)
+        if (activity != null) {
+            viewModel.attemptBiometricAutoLogin(activity, onLoginSuccess)
         }
     }
 
@@ -1061,6 +1284,68 @@ fun LoginScreen(
                             modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = onSessionBannerDismissed) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // §2.17-L409 — device-changed banner: biometric login disabled after device change.
+            if (state.deviceChangedBanner) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.PhonelinkErase,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = "Biometric sign-in was disabled because this device changed. Sign in with your password to re-enable.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = viewModel::dismissDeviceChangedBanner) {
+                            Text("OK")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // §2.17-L413 — server-revoke banner.
+            if (state.serverRevokeBanner) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = "Signed out on another device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = viewModel::dismissServerRevokeBanner) {
                             Text("Dismiss")
                         }
                     }
@@ -2087,6 +2372,36 @@ private fun CredentialsStep(
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Sign In")
+        }
+    }
+
+    // §2.17-L407/L414 — Remember me + biometric toggles.
+    Spacer(Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = state.rememberMeChecked,
+            onCheckedChange = { viewModel.toggleRememberMe() },
+        )
+        Text(
+            "Remember me",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 4.dp),
+        )
+        if (state.rememberMeChecked) {
+            Checkbox(
+                checked = state.biometricEnabled,
+                onCheckedChange = { viewModel.toggleBiometricEnabled() },
+            )
+            Text(
+                "Use biometrics",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 4.dp),
+            )
         }
     }
 
