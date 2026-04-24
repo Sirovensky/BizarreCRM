@@ -734,12 +734,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
 - [ ] SCAN-1039. **campaigns mass-dispatch endpoints (run-now, birthday, churn-warning) missing rate limiting — unlimited SMS/email blasts.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:660-693,823-867,870-927; fix=consumeWindowRate-3-per-min -->
-- [ ] SCAN-1040. **campaigns /review-request/trigger: `req.user!.id` dereferenced even when called via INTERNAL_SERVICE_TOKEN (user undefined).**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:812; fix=user?.id-or-sentinel -->
 - [ ] SCAN-1043. **loaners POST /:id/loan: no rate limit on write — technician can spam loan records.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:106-138; fix=consumeWindowRate -->
-- [ ] SCAN-1045. **rma POST /: no rate limit + unbounded items[] array — DoS via 10k-item batch.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/rma.routes.ts:117-156; fix=rate-limit+cap-items -->
 - [ ] SCAN-1046. **crm GET /customers/:id/photo-mementos: returns raw `file_path` strings — leaks server filesystem layout.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/crm.routes.ts:222-239; fix=strip-path-or-signed-url -->
 - [ ] SCAN-1047. **deposits GET /: LIMIT 500 hardcoded, no pagination — silently drops older deposits for completeness-assuming clients.**

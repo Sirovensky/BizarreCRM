@@ -6,7 +6,16 @@ import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { validateEnum, validateTextLength, validatePaginationOffset, validateId } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+
+// Write-side rate limit: a privileged user creating RMAs in a tight loop is
+// the realistic abuse shape (mass supplier-RMA spam). 30 creations per minute
+// per user covers even the busiest returns-desk shift.
+const RMA_CREATE_MAX = 30;
+const RMA_CREATE_WINDOW_MS = 60_000;
+// Hard cap on batch size to bound per-request work and protect the event loop.
+const RMA_ITEMS_MAX = 200;
 
 const router = Router();
 
@@ -117,8 +126,15 @@ router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 router.post('/', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  // SCAN-1045: per-user write rate limit + array size cap before we start
+  // the INSERT loop, which would otherwise run once per item unbounded.
+  const rl = consumeWindowRate(db, 'rma_create', String(req.user!.id), RMA_CREATE_MAX, RMA_CREATE_WINDOW_MS);
+  if (!rl.allowed) throw new AppError('Too many RMAs created recently — please slow down', 429);
   const { supplier_id, supplier_name, reason, notes, items } = req.body;
   if (!items?.length) throw new AppError('At least one item required', 400);
+  if (!Array.isArray(items) || items.length > RMA_ITEMS_MAX) {
+    throw new AppError(`items must be an array of up to ${RMA_ITEMS_MAX} entries`, 400);
+  }
 
   // V4: Validate each RMA item has required fields
   for (let i = 0; i < items.length; i++) {

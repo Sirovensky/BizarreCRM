@@ -809,7 +809,9 @@ router.post(
       [customer],
     );
 
-    audit(db, 'review_request_dispatched', req.user!.id, req.ip || 'unknown', {
+    // Called via INTERNAL_SERVICE_TOKEN as well, where req.user is undefined —
+    // fall back to 0 (service actor sentinel) instead of throwing on null deref.
+    audit(db, 'review_request_dispatched', req.user?.id ?? 0, req.ip || 'unknown', {
       campaign_id: campaign.id,
       ticket_id: ticketId,
       customer_id: customer.id,
