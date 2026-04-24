@@ -18,6 +18,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -330,18 +337,26 @@ fun SmsThreadScreen(
     ) { padding ->
         when {
             state.isLoading -> {
+                // a11y: mergeDescendants collapses each shimmer box into a single
+                // focus stop; contentDescription announces loading state to TalkBack.
                 BrandSkeleton(
                     rows = 6,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Loading messages"
+                        },
                 )
             }
             state.error != null && state.messages.isEmpty() -> {
+                // a11y: liveRegion=Assertive interrupts TalkBack immediately on error
+                // so the user hears the failure without manual exploration.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
                     contentAlignment = Alignment.Center,
                 ) {
                     ErrorState(
@@ -351,10 +366,15 @@ fun SmsThreadScreen(
                 }
             }
             state.messages.isEmpty() -> {
+                // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                // into a single TalkBack focus stop with a cohesive description.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "No messages yet. Send the first message below."
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     EmptyState(
@@ -368,7 +388,10 @@ fun SmsThreadScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        // a11y: liveRegion=Polite so TalkBack announces new incoming message
+                        // bodies without interrupting the user's current focus.
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                     state = listState,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -418,7 +441,11 @@ private fun ComposeBar(
                 OutlinedTextField(
                     value = messageText,
                     onValueChange = onMessageChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        // a11y: explicit label so TalkBack reads "Message input" instead
+                        // of reading the placeholder text as the field label.
+                        .semantics { contentDescription = "Message input" },
                     placeholder = { Text("Type a message...") },
                     maxLines = 4,
                     trailingIcon = {
@@ -495,6 +522,24 @@ private fun MessageBubble(message: SmsMessageItem) {
     else
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
 
+    // a11y: build a cohesive sentence TalkBack reads for the whole bubble.
+    // Status is folded into the outbound description so the delivery-status Text
+    // node below does not need its own announcement (avoids double-read).
+    val timeDisplay = message.createdAt?.take(16)?.replace("T", " ") ?: ""
+    val messageBody = message.message ?: ""
+    val bubbleContentDescription = if (isOutbound) {
+        val statusSuffix = when (message.status) {
+            "delivered" -> ", delivered"
+            "sent"      -> ", sent"
+            "queued"    -> ", queued"
+            "failed"    -> ", failed"
+            else        -> ""
+        }
+        "Sent at $timeDisplay$statusSuffix: $messageBody"
+    } else {
+        "Received at $timeDisplay: $messageBody"
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
@@ -504,11 +549,15 @@ private fun MessageBubble(message: SmsMessageItem) {
                 .widthIn(max = 280.dp)
                 .clip(bubbleShape)
                 .background(bubbleBg)
-                .padding(12.dp),
+                .padding(12.dp)
+                // a11y: mergeDescendants=true collapses all child Text nodes into this
+                // single focus stop; clearAndSetSemantics replaces the auto-merged text
+                // with our curated sentence so TalkBack reads a natural description.
+                .clearAndSetSemantics { contentDescription = bubbleContentDescription },
         ) {
             Column {
                 Text(
-                    message.message ?: "",
+                    messageBody,
                     color = textColor,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -519,11 +568,14 @@ private fun MessageBubble(message: SmsMessageItem) {
                 ) {
                     // Timestamp in BrandMono
                     Text(
-                        message.createdAt?.take(16)?.replace("T", " ") ?: "",
+                        timeDisplay,
                         style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
                         color = timestampColor,
                     )
                     if (isOutbound && message.status != null) {
+                        // a11y: status text is already folded into bubbleContentDescription;
+                        // visual-only — clearAndSetSemantics on the parent Box hides it
+                        // from the accessibility tree, so no double-read occurs.
                         Text(
                             when (message.status) {
                                 "delivered" -> "Delivered"
