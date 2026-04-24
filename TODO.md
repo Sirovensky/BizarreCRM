@@ -724,10 +724,6 @@ Verified working. Not TODOs.
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
-- [ ] SCAN-1015. **Setup import polling swallows all errors — no retry limit, silent failure indefinitely.**
-  <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/steps/StepImport.tsx:155; fix=count-consecutive-failures-and-abort -->
-- [ ] SCAN-1016. **Setup import interval captures stale `source` state in closure.**
-  <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/steps/StepImport.tsx:134-156; fix=useRef-or-local-const -->
 - [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
 - [ ] SCAN-1021. **LandingPage uses `window.location.href = 'mailto:…'` instead of real `<a href>` — pattern-fragile.**

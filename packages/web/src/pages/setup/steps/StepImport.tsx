@@ -130,12 +130,16 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
         await mraImportApi.start({ api_key: apiKey, entities });
       }
       setPhase('running');
-      // Start polling status every 3s
+      // Capture the source at schedule time — without this, a later state
+      // change would let the interval callback call the wrong status endpoint.
+      const pollSource = source;
+      let consecutiveFailures = 0;
+      const MAX_CONSECUTIVE_FAILURES = 5;
       pollRef.current = setInterval(async () => {
         try {
           let statusRes: any;
-          if (source === 'repairdesk') statusRes = await rdImportApi.status();
-          else if (source === 'repairshopr') statusRes = await rsImportApi.status();
+          if (pollSource === 'repairdesk') statusRes = await rdImportApi.status();
+          else if (pollSource === 'repairshopr') statusRes = await rsImportApi.status();
           else statusRes = await mraImportApi.status();
           const overall = statusRes?.data?.data?.overall;
           const active = statusRes?.data?.data?.is_active;
@@ -152,10 +156,21 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
               setPhase('done');
             }
           }
-        } catch { /* transient failure, keep polling */ }
+          consecutiveFailures = 0;
+        } catch (pollErr) {
+          // Count transient failures — bail after 5 in a row so the poller
+          // doesn't spin forever on a permanent backend outage.
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            console.error('[setup/import] polling aborted after repeated failures', pollErr);
+            setError('Lost connection to the import service. Please refresh to check status.');
+          }
+        }
       }, 3000);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to start import.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } } | undefined;
+      setError(e?.response?.data?.message || 'Failed to start import.');
     }
   };
 
