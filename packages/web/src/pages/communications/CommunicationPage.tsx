@@ -23,6 +23,20 @@ import { CannedResponseHotkeys } from './components/CannedResponseHotkeys';
 import { TemplateAnalyticsCard } from './components/TemplateAnalyticsCard';
 import { FailedSendRetryList } from './components/FailedSendRetryList';
 import { OffHoursAutoReplyToggle } from './components/OffHoursAutoReplyToggle';
+
+// Accept only relative uploads (`/…`) or absolute http(s) URLs. Without this,
+// a poisoned `media_local_paths` / `media_urls` entry (e.g. `javascript:alert(1)`)
+// from an MMS payload would execute in the user's tab the moment they click
+// the thumbnail.
+function safeMediaUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  if (raw.startsWith('/')) return raw;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+  } catch { /* fall through */ }
+  return null;
+}
 // Alternate implementations — available for future consumers. The existing
 // inline schedule popover + attach button remain the default UI; these stand
 // alone so they can replace them in a follow-up PR without re-writing UI.
@@ -1758,10 +1772,13 @@ export function CommunicationPage() {
                               {/* MMS media images */}
                               {msg.media_local_paths && (() => {
                                 try {
-                                  const paths = JSON.parse(msg.media_local_paths) as string[];
+                                  const raw = JSON.parse(msg.media_local_paths) as unknown[];
+                                  const paths = Array.isArray(raw)
+                                    ? raw.map(safeMediaUrl).filter((u): u is string => u !== null)
+                                    : [];
                                   return paths.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 mb-1">
-                                      {paths.map((p: string, idx: number) => (
+                                      {paths.map((p, idx) => (
                                         <a key={idx} href={p} target="_blank" rel="noopener noreferrer">
                                           <img src={p} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" />
                                         </a>
@@ -1772,10 +1789,13 @@ export function CommunicationPage() {
                               })()}
                               {msg.media_urls && !msg.media_local_paths && (() => {
                                 try {
-                                  const urls = JSON.parse(msg.media_urls) as string[];
+                                  const raw = JSON.parse(msg.media_urls) as unknown[];
+                                  const urls = Array.isArray(raw)
+                                    ? raw.map(safeMediaUrl).filter((u): u is string => u !== null)
+                                    : [];
                                   return urls.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 mb-1">
-                                      {urls.map((u: string, idx: number) => (
+                                      {urls.map((u, idx) => (
                                         <a key={idx} href={u} target="_blank" rel="noopener noreferrer">
                                           <img src={u} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" />
                                         </a>

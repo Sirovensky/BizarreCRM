@@ -716,8 +716,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:958; fix=type-response-interfaces -->
 - [ ] SCAN-1004. **`smsApi.templates()` response cast via `as any` in 3 files — lost template-shape safety.**
   <!-- meta: scope=web/api+web/pages; files=BulkSmsModal.tsx:63,CannedResponseHotkeys,CommunicationPage.tsx; fix=export-SmsTemplateListResponse-type -->
-- [ ] SCAN-1005. **[HIGH] Communications MMS media `href`/`src` rendered from server paths without protocol check — javascript:/data: XSS risk.**
-  <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:1765; fix=safeHref-allowlist -->
 - [ ] SCAN-1006. **Reviews page icon-only reply + public-posted toggle buttons use `title` only — not reliably announced by screen readers.**
   <!-- meta: scope=web/pages/reviews; files=packages/web/src/pages/reviews/ReviewsPage.tsx:269,276; fix=aria-label -->
 - [ ] SCAN-1007. **Expenses list query has no `staleTime`.**
