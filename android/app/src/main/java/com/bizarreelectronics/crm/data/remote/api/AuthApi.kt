@@ -17,8 +17,11 @@ import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFaSetupResponse
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
+import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 
 interface AuthApi {
 
@@ -85,4 +88,14 @@ interface AuthApi {
     // SECURITY: pin value is NEVER logged.
     @POST("auth/switch-user")
     suspend fun switchUser(@Body body: SwitchUserRequest): ApiResponse<SwitchUserResponse>
+
+    // §2.11 — Active sessions list + revoke.
+    // GET returns all sessions for the current user; current=true marks the
+    // calling session. DELETE revokes a specific session by ID.
+    // 404 → server does not expose this endpoint yet; ViewModel maps to empty list.
+    @GET("auth/sessions")
+    suspend fun sessions(): ApiResponse<List<ActiveSessionDto>>
+
+    @DELETE("auth/sessions/{id}")
+    suspend fun revokeSession(@Path("id") id: String): ApiResponse<Unit>
 }

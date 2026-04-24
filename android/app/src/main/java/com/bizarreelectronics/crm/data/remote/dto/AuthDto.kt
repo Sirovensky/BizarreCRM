@@ -137,3 +137,30 @@ data class SetupStatusResponse(
     @SerializedName("isMultiTenant")
     val isMultiTenant: Boolean? = null,
 )
+
+/**
+ * §2.11 — Active session as returned by GET /auth/sessions.
+ *
+ * Fields mirror the server's session record. [current] is true for the
+ * session associated with the current access token — the revoke button
+ * is disabled for that row to avoid self-lockout.
+ *
+ * 404 from the endpoint means the server predates this feature; the
+ * ViewModel maps it to an empty list with a footer note.
+ */
+data class ActiveSessionDto(
+    @SerializedName("id")
+    val id: String,
+    @SerializedName("device")
+    val device: String? = null,
+    @SerializedName("ip")
+    val ip: String? = null,
+    @SerializedName("userAgent")
+    val userAgent: String? = null,
+    @SerializedName("createdAt")
+    val createdAt: String? = null,
+    @SerializedName("lastSeenAt")
+    val lastSeenAt: String? = null,
+    @SerializedName("current")
+    val current: Boolean = false,
+)

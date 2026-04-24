@@ -365,8 +365,9 @@ class SecurityViewModel @Inject constructor(
  *      Toggle-OFF clears pref + key immediately.
  *   2. "Auto-lock PIN after" segmented buttons (§2.5 L311) — Immediate/1m/5m/15m/Never.
  *   3. "Change PIN" → [onChangePin] (wires to Screen.PinSetup).
- *   4. "Change password" → [onChangePassword] (§2.9 — wires to Screen.ChangePassword).
- *   5. "Lock now" → forces PinLockScreen on next resume.
+ *   4. "Active sessions" → [onActiveSessions] (§2.11 — wires to Screen.ActiveSessions).
+ *   5. "Change password" → [onChangePassword] (§2.9 — wires to Screen.ChangePassword).
+ *   6. "Lock now" → forces PinLockScreen on next resume.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -374,6 +375,7 @@ fun SecurityScreen(
     onBack: () -> Unit,
     onChangePin: () -> Unit,
     onChangePassword: () -> Unit,
+    onActiveSessions: (() -> Unit)? = null,
     viewModel: SecurityViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -526,6 +528,20 @@ fun SecurityScreen(
                         title = "Change PIN",
                         subtitle = "Update your local app PIN",
                         onClick = onChangePin,
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
+
+                    // §2.11: Active sessions — view and revoke other sessions.
+                    SecurityNavRow(
+                        icon = Icons.Default.Devices,
+                        title = "Active sessions",
+                        subtitle = "View and revoke other logged-in sessions",
+                        onClick = { onActiveSessions?.invoke() },
+                        enabled = onActiveSessions != null,
                     )
 
                     HorizontalDivider(
