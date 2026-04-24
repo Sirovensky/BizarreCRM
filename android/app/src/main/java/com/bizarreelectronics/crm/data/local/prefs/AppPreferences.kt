@@ -808,6 +808,58 @@ class AppPreferences @Inject constructor(
     private fun serializeTileList(tiles: List<String>): String =
         "[${tiles.joinToString(",") { "\"$it\"" }}]"
 
+    // --- §4.14 L786 — accepted waiver versions (re-sign detection) -----------
+    //
+    // Tracks the template version that was last successfully signed by the user
+    // for each waiver template ID. When the server returns a template with a
+    // higher [WaiverTemplateDto.version], [WaiverListScreen] flags that template
+    // as requiring re-sign on next interaction.
+    //
+    // Stored as a flat key-per-template-id scheme: "waiver_version_<templateId>"
+    // maps to the Int version that was accepted. Plain prefs — not sensitive
+    // (versions are monotonic counters; no PII).
+
+    /**
+     * §4.14 L786 — map of `templateId → accepted version` for re-sign detection.
+     *
+     * Returns an immutable snapshot. Use [setAcceptedWaiverVersion] to update.
+     * Templates absent from the map are treated as never signed (version 0).
+     */
+    val acceptedWaiverVersions: Map<String, Int>
+        get() {
+            return prefs.all
+                .filter { (k, _) -> k.startsWith("waiver_version_") }
+                .mapNotNull { (k, v) ->
+                    val templateId = k.removePrefix("waiver_version_")
+                    val version = (v as? Int) ?: return@mapNotNull null
+                    templateId to version
+                }
+                .toMap()
+        }
+
+    /**
+     * §4.14 L786 — record that [templateId] at [version] has been signed.
+     *
+     * Idempotent — writing the same version twice is a no-op from the perspective
+     * of the re-sign gate. Writing a higher version replaces the stored value.
+     *
+     * @param templateId  Template identifier from [WaiverTemplateDto.id].
+     * @param version     Version from [WaiverTemplateDto.version] that was signed.
+     */
+    fun setAcceptedWaiverVersion(templateId: String, version: Int) {
+        prefs.edit().putInt("waiver_version_$templateId", version).apply()
+    }
+
+    /**
+     * §4.14 L786 — retrieve the last accepted version for [templateId], or 0
+     * if the template has never been signed on this device.
+     *
+     * @param templateId Template identifier from [WaiverTemplateDto.id].
+     * @return Last accepted version, or 0 (never signed).
+     */
+    fun getAcceptedWaiverVersion(templateId: String): Int =
+        prefs.getInt("waiver_version_$templateId", 0)
+
     // --- §3.19 L613–L616 — Dashboard density mode ------------------------------
     //
     // Three modes: "comfortable" (default phone) / "cozy" (default tablet) / "compact".
@@ -864,5 +916,157 @@ class AppPreferences @Inject constructor(
     fun setDashboardDensity(density: DashboardDensity) {
         prefs.edit().putString("dashboard_density", density.toKey()).apply()
         _dashboardDensityFlow.value = density
+    }
+
+    // --- plan:L1997 — Tenant accent color override -------------------------
+    //
+    // Null means "use the default brand palette". Non-null is a packed ARGB
+    // Int (android.graphics.Color / androidx.compose.ui.graphics.Color toArgb()).
+    // AppearanceScreen writes via [tenantAccentColor] setter;
+    // BizarreCrmTheme reads [tenantAccentColorFlow] to provide LocalBrandAccent.
+
+    private val _tenantAccentColorFlow = MutableStateFlow<Int?>(
+        prefs.getInt("tenant_accent_color", Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE },
+    )
+
+    /**
+     * plan:L1997 — Observable tenant accent color (packed ARGB Int, or null to restore
+     * the default brand palette). Collect in BizarreCrmTheme to provide LocalBrandAccent.
+     */
+    val tenantAccentColorFlow: StateFlow<Int?> = _tenantAccentColorFlow.asStateFlow()
+
+    /**
+     * plan:L1997 — Tenant accent color override (packed ARGB Int, nullable).
+     * Writing null clears the override and restores the default brand palette.
+     */
+    var tenantAccentColor: Int?
+        get() = prefs.getInt("tenant_accent_color", Int.MIN_VALUE)
+            .takeIf { it != Int.MIN_VALUE }
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove("tenant_accent_color").apply()
+            } else {
+                prefs.edit().putInt("tenant_accent_color", value).apply()
+            }
+            _tenantAccentColorFlow.value = value
+        }
+
+    // --- plan:L1999 — Font scale override ---------------------------------
+    //
+    // Maps to a UI SegmentedButton with four labels:
+    //   "default" → fontScale = 1.0f
+    //   "medium"  → fontScale = 1.15f
+    //   "large"   → fontScale = 1.30f
+    //   "xlarge"  → fontScale = 1.50f
+
+    private val _fontScaleKeyFlow = MutableStateFlow(
+        prefs.getString("font_scale_key", "default") ?: "default",
+    )
+
+    /** plan:L1999 — Observable font-scale key. */
+    val fontScaleKeyFlow: StateFlow<String> = _fontScaleKeyFlow.asStateFlow()
+
+    /** plan:L1999 — Selected font-scale key ("default" | "medium" | "large" | "xlarge"). */
+    var fontScaleKey: String
+        get() = prefs.getString("font_scale_key", "default") ?: "default"
+        set(value) {
+            prefs.edit().putString("font_scale_key", value).apply()
+            _fontScaleKeyFlow.value = value
+        }
+
+    // --- plan:L2000 — High contrast mode -----------------------------------
+    //
+    // When true, AppearanceScreen swaps the ColorScheme for an AA 7:1 palette
+    // via CompositionLocalProvider. Defaults false.
+
+    private val _highContrastFlow = MutableStateFlow(
+        prefs.getBoolean("high_contrast_enabled", false),
+    )
+
+    /** plan:L2000 — Observable high-contrast toggle. */
+    val highContrastEnabledFlow: StateFlow<Boolean> = _highContrastFlow.asStateFlow()
+
+    /** plan:L2000 — High-contrast mode toggle. */
+    var highContrastEnabled: Boolean
+        get() = prefs.getBoolean("high_contrast_enabled", false)
+        set(value) {
+            prefs.edit().putBoolean("high_contrast_enabled", value).apply()
+            _highContrastFlow.value = value
+        }
+
+    // --- plan:L2004 — Timezone override ------------------------------------
+    //
+    // Null means "use the device default". Non-null is a ZoneId string
+    // (e.g. "America/New_York"). DateFormatter reads this when non-null;
+    // LanguageScreen writes via [timezoneOverride] setter.
+
+    /** plan:L2004 — In-app timezone override (ZoneId string), or null to use device default. */
+    var timezoneOverride: String?
+        get() = prefs.getString("timezone_override", null)
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove("timezone_override").apply()
+            } else {
+                prefs.edit().putString("timezone_override", value).apply()
+            }
+        }
+
+    // --- plan:L2006 — Currency override ------------------------------------
+    //
+    // Null means "use the device/OS currency from the active locale".
+    // Non-null is an ISO 4217 currency code (e.g. "USD", "EUR").
+
+    /** plan:L2006 — In-app currency override (ISO 4217), or null to use locale default. */
+    var currencyOverride: String?
+        get() = prefs.getString("currency_override", null)
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove("currency_override").apply()
+            } else {
+                prefs.edit().putString("currency_override", value).apply()
+            }
+        }
+
+    // --- plan:L1992 — Per-channel ringtone URIs ----------------------------
+    //
+    // Stored as flat "notif_sound_<channelId>" keys in plain prefs.
+    // Null means "use the channel default ringtone".
+
+    /**
+     * plan:L1992 — Get the persisted ringtone URI string for [channelId], or null
+     * for the channel default.
+     */
+    fun getNotifSoundUri(channelId: String): String? =
+        prefs.getString("notif_sound_$channelId", null)
+
+    /**
+     * plan:L1992 — Persist a ringtone URI for [channelId]. Pass null to restore
+     * the channel default.
+     */
+    fun setNotifSoundUri(channelId: String, uri: String?) {
+        if (uri == null) {
+            prefs.edit().remove("notif_sound_$channelId").apply()
+        } else {
+            prefs.edit().putString("notif_sound_$channelId", uri).apply()
+        }
+    }
+
+    // --- plan:L1991 — Per-event × per-channel notification matrix ---------
+    //
+    // Keys: "notif_matrix_<eventId>_<channelId>" where channelId ∈ {push, sms, email}.
+    // All default true (opt-out model matching existing single-channel prefs).
+
+    /**
+     * plan:L1991 — Returns whether the [eventId] × [channelId] cell is enabled.
+     * Defaults true.
+     */
+    fun getNotifMatrixEnabled(eventId: String, channelId: String): Boolean =
+        prefs.getBoolean("notif_matrix_${eventId}_$channelId", true)
+
+    /**
+     * plan:L1991 — Persist the [enabled] state for the [eventId] × [channelId] cell.
+     */
+    fun setNotifMatrixEnabled(eventId: String, channelId: String, enabled: Boolean) {
+        prefs.edit().putBoolean("notif_matrix_${eventId}_$channelId", enabled).apply()
     }
 }

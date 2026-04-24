@@ -70,6 +70,7 @@ import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ReduceMotion
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.bizarreelectronics.crm.data.remote.api.WaiverApi
 import com.bizarreelectronics.crm.util.UndoStack
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +79,7 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 import com.bizarreelectronics.crm.ui.screens.tickets.components.QcSignOffDialog
 import com.bizarreelectronics.crm.ui.screens.tickets.components.StatusNotifyPreviewDialog
 import com.bizarreelectronics.crm.util.MultipartUpload
@@ -173,6 +175,15 @@ data class TicketDetailUiState(
     // ─── L742 — Status notify preview ────────────────────────────────────────
     /** Non-null while the status-notify preview dialog is open. */
     val pendingStatusChange: PendingStatusChange? = null,
+    // ─── L780-L786 — Waivers ─────────────────────────────────────────────────
+    /**
+     * True when the server confirmed the waiver feature is enabled for this ticket.
+     * Determined by probing `GET /tickets/:id/waivers/required` — 404 → false.
+     * The "Waivers" overflow action is hidden when false.
+     */
+    val waiverFeatureEnabled: Boolean = false,
+    /** True while the waiver availability check is in-flight. */
+    val waiverCheckInProgress: Boolean = false,
 )
 
 @HiltViewModel
@@ -188,6 +199,7 @@ class TicketDetailViewModel @Inject constructor(
     private val gson: com.google.gson.Gson,
     private val multipartUpload: MultipartUpload,
     private val smsApi: com.bizarreelectronics.crm.data.remote.api.SmsApi,
+    private val waiverApi: WaiverApi,
 ) : ViewModel() {
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -747,6 +759,31 @@ class TicketDetailViewModel @Inject constructor(
     }
 
     // -----------------------------------------------------------------------
+    // L780-L786 — Waiver feature availability probe
+    // -----------------------------------------------------------------------
+
+    /**
+     * Probe `GET /tickets/:id/waivers/required` to determine whether the waiver
+     * feature is enabled on the connected server. Called once after [loadTicketDetail]
+     * succeeds. 404 → hides the Waivers overflow action (no crash, no error snackbar).
+     */
+    fun probeWaiverFeature() {
+        _state.value = _state.value.copy(waiverCheckInProgress = true)
+        viewModelScope.launch {
+            try {
+                waiverApi.getRequiredTemplates(ticketId)
+                _state.value = _state.value.copy(waiverFeatureEnabled = true, waiverCheckInProgress = false)
+            } catch (e: HttpException) {
+                // 404 = feature not available — hide the action silently
+                _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
+            } catch (e: Exception) {
+                // Network error treated the same as not-available for safety
+                _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // L741 — QC sign-off
     // -----------------------------------------------------------------------
 
@@ -947,6 +984,8 @@ fun TicketDetailScreen(
     // without a second round-trip. Optional so the top-bar Checkout action
     // auto-hides on screens that don't wire it (previews / tests).
     onCheckout: ((ticketId: Long, total: Double, customerName: String) -> Unit)? = null,
+    // L780-L786 — navigate to WaiverListScreen; hidden when null (feature not yet wired)
+    onNavigateToWaivers: ((ticketId: Long) -> Unit)? = null,
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1297,6 +1336,17 @@ fun TicketDetailScreen(
                                             },
                                         )
                                     }
+                                }
+                                // L780-L786 — Waivers (hidden on 404)
+                                if (state.waiverFeatureEnabled) {
+                                    DropdownMenuItem(
+                                        text = { Text("Waivers") },
+                                        leadingIcon = { Icon(Icons.Default.Assignment, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            onNavigateToWaivers?.invoke(ticketId)
+                                        },
+                                    )
                                 }
                                 // L681 — Destructive actions gated on privileged role
                                 if (isPrivilegedRole) {
