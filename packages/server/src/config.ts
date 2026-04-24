@@ -188,6 +188,9 @@ export const config = {
         process.exit(1);
       }
     }
+    if (env === 'production' && dedicated.length < 32) {
+      throw new Error('CONFIG_ENCRYPTION_KEY must be at least 32 bytes in production — generate via: openssl rand -hex 32');
+    }
     if (dedicated && dedicated.length < 32) {
       console.warn('\n  [SEC-H103] CONFIG_ENCRYPTION_KEY is too short — falling back to HKDF derivation.\n');
     }

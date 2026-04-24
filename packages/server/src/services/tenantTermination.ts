@@ -326,8 +326,16 @@ async function executeTermination(opts: {
       srcPath,
     });
   }
-  try { fs.renameSync(srcPath + '-wal', archivedPath + '-wal'); } catch {}
-  try { fs.renameSync(srcPath + '-shm', archivedPath + '-shm'); } catch {}
+  try { fs.renameSync(srcPath + '-wal', archivedPath + '-wal'); } catch (err) {
+    logger.warn('WAL sidecar rename failed during termination (non-fatal)', {
+      slug: row.slug, src: srcPath + '-wal', error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try { fs.renameSync(srcPath + '-shm', archivedPath + '-shm'); } catch (err) {
+    logger.warn('SHM sidecar rename failed during termination (non-fatal)', {
+      slug: row.slug, src: srcPath + '-shm', error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   const scheduledAtMs = Date.now();
   const permanentDeleteAtMs = scheduledAtMs + TERMINATION_GRACE_DAYS * 24 * 60 * 60 * 1000;

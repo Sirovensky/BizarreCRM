@@ -6,6 +6,7 @@
 
 import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { audit } from '../utils/audit.js';
 
 const log = createLogger('scheduled-reports');
 
@@ -285,8 +286,10 @@ export async function sendDailyReport(db: any): Promise<void> {
       try {
         await sendEmail(db, { to, subject, html });
         log.info('Daily report sent', { to, date: summary.date });
+        audit(db, 'scheduled_report_delivered', 0, '', { recipient: to, report_date: summary.date });
       } catch (err) {
         log.error('Failed to send daily report to recipient', { to, error: String(err) });
+        audit(db, 'scheduled_report_failed', 0, '', { recipient: to, report_date: summary.date, err_code: String(err) });
       }
     }
   } catch (err) {

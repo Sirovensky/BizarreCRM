@@ -1628,7 +1628,11 @@ function getWidgetScript(): string {
 
       // Auto-resize iframe based on content height
       window.addEventListener('message', function(e) {
-        if (e.origin !== server) return;
+        var expectedOrigin;
+        try { expectedOrigin = new URL(server).origin; } catch(ex) { return; }
+        var incomingOrigin;
+        try { incomingOrigin = new URL(e.origin).origin; } catch(ex) { return; }
+        if (incomingOrigin !== expectedOrigin) return;
         if (e.data && e.data.type === 'bizarre-portal-resize') {
           iframe.style.height = e.data.height + 'px';
         }
