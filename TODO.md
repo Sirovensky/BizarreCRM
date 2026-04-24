@@ -1473,18 +1473,18 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-930. **[LOW-MED] worker pool maxQueue=200 — no early backpressure; cascading failures under spike** — `packages/server/src/db/worker-pool.ts:55-57`. Fix: metrics on queue depth + consider router-level backpressure.
 
 ### Wave-47 scan-loop findings (2026-04-23) — web/hooks + web/utils
-- [ ] SCAN-931. **Settings fetched from server aren't validated — bad values slip through and can break settings pages.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:9; fix=zod-or-guard -->
-- [ ] SCAN-932. **POS keyboard shortcut listener re-attaches on every render when callers pass inline handler objects — wasted work on hot screen.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts:64; fix=ref-stable -->
-- [ ] SCAN-933. **Draft autosave writes unbounded text to browser storage — a very long note can fill the quota and break other features.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:44-46; fix=cap-100kb -->
-- [ ] SCAN-934. **Undo action on unmount silently swallows server errors — failures are invisible in prod logs.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:197-199; fix=log-error -->
-- [ ] SCAN-935. **Shared `cn()` helper has no return type on its exported signature — violates project type-safety rule.**
-  <!-- meta: scope=web/utils; files=packages/web/src/utils/cn.ts:4; fix=add-return-string -->
-- [ ] SCAN-936. **Currency formatter silently falls back to USD for unknown codes — misconfigured tenant currency is invisible.**
-  <!-- meta: scope=web/utils; files=packages/web/src/utils/formatCurrency.ts:23-28; fix=log-unknown-code -->
-- [ ] SCAN-937. **`useSettings` swallows fetch errors — callers can't tell empty-settings from failed-load.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:4-19; fix=return-isError -->
+- [x] SCAN-931. **Settings fetched from server aren't validated — bad values slip through and can break settings pages.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts; commit=c5b846d4 -->
+- [x] SCAN-932. **POS keyboard shortcut listener re-attaches on every render when callers pass inline handler objects — wasted work on hot screen.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts; commit=507bf80d -->
+- [x] SCAN-933. **Draft autosave writes unbounded text to browser storage — a very long note can fill the quota and break other features.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts; commit=88cc9222 -->
+- [x] SCAN-934. **Undo action on unmount silently swallows server errors — failures are invisible in prod logs.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx; commit=f956e146 -->
+- [x] SCAN-935. **Shared `cn()` helper has no return type on its exported signature — violates project type-safety rule.**
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/cn.ts; commit=13ae478b -->
+- [x] SCAN-936. **Currency formatter silently falls back to USD for unknown codes — misconfigured tenant currency is invisible.**
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/formatCurrency.ts; commit=2453734a -->
+- [x] SCAN-937. **`useSettings` swallows fetch errors — callers can't tell empty-settings from failed-load.**
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts; commit=c5b846d4 -->
 
