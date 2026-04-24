@@ -7,7 +7,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
-import { validatePositiveAmount, validatePaginationOffset, validateId } from '../utils/validate.js';
+import { validatePositiveAmount, validatePaginationOffset, validateId, validateTextLength, validateIsoDate } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
@@ -263,6 +263,31 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
     throw new AppError(`Gift card amount cannot exceed $${GIFT_CARD_MAX_AMOUNT.toLocaleString()}`, 400);
   }
 
+  // SCAN-1124: validate free-text + optional FK before INSERT so a caller
+  // can't stash multi-MB strings or point the card at a non-existent /
+  // soft-deleted customer (FK violation surfaces as 500 otherwise).
+  let validatedCustomerId: number | null = null;
+  if (customer_id != null && customer_id !== '') {
+    validatedCustomerId = validateId(customer_id, 'customer_id');
+    const cust = await adb.get(
+      'SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0',
+      validatedCustomerId,
+    );
+    if (!cust) throw new AppError('Customer not found', 404);
+  }
+  const validatedRecipientName = recipient_name != null && recipient_name !== ''
+    ? validateTextLength(recipient_name, 120, 'recipient_name')
+    : null;
+  const validatedRecipientEmail = recipient_email != null && recipient_email !== ''
+    ? validateTextLength(recipient_email, 200, 'recipient_email')
+    : null;
+  const validatedNotes = notes != null && notes !== ''
+    ? validateTextLength(notes, 1000, 'notes')
+    : null;
+  const validatedExpiresAt = expires_at != null && expires_at !== ''
+    ? validateIsoDate(expires_at, 'expires_at', false)
+    : null;
+
   const code = generateCode();
   const codeHash = hashCode(code);
   // SEC-H38: write both the plaintext `code` (kept during the two-step
@@ -272,8 +297,8 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
   const result = await adb.run(`
     INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
-  `, code, codeHash, amount, amount, customer_id || null, recipient_name || null, recipient_email || null,
-    expires_at || null, notes || null, req.user!.id, now(), now());
+  `, code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
+    validatedExpiresAt, validatedNotes, req.user!.id, now(), now());
 
   // Record purchase transaction
   await adb.run(
@@ -289,7 +314,7 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
     code_prefix: code.slice(0, 4),
     code_hash: codeHash,
     amount,
-    customer_id: customer_id || null,
+    customer_id: validatedCustomerId,
   });
   // Plaintext code returned to the caller ONCE — this is the only time it
   // leaves the server. The UI is expected to surface it to the cashier on

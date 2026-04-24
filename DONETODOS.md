@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-65 WS reconnect + giftCards validation)
+
+- [x] SCAN-1123. **`useWebSocket` visibilitychange handler didn't unstuck `authRejectedRef`** — if a 4001 auth-reject latched the ref, the tab never reconnected after a re-login in another tab (remote tab doesn't dispatch `auth-cleared` for this window). Reworked `handleVisibilityChange`: when visible-and-not-connected, if `authRejected` is set we now look for a fresh `accessToken` in localStorage and clear the latch before reconnecting; backoff is unconditionally reset to `INITIAL_BACKOFF` so back-to-back hidden-drops don't keep escalating the retry delay.
+- [x] SCAN-1124. **giftCards `POST /` skipped validation for `customer_id` (no FK precheck), `recipient_name`, `recipient_email`, `notes`, and `expires_at`** — attacker could stash multi-MB strings per row, point the card at a non-existent customer (500 via FK), or store a malformed expires_at that crashed later `isExpired()` logic. Added: `validateId` + soft-delete-aware customer existence check, `validateTextLength` on recipient_name (120), recipient_email (200), notes (1000), and `validateIsoDate` on expires_at. audit payload now uses the validated id.
+
 ## Closed 2026-04-24 (wave-65 TV PII + cash-register envelope + recurring-invoice orphans)
 
 - [x] SCAN-1120 [HIGH]. **TV board routes were intentionally public (wall-mounted screens can't auth) but had no rate limit AND returned `customer_first_name` + assigned-tech full name** — any unauth WAN caller could scrape a live feed of first names + device makes + order ids when `tv_display_enabled=1`. Added two layered defences: (1) per-IP `consumeWindowRate('tv_public', ip, 30, 60_000)` that returns 429 with Retry-After on flood, and (2) redacted `customer_first_name` + `assigned_tech` to `null` in the public shape — signage only needs order id + device + status. Re-surfacing identifiers needs a dedicated authed route.

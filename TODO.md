@@ -727,10 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-65 scan-loop findings (2026-04-24) — tv + pos + recurring + ws + gift/deposits/bench/search
-- [ ] SCAN-1123. **[MED] `useWebSocket` visibilitychange reconnect keeps elevated backoff + stuck auth-rejected across tabs.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useWebSocket.ts:327-331,351-356; fix=reset-backoff+clear-authRejected-if-token -->
-- [ ] SCAN-1124. **[MED] giftCards POST `/` — no customer FK precheck, no field length bounds.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/giftCards.routes.ts:253-298; fix=validateId+validateTextLength+validateIsoDate -->
 - [ ] SCAN-1125. **[LOW] deposits.routes Number.isFinite vs null — type-hygiene smell.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/deposits.routes.ts:62-83; fix=use-!==null -->
 - [ ] SCAN-1126. **[LOW] tv.routes device_names join no DISTINCT/ORDER BY — unstable duplicates.**

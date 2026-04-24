@@ -348,11 +348,22 @@ export function useWebSocket() {
     connect();
 
     // Reconnect when tab becomes visible again (if disconnected while hidden)
+    // SCAN-1123: if a 4001 auth-reject left `authRejectedRef=true`, previously
+    // we never reconnected on visibilitychange even after a re-login in
+    // another tab (that tab doesn't dispatch `auth-cleared` for this
+    // window). Check for a fresh access token when returning to visible —
+    // if one is present, clear the auth-reject latch and attempt to
+    // reconnect with the new token. Also unconditionally reset backoff so
+    // back-to-back hidden-drops don't keep escalating the retry delay.
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !wsRef.current && !authRejectedRef.current) {
-        backoffRef.current = INITIAL_BACKOFF;
-        connect();
+      if (document.visibilityState !== 'visible' || wsRef.current) return;
+      if (authRejectedRef.current) {
+        const hasToken = !!localStorage.getItem('accessToken');
+        if (!hasToken) return;
+        authRejectedRef.current = false;
       }
+      backoffRef.current = INITIAL_BACKOFF;
+      connect();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
