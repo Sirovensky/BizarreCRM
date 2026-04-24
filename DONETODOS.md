@@ -2410,6 +2410,21 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-755. **customers bulk-tag invalid IDs silent** — FIXED wave-29 via invalid_ids array in response.
 - [x] SCAN-756. **super-admin failed-login count + lock non-atomic** — FIXED wave-29 via single UPDATE with CASE WHEN.
 - [x] SCAN-757. **invoices totalPaidRaw SUM unvalidated** — FIXED wave-29 via CASE WHEN amount IS NOT NULL AND amount >= 0.
+
+## Closed 2026-04-23 (wave-30)
+- [x] SCAN-758. **portal PIN verification timing-leak** — FIXED wave-30 via rate-limit-first + dummy bcrypt compare + generic 401 both paths.
+- [x] SCAN-759. **tickets photo delete path traversal** — FIXED wave-30 via path.resolve + startsWith(tenantUploadsRoot) guard at tickets.routes.ts:2489 + bulk cleanup :2989.
+- [x] SCAN-761. **refund concurrent cap bypass** — FIXED wave-30 via conditional INSERT ... SELECT WHERE subquery_sum + amount <= amount_paid at refunds.routes.ts:205-235.
+- [x] SCAN-773. **portal last-4 collision** — FIXED wave-30 via filter + count check (0→404, >1→409, exact-1→proceed) at portal.routes.ts:487.
+- [x] SCAN-774. **inventory DELETE missing gate** — verified wave-30, requirePermission('inventory.delete') already at inventory.routes.ts:1214.
+- [x] SCAN-777. **portal CSRF SameSite** — FIXED wave-30 via sameSite: 'strict' at utils/csrf.ts.
+- [x] SCAN-779. **refund state machine** — FIXED wave-30 via LEGAL_REFUND_TRANSITIONS + assertRefundTransition at refunds.routes.ts:21-34 + 2 call sites.
+- [x] SCAN-780. **portal widget CSP** — FIXED wave-30 via Content-Type/CSP/X-Content-Type-Options headers at /widget.js.
+- [x] SCAN-629. **refunds reverseCommission outside tx** — verified wave-30, try/catch already present at refunds.routes.ts:316-350.
+- [x] SCAN-630. **portal consumeRate non-atomic** — verified wave-30, consumeRate wrapper using consumeWindowRate at portal.routes.ts:77-85.
+- [x] SCAN-631. **portal /login rate bucket not cleared on success** — verified wave-30, clearRateLimit at portal.routes.ts:638.
+- [x] SCAN-632. **portal idle timezone drift** — verified wave-30 (previously fixed by wave-27 SCAN-720 parseLastUsed).
+- [x] SCAN-639. **portal embed-config dynamic import** — verified wave-30, uses static top-of-file import at portal.routes.ts:1496.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

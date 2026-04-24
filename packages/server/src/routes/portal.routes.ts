@@ -484,11 +484,20 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
     customerPhones.push(normalizePhone(p.phone));
   }
 
-  const phoneMatch = customerPhones.some(p => p.length >= 4 && p.slice(-4) === digits);
+  // SCAN-773: count matching phones to detect last-4 collision across multiple
+  // stored numbers. If more than one distinct phone ends in the same 4 digits
+  // we can't determine which is authoritative — reject rather than silently
+  // accept an ambiguous match.
+  const matchingPhones = customerPhones.filter(p => p.length >= 4 && p.slice(-4) === digits);
 
-  if (!phoneMatch) {
+  if (matchingPhones.length === 0) {
     audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'phone_mismatch' });
     res.status(404).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'No matching repair found. Please check your ticket ID and phone number.' });
+    return;
+  }
+  if (matchingPhones.length > 1) {
+    audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'phone_last4_collision' });
+    res.status(409).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Multiple phone numbers match — please provide your full phone number or contact the shop.' });
     return;
   }
 
@@ -535,6 +544,26 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     return;
   }
 
+  // SCAN-758: rate-limit BEFORE customer lookup, keyed by IP + last-4 of the
+  // submitted phone hash so the key never reveals whether the phone is in our
+  // DB. Previously the per-customer-id bucket ran after lookup, leaking a
+  // timing delta: "customer not found" returned fast (no bcrypt), "wrong PIN"
+  // returned slow (bcrypt). Now the flow is:
+  //   1. Rate-limit on IP+hash(last4) — happens before any DB read.
+  //   2. Customer lookup.
+  //   3. bcrypt always runs (dummy hash when customer not found) so timing
+  //      is identical regardless of whether the phone exists.
+  const PIN_VERIFY_MAX = 5;
+  const PIN_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+  const last4 = normalized.slice(-4);
+  const rateKey = crypto.createHash('sha256').update(`${ip}:${last4}`).digest('hex').slice(0, 16);
+  const pinRlResult = consumeWindowRate(req.db, RL.PIN_VERIFY, rateKey, PIN_VERIFY_MAX, PIN_VERIFY_WINDOW_MS);
+  if (!pinRlResult.allowed) {
+    res.setHeader('Retry-After', String(pinRlResult.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many login attempts. Please try again later.' });
+    return;
+  }
+
   // SEC-L2: exact equality on fully-normalized digits (no LIKE suffix match).
   // Suffix matching lets "9995551234567" collide with "5551234567" — any stored
   // number whose last 10 digits happen to match the input would authenticate
@@ -570,30 +599,31 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     }
   }
 
-  if (!foundCustomer || !foundCustomer.portal_pin) {
-    // Generic error — don't reveal whether account exists
+  // SCAN-758: always run bcrypt to equalise timing whether or not the customer
+  // exists. A dummy hash (cost-10) is used when the customer is not found so
+  // the response time is indistinguishable from a real wrong-PIN attempt.
+  const DUMMY_HASH = '$2b$10$invalidhashpadding000000000000000000000000000000000000000';
+  const hashToVerify = (foundCustomer?.portal_pin as string | undefined) ?? DUMMY_HASH;
+  const pinValid = await bcrypt.compare(pin, hashToVerify);
+
+  if (!foundCustomer || !foundCustomer.portal_pin || !pinValid) {
+    // Generic error — don't reveal whether the account exists or the PIN was wrong.
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
     return;
   }
 
-  // SEC-H87: per-customer_id rate limit (5 / 10min). Must run after customer
-  // lookup so we have the stable customer_id (not just IP). Uses consumeWindowRate
-  // for atomic check-and-record. On the Nth attempt that hits the cap we also
-  // send a lockout SMS to the customer's primary phone so they know to wait.
-  const PIN_VERIFY_MAX = 5;
-  const PIN_VERIFY_WINDOW_MS = 10 * 60 * 1000;
-  const pinRlResult = consumeWindowRate(
+  // SEC-H87: per-customer lockout SMS on rate-limit hit. This bucket is now
+  // secondary (the IP+hash bucket above fires first), but we keep the
+  // customer-id bucket for the lockout-SMS notification path so legitimate
+  // customers are alerted when someone is brute-forcing their account.
+  const customerRlResult = consumeWindowRate(
     req.db,
-    RL.PIN_VERIFY,
+    'portal_pin_notify_check',
     `${foundCustomer.id}`,
     PIN_VERIFY_MAX,
     PIN_VERIFY_WINDOW_MS,
   );
-  if (!pinRlResult.allowed) {
-    // SEC-H87: Fire lockout SMS exactly once per lockout window. Use a
-    // one-shot "notified" marker (category=portal_pin_notify, max=1 per
-    // same window) so repeated 429s within the same 10-min window don't
-    // spam the customer's phone. consumeWindowRate atomically marks it.
+  if (!customerRlResult.allowed) {
     const notifyResult = consumeWindowRate(
       req.db,
       'portal_pin_notify',
@@ -602,7 +632,6 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
       PIN_VERIFY_WINDOW_MS,
     );
     if (notifyResult.allowed) {
-      // First time hitting lockout in this window — send the SMS.
       try {
         const custRow = await adb.get<AnyRow>(
           'SELECT phone, mobile FROM customers WHERE id = ?',
@@ -622,20 +651,12 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
         logger.warn('portal PIN lockout SMS failed', { customer_id: foundCustomer.id, error: smsErr });
       }
     }
-    res.setHeader('Retry-After', String(pinRlResult.retryAfterSeconds));
-    res.status(429).json({ success: false, message: 'Too many PIN attempts for this customer' });
-    return;
-  }
-
-  const pinValid = await bcrypt.compare(pin, foundCustomer.portal_pin);
-  if (!pinValid) {
-    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
-    return;
   }
 
   // SCAN-631: clear PIN_VERIFY bucket on success so the customer can log in
   // again within the same window without being blocked by their own attempts.
-  clearRateLimit(req.db, RL.PIN_VERIFY, foundCustomer.id.toString());
+  // Key must match the rateKey used above (IP+hash(last4)).
+  clearRateLimit(req.db, RL.PIN_VERIFY, rateKey);
 
   // Create full-scope session
   const token = generateToken();
@@ -1522,8 +1543,15 @@ router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) =>
 // GET /widget.js — Embeddable widget JavaScript
 // ---------------------------------------------------------------------------
 router.get('/widget.js', (_req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('Cache-Control', 'public, max-age=3600');
+  // SCAN-780: explicit security headers for the embeddable widget script.
+  // X-Content-Type-Options prevents MIME sniffing. CSP restricts what the
+  // script itself can load (none beyond inline execution needed for the
+  // widget's own code). Cache-Control reduced to 5 min so security patches
+  // roll out quickly to customer-site embeds.
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src *; style-src 'unsafe-inline'; img-src data: https:");
+  res.setHeader('Cache-Control', 'public, max-age=300');
   res.send(getWidgetScript());
 });
 

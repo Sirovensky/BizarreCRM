@@ -1551,3 +1551,14 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-772. **webhook IPv6 SSRF guard misses zone-id syntax `fe80::1%eth0` — zone IDs pass simple fe80::/10 string match** — `packages/server/src/services/webhooks.ts:80-104`. Fix: strip zone-id before parse + validate.
 - [ ] SCAN-776. **[LOW] backup wipe filename uses 3-byte random (24-bit) — same-second wipe collision possible** — `packages/server/src/services/backup.ts:606`. Fix: crypto.randomBytes(8).
 - [ ] SCAN-780. **[LOW] portal widget script `res.send(getWidgetScript())` no CSP header — embedded on customer sites** — `packages/server/src/routes/portal.routes.ts:1503`. Fix: setHeader CSP + X-Content-Type-Options.
+
+### Wave-30 scan-loop findings (2026-04-23) — top impactful
+- [ ] SCAN-783. **giftCards `new Date(card.expires_at)` no null guard — expired cards may bypass check** — `packages/server/src/routes/giftCards.routes.ts:225,311`. Fix: null check + Date.parse.
+- [ ] SCAN-785. **paymentLinks 3 `new Date(row.expires_at)` sites no null guard — auto-expire silently fails** — `packages/server/src/routes/paymentLinks.routes.ts:250,279,333`. Fix: Date.parse guard.
+- [ ] SCAN-786. **pos counter CRN fallback `.catch()` silently allows duplicate order_id — no UNIQUE constraint on invoice.order_id** — `packages/server/src/routes/pos.routes.ts:2121`. Fix: throw on counter fail OR add UNIQUE migration.
+- [ ] SCAN-787. **pos audit write `.catch(err) { console.error }` silent — failed returns still mutate** — `packages/server/src/routes/pos.routes.ts:2163`. Fix: logger.error + consider DB retry queue.
+- [ ] SCAN-790. **pos /cash-in + /cash-out bounds-checked but non-atomic insert — in_stock math race** — `packages/server/src/routes/pos.routes.ts:202-227`. Fix: adb.transaction wrap.
+- [ ] SCAN-793. **[HIGH] deposits GET / `parseInt(customer_id)` + `parseInt(ticket_id)` no validation — NaN silently matches no rows; should 400** — `packages/server/src/routes/deposits.routes.ts:57-59`. Fix: validateId helper.
+- [ ] SCAN-797. **[MEDIUM SSRF] webhooks URL validation checks DNS for private IPs but not CNAME final target — public CNAME → private IP bypass** — `packages/server/src/services/webhooks.ts:141-200`. Fix: recursive CNAME resolution or fetch follow-redirect disabled.
+- [ ] SCAN-798. **deposits INSERT no transaction — audit-log failure leaves row committed** — `packages/server/src/routes/deposits.routes.ts:142-150`. Fix: adb.transaction wrap or audit-pre-insert.
+- [ ] SCAN-792. **giftCards `parseInt(req.params.id, 10)` no validateId — float/negative silently truncates** — `packages/server/src/routes/giftCards.routes.ts:292-294`. Fix: validateId helper.

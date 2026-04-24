@@ -2486,7 +2486,14 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
   // Try to delete the file — account for tenant slug in multi-tenant setups.
   // Capture file size BEFORE delete so we can refund storage quota.
   const tenantSlug = (req as any).tenantSlug || '';
-  const filePath = path.join(config.uploadsPath, tenantSlug, photo.file_path);
+  const tenantUploadsRoot = path.resolve(config.uploadsPath, tenantSlug);
+  const filePath = path.resolve(tenantUploadsRoot, photo.file_path);
+  if (!filePath.startsWith(tenantUploadsRoot + path.sep) && filePath !== tenantUploadsRoot) {
+    logger.error('ticket photo path traversal attempt', {
+      ticket_id: photo.ticket_id, file_path: photo.file_path, resolved: filePath,
+    });
+    throw new AppError('invalid photo path', 400);
+  }
   let deletedBytes = 0;
   try {
     const stat = fs.statSync(filePath);
@@ -2979,10 +2986,17 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
 
   // Delete photos from disk (tenant-scoped path)
   const tenantSlug = (req as any).tenantSlug || '';
-  const uploadsBase = tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath;
+  const uploadsBase = path.resolve(tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath);
   const photos = await adb.all<AnyRow>('SELECT file_path FROM ticket_photos WHERE ticket_device_id = ?', deviceId);
   for (const photo of photos) {
-    try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
+    const photoPath = path.resolve(uploadsBase, photo.file_path);
+    if (!photoPath.startsWith(uploadsBase + path.sep) && photoPath !== uploadsBase) {
+      logger.error('ticket device photo path traversal attempt', {
+        device_id: deviceId, file_path: photo.file_path, resolved: photoPath,
+      });
+      continue;
+    }
+    try { fs.unlinkSync(photoPath); } catch { /* ignore */ }
   }
 
   // Delete the device first (CASCADE removes ticket_device_parts, ticket_photos,
