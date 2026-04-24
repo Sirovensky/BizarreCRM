@@ -3,10 +3,13 @@ package com.bizarreelectronics.crm.ui.screens.pos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
+import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
@@ -95,6 +98,11 @@ data class PosUiState(
     val isProcessing: Boolean = false,
     val paymentError: String? = null,
     val lastSaleInvoiceId: Long? = null,
+    // offline
+    val isOffline: Boolean = false,
+    val pendingQueueCount: Int = 0,
+    // success screen
+    val showSuccessScreen: Boolean = false,
     // tab (phone only)
     val selectedTab: PosTab = PosTab.CATALOG,
 )
@@ -108,6 +116,8 @@ enum class PosTab { CATALOG, CART }
 class PosViewModel @Inject constructor(
     private val posApi: PosApi,
     private val parkedCartDao: ParkedCartDao,
+    private val syncQueueDao: SyncQueueDao,
+    private val networkMonitor: NetworkMonitor,
     private val gson: Gson,
 ) : ViewModel() {
 
@@ -120,6 +130,8 @@ class PosViewModel @Inject constructor(
         loadQuickAdd()
         observeParkedCount()
         observeSearchDebounced()
+        observeOfflineState()
+        observeSyncQueueCount()
     }
 
     // ── Catalog ──────────────────────────────────────────────────────────────
@@ -330,12 +342,61 @@ class PosViewModel @Inject constructor(
         _state.update { it.copy(paymentError = null) }
     }
 
+    // ── Offline state ────────────────────────────────────────────────────────
+
+    private fun observeOfflineState() {
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _state.update { it.copy(isOffline = !online) }
+            }
+        }
+    }
+
+    private fun observeSyncQueueCount() {
+        viewModelScope.launch {
+            syncQueueDao.getCount().collect { count ->
+                _state.update { it.copy(pendingQueueCount = count) }
+            }
+        }
+    }
+
+    /**
+     * Queue a sale in sync_queue for offline / cash-only scenarios.
+     * The drain-worker picks it up when connectivity is restored.
+     */
+    fun queueOfflineSale(cartJson: String, idempotencyKey: String) {
+        viewModelScope.launch {
+            runCatching {
+                syncQueueDao.insert(
+                    SyncQueueEntity(
+                        entityType = "pos_sale",
+                        entityId = 0L,
+                        operation = "complete_sale",
+                        payload = gson.toJson(
+                            mapOf(
+                                "idempotency_key" to idempotencyKey,
+                                "cart" to cartJson,
+                            )
+                        ),
+                    )
+                )
+            }
+        }
+    }
+
+    // ── Success screen ───────────────────────────────────────────────────────
+
+    fun dismissSuccessScreen() {
+        _state.update { it.copy(showSuccessScreen = false, lastSaleInvoiceId = null) }
+    }
+
     fun onSaleComplete(invoiceId: Long) {
         _state.update {
             it.copy(
                 showPaymentSheet = false,
                 isProcessing = false,
                 lastSaleInvoiceId = invoiceId,
+                showSuccessScreen = true,
                 cart = PosCartState(),
             )
         }

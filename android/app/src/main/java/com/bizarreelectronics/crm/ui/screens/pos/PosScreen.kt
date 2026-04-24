@@ -9,6 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -17,12 +21,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosCatalogGrid
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosCart
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosParkedCartsSheet
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosPaymentSheet
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosSuccessScreen
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
 /**
@@ -38,9 +45,14 @@ import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 fun PosScreen(
     onNavigateToTicketCreate: () -> Unit = {},
     onNavigateToTicket: (Long) -> Unit = {},
+    appPreferences: AppPreferences? = null,
     viewModel: PosViewModel = hiltViewModel(),
 ) {
-    PosScreenContent(viewModel = viewModel)
+    PosScreenContent(
+        viewModel = viewModel,
+        appPreferences = appPreferences,
+        onNavigateToTicketCreate = onNavigateToTicketCreate,
+    )
 }
 
 /**
@@ -50,6 +62,8 @@ fun PosScreen(
 @Composable
 internal fun PosScreenContent(
     viewModel: PosViewModel = hiltViewModel(),
+    appPreferences: AppPreferences? = null,
+    onNavigateToTicketCreate: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val isTablet = isMediumOrExpandedWidth()
@@ -59,9 +73,12 @@ internal fun PosScreenContent(
     var parkedCarts by remember { mutableStateOf<List<ParkedCartEntity>>(emptyList()) }
     var showParkedSheet by remember { mutableStateOf(false) }
 
+    // POS keyboard shortcuts — F-key focus requests
+    val searchFocusRequester = remember { FocusRequester() }
+    val posKeysFocusRequester = remember { FocusRequester() }
+
     LaunchedEffect(Unit) {
-        // Collect parked carts from Room — viewModel exposes count; we need full list for the sheet
-        // The full list is loaded on demand when the sheet opens via a separate state holder.
+        runCatching { posKeysFocusRequester.requestFocus() }
     }
 
     LaunchedEffect(state.paymentError) {
@@ -76,145 +93,197 @@ internal fun PosScreenContent(
     // For now we use an empty list; the grid handles empty state gracefully.
     val inventoryItems: List<InventoryListItem> = remember { emptyList() }
 
-    Scaffold(
-        topBar = {
-            PosTopBar(
-                parkedCount = state.parkedCount,
-                customerName = state.cart.customer?.name,
-                onParkedTap = { showParkedSheet = true },
-                onShiftTap = { /* shift management TODO */ },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        if (isTablet) {
-            // ── 2-pane layout ─────────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                // Catalog pane (60%)
-                Box(modifier = Modifier.weight(0.6f)) {
-                    PosCatalogGrid(
-                        uiState = state,
-                        inventoryItems = inventoryItems,
-                        onSearchChange = viewModel::onSearchChange,
-                        onCategorySelect = viewModel::onCategorySelect,
-                        onItemTap = { item ->
-                            viewModel.addToCart(
-                                name = item.name ?: "Item",
-                                unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
-                                itemId = item.id,
-                            )
-                        },
-                        onQuickAddTap = { qi: QuickAddItem ->
-                            viewModel.addToCart(
-                                name = qi.name,
-                                unitPriceCents = qi.priceCents,
-                                itemId = qi.id,
-                                photoUrl = qi.photoUrl,
-                            )
-                        },
-                        onBarcodeScan = viewModel::onBarcodeScanned,
-                    )
-                }
-                VerticalDivider()
-                // Cart pane (40%)
-                Box(modifier = Modifier.weight(0.4f)) {
-                    PosCart(
-                        cart = state.cart,
-                        parkedCount = state.parkedCount,
-                        onSetQty = viewModel::setLineQty,
-                        onSetUnitPrice = viewModel::setLineUnitPrice,
-                        onSetLineDiscount = viewModel::setLineDiscount,
-                        onRemoveLine = viewModel::removeLine,
-                        onSetCartDiscount = viewModel::setCartDiscount,
-                        onSetTip = viewModel::setTip,
-                        onAttachCustomer = viewModel::attachCustomer,
-                        onPark = { viewModel.parkCart() },
-                        onTender = viewModel::showPaymentSheet,
-                    )
-                }
-            }
-        } else {
-            // ── Phone tabs layout ─────────────────────────────────────────
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                TabRow(selectedTabIndex = state.selectedTab.ordinal) {
-                    Tab(
-                        selected = state.selectedTab == PosTab.CATALOG,
-                        onClick = { viewModel.selectTab(PosTab.CATALOG) },
-                        icon = { Icon(Icons.Default.LocalMall, contentDescription = null) },
-                        text = { Text("Catalog") },
-                    )
-                    Tab(
-                        selected = state.selectedTab == PosTab.CART,
-                        onClick = { viewModel.selectTab(PosTab.CART) },
-                        icon = {
-                            BadgedBox(
-                                badge = {
-                                    if (state.cart.lineCount > 0) {
-                                        Badge {
-                                            Text(
-                                                "${state.cart.lineCount}",
-                                                modifier = Modifier.semantics {
-                                                    contentDescription = "${state.cart.lineCount} items in cart"
-                                                    liveRegion = LiveRegionMode.Polite
-                                                },
-                                            )
-                                        }
-                                    }
-                                },
-                            ) {
-                                Icon(Icons.Default.ShoppingCart, contentDescription = null)
-                            }
-                        },
-                        text = { Text("Cart") },
-                    )
-                }
+    // ── Success screen overlay ────────────────────────────────────────────
+    if (state.showSuccessScreen && state.lastSaleInvoiceId != null) {
+        // Cart was already cleared in onSaleComplete; we snapshot it before clearing.
+        // For receipt display we reconstruct from invoice id — stub cart used here.
+        val completedCart = remember { PosCartState() }
+        PosSuccessScreen(
+            cart = completedCart,
+            invoiceId = state.lastSaleInvoiceId!!,
+            serverBaseUrl = "https://localhost:443",
+            appPreferences = appPreferences ?: return@PosScreenContent,
+            onNewSale = viewModel::dismissSuccessScreen,
+            onSmsSend = { _, _ -> Result.success(Unit) },
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
 
-                when (state.selectedTab) {
-                    PosTab.CATALOG -> PosCatalogGrid(
-                        uiState = state,
-                        inventoryItems = inventoryItems,
-                        onSearchChange = viewModel::onSearchChange,
-                        onCategorySelect = viewModel::onCategorySelect,
-                        onItemTap = { item ->
-                            viewModel.addToCart(
-                                name = item.name ?: "Item",
-                                unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
-                                itemId = item.id,
-                            )
-                        },
-                        onQuickAddTap = { qi ->
-                            viewModel.addToCart(
-                                name = qi.name,
-                                unitPriceCents = qi.priceCents,
-                                itemId = qi.id,
-                                photoUrl = qi.photoUrl,
-                            )
-                        },
-                        onBarcodeScan = viewModel::onBarcodeScanned,
-                        modifier = Modifier.weight(1f),
+    // ── POS keyboard shortcuts host ───────────────────────────────────────
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(posKeysFocusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.F1 -> { viewModel.clearCart(); true }
+                    Key.F2 -> { viewModel.selectTab(PosTab.CATALOG); true }
+                    Key.F3 -> { /* customer search — open dialog */ true }
+                    Key.F4 -> { /* discount dialog — open */ true }
+                    Key.F5 -> { viewModel.showPaymentSheet(); true }
+                    Key.F6 -> { viewModel.parkCart(); true }
+                    Key.F7 -> { /* print — trigger receipt action */ true }
+                    Key.F8 -> { /* refund — navigate to refunds flow */ true }
+                    Key.F -> {
+                        if (event.isCtrlPressed) {
+                            runCatching { searchFocusRequester.requestFocus() }
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            },
+    ) {
+        Scaffold(
+            topBar = {
+                Column {
+                    // Offline banner (top of POS)
+                    PosOfflineBanner(
+                        isOffline = state.isOffline,
+                        pendingQueueCount = state.pendingQueueCount,
                     )
-                    PosTab.CART -> PosCart(
-                        cart = state.cart,
+                    PosTopBar(
                         parkedCount = state.parkedCount,
-                        onSetQty = viewModel::setLineQty,
-                        onSetUnitPrice = viewModel::setLineUnitPrice,
-                        onSetLineDiscount = viewModel::setLineDiscount,
-                        onRemoveLine = viewModel::removeLine,
-                        onSetCartDiscount = viewModel::setCartDiscount,
-                        onSetTip = viewModel::setTip,
-                        onAttachCustomer = viewModel::attachCustomer,
-                        onPark = { viewModel.parkCart() },
-                        onTender = viewModel::showPaymentSheet,
-                        modifier = Modifier.weight(1f),
+                        customerName = state.cart.customer?.name,
+                        onParkedTap = { showParkedSheet = true },
+                        onShiftTap = { /* shift management TODO */ },
                     )
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            if (isTablet) {
+                // ── 2-pane layout ─────────────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    // Catalog pane (60%)
+                    Box(modifier = Modifier.weight(0.6f)) {
+                        PosCatalogGrid(
+                            uiState = state,
+                            inventoryItems = inventoryItems,
+                            onSearchChange = viewModel::onSearchChange,
+                            onCategorySelect = viewModel::onCategorySelect,
+                            onItemTap = { item ->
+                                viewModel.addToCart(
+                                    name = item.name ?: "Item",
+                                    unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
+                                    itemId = item.id,
+                                )
+                            },
+                            onQuickAddTap = { qi: QuickAddItem ->
+                                viewModel.addToCart(
+                                    name = qi.name,
+                                    unitPriceCents = qi.priceCents,
+                                    itemId = qi.id,
+                                    photoUrl = qi.photoUrl,
+                                )
+                            },
+                            onBarcodeScan = viewModel::onBarcodeScanned,
+                        )
+                    }
+                    VerticalDivider()
+                    // Cart pane (40%)
+                    Box(modifier = Modifier.weight(0.4f)) {
+                        PosCart(
+                            cart = state.cart,
+                            parkedCount = state.parkedCount,
+                            onSetQty = viewModel::setLineQty,
+                            onSetUnitPrice = viewModel::setLineUnitPrice,
+                            onSetLineDiscount = viewModel::setLineDiscount,
+                            onRemoveLine = viewModel::removeLine,
+                            onSetCartDiscount = viewModel::setCartDiscount,
+                            onSetTip = viewModel::setTip,
+                            onAttachCustomer = viewModel::attachCustomer,
+                            onPark = { viewModel.parkCart() },
+                            onTender = viewModel::showPaymentSheet,
+                        )
+                    }
+                }
+            } else {
+                // ── Phone tabs layout ─────────────────────────────────────────
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    TabRow(selectedTabIndex = state.selectedTab.ordinal) {
+                        Tab(
+                            selected = state.selectedTab == PosTab.CATALOG,
+                            onClick = { viewModel.selectTab(PosTab.CATALOG) },
+                            icon = { Icon(Icons.Default.LocalMall, contentDescription = null) },
+                            text = { Text("Catalog") },
+                        )
+                        Tab(
+                            selected = state.selectedTab == PosTab.CART,
+                            onClick = { viewModel.selectTab(PosTab.CART) },
+                            icon = {
+                                BadgedBox(
+                                    badge = {
+                                        if (state.cart.lineCount > 0) {
+                                            Badge {
+                                                Text(
+                                                    "${state.cart.lineCount}",
+                                                    modifier = Modifier.semantics {
+                                                        contentDescription = "${state.cart.lineCount} items in cart"
+                                                        liveRegion = LiveRegionMode.Polite
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    },
+                                ) {
+                                    Icon(Icons.Default.ShoppingCart, contentDescription = null)
+                                }
+                            },
+                            text = { Text("Cart") },
+                        )
+                    }
+
+                    when (state.selectedTab) {
+                        PosTab.CATALOG -> PosCatalogGrid(
+                            uiState = state,
+                            inventoryItems = inventoryItems,
+                            onSearchChange = viewModel::onSearchChange,
+                            onCategorySelect = viewModel::onCategorySelect,
+                            onItemTap = { item ->
+                                viewModel.addToCart(
+                                    name = item.name ?: "Item",
+                                    unitPriceCents = ((item.price ?: 0.0) * 100).toLong(),
+                                    itemId = item.id,
+                                )
+                            },
+                            onQuickAddTap = { qi ->
+                                viewModel.addToCart(
+                                    name = qi.name,
+                                    unitPriceCents = qi.priceCents,
+                                    itemId = qi.id,
+                                    photoUrl = qi.photoUrl,
+                                )
+                            },
+                            onBarcodeScan = viewModel::onBarcodeScanned,
+                            modifier = Modifier.weight(1f),
+                        )
+                        PosTab.CART -> PosCart(
+                            cart = state.cart,
+                            parkedCount = state.parkedCount,
+                            onSetQty = viewModel::setLineQty,
+                            onSetUnitPrice = viewModel::setLineUnitPrice,
+                            onSetLineDiscount = viewModel::setLineDiscount,
+                            onRemoveLine = viewModel::removeLine,
+                            onSetCartDiscount = viewModel::setCartDiscount,
+                            onSetTip = viewModel::setTip,
+                            onAttachCustomer = viewModel::attachCustomer,
+                            onPark = { viewModel.parkCart() },
+                            onTender = viewModel::showPaymentSheet,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
