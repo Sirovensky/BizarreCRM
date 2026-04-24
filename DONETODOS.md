@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-63 server/routes — auth gaps + bcrypt DoS)
+
+- [x] SCAN-1097 [CRIT]. **`GET /payment-links` was ungated** — `SELECT pl.*` returns the raw token column, which is the bearer secret for the public payment page. Any authenticated user (cashier/technician) could enumerate active tokens and either impersonate the link or redirect payment. Added `requireManagerOrAdmin(req)` as the first line of the handler, matching the existing gate on `GET /:id`.
+- [x] SCAN-1098 [HIGH]. **`GET /settings/users` was ungated** — dumped every staff member's `{email, username, role, is_active}` to any authenticated user, handing attackers a ready-made phishing + social-engineering target list that included admin accounts. Gated behind the `adminOnly` middleware already used by sibling POST/PUT/DELETE on the same collection.
+- [x] SCAN-1108. **`POST /settings/users` + `PUT /settings/users/:id` had no password/pin upper bound before `bcrypt.hashSync`** — bcryptjs is a pure-JS implementation; a 10 MB password string would block the Node event loop for minutes while the prep runs, stalling every other request. Added a 72-char cap on password (bcrypt truncates at 72 anyway so legitimate callers see no behavior change) and a 32-char cap on pin, on both create and update handlers.
+
 ## Closed 2026-04-24 (wave-62 server/middleware — fileUploadValidator quota TOCTOU)
 
 - [x] SCAN-1092. **`fileUploadValidator` pre-checked `currentCount + incoming > quota` OUTSIDE `withCounterLock`, then later incremented INSIDE the lock** — two concurrent uploaders could both observe `count=N`, both pass the pre-check, both reach `adjustFileCounter`, and both bump — admitting up to 2× past the cap per racing pair. Added an optional `quota` parameter to `adjustFileCounter` so the definitive read-check-write happens atomically inside the lock, plus a dedicated `FileCountQuotaExceededError` the middleware catches to return 403 and clean up uploaded files. The fast-fail pre-check is kept so obviously-over-cap requests don't waste magic-byte + virus scan work first — but the authoritative admission decision is now under the lock.

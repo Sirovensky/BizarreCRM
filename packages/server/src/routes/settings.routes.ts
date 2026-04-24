@@ -854,7 +854,12 @@ router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
 
 // ==================== Users ====================
 
-router.get('/users', async (req, res) => {
+// SCAN-1098 [HIGH]: staff email dump was ungated. Any authenticated user
+// (including revoked/low-privilege roles) could enumerate all staff emails
+// + usernames + role assignments — a ready-made phishing + social-engineering
+// target list including admin accounts. Gate behind adminOnly to match the
+// POST/PUT/DELETE sibling handlers below.
+router.get('/users', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const users = await adb.all<any>('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500');
   res.json({ success: true, data: users });
@@ -867,6 +872,13 @@ router.post('/users', adminOnly, async (req, res) => {
   const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
   if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+  // SCAN-1108: cap password/pin length BEFORE bcrypt.hashSync. bcryptjs is a
+  // pure-JS implementation — a 10MB password string would block the single
+  // Node event loop for minutes while the prep runs, stalling every other
+  // request. bcrypt truncates inputs at 72 bytes anyway so the cap is a
+  // no-op for legitimate callers.
+  if (password && password.length > 72) throw new AppError('Password must be 72 characters or fewer', 400);
+  if (pin != null && typeof pin === 'string' && pin.length > 32) throw new AppError('PIN must be 32 characters or fewer', 400);
   // SEC: Reject any role value that is not in the shared allowlist.
   if (!VALID_ROLES.has(role)) throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
 
@@ -922,6 +934,9 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active, home_location_id, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+  // SCAN-1108: mirror the POST cap — bcrypt DoS applies on PUT too.
+  if (password && password.length > 72) throw new AppError('Password must be 72 characters or fewer', 400);
+  if (pin != null && typeof pin === 'string' && pin.length > 32) throw new AppError('PIN must be 32 characters or fewer', 400);
   // SEC: Reject any role value that is not in the shared allowlist.
   if (role !== undefined && role !== null && !VALID_ROLES.has(role)) {
     throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);

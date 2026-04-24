@@ -79,8 +79,14 @@ function dollarsToCents(amount: unknown): number {
 // AUTHED endpoints — staff-facing CRUD
 // ---------------------------------------------------------------------------
 
-/** GET / — list payment links, newest first, filterable by status. */
+/** GET / — list payment links, newest first, filterable by status.
+ *  SCAN-1097 [CRIT]: previously ungated. `SELECT pl.*` returns the raw
+ *  token column, which is the bearer secret used to authenticate the
+ *  public payment page. Any authenticated user (cashier/technician) could
+ *  enumerate active tokens and redirect payments. Mirrors the existing
+ *  `requireManagerOrAdmin` gate on GET `/:id`. */
 authedRouter.get('/', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const statusFilter = validateEnum(
     req.query.status,
