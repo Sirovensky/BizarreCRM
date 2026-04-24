@@ -1639,3 +1639,14 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-906. **tenant-pool refcount-increment before caller return — exception leaks refcount** — `packages/server/src/db/tenant-pool.ts:137`. Fix: try/finally at caller.
 - [ ] SCAN-907. **invoices fireWebhook no idempotency key on retry — duplicate payment_received** — `packages/server/src/routes/invoices.routes.ts:537`. Fix: pass invoice_id+payment_id as idempotency key.
 - [ ] SCAN-908. **super-admin challenge cleanup 60s — manual delete sits in Map up to 60s** — `packages/server/src/routes/super-admin.routes.ts:156-159`. Fix: explicit delete on manual OR accept as minor.
+
+### Wave-42 scan-loop findings (2026-04-23)
+- [ ] SCAN-909. **portal widget postMessage origin uses string comparison not URL parse — protocol mismatch passes** — `packages/server/src/routes/portal.routes.ts:1579`. Fix: new URL(e.origin).origin === new URL(server).origin.
+- [ ] SCAN-910. **portal widget console.error exposes config + data-server URL to DevTools** — `packages/server/src/routes/portal.routes.ts:1514,1527`. Fix: silent fail in prod builds OR structured logger.
+- [ ] SCAN-911. **db-worker.mjs console.warn on eviction + shutdown** — `packages/server/src/db/db-worker.mjs:75,96`. Fix: structured logger via parentPort message.
+- [ ] SCAN-912. **[POSSIBLE] ws isTenantOriginAllowed JSON.parse catch logs + continues; returns true on empty allowlist** — `packages/server/src/ws/server.ts:170,235-239`. Fix: verify fail-closed behavior; document.
+- [ ] SCAN-913. **config.ts CONFIG_ENCRYPTION_KEY too-short fallback silent — warning logged but fallback still used** — `packages/server/src/config.ts:192`. Fix: hard-fail in production when key too short.
+- [ ] SCAN-914. **billing.routes.ts console.error at 3 sites** — `packages/server/src/routes/billing.routes.ts:34,64,91`. Fix: logger.error.
+- [ ] SCAN-915. **portal lockout SMS fire-and-forget** — `packages/server/src/routes/portal.routes.ts:598-602`. Fix: already logged; accept as low-priority.
+- [ ] SCAN-916. **portal /embed/config queries portal_embed_enabled separately from getStoreConfig** — `packages/server/src/routes/portal.routes.ts:215-225,1480`. Fix: add to getStoreConfig helper.
+- [ ] SCAN-917. **scheduledReports daily-report failure not audit-logged** — `packages/server/src/services/scheduledReports.ts:273-276`. Fix: audit() on per-recipient delivery fail.

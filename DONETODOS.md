@@ -2553,3 +2553,13 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-894. **automations hourly cap race** — FIXED wave-41 via per-rule atomic tx around count-check + run insert.
 - [x] SCAN-895. **configEncryption console.error** — FIXED wave-41 via createLogger + logger.error.
 - [x] SCAN-896. **admin token sliding TTL** — FIXED wave-41 via TOKEN_ABSOLUTE_MAX_MS=8h + created_at + reaper eviction.
+
+## Closed 2026-04-23 (wave-42)
+- [x] SCAN-898. **tenant-pool health-check + recursive-reopen race** — FIXED wave-42 via per-slug async mutex (withSlugLock). getTenantDb now async.
+- [x] SCAN-902. **tenant-pool MAX_POOL_SIZE eviction race** — FIXED wave-42 by same mutex (check+evict+insert atomic per slug).
+- [x] SCAN-906. **tenant-pool refcount leak** — DOCUMENTED wave-42 via caller-contract JSDoc (try/finally required). Actual fix per-caller is separate audit scope.
+- [x] SCAN-900. **invoices fireWebhook/runAutomations fire-and-forget** — VERIFIED wave-42, both functions internally wrap in try/catch with logger; comments added documenting.
+- [x] SCAN-903. **postPaymentSideEffects fire-and-forget** — VERIFIED wave-42, both call sites already use await (false-positive finding).
+- [x] SCAN-907. **fireWebhook no idempotency key** — FIXED wave-42 via `idempotency_key: payment:<invoiceId>:<paymentId>` in payload.
+- [x] SCAN-904. **device trust cookie key** — FIXED wave-42 via DEVICE_TRUST_SECRET env-var preferred path + HKDF fallback + startup warn.
+- [x] SCAN-905. **cookie secure flag** — FIXED wave-42 via `req.secure || config.nodeEnv === 'production'` at 7 cookie sites in auth.routes.
