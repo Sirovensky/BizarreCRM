@@ -313,6 +313,9 @@ dependencies {
     // Testing — unit test baseline
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    // BOM must be re-declared for androidTest scope — it does not inherit from
+    // the implementation BOM. Without this the ui-test-junit4 version is blank.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
     // §1.6 Hilt @TestInstallIn scaffold (plan:L223)
