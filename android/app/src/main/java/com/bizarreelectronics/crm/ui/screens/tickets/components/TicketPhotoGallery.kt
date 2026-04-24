@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -98,8 +99,10 @@ import java.util.UUID
  * @param ticketId      Ticket ID used for the upload URL.
  * @param deviceId      First device ID required by the upload endpoint.
  * @param multipartUpload Injected [MultipartUpload] helper.
- * @param onDeletePhoto Callback to remove a photo by [TicketPhoto.id].
- * @param reduceMotion  When true, page-flip animations are skipped.
+ * @param onDeletePhoto  Callback to remove a photo by [TicketPhoto.id].
+ * @param onAnnotatePhoto Called when the user taps "Annotate" on a photo.
+ *                        Receives the [TicketPhoto] to annotate.
+ * @param reduceMotion   When true, page-flip animations are skipped.
  */
 @Composable
 fun TicketPhotoGallery(
@@ -109,6 +112,7 @@ fun TicketPhotoGallery(
     deviceId: Long?,
     multipartUpload: MultipartUpload? = null,
     onDeletePhoto: ((Long) -> Unit)? = null,
+    onAnnotatePhoto: ((TicketPhoto) -> Unit)? = null,
     reduceMotion: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -277,11 +281,11 @@ fun TicketPhotoGallery(
                             },
                     )
 
-                    // Before/after tag chip
+                    // L750 — Before/after tag chip (display-only for server-tagged photos)
                     val typeLabel = photo.type?.replaceFirstChar { it.uppercase() }
                     if (typeLabel != null) {
                         AssistChip(
-                            onClick = {},
+                            onClick = {}, // read-only — tagging set at upload time
                             label = { Text(typeLabel, style = MaterialTheme.typography.labelSmall) },
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -313,6 +317,15 @@ fun TicketPhotoGallery(
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(Icons.Default.Share, contentDescription = "Share", modifier = Modifier.size(18.dp))
+                        }
+                        // L749 — Annotate photo
+                        if (onAnnotatePhoto != null) {
+                            FilledTonalIconButton(
+                                onClick = { onAnnotatePhoto(photo) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = "Annotate", modifier = Modifier.size(18.dp))
+                            }
                         }
                         // Delete photo
                         if (onDeletePhoto != null) {

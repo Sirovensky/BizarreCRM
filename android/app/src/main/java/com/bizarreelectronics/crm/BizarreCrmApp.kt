@@ -7,7 +7,11 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import coil3.ImageLoader
 import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
+import okio.Path.Companion.toOkioPath
 import com.bizarreelectronics.crm.data.drafts.DraftStore
 import com.bizarreelectronics.crm.service.NotificationChannelBootstrap
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -27,7 +31,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
-class BizarreCrmApp : Application(), Configuration.Provider {
+class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -69,6 +73,31 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
             .build()
+
+    /**
+     * L752 — Thumbnail cache: configure Coil's disk cache at 100 MB so photo
+     * thumbnails are cached across app sessions. Memory cache defaults to 25 %
+     * of available heap. Full-size images are fetched lazily on gallery tap.
+     *
+     * Implements [SingletonImageLoader.Factory] so Coil picks this up
+     * automatically without requiring a manual `SingletonImageLoader.setUnsafe`.
+     */
+    override fun newImageLoader(context: android.content.Context): ImageLoader {
+        val cacheDir = java.io.File(cacheDir, "coil_image_cache")
+        return ImageLoader.Builder(context)
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.toOkioPath())
+                    .maxSizeBytes(100L * 1024 * 1024) // 100 MB
+                    .build()
+            }
+            .build()
+    }
 
     override fun onCreate() {
         System.loadLibrary("sqlcipher")

@@ -173,6 +173,21 @@ interface TicketApi {
     @POST("tickets/{id}/pin-dashboard")
     suspend fun pinToDashboard(@Path("id") id: Long): ApiResponse<PinDashboardResponse>
 
+    // ─── L741 — QC sign-off ───────────────────────────────────────────────────
+
+    /**
+     * POST /tickets/:id/qc-sign — submit a QC sign-off with signature PNG +
+     * optional comments. 404-tolerant: callers fall back to attaching the
+     * signature as a note with `is_qc_sign_off=true` when the server returns 404.
+     */
+    @Multipart
+    @POST("tickets/{id}/qc-sign")
+    suspend fun qcSignOff(
+        @Path("id") ticketId: Long,
+        @Part signature: MultipartBody.Part,
+        @Part("comments") comments: RequestBody,
+    ): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
     // U3 fix: photo upload endpoint backing PhotoCaptureScreen's gallery picker.
     // Server matches on ticket-level photos (tickets.routes.ts POST /:id/photos).
     // Uses multipart field name "photos" per upload.array('photos', 20).

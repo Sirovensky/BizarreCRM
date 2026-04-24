@@ -75,6 +75,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import com.bizarreelectronics.crm.ui.screens.tickets.components.QcSignOffDialog
+import com.bizarreelectronics.crm.ui.screens.tickets.components.StatusNotifyPreviewDialog
+import com.bizarreelectronics.crm.util.MultipartUpload
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -115,6 +123,16 @@ private fun stripHtml(html: String?): String {
     return html.replace(Regex("<[^>]*>"), "").trim()
 }
 
+/**
+ * Captures a status-change request that is waiting for the notify-preview
+ * dialog decision (L742). Held in [TicketDetailUiState.pendingStatusChange]
+ * until the user taps Send / Skip / Cancel.
+ */
+data class PendingStatusChange(
+    val newStatusId: Long,
+    val notifications: List<com.bizarreelectronics.crm.ui.screens.tickets.components.NotificationSpec>,
+)
+
 data class TicketDetailUiState(
     val ticket: TicketEntity? = null,
     val statuses: List<TicketStatusItem> = emptyList(),
@@ -150,6 +168,11 @@ data class TicketDetailUiState(
     val employees: List<com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem> = emptyList(),
     // ─── L740 — Transition guard inline errors ────────────────────────────────
     val statusTransitionError: String? = null,
+    // ─── L741 — QC sign-off ──────────────────────────────────────────────────
+    val showQcSignOffDialog: Boolean = false,
+    // ─── L742 — Status notify preview ────────────────────────────────────────
+    /** Non-null while the status-notify preview dialog is open. */
+    val pendingStatusChange: PendingStatusChange? = null,
 )
 
 @HiltViewModel
@@ -163,6 +186,8 @@ class TicketDetailViewModel @Inject constructor(
     private val syncQueueDao: com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao,
     private val serverMonitor: com.bizarreelectronics.crm.util.ServerReachabilityMonitor,
     private val gson: com.google.gson.Gson,
+    private val multipartUpload: MultipartUpload,
+    private val smsApi: com.bizarreelectronics.crm.data.remote.api.SmsApi,
 ) : ViewModel() {
 
     private val ticketId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -722,6 +747,180 @@ class TicketDetailViewModel @Inject constructor(
     }
 
     // -----------------------------------------------------------------------
+    // L741 — QC sign-off
+    // -----------------------------------------------------------------------
+
+    fun showQcSignOff() {
+        _state.value = _state.value.copy(showQcSignOffDialog = true)
+    }
+
+    fun dismissQcSignOff() {
+        _state.value = _state.value.copy(showQcSignOffDialog = false)
+    }
+
+    /**
+     * Submit QC sign-off. Attempts `POST /tickets/:id/qc-sign` with the
+     * signature PNG as multipart. On 404, falls back to attaching the
+     * signature as a photo attachment with tag "signature" via
+     * [MultipartUpload], and adds a note with "QC sign-off" flag.
+     *
+     * @param signatureBitmap  PNG rendered from [SignatureState.capture].
+     * @param comments         Optional technician comment.
+     * @param multipartUpload  WorkManager upload helper.
+     * @param cacheDir         App cache dir for temp file.
+     */
+    fun submitQcSignOff(
+        signatureBitmap: android.graphics.Bitmap,
+        comments: String,
+        cacheDir: java.io.File,
+    ) {
+        _state.value = _state.value.copy(showQcSignOffDialog = false, isActionInProgress = true)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Persist bitmap to cache
+            val key = java.util.UUID.randomUUID().toString()
+            val sigFile = java.io.File(cacheDir, "qc_sig_${key.take(8)}.png")
+            try {
+                sigFile.outputStream().use { out ->
+                    signatureBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                }
+
+                val pngMediaType = "image/png".toMediaType()
+                val textMediaType = "text/plain".toMediaType()
+                val sigPart = okhttp3.MultipartBody.Part.createFormData(
+                    "signature",
+                    sigFile.name,
+                    sigFile.asRequestBody(pngMediaType),
+                )
+                val commentsPart = comments.toRequestBody(textMediaType)
+
+                try {
+                    ticketApi.qcSignOff(ticketId, sigPart, commentsPart)
+                    withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off recorded") }
+                } catch (e: Exception) {
+                    val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
+                    if (is404) {
+                        // Fallback: attach signature as photo + note
+                        multipartUpload.enqueue(
+                            localPath = sigFile.absolutePath,
+                            targetUrl = "/api/v1/tickets/$ticketId/photos",
+                            fields = mapOf(
+                                "type" to "signature",
+                                "ticket_device_id" to (_state.value.devices.firstOrNull()?.id?.toString() ?: "0"),
+                            ),
+                            idempotencyKey = key,
+                            contentType = "image/png",
+                        )
+                        // Add note with QC flag
+                        val noteText = buildString {
+                            append("QC sign-off")
+                            if (comments.isNotBlank()) append(": $comments")
+                        }
+                        try {
+                            ticketApi.addNote(
+                                ticketId,
+                                mapOf("type" to "internal", "content" to noteText, "is_qc_sign_off" to true),
+                            )
+                        } catch (_: Exception) {}
+                        withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off saved (signature attached)") }
+                    } else {
+                        Timber.tag("QcSignOff").e(e, "qcSignOff failed")
+                        withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off failed: ${e.message}") }
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.tag("QcSignOff").e(e, "bitmap save failed")
+                withStateOnMain { copy(isActionInProgress = false, actionMessage = "Failed to save signature") }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // L742 — Status notify preview
+    // -----------------------------------------------------------------------
+
+    /**
+     * Called instead of [changeStatus] when the target status has
+     * [TicketStatusItem.notifyCustomer] == 1. Shows [StatusNotifyPreviewDialog]
+     * with mock notification specs derived from the server status data.
+     *
+     * Real notification specs arrive via an extended status payload
+     * (`StatusDto.notifications`). Until the server exposes that field,
+     * we synthesise a placeholder spec so the UI flow is exercised.
+     */
+    fun requestStatusChangeWithNotify(newStatusId: Long) {
+        val targetStatus = _state.value.statuses.find { it.id == newStatusId }
+        val shouldNotify = targetStatus?.notifyCustomer == 1
+        if (!shouldNotify) {
+            changeStatus(newStatusId)
+            return
+        }
+
+        // Build a placeholder NotificationSpec so the dialog can preview
+        val phone = _state.value.ticketDetail?.customer?.phone
+            ?: _state.value.ticketDetail?.customer?.mobile
+            ?: _state.value.ticket?.customerPhone
+        val specs = buildList {
+            if (!phone.isNullOrBlank()) {
+                add(
+                    com.bizarreelectronics.crm.ui.screens.tickets.components.NotificationSpec(
+                        channel = "sms",
+                        recipient = phone,
+                        body = "Your repair status has been updated to \"${targetStatus?.name}\".",
+                    )
+                )
+            }
+        }
+
+        _state.value = _state.value.copy(
+            pendingStatusChange = PendingStatusChange(
+                newStatusId = newStatusId,
+                notifications = specs,
+            ),
+        )
+    }
+
+    fun confirmStatusChangeWithNotify(sendNotifications: Boolean) {
+        val pending = _state.value.pendingStatusChange ?: return
+        _state.value = _state.value.copy(pendingStatusChange = null)
+
+        // Apply the status change
+        changeStatus(pending.newStatusId)
+
+        if (!sendNotifications) return
+
+        // Fire notifications
+        val phone = _state.value.ticketDetail?.customer?.phone
+            ?: _state.value.ticketDetail?.customer?.mobile
+            ?: _state.value.ticket?.customerPhone
+        if (phone.isNullOrBlank()) return
+
+        val smsBody = pending.notifications
+            .firstOrNull { it.channel == "sms" }?.body ?: return
+
+        viewModelScope.launch {
+            try {
+                smsApi.sendSms(mapOf("to" to phone, "message" to smsBody))
+            } catch (e: Exception) {
+                Timber.tag("StatusNotify").w(e, "SMS send after status change failed")
+            }
+        }
+    }
+
+    fun cancelPendingStatusChange() {
+        _state.value = _state.value.copy(pendingStatusChange = null)
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    private suspend fun withStateOnMain(update: TicketDetailUiState.() -> TicketDetailUiState) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            _state.value = _state.value.update()
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Override loadTicketDetail to detect 404 (L680)
     // -----------------------------------------------------------------------
 }
@@ -865,6 +1064,35 @@ fun TicketDetailScreen(
             onTicketTap = { /* navigate to ticket — same screen, replace stack */ onBack() },
             onDismiss = { viewModel.dismissDeviceHistory() },
         )
+    }
+
+    // ─── L741 — QC sign-off bottom sheet ─────────────────────────────────────
+    if (state.showQcSignOffDialog) {
+        QcSignOffDialog(
+            reduceMotion = reduceMotion,
+            onConfirm = { bitmap, comments ->
+                viewModel.submitQcSignOff(
+                    signatureBitmap = bitmap,
+                    comments = comments,
+                    cacheDir = context.cacheDir,
+                )
+            },
+            onDismiss = { viewModel.dismissQcSignOff() },
+        )
+    }
+
+    // ─── L742 — Status notify preview dialog ─────────────────────────────────
+    state.pendingStatusChange?.let { pending ->
+        if (pending.notifications.isNotEmpty()) {
+            val targetName = state.statuses.find { it.id == pending.newStatusId }?.name ?: "New Status"
+            StatusNotifyPreviewDialog(
+                newStatusName = targetName,
+                notifications = pending.notifications,
+                onSend = { viewModel.confirmStatusChangeWithNotify(sendNotifications = true) },
+                onSkip = { viewModel.confirmStatusChangeWithNotify(sendNotifications = false) },
+                onCancel = { viewModel.cancelPendingStatusChange() },
+            )
+        }
     }
 
     // ─── L740 — Status transition error snackbar ──────────────────────────────
@@ -1054,6 +1282,22 @@ fun TicketDetailScreen(
                                         viewModel.pinToDashboard()
                                     },
                                 )
+                                // L741 — QC sign-off (admin / manager / tech)
+                                run {
+                                    val qcRole = state.userRole?.lowercase()?.let { r ->
+                                        r == "admin" || r == "manager" || r == "tech" || r == "owner"
+                                    } ?: false
+                                    if (qcRole) {
+                                        DropdownMenuItem(
+                                            text = { Text("QC sign-off") },
+                                            leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                viewModel.showQcSignOff()
+                                            },
+                                        )
+                                    }
+                                }
                                 // L681 — Destructive actions gated on privileged role
                                 if (isPrivilegedRole) {
                                     DropdownMenuItem(
@@ -1127,7 +1371,8 @@ fun TicketDetailScreen(
                                     },
                                     onClick = {
                                         showStatusDropdown = false
-                                        viewModel.changeStatus(status.id)
+                                        // L742 — show notify preview if status triggers customer notification
+                                        viewModel.requestStatusChangeWithNotify(status.id)
                                     },
                                     enabled = status.id != ticket?.statusId,
                                 )
