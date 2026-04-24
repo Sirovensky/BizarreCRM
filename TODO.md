@@ -718,8 +718,6 @@ Verified working. Not TODOs.
 ### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
 - [ ] SCAN-1063. **[HIGH/SSRF] `fetchWithSsrfGuard` checks DNS then fetches original hostname — DNS rebinding window open.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/ssrfGuard.ts:185-198; fix=use-resolved-ip-with-Host-header -->
-- [ ] SCAN-1065. **`checkWindowRate` SELECT + `recordWindowFailure` INSERT are not transactional — TOCTOU race.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:18-36; fix=use-consumeWindowRate-or-tx -->
 - [ ] SCAN-1066. **WS broadcast iterates global allClients set per event — O(totalSockets), not O(tenantSockets).**
   <!-- meta: scope=server/ws; files=packages/server/src/ws/server.ts:640-675; fix=per-tenant-Map -->
 

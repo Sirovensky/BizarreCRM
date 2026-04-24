@@ -14,25 +14,37 @@ interface RateLimitEntry {
 // Window-based rate limiting (login IP, login user, PIN)
 // ---------------------------------------------------------------------------
 
-/** Check if the key is within the allowed attempt count for the given window. */
+/**
+ * Check if the key is within the allowed attempt count for the given window.
+ *
+ * SCAN-1065: the SELECT and follow-up `recordWindowFailure` INSERT (at the
+ * caller) were separate statements, so two concurrent writers could both
+ * see count=N, both write N+1, and both pass the check. Wrapping the
+ * SELECT (+ optional expired-window DELETE) in a transaction serialises
+ * the read against other writers on the same connection. Callers that
+ * want a single atomic check-and-consume should prefer `consumeWindowRate`.
+ */
 export function checkWindowRate(
   db: Database.Database, category: string, key: string,
   maxAttempts: number, windowMs: number,
 ): boolean {
   const now = Date.now();
-  const row = db.prepare(
-    'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
-  ).get(category, key) as RateLimitEntry | undefined;
+  const tx = db.transaction((cat: string, k: string, max: number, win: number): boolean => {
+    const row = db.prepare(
+      'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?'
+    ).get(cat, k) as RateLimitEntry | undefined;
 
-  if (!row) return true;
+    if (!row) return true;
 
-  // Window expired — clean up and allow
-  if (now - row.first_attempt > windowMs) {
-    db.prepare('DELETE FROM rate_limits WHERE category = ? AND key = ?').run(category, key);
-    return true;
-  }
+    // Window expired — clean up and allow
+    if (now - row.first_attempt > win) {
+      db.prepare('DELETE FROM rate_limits WHERE category = ? AND key = ?').run(cat, k);
+      return true;
+    }
 
-  return row.count < maxAttempts;
+    return row.count < max;
+  });
+  return tx(category, key, maxAttempts, windowMs);
 }
 
 /**
