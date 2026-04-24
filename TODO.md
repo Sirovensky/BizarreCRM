@@ -729,10 +729,6 @@ Verified working. Not TODOs.
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
 - [ ] SCAN-1085. **[MED] `useDraft` debounced-save timer may fire after unmount — setState warn + unreliable cleanup.**
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:49-67; fix=guard-setState-with-mounted-ref+null-timerRef -->
-- [ ] SCAN-1087. **[LOW] `useSettings.getSetting` not memoized — defeats downstream useEffect dep memoization.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:43-47; fix=useCallback-around-getSetting -->
-- [ ] SCAN-1089. **[LOW] `useDefaultTaxRate` has dead `data.data.data` triple-envelope fallback + any shape.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDefaultTaxRate.ts:24-25; fix=drop-fallback+type-response -->
 - [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
 - [ ] SCAN-1093. **[MED] `stepUpTotp` replay Map keyed on current 30s window only — skew-accepted codes replayable at bucket boundary.**

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { settingsApi } from '@/api/endpoints';
 
 type SettingsMap = Record<string, string>;
@@ -40,9 +41,14 @@ export function useSettings(): UseSettingsReturn {
     staleTime: 5 * 60 * 1000,
   });
 
-  const getSetting = (key: string, defaultValue = ''): string => {
-    return data?.[key] ?? defaultValue;
-  };
+  // SCAN-1087: previously `getSetting` was recreated on every render, so
+  // downstream consumers that pass it as a useEffect/useMemo dependency
+  // re-ran on every unrelated render. Memoize with `useCallback` keyed on
+  // `data` so the identity only changes when settings actually change.
+  const getSetting = useCallback(
+    (key: string, defaultValue = ''): string => data?.[key] ?? defaultValue,
+    [data],
+  );
 
   return { settings: data ?? {}, isLoading, isError, error, getSetting };
 }

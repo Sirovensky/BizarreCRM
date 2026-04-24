@@ -21,8 +21,13 @@ export function useDefaultTaxRate(): number {
     retry: 1,
   });
 
-  const taxClasses: TaxClass[] =
-    data?.data?.data?.tax_classes ?? data?.data?.data ?? [];
+  // SCAN-1089: `data.data.data.tax_classes` was a dead triple-envelope fallback
+  // — no current route returns that shape. `settingsApi.getTaxClasses()`
+  // resolves to `AxiosResponse<{success:true; data: TaxClass[]}>`, so the only
+  // correct unwrap is `data.data.data`. Drop the fallback and narrow via a
+  // runtime `Array.isArray` so malformed responses don't silently widen.
+  const payload = data?.data?.data;
+  const taxClasses: TaxClass[] = Array.isArray(payload) ? payload : [];
 
   const defaultClass =
     taxClasses.find((tc) => tc.is_default) ?? taxClasses[0] ?? null;

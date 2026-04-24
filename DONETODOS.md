@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-62 web/hooks — memoization + dead fallback)
+
+- [x] SCAN-1087. **`useSettings.getSetting` was recreated on every render** — any consumer that passed it as a `useEffect` / `useMemo` dependency re-ran on every unrelated render of the host. Wrapped in `useCallback` keyed on `data`, so the function identity is stable between settings refetches and consumers memoize correctly.
+- [x] SCAN-1089. **`useDefaultTaxRate` unwrapped with a dead `data.data.data.tax_classes ?? data.data.data` triple-envelope fallback** — no current route returns the `.tax_classes` nested shape, so the first branch was dead. Replaced with a single `data?.data?.data` read + `Array.isArray` runtime guard, so malformed responses fall through to `[]` instead of typing as `TaxClass[]` and crashing at `.find(...)`.
+
 ## Closed 2026-04-24 (wave-62 worker-pool observability + WS invalidation)
 
 - [x] SCAN-1094. **`worker-pool.runWithTimeout` folded our own task-timeout AbortErrors AND any error whose message contained "queue is full" into `WorkerPoolQueueFullError`** — the HTTP layer translates that to 503 + Retry-After:2, which hid genuine worker crashes and made observability mush for ops. Tightened the classification: only the exact Piscina message (`'Task queue is at limit'` / `'queue is full'`) OR `err.code === 'QUEUE_FULL'` becomes `WorkerPoolQueueFullError`. Timeouts + aborts now re-throw as-is, and the debug `piscina`-substring log keeps the name so ops can diagnose worker-internal failures.
