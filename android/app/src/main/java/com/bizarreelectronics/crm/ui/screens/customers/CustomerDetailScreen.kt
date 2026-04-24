@@ -3,6 +3,9 @@ package com.bizarreelectronics.crm.ui.screens.customers
 import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -655,9 +658,11 @@ class CustomerDetailViewModel @Inject constructor(
         }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun CustomerDetailScreen(
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     customerId: Long,
     onBack: () -> Unit,
     onNavigateToTicket: (Long) -> Unit,
@@ -720,15 +725,29 @@ fun CustomerDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
+            val heroName = when {
+                state.isEditing -> "Edit customer"
+                else -> customer?.let {
+                    listOfNotNull(it.firstName, it.lastName)
+                        .joinToString(" ")
+                        .ifBlank { null }
+                } ?: if (state.isLoading) "Loading..." else "Customer #$customerId"
+            }
             BrandTopAppBar(
-                title = when {
-                    state.isEditing -> "Edit customer"
-                    else -> customer?.let {
-                        listOfNotNull(it.firstName, it.lastName)
-                            .joinToString(" ")
-                            .ifBlank { null }
-                    } ?: if (state.isLoading) "Loading..." else "Customer #$customerId"
-                },
+                title = heroName,
+                titleContent = if (!state.isEditing && customer != null) ({
+                    with(sharedTransitionScope) {
+                        Text(
+                            text = heroName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.sharedElement(
+                                sharedContentState = rememberSharedContentState(key = "customer-${customerId}-name"),
+                                animatedVisibilityScope = animatedContentScope,
+                            ),
+                        )
+                    }
+                }) else null,
                 navigationIcon = {
                     IconButton(onClick = {
                         if (state.isEditing) viewModel.cancelEditing() else onBack()

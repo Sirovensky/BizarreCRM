@@ -1128,14 +1128,20 @@ fun AppNavGraph(
             // promote) now route to Screen.CheckInEntry. The new flow supports
             // optional `?customerId={id}` pre-fill for the customer-detail path.
             composable(Screen.Customers.route) {
+                @OptIn(ExperimentalSharedTransitionApi::class)
                 CustomerListScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
                     onCustomerClick = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
                 )
             }
             composable(Screen.CustomerDetail.route) { backStackEntry ->
                 val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
+                @OptIn(ExperimentalSharedTransitionApi::class)
                 CustomerDetailScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
                     customerId = customerId,
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },

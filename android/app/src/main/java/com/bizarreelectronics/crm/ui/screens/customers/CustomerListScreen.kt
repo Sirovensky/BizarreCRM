@@ -7,6 +7,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -86,9 +89,11 @@ import com.bizarreelectronics.crm.ui.screens.customers.components.rememberCustom
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun CustomerListScreen(
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     onCustomerClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
     onCreateClickWithContact: ((ImportedContact) -> Unit)? = null,
@@ -245,6 +250,8 @@ fun CustomerListScreen(
                         listState = listState,
                         state = state,
                         isTablet = isTablet,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedContentScope = animatedContentScope,
                         onCustomerClick = onCustomerClick,
                         onLongPress = viewModel::onLongPress,
                         onToggleSelect = viewModel::onToggleSelect,
@@ -326,13 +333,15 @@ private fun StatTile(label: String, value: String) {
 
 // ─── Paging list ─────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun CustomerPagingList(
     lazyPagingItems: androidx.paging.compose.LazyPagingItems<CustomerEntity>,
     listState: androidx.compose.foundation.lazy.LazyListState,
     state: CustomerListUiState,
     isTablet: Boolean,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     onCustomerClick: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
     onToggleSelect: (Long) -> Unit,
@@ -410,6 +419,8 @@ private fun CustomerPagingList(
                         isSelected = isSelected,
                         isBulkMode = state.isBulkMode,
                         isTablet = isTablet,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedContentScope = animatedContentScope,
                         onClick = {
                             if (state.isBulkMode) onToggleSelect(customer.id)
                             else onCustomerClick(customer.id)
@@ -510,13 +521,15 @@ private fun CustomerSwipeRow(
 
 // ─── Context menu row (plan:L878) ─────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun CustomerContextMenuRow(
     customer: CustomerEntity,
     isSelected: Boolean,
     isBulkMode: Boolean,
     isTablet: Boolean,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onCreateTicket: () -> Unit,
@@ -561,11 +574,17 @@ private fun CustomerContextMenuRow(
                 }
             },
             headline = {
+                with(sharedTransitionScope) {
                 Text(
                     fullName,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.sharedElement(
+                        sharedContentState = rememberSharedContentState(key = "customer-${customer.id}-name"),
+                        animatedVisibilityScope = animatedContentScope,
+                    ),
                 )
+                } // with(sharedTransitionScope)
             },
             support = {
                 if (meta != null) {
