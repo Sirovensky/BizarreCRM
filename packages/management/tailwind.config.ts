@@ -12,18 +12,21 @@ export default {
   theme: {
     extend: {
       colors: {
+        // POS redesign wave (2026-04-24) — brand cream `#fdeed0` is the
+        // project-wide primary across Android, web, and management. Dark
+        // end of ramp = onPrimary `#2b1400` dark brown for AA on light fills.
         primary: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
-          950: '#052e16',
+          50:  '#fffdf8',
+          100: '#fdf5e1',
+          200: '#fdeed0',   // ← brand cream
+          300: '#f5dca7',
+          400: '#e9c477',
+          500: '#d6a54b',
+          600: '#a66d1f',   // caramel, AA on light
+          700: '#7d4e14',
+          800: '#56330b',
+          900: '#2b1400',
+          950: '#1a0b00',
         },
         accent: {
           50: '#eff6ff',

@@ -12,21 +12,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // CROSS19/BRAND: primary accent is logo orange (not green or purple).
-        // User directive 2026-04-17 — orange from the Bizarre Electronics
-        // logo is the canonical brand accent across web + Android.
+        // POS redesign wave (2026-04-24) — brand cream `#fdeed0` is the
+        // project-wide primary (replacing previous orange). Dark end of the
+        // ramp pairs with `onPrimary #2b1400` for AA on light backgrounds.
         primary: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f58220',
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
-          950: '#431407',
+          50:  '#fffdf8',
+          100: '#fdf5e1',
+          200: '#fdeed0',   // ← brand cream (the canonical primary)
+          300: '#f5dca7',
+          400: '#e9c477',
+          500: '#d6a54b',   // mid-tone, AA on light surfaces
+          600: '#a66d1f',   // caramel — Android LightColorScheme parity
+          700: '#7d4e14',
+          800: '#56330b',
+          900: '#2b1400',   // onPrimary dark brown for cream fills
+          950: '#1a0b00',
         },
         accent: {
           50: '#eff6ff',

@@ -39,9 +39,9 @@ import androidx.compose.ui.platform.LocalContext
 // Earlier commits shipped a purple palette — user directive 2026-04-17 is that
 // orange is the canonical brand accent. Teal secondary + magenta decorative
 // tertiary remain in place; only primary changes.
-val Blue600 = Color(0xFFF58220)   // logo orange — primary accent
-val Blue700 = Color(0xFF2B1400)   // very dark brown — onPrimary for contrast
-val Blue50  = Color(0xFF4A2B0C)   // dark muted orange — primaryContainer
+val Blue600 = Color(0xFFFDEED0)   // brand cream — primary accent (POS redesign 2026-04-24)
+val Blue700 = Color(0xFF2B1400)   // very dark brown — onPrimary for contrast on cream
+val Blue50  = Color(0xFF3D2C14)   // warm dark container — primaryContainer
 val Green600 = Color(0xFF34C47E)  // was #16A34A — retuned SuccessGreen
 
 val Red600   = Color(0xFFE2526C)  // was #DC2626 — hue-shifted brand error
@@ -61,7 +61,7 @@ val ErrorBg       = Color(0xFF2B0E14)  // dark-mode error bg
 
 // One-off semantic tokens preserved for downstream callers
 val StarYellow        = Color(0xFFFBBF24)  // star ratings — kept
-val RefundedPurple    = Color(0xFFF58220)  // token name kept for API; value follows primary (orange)
+val RefundedPurple    = Color(0xFFFDEED0)  // token name kept for API; value follows primary (cream)
 val OutOfStockOrange  = Color(0xFFE8A33D)  // retuned to WarningAmber family
 val ConditionAmberBg  = Color(0xFF2B1F0A)  // dark-mode amber bg
 val ConditionAmberText = Color(0xFFE8A33D)
@@ -98,9 +98,12 @@ fun contrastTextColor(bgColor: Color): Color {
 // ---------------------------------------------------------------------------
 
 private val LightColorScheme = lightColorScheme(
-    primary              = Color(0xFFC86500),   // orange shifted darker for light-bg AA
+    // POS redesign wave (2026-04-24) — cream `#fdeed0` is the project-wide primary.
+    // On light backgrounds cream is too pale for AA, so we shift down to a
+    // warm caramel (`#a66d1f`) that reads as "same brand family" but meets AA.
+    primary              = Color(0xFFA66D1F),   // caramel (cream shifted darker for light-bg AA)
     onPrimary            = Color(0xFFFFFFFF),
-    primaryContainer     = Color(0xFFFFDCB8),   // light peach container
+    primaryContainer     = Color(0xFFFDEED0),   // actual cream surface container
     onPrimaryContainer   = Color(0xFF2B1400),
     secondary            = Color(0xFF0E7A8A),   // teal darker for light-bg
     onSecondary          = Color(0xFFFFFFFF),
@@ -126,10 +129,12 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary              = Color(0xFFF58220),   // logo orange — primary accent
-    onPrimary            = Color(0xFF2B1400),   // near-black brown for contrast on orange
-    primaryContainer     = Color(0xFF4A2B0C),   // dark muted orange container
-    onPrimaryContainer   = Color(0xFFFFD4B5),   // light peach text on container
+    // POS redesign wave (2026-04-24) — cream `#fdeed0` is the project-wide primary.
+    // Pairs with dark-brown on-primary for AA contrast on warm dark surfaces.
+    primary              = Color(0xFFFDEED0),   // brand cream — primary accent
+    onPrimary            = Color(0xFF2B1400),   // near-black brown for contrast on cream
+    primaryContainer     = Color(0xFF3D2C14),   // muted warm container (darker cream tint)
+    onPrimaryContainer   = Color(0xFFFDEED0),   // cream text on container
     secondary            = Color(0xFF4DB8C9),   // teal
     onSecondary          = Color(0xFF003740),
     secondaryContainer   = Color(0xFF004E5C),
@@ -165,16 +170,16 @@ private val DarkColorScheme = darkColorScheme(
 // ---------------------------------------------------------------------------
 
 /**
- * Logo orange: the canonical Bizarre Electronics brand accent.
+ * Brand cream: canonical Bizarre Electronics primary accent (POS redesign 2026-04-24).
  * Matches primary in DarkColorScheme and Blue600.
  */
-val BrandAccent: Color = Color(0xFFF58220)
+val BrandAccent: Color = Color(0xFFFDEED0)
 
 /**
  * Returns the tenant-supplied accent color when non-null, falling back to
- * [BrandAccent] (logo orange). Future multi-tenant builds can inject a
+ * [BrandAccent] (brand cream). Future multi-tenant builds can inject a
  * per-tenant override at the theme call site; single-tenant builds simply
- * pass null and always receive the canonical orange.
+ * pass null and always receive the canonical cream.
  */
 fun tenantAccentOrFallback(override: Color? = null): Color = override ?: BrandAccent
 
