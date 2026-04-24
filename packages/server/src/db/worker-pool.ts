@@ -74,8 +74,12 @@ export async function initWorkerPool(dbPath?: string): Promise<void> {
  * The Express error handler translates this to 503 + Retry-After: 2.
  */
 export class WorkerPoolQueueFullError extends Error {
-  constructor() {
-    super('Worker pool queue full');
+  // SCAN-1139: preserve the underlying Piscina error as `cause` so triage
+  // has the original message + stack when a rare queue-full event paginates
+  // through observability tooling. `Error`'s `{ cause }` option is standard
+  // since Node 16.9 and surfaced by our logger's error-serializer.
+  constructor(cause?: unknown) {
+    super('Worker pool queue full', cause !== undefined ? { cause } : undefined);
     this.name = 'WorkerPoolQueueFullError';
   }
 }
@@ -122,7 +126,8 @@ function runWithTimeout(task: unknown): Promise<unknown> {
         msg === 'Task queue is at limit' ||
         msg === 'queue is full';
       if (isQueueFull) {
-        throw new WorkerPoolQueueFullError();
+        // SCAN-1139: pass the original Piscina error as the cause.
+        throw new WorkerPoolQueueFullError(err);
       }
       // Log unexpected Piscina-internal errors separately without swallowing them.
       if (msg.toLowerCase().includes('piscina')) {

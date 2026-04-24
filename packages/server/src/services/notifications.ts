@@ -261,12 +261,19 @@ export async function processRetryQueue(db: Database.Database, tenantSlug: strin
     // the jitter window (which burns a retry attempt prematurely).
     const claimedCount = item.retry_count + 1;
     const claimBackoffSeconds = Math.pow(5, claimedCount) * 60 + retryJitterSeconds();
+    // SCAN-1135: claim UPDATE previously matched only on `retry_count = ?`
+    // but not the `retry_count < max_retries` bound. If a row raced past
+    // its cap (e.g. manual UPDATE, or enqueue with max_retries decreased
+    // after enqueue), the initial SELECT filtered it out but a subsequent
+    // enqueue-then-process cycle could still claim it and overflow the
+    // cap. Add the upper-bound check to the WHERE so over-cap rows fall
+    // through to `changes===0` and get skipped for dead-letter handling.
     const claimResult = db.prepare(`
       UPDATE notification_retry_queue
       SET retry_count = retry_count + 1,
           next_retry_at = datetime('now', '+' || ? || ' seconds'),
           last_error = 'processing'
-      WHERE id = ? AND retry_count = ?
+      WHERE id = ? AND retry_count = ? AND retry_count < max_retries
     `).run(claimBackoffSeconds, item.id, item.retry_count) as { changes: number };
 
     if (claimResult.changes === 0) {
