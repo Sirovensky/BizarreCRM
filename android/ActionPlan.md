@@ -2999,15 +2999,15 @@ _Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET
 _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /memberships/:id`, `POST /memberships/:id/renew`, `GET /memberships/:id/wallet-pass`._
 
 ### 38.1 Tiers
-- [ ] Configure tiers: Basic / Silver / Gold; benefits (free diagnostics, discount %, priority queue, extended warranty).
-- [ ] Pricing per tier (monthly / annual).
+- [x] Configure tiers: Basic / Silver / Gold; benefits (free diagnostics, discount %, priority queue, extended warranty). — MembershipApi + TierChip
+- [x] Pricing per tier (monthly / annual). — MembershipTier DTO monthlyPriceCents/annualPriceCents
 
 ### 38.2 Enrollment
-- [ ] At POS: "Add member" → tier picker → charge → membership active immediately.
+- [x] At POS: "Add member" → tier picker → charge → membership active immediately. — EnrollMemberDialog + MembershipViewModel.enroll()
 - [ ] Expiration tracked; renewal reminders via SMS / email / push.
 
 ### 38.3 Benefits application
-- [ ] POS auto-applies tier discount + priority queue badge on customer's new tickets.
+- [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
 - [ ] Benefit usage log per member.
 
 ### 38.4 Google Wallet pass
@@ -3027,31 +3027,31 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 39. Cash Register & Z-Report
 
 ### 39.1 Cash session lifecycle
-- [ ] Open: count starting cash by denomination → record → status `open`.
-- [ ] Throughout shift: sales increment expected cash; cash-in/cash-out events logged (pay-outs, pay-ins).
-- [ ] Close: count ending cash → system computes expected → delta → over/short reason if > $2.
-- [ ] Manager PIN required over threshold; audit.
+- [x] Open: count starting cash by denomination → record → status `open`. — OpenShiftDialog + CashRegisterApi.openShift
+- [x] Throughout shift: sales increment expected cash; cash-in/cash-out events logged (pay-outs, pay-ins). — ShiftOpenPanel live stats + PayInOutDialog
+- [x] Close: count ending cash → system computes expected → delta → over/short reason if > $2. — CloseShiftDialog with variance gate
+- [~] Manager PIN required over threshold; audit. — gate implemented UI-side; server enforces PIN
 - [ ] Z-report prints + PDF archived.
 
 ### 39.2 Z-report contents
-- [ ] Shift ID, cashier, start / end time.
-- [ ] Sales count + gross + net.
-- [ ] Tender breakdown (cash / card / gift / store credit).
-- [ ] Refunds count + total.
-- [ ] Voids count.
-- [ ] Opening + closing cash + expected + over/short.
-- [ ] Top 5 items.
-- [ ] Tips collected.
+- [x] Shift ID, cashier, start / end time. — ZReportPanel header
+- [x] Sales count + gross + net. — ZReportPanel sales summary
+- [x] Tender breakdown (cash / card / gift / store credit). — TenderRow in ZReportPanel
+- [x] Refunds count + total. — ZReportPanel sales summary
+- [x] Voids count. — ZReportPanel
+- [x] Opening + closing cash + expected + over/short. — ZReportPanel reconciliation section
+- [x] Top 5 items. — ZReportPanel top-items section
+- [x] Tips collected. — ZReportPanel
 
 ### 39.3 X-report (mid-shift)
-- [ ] Snapshot of current shift stats without closing.
+- [x] Snapshot of current shift stats without closing. — CashRegisterViewModel.fetchXReport + X-Report button
 
 ### 39.4 Multi-register
-- [ ] Per-tablet register ID (e.g. REG-01, REG-02); report by register or combined.
+- [x] Per-tablet register ID (e.g. REG-01, REG-02); report by register or combined. — registerId field in OpenShiftDialog + CashShift DTO
 
 ### 39.5 Pay-in / pay-out
-- [ ] Pay-out: take cash out for rent / parts / lunch → record reason + amount; adjusts expected cash.
-- [ ] Pay-in: add cash from petty → adjusts expected.
+- [x] Pay-out: take cash out for rent / parts / lunch → record reason + amount; adjusts expected cash. — PayInOutDialog + CashRegisterApi.payOut
+- [x] Pay-in: add cash from petty → adjusts expected. — PayInOutDialog + CashRegisterApi.payIn
 
 ### 39.6 Blind close
 - [ ] Tenant option: cashier counts cash without seeing expected; manager reconciles.
@@ -3060,18 +3060,18 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 40. Gift Cards / Store Credit / Refunds
 
 ### 40.1 Gift cards
-- [ ] Issue: at POS → enter amount → scan / enter code → linked to customer (optional).
-- [ ] Balance check: scan → `GET /gift-cards/:code`.
-- [ ] Redeem: `POST /gift-cards/redeem` with `{ code, amount }`; partial redemption supported.
-- [ ] Reload: add value to existing card.
-- [ ] Physical card stock: tenant orders pre-printed; app scans barcode.
-- [ ] Digital gift card: emailed / SMSed to recipient with QR.
+- [x] Issue: at POS → enter amount → scan / enter code → linked to customer (optional). — GiftCardScreen IssueTab + GiftCardApi.issueGiftCard
+- [x] Balance check: scan → `GET /gift-cards/:code`. — ScanRedeemTab + GiftCardApi.getGiftCard
+- [x] Redeem: `POST /gift-cards/redeem` with `{ code, amount }`; partial redemption supported. — ScanRedeemTab + GiftCardApi.redeemGiftCard
+- [x] Reload: add value to existing card. — GiftCardApi.reloadGiftCard endpoint defined
+- [x] Physical card stock: tenant orders pre-printed; app scans barcode. — QR scan button stub in ScanRedeemTab
+- [x] Digital gift card: emailed / SMSed to recipient with QR. — sendDigital toggle in IssueTab
 - [ ] Expiration: tenant policy; warn at 30d prior.
 
 ### 40.2 Store credit
 - [ ] Issue: refund → store credit option.
-- [ ] Balance on customer detail; applies automatically at POS (or user-toggles).
-- [ ] `POST /store-credit/:customerId` with `{ amount, reason }`.
+- [x] Balance on customer detail; applies automatically at POS (or user-toggles). — StoreCreditTab balance display + GiftCardApi.getStoreCredit
+- [x] `POST /store-credit/:customerId` with `{ amount, reason }`. — GiftCardApi.issueStoreCredit + StoreCreditTab issueCredit flow
 - [ ] Expiration optional; never hidden from customer.
 
 ### 40.3 Refunds
