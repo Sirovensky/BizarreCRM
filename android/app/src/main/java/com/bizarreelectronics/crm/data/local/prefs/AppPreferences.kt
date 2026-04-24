@@ -405,6 +405,66 @@ class AppPreferences @Inject constructor(
             _sharedDeviceInactivityFlow.value = value
         }
 
+    // --- §3.3 L513 — dismissed attention IDs (client-side dismiss cache) -------
+
+    /**
+     * §3.3 L513 — client-side set of dismissed needs-attention item IDs.
+     *
+     * Returns an immutable copy. Use [addDismissedAttentionId] / [removeDismissedAttentionId]
+     * to mutate. Stored as a JSON array string. Not sensitive — plain prefs.
+     */
+    val dismissedAttentionIds: Set<String>
+        get() {
+            val raw = prefs.getString("dismissed_attention_ids", null) ?: return emptySet()
+            return runCatching {
+                raw.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
+
+    /** Add [id] to the local dismiss cache. Idempotent. */
+    fun addDismissedAttentionId(id: String) {
+        val updated = dismissedAttentionIds + id
+        prefs.edit().putString("dismissed_attention_ids", serializeStringSet(updated)).apply()
+    }
+
+    /** Remove [id] from the local dismiss cache (Undo support). */
+    fun removeDismissedAttentionId(id: String) {
+        val updated = dismissedAttentionIds - id
+        prefs.edit().putString("dismissed_attention_ids", serializeStringSet(updated)).apply()
+    }
+
+    private fun serializeStringSet(set: Set<String>): String =
+        "[${set.joinToString(",") { "\"$it\"" }}]"
+
+    // --- §3.3 L513 — seen attention IDs (local mark-seen cache) ---------------
+
+    /**
+     * §3.3 L513 — client-side set of seen needs-attention item IDs.
+     * "Mark seen" is lighter than dismiss: item stays visible but priority is
+     * demoted in the UI. Local-only; no server call.
+     */
+    val seenAttentionIds: Set<String>
+        get() {
+            val raw = prefs.getString("seen_attention_ids", null) ?: return emptySet()
+            return runCatching {
+                raw.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        }
+
+    /** Mark [id] as seen locally. Idempotent. */
+    fun addSeenAttentionId(id: String) {
+        val updated = seenAttentionIds + id
+        prefs.edit().putString("seen_attention_ids", serializeStringSet(updated)).apply()
+    }
+
     /**
      * §2.14 — user_id of the staff member currently signed in on a shared device.
      *

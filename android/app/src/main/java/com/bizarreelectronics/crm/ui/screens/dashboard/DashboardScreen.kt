@@ -58,12 +58,18 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.RepeatCustomer
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.toDateRange
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.LeaderboardEntry
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MissingPartItem
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttentionItem
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttentionSection
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionCategory
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionPriority
+import com.bizarreelectronics.crm.data.remote.api.DashboardApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import javax.inject.Inject
 
 data class KpiCard(
@@ -135,10 +141,12 @@ class DashboardViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val dashboardRepository: DashboardRepository,
     private val settingsApi: SettingsApi,
+    /** §3.3 L513 — dismiss endpoint; 404-tolerant. */
+    private val dashboardApi: DashboardApi,
     syncManager: SyncManager,
     syncQueueDao: SyncQueueDao,
     notificationDao: NotificationDao,
-    /** Exposed for BI widget cards that need reduce-motion awareness (§3.2 L500). */
+    /** Exposed for BI widget cards and NeedsAttentionSection (reduce-motion + dismiss cache). */
     val appPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences,
 ) : ViewModel() {
 
@@ -210,6 +218,68 @@ class DashboardViewModel @Inject constructor(
     /** §3.2 L506 — inventory items needing reorder. Null = source not connected. */
     private val _missingParts = MutableStateFlow<List<MissingPartItem>?>(null)
     val missingParts: StateFlow<List<MissingPartItem>?> = _missingParts.asStateFlow()
+
+    // -------------------------------------------------------------------------
+    // §3.3 L510–L514 — Needs-Attention row-level cards
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.3 L510 — Needs-Attention items visible to the user.
+     * Already filtered by [AppPreferences.dismissedAttentionIds]; sorted HIGH first.
+     */
+    private val _needsAttentionItems = MutableStateFlow<List<NeedsAttentionItem>>(emptyList())
+    val needsAttentionItems: StateFlow<List<NeedsAttentionItem>> = _needsAttentionItems.asStateFlow()
+
+    /** §3.3 L514 — true when the visible attention list is empty. */
+    val allAttentionClear: Boolean
+        get() = _needsAttentionItems.value.isEmpty()
+
+    /**
+     * §3.3 L512/L513 — optimistically remove [id], then attempt server-side
+     * dismiss (POST /dashboard/attention/{id}/dismiss). Falls back to local
+     * prefs cache on 404 (endpoint not yet implemented).
+     */
+    fun dismissAttention(id: String) {
+        val previous = _needsAttentionItems.value
+        _needsAttentionItems.value = previous.filter { it.id != id }
+        viewModelScope.launch {
+            try {
+                dashboardApi.dismissAttentionItem(id)
+                appPreferences.addDismissedAttentionId(id)
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    appPreferences.addDismissedAttentionId(id)
+                } else {
+                    android.util.Log.w("Dashboard", "dismissAttention failed (${e.code()}): ${e.message}")
+                    _needsAttentionItems.value = previous
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "dismissAttention offline fallback for $id: ${e.message}")
+                appPreferences.addDismissedAttentionId(id)
+            }
+        }
+    }
+
+    /** §3.3 L512 — restore a dismissed item (Snackbar undo). */
+    fun undoDismissAttention(id: String) {
+        appPreferences.removeDismissedAttentionId(id)
+        refresh()
+    }
+
+    /**
+     * §3.3 L512 — local-only "mark seen" flag. Demotes HIGH to DEFAULT priority;
+     * does not remove the item or call the server.
+     */
+    fun markAttentionSeen(id: String) {
+        appPreferences.addSeenAttentionId(id)
+        _needsAttentionItems.value = _needsAttentionItems.value.map { item ->
+            if (item.id == id && item.priority == AttentionPriority.HIGH) {
+                item.copy(priority = AttentionPriority.DEFAULT)
+            } else {
+                item
+            }
+        }
+    }
 
     private val _state = MutableStateFlow(DashboardUiState())
     val state = _state.asStateFlow()
@@ -296,10 +366,51 @@ class DashboardViewModel @Inject constructor(
             // Needs-attention.
             try {
                 val attention = dashboardRepository.getNeedsAttention()
+                val dismissed = appPreferences.dismissedAttentionIds
                 val attentionItems = mutableListOf<AttentionItem>()
-                if (attention.staleTicketsCount > 0) attentionItems.add(AttentionItem("ticket", "${attention.staleTicketsCount} stale tickets need attention", null))
-                if (attention.missingPartsCount > 0) attentionItems.add(AttentionItem("parts", "${attention.missingPartsCount} parts missing across open tickets", null))
-                if (attention.overdueInvoicesCount > 0) attentionItems.add(AttentionItem("invoice", "${attention.overdueInvoicesCount} overdue invoices", null))
+                val richItems = mutableListOf<NeedsAttentionItem>()
+
+                if (attention.staleTicketsCount > 0) {
+                    attentionItems.add(AttentionItem("ticket", "${attention.staleTicketsCount} stale tickets need attention", null))
+                    val id = "ticket_overdue"
+                    if (id !in dismissed) richItems.add(NeedsAttentionItem(
+                        id = id, title = "${attention.staleTicketsCount} overdue tickets",
+                        subtitle = "Awaiting update or status change",
+                        actionLabel = "View Tickets", actionRoute = "tickets?filter=overdue",
+                        priority = AttentionPriority.HIGH, category = AttentionCategory.TICKET_OVERDUE,
+                    ))
+                }
+                if (attention.missingPartsCount > 0) {
+                    attentionItems.add(AttentionItem("parts", "${attention.missingPartsCount} parts missing across open tickets", null))
+                    val id = "missing_parts"
+                    if (id !in dismissed) richItems.add(NeedsAttentionItem(
+                        id = id, title = "${attention.missingPartsCount} parts missing",
+                        subtitle = "Parts required for open tickets",
+                        actionLabel = "View Parts", actionRoute = "inventory?filter=missing",
+                        priority = AttentionPriority.INFO, category = AttentionCategory.LOW_STOCK,
+                    ))
+                }
+                if (attention.overdueInvoicesCount > 0) {
+                    attentionItems.add(AttentionItem("invoice", "${attention.overdueInvoicesCount} overdue invoices", null))
+                    val id = "payment_overdue"
+                    if (id !in dismissed) richItems.add(NeedsAttentionItem(
+                        id = id, title = "${attention.overdueInvoicesCount} overdue invoices",
+                        subtitle = "Payment not received",
+                        actionLabel = "View Invoices", actionRoute = "invoices?filter=overdue",
+                        priority = AttentionPriority.HIGH, category = AttentionCategory.PAYMENT_FAILED,
+                    ))
+                }
+                if (attention.lowStockCount > 0) {
+                    val id = "low_stock"
+                    if (id !in dismissed) richItems.add(NeedsAttentionItem(
+                        id = id, title = "${attention.lowStockCount} items low in stock",
+                        subtitle = "Below minimum threshold",
+                        actionLabel = "View Inventory", actionRoute = "inventory?filter=low_stock",
+                        priority = AttentionPriority.INFO, category = AttentionCategory.LOW_STOCK,
+                    ))
+                }
+
+                _needsAttentionItems.value = richItems.sortedByDescending { it.priority.ordinal }
                 _state.value = _state.value.copy(
                     lowStockCount = attention.lowStockCount,
                     needsAttention = attentionItems,
@@ -788,6 +899,25 @@ fun DashboardScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
+        }
+
+        // §3.3 L510–L514 — Needs-Attention row-level cards.
+        // Single insertion between KPI grid and BI Insights widgets per spec.
+        item {
+            val attentionItems by viewModel.needsAttentionItems.collectAsState()
+            NeedsAttentionSection(
+                items = attentionItems,
+                onItemClick = { route ->
+                    when {
+                        route.startsWith("tickets") -> onNavigateToTickets()
+                        route.startsWith("inventory") -> onNavigateToInventory?.invoke()
+                        else -> { /* unknown route — no-op */ }
+                    }
+                },
+                onDismiss = viewModel::dismissAttention,
+                onMarkSeen = viewModel::markAttentionSeen,
+                appPreferences = viewModel.appPreferences,
+            )
         }
 
         // §3.2 L500–L506 — BI Widgets "Insights" section.
