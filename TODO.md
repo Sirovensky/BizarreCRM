@@ -708,8 +708,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:392-394; fix=anyMutationPending-gate -->
 
 ### Wave-57 scan-loop findings (2026-04-24) — web/components/shared + web/api + web/utils
-- [ ] SCAN-1027. **PinModal + UpgradeModal lack `role="dialog"` + `aria-modal` + aria-labelledby.**
-  <!-- meta: scope=web/components/shared; files=PinModal.tsx:77,UpgradeModal.tsx:63; fix=add-dialog-semantics -->
 - [ ] SCAN-1031. **CommandPalette silently swallows search API errors — shows "No results" on backend down.**
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CommandPalette.tsx:175-176; fix=surface-error-state -->
 

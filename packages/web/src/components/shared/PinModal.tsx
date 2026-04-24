@@ -74,19 +74,25 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pin-modal-title"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
           <div className="flex items-center gap-2">
-            <Lock className="h-4 w-4 text-surface-500" />
-            <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">{title}</h2>
+            <Lock aria-hidden="true" className="h-4 w-4 text-surface-500" />
+            <h2 id="pin-modal-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">{title}</h2>
           </div>
           <button
+            type="button"
             aria-label="Close"
             onClick={onCancel}
             className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
           >
-            <X className="h-5 w-5" />
+            <X aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
 

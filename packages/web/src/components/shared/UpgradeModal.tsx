@@ -80,23 +80,27 @@ export function UpgradeModal() {
       onClick={closeUpgradeModal}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upgrade-modal-title"
         className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900"
         onClick={(e) => e.stopPropagation()}
       >
         <button
+          type="button"
           onClick={closeUpgradeModal}
           className="absolute right-4 top-4 rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
-          aria-label="Close"
+          aria-label="Close upgrade dialog"
         >
-          <X className="h-5 w-5" />
+          <X aria-hidden="true" className="h-5 w-5" />
         </button>
 
         <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 px-8 py-6 text-white">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6" />
+            <Sparkles aria-hidden="true" className="h-6 w-6" />
             <span className="text-sm font-semibold uppercase tracking-wider">Upgrade to Pro</span>
           </div>
-          <h2 className="mt-2 text-2xl font-bold">Unlock {featureLabel}</h2>
+          <h2 id="upgrade-modal-title" className="mt-2 text-2xl font-bold">Unlock {featureLabel}</h2>
           <p className="mt-1 text-sm text-white/90">
             Your current plan: <strong>{plan === 'free' ? 'Free' : 'Pro'}</strong>
           </p>
