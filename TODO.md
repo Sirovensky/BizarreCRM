@@ -726,6 +726,32 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
 - [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
+
+### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
+- [ ] SCAN-1036. **creditNotes routes: all 5 handlers missing `asyncHandler` wrapper — unhandled rejections crash/hang.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:61,133,161,235,302; fix=wrap-asyncHandler -->
+- [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
+- [ ] SCAN-1038. **creditNotes POST /:id/void: TOCTOU race — SELECT status then UPDATE without conditional WHERE.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:309-315; fix=conditional-update-with-expectChanges -->
+- [ ] SCAN-1039. **campaigns mass-dispatch endpoints (run-now, birthday, churn-warning) missing rate limiting — unlimited SMS/email blasts.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:660-693,823-867,870-927; fix=consumeWindowRate-3-per-min -->
+- [ ] SCAN-1040. **campaigns /review-request/trigger: `req.user!.id` dereferenced even when called via INTERNAL_SERVICE_TOKEN (user undefined).**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:812; fix=user?.id-or-sentinel -->
+- [ ] SCAN-1041. **notifications PUT /focus-policies: JSON body stored with no byte-size cap — unbounded per-user storage.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/notifications.routes.ts:173-193; fix=64k-cap -->
+- [ ] SCAN-1042. **notifications POST /send-receipt: recipient_email only `.includes('@')` — oversized/malformed values flow to SMTP.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/notifications.routes.ts:209; fix=length+regex-guard -->
+- [ ] SCAN-1043. **loaners POST /:id/loan: no rate limit on write — technician can spam loan records.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:106-138; fix=consumeWindowRate -->
+- [ ] SCAN-1044. **loaners POST /:id/loan: TOCTOU on device availability — SELECT then UPDATE without WHERE status guard.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:129-131; fix=conditional-update -->
+- [ ] SCAN-1045. **rma POST /: no rate limit + unbounded items[] array — DoS via 10k-item batch.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/rma.routes.ts:117-156; fix=rate-limit+cap-items -->
+- [ ] SCAN-1046. **crm GET /customers/:id/photo-mementos: returns raw `file_path` strings — leaks server filesystem layout.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/crm.routes.ts:222-239; fix=strip-path-or-signed-url -->
+- [ ] SCAN-1047. **deposits GET /: LIMIT 500 hardcoded, no pagination — silently drops older deposits for completeness-assuming clients.**
+  <!-- meta: scope=server/routes; files=packages/server/src/routes/deposits.routes.ts:79-89; fix=parsePage+pagination-envelope -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 
