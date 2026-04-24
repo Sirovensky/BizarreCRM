@@ -288,8 +288,8 @@ class CustomerDetailViewModel @Inject constructor(
      * and leaves the composer text intact so the user can retry.
      *
      * On success pushes a [CustomerEdit.NoteAdded] entry to [undoStack].
-     * compensatingSync returns false for now because [CustomerApi.deleteNote]
-     * does not yet exist — see B19-pattern TODO below.
+     * compensatingSync calls [CustomerApi.deleteNote] to roll back the server
+     * row; offline-queued notes (noteId < 0) return false immediately.
      */
     fun postNote() {
         val draft = _state.value.noteDraft.trim()
@@ -311,9 +311,8 @@ class CustomerDetailViewModel @Inject constructor(
                     isPostingNote = false,
                 )
 
-                // Push undo entry — compensatingSync returns false because
-                // CustomerApi.deleteNote does not yet exist (B19 pattern).
-                // TODO: wire real DELETE /customers/:id/notes/:noteId when endpoint is added.
+                // Push undo entry — compensatingSync calls deleteNote to
+                // roll back the server row (CROSS9b / B19 undo gap closed).
                 val payload = CustomerEdit.NoteAdded(noteId = noteId, body = draft)
                 undoStack.push(
                     UndoStack.Entry(
@@ -330,11 +329,18 @@ class CustomerDetailViewModel @Inject constructor(
                         },
                         auditDescription = "Note added: \"${draft.take(60)}${if (draft.length > 60) "…" else ""}\"",
                         compensatingSync = {
-                            // TODO: call CustomerApi.deleteNote(customerId, noteId) here once available.
-                            Timber.tag("CustomerUndo").w(
-                                "compensatingSync: CustomerApi.deleteNote not available yet; noteId=$noteId"
-                            )
-                            false
+                            if (noteId < 0) {
+                                // Offline-queued notes have no server row to delete.
+                                false
+                            } else {
+                                try {
+                                    val resp = customerApi.deleteNote(customerId, noteId)
+                                    resp.success
+                                } catch (e: Exception) {
+                                    Timber.w(e, "Customer note undo: server delete failed")
+                                    false
+                                }
+                            }
                         },
                     )
                 )
