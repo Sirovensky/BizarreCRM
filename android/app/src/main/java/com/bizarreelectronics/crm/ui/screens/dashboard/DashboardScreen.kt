@@ -731,6 +731,8 @@ fun DashboardScreen(
     onNavigateToSms: (() -> Unit)? = null,
     // §3.14 L573/L581 — Setup Wizard navigation for SetupChecklistCard + completion ring.
     onNavigateToSetup: (() -> Unit)? = null,
+    // §3.16 L593 — "Show more" on Activity Feed card → full Activity Feed screen.
+    onNavigateToActivityFeed: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1280,7 +1282,8 @@ fun DashboardScreen(
         item {
             ActivityFeedCard(
                 items = recentActivity,
-                onShowMore = null, // TODO(plan:L534): wire to dedicated activity route
+                // §3.16 L593 — "Show more" navigates to the full Activity Feed screen.
+                onShowMore = onNavigateToActivityFeed,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }

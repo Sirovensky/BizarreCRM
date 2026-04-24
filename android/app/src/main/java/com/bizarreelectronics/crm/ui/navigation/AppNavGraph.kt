@@ -33,6 +33,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.screens.activity.ActivityFeedScreen
 import com.bizarreelectronics.crm.ui.screens.auth.BackupCodeRecoveryScreen
 import com.bizarreelectronics.crm.ui.screens.auth.ForgotPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.auth.LoginScreen
@@ -324,6 +325,9 @@ sealed class Screen(val route: String) {
 
     // §36 L585–L588 — Morning-open checklist (staff role, shown once per day).
     data object MorningChecklist : Screen("morning/checklist")
+
+    // §3.16 L592-L599 — Full-screen Activity Feed with filters, reactions, infinite scroll.
+    data object ActivityFeed : Screen("activity/feed")
 }
 
 data class BottomNavItem(
@@ -914,7 +918,17 @@ fun AppNavGraph(
                     // §3.10 — when pending rows are stuck, the badge tap
                     // routes to Sync Issues instead of force-syncing again.
                     onNavigateToSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
+                    // §3.16 L593 — "Show more" on the Activity Feed card routes to the full screen.
+                    onNavigateToActivityFeed = { navController.navigate(Screen.ActivityFeed.route) },
                 )
+            }
+            // §3.16 L592-L599 — Full-screen Activity Feed.
+            composable(Screen.ActivityFeed.route) {
+                ActivityFeedScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) },
+                )
+            }
             }
             composable(Screen.Tickets.route) {
                 TicketListScreen(

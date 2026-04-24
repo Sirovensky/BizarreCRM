@@ -580,6 +580,24 @@ class AppPreferences @Inject constructor(
             }
         }
 
+    // --- §3.16 L597 — Activity feed per-user notification preference ----------
+    //
+    // When true, the Android app opts in to receive push notifications for
+    // events on tickets assigned to the current user. This is a local-only
+    // preference; the server-side FCM opt-in is driven by this value when the
+    // next FCM token registration fires. Defaults OFF (user must opt in).
+
+    /**
+     * §3.16 L597 — When true, send push notifications for activity events
+     * affecting tickets assigned to the current user.
+     *
+     * Surfaced via Settings > Notifications > "Notify me when X happens to
+     * my tickets" sub-toggle row.
+     */
+    var activityNotifyOnMyTickets: Boolean
+        get() = prefs.getBoolean("activity_notify_my_tickets", false)
+        set(value) = prefs.edit().putBoolean("activity_notify_my_tickets", value).apply()
+
     // --- §36 L585–L588 — Morning-open checklist state -----------------------
     //
     // Three pref groups track the daily morning-checklist lifecycle:

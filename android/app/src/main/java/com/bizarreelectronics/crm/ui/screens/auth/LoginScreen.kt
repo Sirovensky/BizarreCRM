@@ -250,6 +250,16 @@ data class LoginUiState(
     val passkeyError: String? = null,
     // passkeyLoginSuccess: set after a successful login/finish; LoginScreen navigates to dashboard.
     val passkeyLoginSuccess: Boolean = false,
+
+    // §2.20 L449 — SSO hybrid email-domain auto-detect.
+    // domainSsoDetected: true when the username's email domain maps to an SSO provider.
+    //   LoginScreen swaps the password field for "Continue with SSO" button.
+    // domainSsoProviderId: the server-returned provider_id to launch with SsoLauncher.
+    //   Null when domainSsoDetected is false.
+    // domainSsoChecking: true while the debounced GET /auth/sso/check-domain is in flight.
+    val domainSsoDetected: Boolean = false,
+    val domainSsoProviderId: String? = null,
+    val domainSsoChecking: Boolean = false,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -526,9 +536,64 @@ class LoginViewModel @Inject constructor(
         }
         _state.value = s.copy(registerSubStep = prev, error = null)
     }
+    // §2.20 L449 — debounce job for domain SSO check
+    private var _domainCheckJob: kotlinx.coroutines.Job? = null
+
     fun updateUsername(value: String) {
-        _state.value = _state.value.copy(username = value, error = null, unreachableHost = false, rateLimited = false)
+        _state.value = _state.value.copy(
+            username = value,
+            error = null,
+            unreachableHost = false,
+            rateLimited = false,
+            // Reset domain SSO state when username changes
+            domainSsoDetected = false,
+            domainSsoProviderId = null,
+        )
+        // §2.20 L449 — if the username looks like an email, debounce a domain check
+        val atIdx = value.indexOf('@')
+        if (atIdx > 0) {
+            val domain = value.substring(atIdx + 1).trim()
+            if (domain.isNotBlank()) {
+                _domainCheckJob?.cancel()
+                _domainCheckJob = viewModelScope.launch {
+                    delay(500L) // 500 ms debounce
+                    checkDomainSso(domain)
+                }
+            }
+        }
     }
+
+    /**
+     * §2.20 L449 — Calls GET /auth/sso/check-domain?domain=<d>.
+     *
+     * On [uses_sso = true]: sets [domainSsoDetected] = true + stores [provider_id].
+     *   The CREDENTIALS step UI swaps the password field for a "Continue with SSO" button.
+     * On 404 or [uses_sso = false]: domain is local-auth only; no UI change.
+     * Any network error is silenced — local-auth fallback remains available.
+     */
+    private suspend fun checkDomainSso(domain: String) {
+        _state.value = _state.value.copy(domainSsoChecking = true)
+        try {
+            val response = authApi.checkSsoDomain(domain)
+            val result = response.data
+            _state.value = _state.value.copy(
+                domainSsoDetected = result?.uses_sso == true,
+                domainSsoProviderId = if (result?.uses_sso == true) result.provider_id else null,
+                domainSsoChecking = false,
+            )
+        } catch (e: retrofit2.HttpException) {
+            // 404 → domain not in SSO config; treat as local auth
+            _state.value = _state.value.copy(
+                domainSsoDetected = false,
+                domainSsoProviderId = null,
+                domainSsoChecking = false,
+            )
+        } catch (_: Exception) {
+            // Network error — silently fall back to local auth
+            _state.value = _state.value.copy(domainSsoChecking = false)
+        }
+    }
+
     fun updatePassword(value: String) {
         _state.value = _state.value.copy(password = value, error = null, unreachableHost = false, rateLimited = false)
     }
@@ -2895,22 +2960,67 @@ private fun CredentialsStep(
     )
     Spacer(Modifier.height(12.dp))
 
-    OutlinedTextField(
-        value = state.password,
-        onValueChange = viewModel::updatePassword,
-        label = { Text("Password") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Lock, null) },
-        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = {
-            IconButton(onClick = { showPassword = !showPassword }) {
-                Icon(if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Toggle password")
+    // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
+    // While check is in flight (domainSsoChecking), show a small spinner below the
+    // username field instead of the password field, preventing flicker.
+    when {
+        state.domainSsoChecking -> {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Checking sign-in method\u2026",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-        },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
-    )
+        }
+        state.domainSsoDetected -> {
+            // Replace password field with "Continue with SSO" primary button.
+            BrandPrimaryButton(
+                onClick = viewModel::login,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Continue with SSO")
+                }
+            }
+        }
+        else -> {
+            OutlinedTextField(
+                value = state.password,
+                onValueChange = viewModel::updatePassword,
+                label = { Text("Password") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Lock, null) },
+                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Toggle password")
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
+            )
+        }
+    }
 
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
@@ -2919,16 +3029,20 @@ private fun CredentialsStep(
     // through BrandPrimaryButton so every primary button in the app
     // shares the same orange filled / onPrimary text / 12dp theme shape.
     // §2.12-L357/L358: disabled while offline or rate-limited.
-    BrandPrimaryButton(
-        onClick = viewModel::login,
-        enabled = state.username.isNotBlank() && state.password.isNotBlank()
-                && !state.isLoading && !state.networkOffline && !state.rateLimited,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        } else {
-            Text("Sign In")
+    // §2.20 L449: when SSO mode detected, the SSO CTA above is the primary action;
+    // this "Sign In" button is hidden to avoid duplicate CTAs.
+    if (!state.domainSsoDetected) {
+        BrandPrimaryButton(
+            onClick = viewModel::login,
+            enabled = state.username.isNotBlank() && state.password.isNotBlank()
+                    && !state.isLoading && !state.networkOffline && !state.rateLimited,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+            if (state.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+            } else {
+                Text("Sign In")
+            }
         }
     }
 

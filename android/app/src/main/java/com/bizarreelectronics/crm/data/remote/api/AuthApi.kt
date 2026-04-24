@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
 import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetupStatusResponse
+import com.bizarreelectronics.crm.data.remote.dto.SsoDomainCheckResponse
 import com.bizarreelectronics.crm.data.remote.dto.SsoDiscoveryResponse
 import com.bizarreelectronics.crm.data.remote.dto.SsoTokenExchangeRequest
 import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
@@ -228,6 +229,20 @@ interface AuthApi {
 
     @DELETE("auth/passkey/{id}")
     suspend fun deletePasskey(@Path("id") id: String): ApiResponse<Unit>
+
+    // §2.20 L449 — SSO hybrid email-domain auto-detect.
+    //
+    // GET /auth/sso/check-domain?domain=<d>
+    //   Returns { uses_sso: true, provider_id?: "<id>" } when the domain maps to
+    //   a configured SSO/SAML/OIDC provider.
+    //   404 → domain not in SSO config; caller treats as local-auth domain (no-op).
+    //
+    // Called on username field change (debounced 500 ms) when the username
+    // contains "@". The extracted domain is sent as the query param.
+    @GET("auth/sso/check-domain")
+    suspend fun checkSsoDomain(
+        @retrofit2.http.Query("domain") domain: String,
+    ): ApiResponse<SsoDomainCheckResponse>
 
     // §2.15 L387-L388 — Forgot-PIN email reset.
     //

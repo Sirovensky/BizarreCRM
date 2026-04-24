@@ -650,4 +650,6 @@ object RetrofitClient {
     @Provides @Singleton fun provideEmployeeApi(retrofit: Retrofit): EmployeeApi = retrofit.create(EmployeeApi::class.java)
     // §36 L585–L588 — morning-open checklist; both endpoints 404-tolerant
     @Provides @Singleton fun provideMorningChecklistApi(retrofit: Retrofit): MorningChecklistApi = retrofit.create(MorningChecklistApi::class.java)
+    // §3.16 L592-L599 — activity feed (cursor-paginated) + reactions; all endpoints 404-tolerant
+    @Provides @Singleton fun provideActivityApi(retrofit: Retrofit): ActivityApi = retrofit.create(ActivityApi::class.java)
 }

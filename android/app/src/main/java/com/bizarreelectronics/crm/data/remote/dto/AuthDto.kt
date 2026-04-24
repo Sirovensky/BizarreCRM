@@ -463,3 +463,19 @@ data class ActiveSessionDto(
     @SerializedName("current")
     val current: Boolean = false,
 )
+
+/**
+ * §2.20 L449 — Response from GET /auth/sso/check-domain?domain=<d>.
+ *
+ * [uses_sso] true  → the domain is covered by an SSO/SAML/OIDC provider.
+ *                    LoginScreen swaps the password field for a "Continue with SSO" button.
+ * [uses_sso] false → treat as local auth; keep normal password field.
+ * 404 response     → domain not in SSO config; treat as local auth (caller silences 404).
+ *
+ * [provider_id] is the server-assigned IdP ID to pass to [AuthApi.getSsoProviders] /
+ * [SsoLauncher.launch] when the user taps "Continue with SSO". Null when [uses_sso] is false.
+ */
+data class SsoDomainCheckResponse(
+    @SerializedName("uses_sso") val uses_sso: Boolean,
+    @SerializedName("provider_id") val provider_id: String? = null,
+)
