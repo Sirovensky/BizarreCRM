@@ -15,6 +15,7 @@
  *   created_by_user_id, created_at
  */
 import { Router, Request } from 'express';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
@@ -41,8 +42,9 @@ function requireManagerOrAdmin(req: Request): void {
   }
 }
 
-function validateId(raw: string, field = 'id'): number {
-  const n = parseInt(raw, 10);
+function validateId(raw: unknown, field = 'id'): number {
+  const str = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] ?? '' : '';
+  const n = parseInt(str, 10);
   if (!Number.isInteger(n) || n < 1) throw new AppError(`${field} must be a positive integer`, 400);
   return n;
 }
@@ -58,7 +60,7 @@ function writeRateLimit(req: Request): void {
 // ---------------------------------------------------------------------------
 // GET /
 // ---------------------------------------------------------------------------
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const {
@@ -125,12 +127,12 @@ router.get('/', async (req, res) => {
       },
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // GET /:id
 // ---------------------------------------------------------------------------
-router.get('/:id', async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const id = validateId(req.params.id);
@@ -153,12 +155,12 @@ router.get('/:id', async (req, res) => {
   if (!note) throw new AppError('Credit note not found', 404);
 
   res.json({ success: true, data: note });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /  — create a credit note
 // ---------------------------------------------------------------------------
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   if (!req.user) throw new AppError('Not authenticated', 401);
   writeRateLimit(req);
 
@@ -227,12 +229,12 @@ router.post('/', async (req, res) => {
 
   const note = await adb.get<Record<string, unknown>>('SELECT * FROM credit_notes WHERE id = ?', newId);
   res.status(201).json({ success: true, data: { ...note, order_id: cnOrderId } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /:id/apply  — apply credit to an invoice (reduces invoice amount_due)
 // ---------------------------------------------------------------------------
-router.post('/:id/apply', async (req, res) => {
+router.post('/:id/apply', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   writeRateLimit(req);
 
@@ -294,12 +296,12 @@ router.post('/:id/apply', async (req, res) => {
 
   const note = await adb.get<Record<string, unknown>>('SELECT * FROM credit_notes WHERE id = ?', id);
   res.json({ success: true, data: note });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /:id/void
 // ---------------------------------------------------------------------------
-router.post('/:id/void', async (req, res) => {
+router.post('/:id/void', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   writeRateLimit(req);
 
@@ -331,6 +333,6 @@ router.post('/:id/void', async (req, res) => {
 
   const note = await adb.get<Record<string, unknown>>('SELECT * FROM credit_notes WHERE id = ?', id);
   res.json({ success: true, data: note });
-});
+}));
 
 export default router;

@@ -728,8 +728,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
 
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
-- [ ] SCAN-1036. **creditNotes routes: all 5 handlers missing `asyncHandler` wrapper — unhandled rejections crash/hang.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:61,133,161,235,302; fix=wrap-asyncHandler -->
 - [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
 - [ ] SCAN-1039. **campaigns mass-dispatch endpoints (run-now, birthday, churn-warning) missing rate limiting — unlimited SMS/email blasts.**
