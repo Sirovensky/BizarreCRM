@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
@@ -254,6 +255,8 @@ fun SettingsScreen(
     // Unconditional (not gated on BuildConfig.DEBUG) — this is a real production feature.
     // Gating behind admin role is handled at the navigation call site in AppNavGraph.
     onSharedDevice: (() -> Unit)? = null,
+    // §3.13 L565–L567 — opens the Display sub-screen (queue board + keep-screen-on).
+    onDisplay: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -317,6 +320,17 @@ fun SettingsScreen(
                     badgeText = if (sharedModeEnabled) "On" else "Off",
                     badgeEnabled = sharedModeEnabled,
                     onClick = onSharedDevice,
+                )
+            }
+
+            // §3.13 L565–L567 — Display sub-screen (TV queue board + keep-screen-on).
+            // Placed above Notifications so display-mode settings are near the top of
+            // the list where operators mounting a kiosk or TV expect to find them.
+            if (onDisplay != null) {
+                SettingsRow(
+                    icon = Icons.Default.Tv,
+                    title = "Display",
+                    onClick = onDisplay,
                 )
             }
 

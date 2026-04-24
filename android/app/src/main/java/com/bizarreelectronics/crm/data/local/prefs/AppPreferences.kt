@@ -371,6 +371,21 @@ class AppPreferences @Inject constructor(
         get() = prefs.getString("ticket_list_saved_view", "None") ?: "None"
         set(value) = prefs.edit().putString("ticket_list_saved_view", value).apply()
 
+    // --- §3.13 L565–L567 — display / TV mode preferences --------------------
+    //
+    // [keepScreenOn] prevents the display from sleeping while the app is in the
+    // foreground during normal (non-TV-board) use. The TV queue board always
+    // keeps the screen on for its own lifetime via view.keepScreenOn regardless
+    // of this setting. This pref is for the regular app shell.
+
+    /**
+     * §3.13 — When true, the regular app shell keeps the screen on via
+     * `FLAG_KEEP_SCREEN_ON`.  Defaults false (standard power-saving behaviour).
+     */
+    var keepScreenOn: Boolean
+        get() = prefs.getBoolean("keep_screen_on", false)
+        set(value) = prefs.edit().putBoolean("keep_screen_on", value).apply()
+
     // --- §2.14 [plan:L369-L378] — shared-device / counter-kiosk mode --------
     //
     // When [sharedDeviceModeEnabled] is true, the app shows a staff-picker

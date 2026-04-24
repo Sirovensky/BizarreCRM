@@ -77,6 +77,8 @@ import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
 import com.bizarreelectronics.crm.ui.screens.settings.ThemeScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
+import com.bizarreelectronics.crm.ui.screens.settings.DisplaySettingsScreen
+import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
@@ -313,6 +315,12 @@ sealed class Screen(val route: String) {
     // Deep-link token (bizarrecrm://forgot-pin/<token>) is handled via
     // DeepLinkBus.pendingForgotPinToken; no manifest <data> entry needed for MVP.
     data object ForgotPin : Screen("auth/forgot-pin")
+
+    // §3.13 L565–L567 — Display sub-screen (TV queue board + keep-screen-on toggle).
+    data object DisplaySettings : Screen("settings/display")
+
+    // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
+    data object TvQueueBoard : Screen("tv/queue")
 }
 
 data class BottomNavItem(
@@ -516,7 +524,9 @@ fun AppNavGraph(
             // §2.1 — setup-status gate is a pre-auth transient screen
             currentRoute != Screen.SetupStatusGate.route &&
             // §2.10 [plan:L343] — setup wizard hides the bottom bar (full-screen flow)
-            currentRoute != Screen.Setup.route
+            currentRoute != Screen.Setup.route &&
+            // §3.13 L565–L567 — TV queue board is full-screen; no bottom bar.
+            currentRoute != Screen.TvQueueBoard.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -1324,6 +1334,35 @@ fun AppNavGraph(
                     onDiagnostics = { navController.navigate(Screen.Diagnostics.route) },
                     // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG only.
                     onRateLimitBuckets = { navController.navigate(Screen.RateLimitBuckets.route) },
+                    // §3.13 L565–L567 — Display sub-screen (TV queue board + keep-screen-on).
+                    onDisplay = { navController.navigate(Screen.DisplaySettings.route) },
+                )
+            }
+            // §3.13 L565–L567 — Display settings sub-screen.
+            composable(Screen.DisplaySettings.route) {
+                DisplaySettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    // Navigate to TV queue board; board calls onExitRequest → PIN → popBackStack.
+                    onActivateBoard = { navController.navigate(Screen.TvQueueBoard.route) },
+                )
+            }
+            // §3.13 L565–L567 — Full-screen TV queue board.
+            // Exit: 3-finger tap → navigate to PinLockScreen with onUnlocked → popBackStack().
+            // ChromeOS Escape key is handled at the activity level and maps to popBackStack(),
+            // which lands on PinLockScreen as the next item in the back stack here.
+            composable(Screen.TvQueueBoard.route) {
+                TvQueueBoardScreen(
+                    onExitRequest = {
+                        // Navigate to the PIN lock screen. On successful PIN entry the
+                        // PinLockScreen calls onUnlocked, which the caller here wires to
+                        // popBackStack() → returns to Dashboard (the screen beneath the board).
+                        // We use a nested route so the PIN screen covers the board without
+                        // leaving the board in the back stack after unlock.
+                        navController.navigate(Screen.PinSetup.route) {
+                            // Keep the board in the back stack so Cancel on PIN returns to it.
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(Screen.CrashReports.route) {
