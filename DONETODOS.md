@@ -1,4 +1,8 @@
 
+## Closed 2026-04-23 (wave-61 server/routes — PO status allowlist)
+
+- [x] SCAN-1076. **`GET /inventory/purchase-orders/list` accepted arbitrary `status` query strings** — no injection (the value was parameterised) but callers could probe for non-domain values and get silent-empty 200s. Added `PO_STATUS_ALLOWLIST = Set(['draft','ordered','partial','received','cancelled'])` and a 400 on out-of-range values. Makes the contract self-documenting and saves an indexed lookup on impossible inputs.
+
 ## Closed 2026-04-23 (wave-61 server/services — catalogSync type safety)
 
 - [x] SCAN-1077. **`catalogSync.ts` typed `tenantDb` as `any` + cast three row-sets to `any[]`** — flipped to `Database.Database` + three narrow row interfaces (`SupplierCatalogRow`, `CompatRow`, `CatalogLookupRow`). Also swapped `console.log`/`console.warn` for the project's structured `logger` so catalog-sync events land in the same pipeline as the other services. `getTemplateCatalogCount` now narrows the count row to `{ c: number } | undefined` and returns `0` on a missing row. Matches the SCAN-1048/1048b/1058 pattern already applied to `notifications.ts`, `backup.ts`, and `catalogScraper.ts`.

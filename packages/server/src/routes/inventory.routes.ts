@@ -1317,6 +1317,11 @@ router.delete('/suppliers/:id', requirePermission('inventory.delete'), async (re
 
 // ==================== Purchase Orders ====================
 
+// SCAN-1076: PO status is a bounded domain enum — reject out-of-range values
+// up front so the query doesn't waste an indexed lookup on impossible inputs
+// and the API contract is self-documenting.
+const PO_STATUS_ALLOWLIST = new Set(['draft', 'ordered', 'partial', 'received', 'cancelled']);
+
 router.get('/purchase-orders/list', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { page = '1', pagesize = '20', status } = req.query as Record<string, string>;
@@ -1326,7 +1331,12 @@ router.get('/purchase-orders/list', async (req, res) => {
 
   let where = 'WHERE 1=1';
   const params: any[] = [];
-  if (status) { where += ' AND po.status = ?'; params.push(status); }
+  if (status) {
+    if (!PO_STATUS_ALLOWLIST.has(status)) {
+      throw new AppError(`Invalid status filter '${status}'`, 400);
+    }
+    where += ' AND po.status = ?'; params.push(status);
+  }
 
   const [totalRow, orders] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`, ...params),
