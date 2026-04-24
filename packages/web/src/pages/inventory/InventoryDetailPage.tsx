@@ -97,17 +97,26 @@ export function InventoryDetailPage() {
       const res = await inventoryApi.getBarcode(itemId);
       const dataUrl = res.data.data.barcode_data_url;
       setBarcodeUrl(dataUrl);
-      // Open print window
-      const printWindow = window.open('', '_blank', 'width=400,height=300');
+      // Open print window — build DOM programmatically instead of
+      // `document.write` with interpolation. A server-supplied sku/upc/name
+      // containing `</title><script>…</script>` would otherwise execute in
+      // the new window (classic XSS). Only the base64 data URL is set via
+      // element properties, which browsers treat as a value, not HTML.
+      const printWindow = window.open('', '_blank', 'width=400,height=300,noopener,noreferrer');
       if (printWindow) {
-        printWindow.document.write(`
-          <html><head><title>Barcode - ${item.sku || item.upc || item.name}</title>
-          <style>body{display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;} img{max-width:100%;}</style>
-          </head><body>
-          <img src="${dataUrl}" alt="Barcode" onload="window.print();" />
-          </body></html>
-        `);
-        printWindow.document.close();
+        const doc = printWindow.document;
+        doc.open();
+        doc.close();
+        const titleText = `Barcode - ${item.sku || item.upc || item.name || ''}`;
+        doc.title = titleText;
+        const style = doc.createElement('style');
+        style.textContent = 'body{display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;} img{max-width:100%;}';
+        doc.head.appendChild(style);
+        const img = doc.createElement('img');
+        img.src = dataUrl;
+        img.alt = 'Barcode';
+        img.onload = () => printWindow.print();
+        doc.body.appendChild(img);
       }
     } catch {
       toast.error('Failed to generate barcode. Item may not have a SKU or UPC.');

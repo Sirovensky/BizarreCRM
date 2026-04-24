@@ -704,8 +704,6 @@ Verified working. Not TODOs.
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
-- [ ] SCAN-981. **[CRITICAL] Inventory detail print window interpolates server fields into `document.write` — XSS risk if a name/sku contains `</title><script>`.**
-  <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryDetailPage.tsx:103-108; fix=build-print-dom-programmatically -->
 - [ ] SCAN-982. **[HIGH] Inventory list opens supplier_url in new tab without protocol check — `javascript:`/`data:` URLs execute.**
   <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:592; fix=validate-https-only -->
 - [ ] SCAN-983. **[HIGH] Shrinkage page renders server photo_path as `<a href>` without protocol sanitization — open redirect / javascript:.**
