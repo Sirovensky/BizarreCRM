@@ -45,7 +45,9 @@ plugins {
 
 android {
     namespace = "com.bizarreelectronics.crm"
-    compileSdk = 35
+    // compileSdk 36 — bumped per plan §1.6 L210. targetSdk remains 35 until
+    // instrumented-test coverage is verified on API 36 emulators.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bizarreelectronics.crm"

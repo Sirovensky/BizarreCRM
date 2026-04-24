@@ -25,16 +25,55 @@
     <!-- Vibrate (barcode scan feedback) -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Foreground service (WebSocket) -->
+    <!-- Foreground service — base permission (required for all FGS on any API level) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- FOREGROUND_SERVICE_DATA_SYNC: required on API 34+ for RepairInProgressService
+         which uses foregroundServiceType="dataSync" in startForeground(). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- POST_NOTIFICATIONS: runtime permission required on API 33+ to show any
+         notification (FCM alerts, RepairInProgress pinned notification, etc.).
+         Must be granted at runtime; declare here so the system shows the prompt. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- BLUETOOTH_CONNECT + BLUETOOTH_SCAN: API 31+ runtime permissions for
+         Bluetooth device pairing / discovery (e.g. receipt printer, barcode scanner).
+         neverForLocation flag: scanning is not used to derive location — required
+         by Play Store policy to avoid the location-permission disclosure requirement. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_CONNECT"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <!-- ACCESS_FINE_LOCATION: used for Wi-Fi-based LAN IP detection and optional
+         geo-tagging of customer records. No maxSdkVersion cap — needed on all
+         supported API levels. Runtime grant required; gated in code for optional paths. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- RECORD_AUDIO: runtime permission for future voice-memo or VoIP features.
+         Declared now so the manifest is complete; runtime prompt is gated in code. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- READ_CONTACTS: runtime permission for autofill / customer lookup from
+         the device address book. Declared here; prompt shown in feature code. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- Biometric -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
-    <!-- Storage for cached images (API 33 only; SDK 33+ uses photo picker which needs no permission) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+    <!-- READ_MEDIA_IMAGES: runtime permission for photo gallery access on API 33+.
+         No maxSdkVersion — the permission only exists on API 33+ so it is
+         harmless to declare without a cap. The system denies it silently on
+         API ≤32 anyway; READ_EXTERNAL_STORAGE (below) covers that range. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- READ_EXTERNAL_STORAGE: legacy gallery read permission for API ≤32.
+         maxSdkVersion=32 prevents this from appearing on API 33+ devices
+         where READ_MEDIA_IMAGES supersedes it. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
     <!-- Package-visibility declarations (Android 11+ / API 30+).
