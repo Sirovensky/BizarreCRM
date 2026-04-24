@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +27,8 @@ import javax.inject.Singleton
  *                           backgrounded more than N minutes" rule.
  *  - [lockTimeoutMinutes]— user preference: 0 = every resume, 1/5/15 = N min
  *                           background grace, -1 = never (only on cold start).
+ *  - [lockGraceMinutes]  — §2.5 slider value: 0 = immediate, 1/5/15 = N min,
+ *                           [GRACE_NEVER] (Int.MAX_VALUE) = never mid-session.
  *
  * Nothing here is safety-critical on its own — lockout times are advisory and
  * the server remains the source of truth on the PIN itself. The values live
@@ -67,6 +73,38 @@ class PinPreferences @Inject constructor(
         set(value) = prefs.edit().putInt(KEY_LOCK_TIMEOUT_MIN, value).apply()
 
     /**
+     * §2.5 grace-window slider value.
+     *
+     * Supported values:
+     *   0             — lock immediately on every resume
+     *   1, 5, 15      — lock after N minutes of inactivity
+     *   [GRACE_NEVER] — never lock mid-session (only on cold start)
+     *
+     * Default is 15 minutes.
+     */
+    val lockGraceMinutes: Int
+        get() = prefs.getInt(KEY_LOCK_GRACE_MIN, DEFAULT_GRACE_MIN)
+
+    /** Updates [lockGraceMinutes]. Accepted values: 0, 1, 5, 15, [GRACE_NEVER]. */
+    fun setLockGraceMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_LOCK_GRACE_MIN, minutes).apply()
+    }
+
+    /**
+     * Emits [lockGraceMinutes] immediately and whenever it changes.
+     * Backed by a [SharedPreferences.OnSharedPreferenceChangeListener] so callers
+     * react in real time to pref writes from the Settings screen.
+     */
+    val lockGraceMinutesFlow: Flow<Int> = callbackFlow {
+        trySend(lockGraceMinutes)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_LOCK_GRACE_MIN) trySend(lockGraceMinutes)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.distinctUntilChanged()
+
+    /**
      * Hard lockout: true when the user has burned through too many failed
      * attempts and must go through full re-auth (username + password) again.
      * The lock screen reads this to surface the "Sign out and re-login" CTA.
@@ -85,19 +123,36 @@ class PinPreferences @Inject constructor(
      * Called from MainActivity on resume to decide whether to show the lock
      * screen. Returns true when:
      *   - a PIN is configured, AND
-     *   - either cold-start (lastUnlockAtMillis == 0), OR
-     *   - the user has been away longer than [lockTimeoutMinutes].
-     * Passing -1 for the timeout turns the background grace off entirely.
+     *   - either cold-start / lockNow() (lastUnlockAtMillis == 0), OR
+     *   - the user has been away longer than [lockGraceMinutes].
+     *
+     * [lockGraceMinutes] semantics:
+     *   [GRACE_NEVER]  — never lock mid-session (cold start still locks)
+     *   0              — lock on every resume (< 1 000 ms treated as same session)
+     *   1 / 5 / 15     — lock after N minutes background
+     *
+     * Also respects the legacy [lockTimeoutMinutes] if [lockGraceMinutes] has
+     * not been set (i.e., prefs written by an older build).
      */
     fun shouldLock(now: Long = System.currentTimeMillis()): Boolean {
         if (!isPinSet) return false
         val last = lastUnlockAtMillis
-        if (last == 0L) return true // cold start or fresh setup
-        val timeout = lockTimeoutMinutes
-        if (timeout < 0) return false
-        if (timeout == 0) return true
-        val gracePeriodMs = timeout * 60L * 1000L
+        if (last == 0L) return true // cold start, fresh setup, or lockNow()
+
+        val grace = lockGraceMinutes
+        if (grace == GRACE_NEVER) return false
+        if (grace == 0) return (now - last) >= 1_000L // allow sub-second same-session jitter
+        val gracePeriodMs = grace * 60L * 1_000L
         return (now - last) > gracePeriodMs
+    }
+
+    /**
+     * Forces an immediate lock by resetting [lastUnlockAtMillis] to 0.
+     * The next call to [shouldLock] will return true (when a PIN is set),
+     * causing MainActivity to show the PIN lock screen on resume.
+     */
+    fun lockNow() {
+        lastUnlockAtMillis = 0L
     }
 
     fun recordSuccess() {
@@ -135,15 +190,23 @@ class PinPreferences @Inject constructor(
         prefs.edit().clear().apply()
     }
 
-    private companion object {
+    companion object {
+        /**
+         * Sentinel value for [lockGraceMinutes] meaning "never lock mid-session".
+         * Cold-start (lastUnlockAtMillis == 0) still triggers a lock.
+         */
+        const val GRACE_NEVER: Int = Int.MAX_VALUE
+
         private const val KEY_IS_PIN_SET = "is_pin_set"
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
         private const val KEY_LOCKOUT_UNTIL = "lockout_until"
         private const val KEY_LAST_UNLOCK = "last_unlock_at"
         private const val KEY_LOCK_TIMEOUT_MIN = "lock_timeout_min"
+        private const val KEY_LOCK_GRACE_MIN = "lock_grace_min"
         private const val KEY_HARD_LOCKOUT = "hard_lockout"
 
         private const val DEFAULT_TIMEOUT_MIN = 5
+        private const val DEFAULT_GRACE_MIN = 15        // §2.5 default: 15 minutes
         private const val LOCKOUT_3X_MS = 30_000L       // 30s after 3 misses
         private const val LOCKOUT_4X_MS = 60_000L       // 60s after 4 misses
         private const val LOCKOUT_5X_MS = 5 * 60_000L   // 5 min + hard-lock at 5

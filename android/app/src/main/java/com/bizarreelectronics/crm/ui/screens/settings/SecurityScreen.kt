@@ -43,13 +43,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.local.prefs.PinPreferences.Companion.GRACE_NEVER
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -307,7 +310,23 @@ class SecurityViewModel @Inject constructor(
     }
 
     // ---------------------------------------------------------------------------
-    // Lock Now (L318-adjacent)
+    // Auto-lock grace window (§2.5 L311)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Emits the current [lockGraceMinutes] value and updates whenever the pref changes.
+     * UI observes this to show the selected segment in the auto-lock row.
+     */
+    val lockGraceMinutes: StateFlow<Int> = pinPreferences.lockGraceMinutesFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, pinPreferences.lockGraceMinutes)
+
+    /** Called when the user selects a new segment from the auto-lock row. */
+    fun setLockGraceMinutes(minutes: Int) {
+        pinPreferences.setLockGraceMinutes(minutes)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Lock Now (L311 / L318-adjacent)
     // ---------------------------------------------------------------------------
 
     /** Whether a PIN is currently configured — drives the "Lock now" row enabled state. */
@@ -315,16 +334,13 @@ class SecurityViewModel @Inject constructor(
         get() = pinPreferences.isPinSet
 
     /**
-     * Triggers an immediate app lock via [pinPreferences.lastUnlockAtMillis] reset.
-     * Setting lastUnlockAtMillis = 0 causes PinPreferences.shouldLock() to return
-     * true on the next MainActivity.onResume() call, which shows the PinLockScreen.
-     *
-     * TODO (L319): when bio fail-3x support is added, this same path can be used
-     * to force the fallback to PIN mid-session.
+     * Triggers an immediate app lock via [PinPreferences.lockNow].
+     * Sets lastUnlockAtMillis = 0 so [PinPreferences.shouldLock] returns true on
+     * the next MainActivity.onResume() call, which shows the PinLockScreen.
      */
     fun lockNow() {
         if (pinPreferences.isPinSet) {
-            pinPreferences.lastUnlockAtMillis = 0L
+            pinPreferences.lockNow()
             _message.value = "App will lock on next resume"
         } else {
             _message.value = "Set up a PIN first to use Lock now"
@@ -347,9 +363,10 @@ class SecurityViewModel @Inject constructor(
  *   1. "Biometric unlock" switch — disabled if BiometricManager reports no hardware/enrollment.
  *      Toggle-ON triggers Keystore key generation + BiometricPrompt confirmation.
  *      Toggle-OFF clears pref + key immediately.
- *   2. "Change PIN" → [onChangePin] (wires to Screen.PinSetup).
- *   3. "Change password" → [onChangePassword] (§2.9 — wires to Screen.ChangePassword).
- *   4. "Lock now" → forces PinLockScreen on next resume.
+ *   2. "Auto-lock PIN after" segmented buttons (§2.5 L311) — Immediate/1m/5m/15m/Never.
+ *   3. "Change PIN" → [onChangePin] (wires to Screen.PinSetup).
+ *   4. "Change password" → [onChangePassword] (§2.9 — wires to Screen.ChangePassword).
+ *   5. "Lock now" → forces PinLockScreen on next resume.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -367,6 +384,7 @@ fun SecurityScreen(
     val promptPending by viewModel.promptPending.collectAsState()
     val reEnrollRequired by viewModel.reEnrollRequired.collectAsState()
     val message by viewModel.message.collectAsState()
+    val lockGraceMinutes by viewModel.lockGraceMinutes.collectAsState()
 
     // Evaluate availability once — only changes if user goes to Settings and
     // adds/removes fingerprints, which triggers a process restart on most OEMs.
@@ -492,6 +510,14 @@ fun SecurityScreen(
                 }
             }
 
+            // ─── Auto-lock grace window card (§2.5 L311) ───
+            Card(modifier = Modifier.fillMaxWidth()) {
+                AutoLockRow(
+                    selectedMinutes = lockGraceMinutes,
+                    onSelect = { viewModel.setLockGraceMinutes(it) },
+                )
+            }
+
             // ─── PIN / Password card ───
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -597,6 +623,59 @@ private fun SecurityPreferenceRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
+        )
+    }
+}
+
+/**
+ * §2.5 — Auto-lock grace-window row.
+ *
+ * Displays a segmented-button strip offering {Immediate / 1 min / 5 min / 15 min / Never}.
+ * The selected option is persisted via [onSelect] → [SecurityViewModel.setLockGraceMinutes].
+ * Helper text below the strip explains the setting to the user.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutoLockRow(
+    selectedMinutes: Int,
+    onSelect: (Int) -> Unit,
+) {
+    data class GraceOption(val label: String, val minutes: Int)
+    val options = listOf(
+        GraceOption("Immediate", 0),
+        GraceOption("1 min", 1),
+        GraceOption("5 min", 5),
+        GraceOption("15 min", 15),
+        GraceOption("Never", GRACE_NEVER),
+    )
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.Timer,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text("Auto-lock PIN after", style = MaterialTheme.typography.bodyMedium)
+        }
+        Spacer(Modifier.height(10.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                    onClick = { onSelect(option.minutes) },
+                    selected = selectedMinutes == option.minutes,
+                    label = { Text(option.label, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Time of inactivity before PIN is required.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
