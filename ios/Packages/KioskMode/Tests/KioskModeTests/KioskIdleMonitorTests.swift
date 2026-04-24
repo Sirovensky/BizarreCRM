@@ -97,4 +97,89 @@ struct KioskIdleMonitorTests {
         monitor.stop() // Should not crash
         #expect(monitor.idleState == .active)
     }
+
+    // MARK: - Timeout state machine (via simulateElapsed)
+
+    @Test("Transitions to dimmed when elapsed >= dimAfterSeconds")
+    func transitionsToDimmed() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 60, blackoutAfterSeconds: 120)
+        monitor.simulateElapsed(60)
+        #expect(monitor.idleState == .dimmed)
+    }
+
+    @Test("Transitions to blackout when elapsed >= blackoutAfterSeconds")
+    func transitionsToBlackout() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 60, blackoutAfterSeconds: 120)
+        monitor.simulateElapsed(120)
+        #expect(monitor.idleState == .blackout)
+    }
+
+    @Test("Stays active when elapsed < dimAfterSeconds")
+    func staysActiveBelowDimThreshold() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 60, blackoutAfterSeconds: 120)
+        monitor.simulateElapsed(59)
+        #expect(monitor.idleState == .active)
+    }
+
+    @Test("Dimmed at boundary, blackout strictly after blackoutAfterSeconds")
+    func boundaryConditions() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(30)
+        #expect(monitor.idleState == .dimmed)
+        monitor.simulateElapsed(59)
+        #expect(monitor.idleState == .dimmed)
+        monitor.simulateElapsed(60)
+        #expect(monitor.idleState == .blackout)
+    }
+
+    @Test("recordActivity resets from dimmed to active")
+    func recordActivityResetsFromDimmed() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(40)
+        #expect(monitor.idleState == .dimmed)
+        monitor.recordActivity()
+        #expect(monitor.idleState == .active)
+    }
+
+    @Test("recordActivity resets from blackout to active")
+    func recordActivityResetsFromBlackout() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(90)
+        #expect(monitor.idleState == .blackout)
+        monitor.recordActivity()
+        #expect(monitor.idleState == .active)
+    }
+
+    @Test("After recordActivity, simulateElapsed restarts idle from active")
+    func idleRestartAfterActivity() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(90)  // → blackout
+        monitor.recordActivity()     // → active
+        monitor.simulateElapsed(20)  // still below dim threshold
+        #expect(monitor.idleState == .active)
+    }
+
+    @Test("Blackout elapsed time far beyond threshold still returns blackout")
+    func longElapsedBlackout() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(3600)  // 1 hour
+        #expect(monitor.idleState == .blackout)
+    }
+
+    @Test("Zero elapsed always active")
+    func zeroElapsedActive() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 30, blackoutAfterSeconds: 60)
+        monitor.simulateElapsed(0)
+        #expect(monitor.idleState == .active)
+    }
+
+    @Test("Transition sequence: active → dimmed → blackout")
+    func fullTransitionSequence() {
+        let monitor = KioskIdleMonitor(dimAfterSeconds: 60, blackoutAfterSeconds: 180)
+        #expect(monitor.idleState == .active)
+        monitor.simulateElapsed(60)
+        #expect(monitor.idleState == .dimmed)
+        monitor.simulateElapsed(180)
+        #expect(monitor.idleState == .blackout)
+    }
 }

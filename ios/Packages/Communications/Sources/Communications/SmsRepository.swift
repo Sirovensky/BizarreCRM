@@ -11,6 +11,9 @@ public protocol SmsRepository: Sendable {
     func toggleFlag(phone: String) async throws -> Bool
     /// Toggles the pinned state; returns the new pin value.
     func togglePin(phone: String) async throws -> Bool
+    /// Toggles the archived state; returns the new archive value.
+    /// Server: PATCH /sms/conversations/:phone/archive (ENR-SMS7).
+    func toggleArchive(phone: String) async throws -> Bool
 }
 
 // MARK: - SmsRepositoryImpl
@@ -36,5 +39,10 @@ public actor SmsRepositoryImpl: SmsRepository {
     public func togglePin(phone: String) async throws -> Bool {
         let result = try await api.toggleSmsConversationPin(phone: phone)
         return result.isPinned
+    }
+
+    public func toggleArchive(phone: String) async throws -> Bool {
+        let result = try await api.toggleSmsConversationArchive(phone: phone)
+        return result.isArchived
     }
 }

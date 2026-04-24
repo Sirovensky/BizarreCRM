@@ -35,7 +35,7 @@ public final class RolesMatrixViewModel {
 
     // MARK: Dependencies
 
-    private let repository: any RolesRepository
+    public let repository: any RolesRepository
 
     // MARK: Init
 
@@ -54,6 +54,21 @@ public final class RolesMatrixViewModel {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    // MARK: Load single role (with capabilities)
+
+    /// Fetches the full capability matrix for a role and updates the roles array.
+    public func loadRole(id: String) async {
+        errorMessage = nil
+        do {
+            let role = try await repository.fetchOne(id: id)
+            if let idx = roles.firstIndex(where: { $0.id == id }) {
+                roles[idx] = role
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: Capability toggle (§47.4 — every toggle produces a PATCH)
@@ -88,11 +103,11 @@ public final class RolesMatrixViewModel {
 
     // MARK: Create / Delete
 
-    public func createRole(name: String, preset: String? = nil, capabilities: Set<String> = []) async {
+    public func createRole(name: String, description: String? = nil, preset: String? = nil, capabilities: Set<String> = []) async {
         isLoading = true
         errorMessage = nil
         do {
-            let role = try await repository.create(name: name, preset: preset, capabilities: capabilities)
+            let role = try await repository.create(name: name, description: description, capabilities: capabilities)
             roles.append(role)
         } catch {
             errorMessage = error.localizedDescription

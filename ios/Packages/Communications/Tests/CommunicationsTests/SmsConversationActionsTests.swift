@@ -278,6 +278,7 @@ final class SmsListViewModelActionsTests: XCTestCase {
             if let err = pinError { throw err }
             return nextPinValue
         }
+        func toggleArchive(phone: String) async throws -> Bool { false }
     }
 
     // MARK: - Helpers

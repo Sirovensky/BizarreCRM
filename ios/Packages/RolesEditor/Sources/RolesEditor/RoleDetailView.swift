@@ -4,11 +4,11 @@ import DesignSystem
 // MARK: - RoleDetailView (iPhone — grouped capability Form)
 
 /// iPhone detail: grouped capability rows per domain, Form+List with Toggle per capability.
+/// Wired to a real RoleDetailViewModel — no placeholder stubs.
 public struct RoleDetailView: View {
 
     @State private var viewModel: RoleDetailViewModel
     @State private var showPresetPicker = false
-    @State private var showElevationSheet = false
     @Environment(\.dismiss) private var dismiss
 
     public init(viewModel: RoleDetailViewModel) {
@@ -36,6 +36,7 @@ public struct RoleDetailView: View {
                         Task { await viewModel.save() }
                     }
                     .disabled(viewModel.isSaving)
+                    .accessibilityLabel("Save capability changes")
                 }
             }
             ToolbarItem(placement: .cancellationAction) {
@@ -43,6 +44,7 @@ public struct RoleDetailView: View {
                     Button("Discard", role: .destructive) {
                         viewModel.discard()
                     }
+                    .accessibilityLabel("Discard unsaved changes")
                 }
             }
         }
@@ -58,6 +60,7 @@ public struct RoleDetailView: View {
                     .foregroundStyle(.white)
                     .clipShape(Capsule())
                     .padding(.bottom, 24)
+                    .accessibilityLabel("Error: \(err)")
             }
         }
         .overlay(alignment: .top) {
@@ -78,9 +81,14 @@ public struct RoleDetailView: View {
         Section {
             LabeledContent("Name", value: viewModel.role.name)
             if let preset = viewModel.role.preset {
-                LabeledContent("Based on", value: preset.replacingOccurrences(of: "preset.", with: "").capitalized)
+                LabeledContent("Based on", value: preset
+                    .replacingOccurrences(of: "preset.", with: "")
+                    .capitalized)
             }
-            LabeledContent("Capabilities", value: "\(viewModel.role.capabilities.count) / \(CapabilityCatalog.all.count)")
+            LabeledContent(
+                "Capabilities",
+                value: "\(viewModel.role.capabilities.count) / \(CapabilityCatalog.all.count)"
+            )
         }
     }
 
@@ -102,8 +110,9 @@ public struct RoleDetailView: View {
                     .lineLimit(2)
             }
         }
-        .accessibilityLabel("\(cap.label) for \(viewModel.role.name)")
+        .accessibilityLabel("\(cap.label) for \(viewModel.role.name): \(isOn ? "on" : "off")")
         .accessibilityHint(cap.description)
+        .accessibilityValue(isOn ? "enabled" : "disabled")
     }
 
     // MARK: Presets section
@@ -114,6 +123,7 @@ public struct RoleDetailView: View {
             Button("Apply a preset template…") {
                 showPresetPicker = true
             }
+            .accessibilityLabel("Apply a preset template to this role")
         }
     }
 
@@ -136,6 +146,7 @@ public struct RoleDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityLabel("\(preset.name), \(preset.capabilities.count) capabilities")
             }
             .navigationTitle("Choose Preset")
             .inlineNavigationTitle()

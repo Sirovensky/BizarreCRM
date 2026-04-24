@@ -144,9 +144,11 @@ public struct AuditLogListView: View {
                                         Label("View Details", systemImage: "doc.text.magnifyingglass")
                                     }
                                     Button {
-                                        navigateToEntity?(entry.entityType, entry.entityId)
+                                        if let eid = entry.entityId {
+                                            navigateToEntity?(entry.entityKind, String(eid))
+                                        }
                                     } label: {
-                                        Label("Go to \(entry.entityType.capitalized)", systemImage: "arrow.right.circle")
+                                        Label("Go to \(entry.entityKind.capitalized)", systemImage: "arrow.right.circle")
                                     }
                                 }
                         }
@@ -393,21 +395,13 @@ private struct AuditLogRow: View {
                         .foregroundStyle(.bizarreOrange)
                     Text("·")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Text(entry.entityType)
+                    Text(entry.entityKind)
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
-                if let role = entry.actorRole {
-                    Text(role.capitalized)
-                        .font(.brandLabelSmall())
-                        .padding(.horizontal, DesignTokens.Spacing.xs)
-                        .padding(.vertical, 1)
-                        .background(Color.bizarreOrangeContainer.opacity(0.5), in: Capsule())
-                        .foregroundStyle(.bizarreOnSurface)
-                }
             }
 
-            if entry.diff != nil {
+            if entry.metadata != nil {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -426,7 +420,8 @@ private struct AuditLogRow: View {
     }
 
     private var a11yLabel: String {
-        "\(entry.actorName) performed \(entry.action) on \(entry.entityType) \(entry.entityId) \(relativeTime)"
+        let entitySuffix = entry.entityId.map { " #\($0)" } ?? ""
+        return "\(entry.actorName) performed \(entry.action) on \(entry.entityKind)\(entitySuffix) \(relativeTime)"
     }
 }
 

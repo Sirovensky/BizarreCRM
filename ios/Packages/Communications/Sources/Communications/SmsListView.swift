@@ -155,7 +155,7 @@ public struct SmsListView: View {
                         .accessibilityLabel("Mark conversation with \(c.displayName) as read")
                     }
                 }
-                // Trailing swipe: flag / pin
+                // Trailing swipe: flag / pin / archive
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button {
                         Task { await vm.toggleFlag(phone: c.convPhone) }
@@ -174,6 +174,15 @@ public struct SmsListView: View {
                     }
                     .tint(.bizarreOrange)
                     .accessibilityLabel(c.isPinned ? "Unpin conversation with \(c.displayName)" : "Pin conversation with \(c.displayName)")
+
+                    Button {
+                        Task { await vm.toggleArchive(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isArchived ? "Unarchive" : "Archive",
+                              systemImage: c.isArchived ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    .tint(.bizarreMagenta)
+                    .accessibilityLabel(c.isArchived ? "Unarchive conversation with \(c.displayName)" : "Archive conversation with \(c.displayName)")
                 }
                 // Context menu (iPad hover + long-press)
                 .contextMenu {
@@ -195,6 +204,12 @@ public struct SmsListView: View {
                     } label: {
                         Label(c.isPinned ? "Unpin" : "Pin to Top",
                               systemImage: c.isPinned ? "pin.slash" : "pin")
+                    }
+                    Button {
+                        Task { await vm.toggleArchive(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isArchived ? "Unarchive" : "Archive",
+                              systemImage: c.isArchived ? "tray.and.arrow.up" : "archivebox")
                     }
                     Divider()
                     Button {
@@ -249,6 +264,12 @@ private struct ConversationRow: View {
                             .foregroundStyle(.bizarreError)
                             .accessibilityHidden(true)
                     }
+                    if conversation.isArchived {
+                        Image(systemName: "archivebox.fill")
+                            .font(.caption)
+                            .foregroundStyle(.bizarreMagenta)
+                            .accessibilityHidden(true)
+                    }
                 }
                 if let msg = conversation.lastMessage, !msg.isEmpty {
                     Text(msg)
@@ -285,6 +306,7 @@ private struct ConversationRow: View {
         var parts: [String] = [c.displayName]
         if c.isPinned { parts.append("Pinned") }
         if c.isFlagged { parts.append("Flagged") }
+        if c.isArchived { parts.append("Archived") }
         if let msg = c.lastMessage, !msg.isEmpty { parts.append(msg) }
         if let ts = c.lastMessageAt?.prefix(10), !ts.isEmpty { parts.append(String(ts)) }
         if c.unreadCount > 0 { parts.append("\(c.unreadCount) unread") }

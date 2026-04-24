@@ -45,6 +45,15 @@ public struct SetupPayload: Sendable {
     // MARK: Step 12a — Theme
     public var theme: String = "system"
 
+    // MARK: Step 9 — First Employee (POST /api/v1/settings/users)
+    public var firstEmployeeFirstName: String? = nil
+    public var firstEmployeeLastName: String? = nil
+    public var firstEmployeeEmail: String? = nil
+    public var firstEmployeeRole: String? = nil
+
+    // MARK: Step 14 — Sample Data Opt-In (POST /api/v1/onboarding/sample-data)
+    public var sampleDataOptIn: Bool? = nil
+
     public init() {}
 }
 
@@ -244,5 +253,19 @@ public extension SetupPayload {
 
     func themePayload() -> [String: String] {
         ["theme": theme]
+    }
+
+    func firstEmployeePayload() -> [String: String] {
+        var d: [String: String] = [:]
+        if let fn = firstEmployeeFirstName, !fn.isEmpty { d["first_name"] = fn }
+        if let ln = firstEmployeeLastName,  !ln.isEmpty { d["last_name"]  = ln }
+        if let em = firstEmployeeEmail,     !em.isEmpty { d["email"]      = em }
+        if let ro = firstEmployeeRole,      !ro.isEmpty { d["role"]       = ro }
+        return d
+    }
+
+    func sampleDataPayload() -> [String: String] {
+        guard let optIn = sampleDataOptIn else { return [:] }
+        return ["sample_data_opt_in": optIn ? "1" : "0"]
     }
 }

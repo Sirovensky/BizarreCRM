@@ -10,7 +10,8 @@ let package = Package(
     dependencies: [
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
-        .package(path: "../Networking")
+        .package(path: "../Networking"),
+        .package(path: "../Persistence")
     ],
     targets: [
         .target(
@@ -18,7 +19,8 @@ let package = Package(
             dependencies: [
                 "Core",
                 "DesignSystem",
-                "Networking"
+                "Networking",
+                "Persistence"
             ]
         ),
         .testTarget(

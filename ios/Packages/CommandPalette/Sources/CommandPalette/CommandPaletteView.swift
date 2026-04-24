@@ -7,8 +7,9 @@ import DesignSystem
 /// The Command Palette overlay / sheet.
 ///
 /// Layout:
-/// - iPhone: full-screen sheet, search field at top, `List` of results.
-/// - iPad / Mac: centered overlay, max-width 600 pt, glass material background.
+/// - iPhone: full-screen sheet, search field at top, `List` of results (vertical, compact).
+/// - iPad / Mac: centered floating overlay, max-width 600 pt, glass chrome,
+///   results in a 2-column `LazyVGrid` that shows more at a glance.
 ///
 /// Wire ⌘K / pull-down gesture in RootView; this view is purely presentational.
 public struct CommandPaletteView: View {
@@ -31,6 +32,9 @@ public struct CommandPaletteView: View {
         .onChange(of: vm.isDismissed) { _, dismissed in
             if dismissed { dismiss() }
         }
+        // Wire keyboard router once the view is on screen
+        .onAppear { CommandPaletteKeyboardRouter.shared.setViewModel(vm) }
+        .onDisappear { CommandPaletteKeyboardRouter.shared.setViewModel(nil) }
     }
 
     // MARK: - iPhone layout
@@ -64,34 +68,51 @@ public struct CommandPaletteView: View {
     }
 
     // MARK: - iPad layout
+    //
+    // iPad shows a floating glass panel with a 2-column grid of results so
+    // more actions are visible without scrolling. The wider viewport and
+    // pointer environment justify the richer layout (per CLAUDE.md).
 
     private var iPadLayout: some View {
         VStack(spacing: 0) {
-            searchField
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.top, BrandSpacing.base)
-                .padding(.bottom, BrandSpacing.sm)
+            // Glass chrome header (search field)
+            HStack(spacing: 0) {
+                searchField
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, BrandSpacing.base)
+            .padding(.bottom, BrandSpacing.sm)
+            .brandGlass(.regular, in: Rectangle())
 
             Divider()
                 .padding(.horizontal, BrandSpacing.sm)
 
             entitySuggestionRow
 
-            resultList
-                .frame(maxHeight: 420)
+            iPadResultGrid
+                .frame(maxHeight: 480)
 
             Spacer(minLength: 0)
+
+            // Footer hint bar
+            iPadKeyboardHint
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.xs)
         }
-        .frame(maxWidth: 600)
+        .frame(maxWidth: 640)
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xl))
+        .shadow(
+            color: .black.opacity(DesignTokens.Shadows.lg.opacityDark),
+            radius: DesignTokens.Shadows.lg.blur,
+            y: DesignTokens.Shadows.lg.y
+        )
         .padding(BrandSpacing.xxl)
         .keyboardShortcuts
         // Tap outside overlay to dismiss
         .background(
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { vm.dismiss() }
+            Color.black.opacity(0.25)
                 .ignoresSafeArea()
+                .onTapGesture { vm.dismiss() }
         )
     }
 
@@ -167,7 +188,7 @@ public struct CommandPaletteView: View {
         }
     }
 
-    // MARK: - Result list
+    // MARK: - iPhone result list (compact vertical)
 
     private var resultList: some View {
         List {
@@ -192,13 +213,80 @@ public struct CommandPaletteView: View {
             .accessibilityAddTraits(.isButton)
     }
 
+    // MARK: - iPad 2-column result grid (spacious, pointer-friendly)
+
+    private let iPadColumns = [
+        GridItem(.flexible(), spacing: BrandSpacing.sm),
+        GridItem(.flexible(), spacing: BrandSpacing.sm)
+    ]
+
+    private var iPadResultGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: iPadColumns, spacing: BrandSpacing.sm) {
+                ForEach(Array(vm.filteredResults.enumerated()), id: \.element.id) { index, action in
+                    iPadActionCell(action: action, index: index)
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
+        }
+        .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
+        .scrollIndicators(.hidden)
+    }
+
+    private func iPadActionCell(action: CommandAction, index: Int) -> some View {
+        let isSelected = vm.selectedIndex == index
+        return ActionGridCell(action: action, isSelected: isSelected)
+            .contentShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+            .onTapGesture { tapAction(at: index) }
+            .hoverEffect(.highlight)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(action.title)
+            .accessibilityHint("Double tap to execute")
+            .accessibilityAddTraits(.isButton)
+    }
+
+    // MARK: - iPad keyboard hint footer
+
+    private var iPadKeyboardHint: some View {
+        HStack(spacing: BrandSpacing.base) {
+            keyHintChip(symbol: "arrow.up", label: "↑")
+            keyHintChip(symbol: "arrow.down", label: "↓")
+            Text("Navigate")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.tertiary)
+            Spacer()
+            keyHintChip(symbol: "return", label: "↵")
+            Text("Execute")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.tertiary)
+            Spacer()
+            keyHintChip(symbol: "escape", label: "Esc")
+            Text("Dismiss")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, BrandSpacing.xs)
+    }
+
+    private func keyHintChip(symbol: String, label: String) -> some View {
+        Text(label)
+            .font(.brandMono(size: 11))
+            .padding(.horizontal, BrandSpacing.xs)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xs))
+            .accessibilityHidden(true)
+    }
+
+    // MARK: - Shared helpers
+
     private func tapAction(at index: Int) {
         vm.select(index: index)
         vm.executeSelected()
     }
 }
 
-// MARK: - ActionRow
+// MARK: - ActionRow (iPhone list row)
 
 private struct ActionRow: View {
     let action: CommandAction
@@ -230,6 +318,46 @@ private struct ActionRow: View {
     }
 }
 
+// MARK: - ActionGridCell (iPad 2-column grid cell)
+
+private struct ActionGridCell: View {
+    let action: CommandAction
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: action.icon)
+                .font(.brandTitleMedium())
+                .frame(width: DesignTokens.Touch.minTargetSide, alignment: .center)
+                .foregroundStyle(isSelected ? Color.bizarreOrange : Color.primary)
+                .accessibilityHidden(true)
+
+            Text(action.title)
+                .font(.brandBodyMedium())
+                .foregroundStyle(isSelected ? Color.bizarreOrange : Color.primary)
+                .lineLimit(2)
+
+            Spacer()
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(minHeight: DesignTokens.Touch.minTargetSide)
+        .background(
+            isSelected
+                ? Color.bizarreOrange.opacity(0.15)
+                : Color.primary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                .strokeBorder(
+                    isSelected ? Color.bizarreOrange.opacity(0.5) : Color.clear,
+                    lineWidth: 1
+                )
+        )
+    }
+}
+
 // MARK: - Keyboard shortcut modifier
 
 private extension View {
@@ -258,27 +386,18 @@ private extension View {
 //
 // SwiftUI key-press handlers are value-type closures that can't directly
 // capture `@Observable` vm without re-initialisation each redraw. This
-// thin actor holds a weak reference and is set by `CommandPaletteView`
-// on appear.
+// thin singleton holds a weak reference set from `.onAppear`.
 
 @MainActor
 final class CommandPaletteKeyboardRouter {
     static let shared = CommandPaletteKeyboardRouter()
     weak var viewModel: CommandPaletteViewModel?
 
-    func setViewModel(_ vm: CommandPaletteViewModel) { viewModel = vm }
+    func setViewModel(_ vm: CommandPaletteViewModel?) { viewModel = vm }
     func moveUp()          { viewModel?.moveSelectionUp() }
     func moveDown()        { viewModel?.moveSelectionDown() }
     func execute()         { viewModel?.executeSelected() }
     func dismissPalette()  { viewModel?.dismiss() }
-}
-
-// MARK: - CommandPaletteView + Router wiring
-
-private extension View {
-    func wireKeyboardRouter(_ vm: CommandPaletteViewModel) -> some View {
-        self.onAppear { CommandPaletteKeyboardRouter.shared.setViewModel(vm) }
-    }
 }
 
 // MARK: - Previews

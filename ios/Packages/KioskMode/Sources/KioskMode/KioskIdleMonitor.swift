@@ -75,6 +75,16 @@ public final class KioskIdleMonitor {
 
     private func tick() {
         let elapsed = Date().timeIntervalSince(lastActivityTime)
+        applyElapsed(elapsed)
+    }
+
+    /// Internal entry point for unit tests that need to simulate arbitrary idle
+    /// durations without waiting for real wall-clock time.
+    func simulateElapsed(_ elapsed: TimeInterval) {
+        applyElapsed(elapsed)
+    }
+
+    private func applyElapsed(_ elapsed: TimeInterval) {
         let newState: IdleState
         if elapsed >= blackoutAfterSeconds {
             newState = .blackout

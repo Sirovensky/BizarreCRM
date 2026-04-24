@@ -2,20 +2,26 @@ import SwiftUI
 import Core
 import DesignSystem
 
-// MARK: - RolesMatrixView (iPad — full grid)
+// MARK: - RolesMatrixView (iPad — capabilities-as-rows, roles-as-columns table)
+//
+// iPad layout per CLAUDE.md and §47 spec:
+//   - NavigationSplitView: sidebar = role list, detail = full cross-tab matrix
+//   - The matrix detail renders ALL roles as columns and ALL capabilities as rows
+//     so admins can compare permissions across roles at a glance.
+//   - iPhone uses RoleListView + RoleDetailView (vertical flow).
+//
+// Liquid Glass is applied to the toolbar chrome only (not to data table cells).
 
-/// iPad layout: NavigationSplitView with roles sidebar + full capability matrix detail.
-/// Each cell is a Toggle sized to 44pt min for a11y (§47.1).
 public struct RolesMatrixView: View {
 
     // MARK: State
 
     @State private var viewModel: RolesMatrixViewModel
     @State private var selectedRoleId: String?
-    @State private var showCloneSheet = false
-    @State private var cloneSourceRole: Role?
+    @State private var showCreateSheet = false
     @State private var showDeleteConfirm = false
     @State private var pendingDeleteRole: Role?
+    @State private var columnWidth: CGFloat = 120
 
     // Callback for host app preview integration (§47.3)
     public var onPreviewRoleChanged: ((String?) -> Void)?
@@ -33,26 +39,18 @@ public struct RolesMatrixView: View {
         NavigationSplitView {
             rolesSidebar
         } detail: {
-            if let selectedId = selectedRoleId,
-               let role = viewModel.roles.first(where: { $0.id == selectedId }) {
-                matrixDetail(for: role)
-            } else {
-                ContentUnavailableView(
-                    "Select a Role",
-                    systemImage: "person.badge.key",
-                    description: Text("Choose a role from the sidebar to edit its capabilities.")
-                )
-            }
+            matrixTable
         }
         .task { await viewModel.load() }
         .onAppear {
             viewModel.onPreviewRoleChanged = onPreviewRoleChanged
             viewModel.subscribeToRolesChangedNotification()
         }
-        .sheet(isPresented: $showCloneSheet) {
-            if let source = cloneSourceRole {
-                CloneRoleSheet(sourceRole: source) { newName in
-                    Task { await viewModel.cloneRole(source, newName: newName) }
+        .sheet(isPresented: $showCreateSheet) {
+            CreateRoleSheet { name, description, preset in
+                Task {
+                    let caps = preset.map { RolePresets.preset(for: $0)?.capabilities ?? [] } ?? []
+                    await viewModel.createRole(name: name, description: description, capabilities: caps)
                 }
             }
         }
@@ -63,11 +61,13 @@ public struct RolesMatrixView: View {
         ) {
             Button("Delete", role: .destructive) {
                 guard let role = pendingDeleteRole else { return }
+                if selectedRoleId == role.id { selectedRoleId = nil }
                 Task { await viewModel.deleteRole(role) }
             }
         } message: {
             Text("This action cannot be undone.")
         }
+        .safeAreaInset(edge: .top) { previewBanner }
     }
 
     // MARK: Sidebar
@@ -79,156 +79,204 @@ public struct RolesMatrixView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(role.name)
                         .font(.body)
-                    if let preset = role.preset {
-                        Text(preset.replacingOccurrences(of: "preset.", with: "").capitalized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(role.capabilities.count) capabilities")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: role.preset != nil ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
+                Image(systemName: role.preset != nil
+                    ? "person.crop.circle.badge.checkmark"
+                    : "person.crop.circle")
+                .foregroundStyle(role.preset != nil ? .blue : .secondary)
             }
             .tag(role.id)
+            .hoverEffect(.highlight)
             .contextMenu {
-                Button("Clone") {
-                    cloneSourceRole = role
-                    showCloneSheet = true
-                }
                 Button("Delete", role: .destructive) {
                     pendingDeleteRole = role
                     showDeleteConfirm = true
                 }
             }
+            .accessibilityLabel("\(role.name), \(role.capabilities.count) capabilities")
         }
         .navigationTitle("Roles")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    ForEach(RolePresets.all, id: \.id) { preset in
-                        Button(preset.name) {
-                            Task { await viewModel.createRole(name: preset.name, preset: preset.id, capabilities: preset.capabilities) }
-                        }
-                    }
-                    Divider()
-                    Button("Custom Role") {
-                        Task { await viewModel.createRole(name: "New Role") }
-                    }
+                Button {
+                    showCreateSheet = true
                 } label: {
                     Label("Add Role", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
+                .accessibilityLabel("Add new role")
             }
         }
         .overlay {
-            if viewModel.isLoading {
+            if viewModel.isLoading && viewModel.roles.isEmpty {
                 ProgressView()
             }
         }
     }
 
-    // MARK: Matrix detail
+    // MARK: Matrix table (roles-as-columns, capabilities-as-rows)
 
     @ViewBuilder
-    private func matrixDetail(for role: Role) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(viewModel.domains, id: \.domain) { group in
-                    Section {
-                        ForEach(group.capabilities) { cap in
-                            matrixCell(cap: cap, role: role)
-                            Divider().padding(.leading)
+    private var matrixTable: some View {
+        if viewModel.roles.isEmpty {
+            ContentUnavailableView(
+                "No Roles",
+                systemImage: "person.badge.key",
+                description: Text("Create a role using the + button in the sidebar.")
+            )
+        } else {
+            ScrollView([.horizontal, .vertical]) {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    // Sticky column header row
+                    matrixColumnHeader
+                    // Domain sections
+                    ForEach(viewModel.domains, id: \.domain) { group in
+                        Section {
+                            ForEach(group.capabilities) { cap in
+                                matrixRow(cap: cap)
+                                Divider()
+                                    .padding(.leading, 260)
+                            }
+                        } header: {
+                            domainSectionHeader(group.domain)
                         }
-                    } header: {
-                        Text(group.domain)
-                            .font(.headline)
-                            .padding(.horizontal)
-                            .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.ultraThinMaterial)
                     }
                 }
             }
-        }
-        .navigationTitle(role.name)
-        .toolbar {
-            previewToolbarItems(for: role)
-        }
-        .safeAreaInset(edge: .top) {
-            previewBanner
-        }
-        .if(viewModel.errorMessage != nil) { view in
-            view.overlay(alignment: .bottom) {
-                Text(viewModel.errorMessage ?? "")
-                    .font(.footnote)
-                    .padding()
-                    .background(.red.opacity(0.85))
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
-                    .padding()
+            .navigationTitle("Roles Matrix")
+            .toolbar { matrixToolbarContent }
+            .if(viewModel.errorMessage != nil) { view in
+                view.overlay(alignment: .bottom) {
+                    Text(viewModel.errorMessage ?? "")
+                        .font(.footnote)
+                        .padding()
+                        .background(.red.opacity(0.85))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .padding()
+                        .accessibilityLabel("Error: \(viewModel.errorMessage ?? "")")
+                }
             }
         }
     }
 
-    // MARK: Matrix cell
+    // MARK: Column header row
 
     @ViewBuilder
-    private func matrixCell(cap: Capability, role: Role) -> some View {
-        let isOn = role.capabilities.contains(cap.id)
-        let capLabel = cap.label
-        let capDesc = cap.description
-        let roleName = role.name
-        let capId = cap.id
-        HStack {
-            capabilityLabelStack(label: capLabel, description: capDesc)
-            Spacer()
-            Toggle(isOn: Binding(
-                get: { isOn },
-                set: { _ in Task { await viewModel.toggle(capability: capId, on: role) } }
-            )) {
-                EmptyView()
-            }
-            .accessibilityLabel("\(capLabel) for \(roleName)")
-            .labelsHidden()
-            .toggleStyle(.switch)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0))
-    }
-
-    @ViewBuilder
-    private func capabilityLabelStack(label: String, description: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.subheadline)
-            Text(description)
+    private var matrixColumnHeader: some View {
+        HStack(spacing: 0) {
+            // Capability label column header
+            Text("Capability")
                 .font(.caption)
+                .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+                .frame(width: 260, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+
+            // Role column headers
+            ForEach(viewModel.roles) { role in
+                VStack(spacing: 2) {
+                    Text(role.name)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text("\(role.capabilities.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: columnWidth)
+                .padding(.vertical, 8)
+                .accessibilityLabel("\(role.name), \(role.capabilities.count) capabilities enabled")
+            }
         }
-        .frame(minWidth: 240, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial)
+        .brandGlass(.regular, in: Rectangle())
     }
 
-    // MARK: Preview toolbar (§47.3)
+    // MARK: Domain section header
+
+    @ViewBuilder
+    private func domainSectionHeader(_ domain: String) -> some View {
+        Text(domain)
+            .font(.headline)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+    }
+
+    // MARK: Matrix row (one capability, all roles)
+
+    @ViewBuilder
+    private func matrixRow(cap: Capability) -> some View {
+        HStack(spacing: 0) {
+            // Capability label
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cap.label)
+                    .font(.subheadline)
+                Text(cap.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 260, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            // Toggle per role
+            ForEach(viewModel.roles) { role in
+                let isOn = role.capabilities.contains(cap.id)
+                Toggle(isOn: Binding(
+                    get: { isOn },
+                    set: { _ in Task { await viewModel.toggle(capability: cap.id, on: role) } }
+                )) {
+                    EmptyView()
+                }
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .frame(width: columnWidth)
+                .accessibilityLabel("\(cap.label) for \(role.name): \(isOn ? "on" : "off")")
+                .accessibilityHint("Double-tap to toggle")
+                .accessibilityValue(isOn ? "enabled" : "disabled")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .hoverEffect(.highlight)
+    }
+
+    // MARK: Matrix toolbar
 
     @ToolbarContentBuilder
-    private func previewToolbarItems(for role: Role) -> some ToolbarContent {
+    private var matrixToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .secondaryAction) {
-            if viewModel.activePreviewRoleId == role.id {
-                Button("Exit Preview") { viewModel.exitPreview() }
-                    .tint(.orange)
-            } else {
-                Button("Preview as Role") { viewModel.startPreview(roleId: role.id) }
+            if let previewRole = viewModel.activePreviewRole {
+                Button("Exit Preview: \(previewRole.name)") {
+                    viewModel.exitPreview()
+                }
+                .tint(.orange)
             }
         }
-        ToolbarItem(placement: .secondaryAction) {
-            Menu("Clone / Template") {
-                Button("Clone this role") {
-                    cloneSourceRole = role
-                    showCloneSheet = true
-                }
-                Divider()
-                ForEach(RolePresets.all, id: \.id) { preset in
-                    Button("Apply \"\(preset.name)\" template") {
-                        Task { await viewModel.setCapabilities(preset.capabilities, on: role) }
+        if let selectedId = selectedRoleId,
+           let role = viewModel.roles.first(where: { $0.id == selectedId }) {
+            ToolbarItem(placement: .secondaryAction) {
+                Menu("Selected: \(role.name)") {
+                    if viewModel.activePreviewRoleId == role.id {
+                        Button("Exit Preview") { viewModel.exitPreview() }
+                    } else {
+                        Button("Preview as this Role") { viewModel.startPreview(roleId: role.id) }
+                    }
+                    Divider()
+                    Button("Delete Role", role: .destructive) {
+                        pendingDeleteRole = role
+                        showDeleteConfirm = true
                     }
                 }
             }
@@ -271,45 +319,6 @@ private extension View {
             transform(self)
         } else {
             self
-        }
-    }
-}
-
-// MARK: - CloneRoleSheet
-
-private struct CloneRoleSheet: View {
-    let sourceRole: Role
-    let onClone: (String) -> Void
-
-    @State private var newName: String = ""
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("New Role Name") {
-                    TextField("Name", text: $newName)
-                        .accessibilityLabel("New role name")
-                }
-                Section {
-                    Text("Cloning capabilities from: **\(sourceRole.name)**")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("Clone Role")
-            .inlineNavigationTitle()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Clone") {
-                        onClone(newName.isEmpty ? "\(sourceRole.name) Copy" : newName)
-                        dismiss()
-                    }
-                }
-            }
         }
     }
 }

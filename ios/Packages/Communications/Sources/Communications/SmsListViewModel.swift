@@ -64,6 +64,7 @@ public final class SmsListViewModel {
                 unreadCount: 0,
                 isFlagged: c.isFlagged,
                 isPinned: c.isPinned,
+                isArchived: c.isArchived,
                 customer: c.customer,
                 recentTicket: c.recentTicket
             )
@@ -93,6 +94,7 @@ public final class SmsListViewModel {
                     unreadCount: c.unreadCount,
                     isFlagged: newFlagged,
                     isPinned: c.isPinned,
+                    isArchived: c.isArchived,
                     customer: c.customer,
                     recentTicket: c.recentTicket
                 )
@@ -118,6 +120,7 @@ public final class SmsListViewModel {
                     unreadCount: c.unreadCount,
                     isFlagged: c.isFlagged,
                     isPinned: newPinned,
+                    isArchived: c.isArchived,
                     customer: c.customer,
                     recentTicket: c.recentTicket
                 )
@@ -130,6 +133,23 @@ public final class SmsListViewModel {
             }
         } catch {
             AppLog.ui.error("togglePin failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// Toggles archive; removes conversation from list when archiving (mirrors server filter).
+    public func toggleArchive(phone: String) async {
+        do {
+            let nowArchived = try await repo.toggleArchive(phone: phone)
+            if nowArchived {
+                // Remove from visible list — server excludes archived unless include_archived=1.
+                conversations.removeAll { $0.convPhone == phone }
+            } else {
+                // Unarchived — reload so it reappears correctly sorted.
+                await fetch(force: true)
+            }
+        } catch {
+            AppLog.ui.error("toggleArchive failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
         }
     }

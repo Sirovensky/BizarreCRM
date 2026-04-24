@@ -21,6 +21,16 @@ public final class FTSReindexCoordinator {
     private var pendingTickets: [Ticket] = []
     private var pendingCustomers: [Customer] = []
     private var pendingInventory: [InventoryItem] = []
+
+    /// Invoice changes carry plain fields — no Invoice domain model in Core yet.
+    private struct PendingInvoice: Sendable {
+        let id: Int64
+        let displayId: String
+        let customerName: String
+        let updatedAt: Date
+    }
+
+    private var pendingInvoices: [PendingInvoice] = []
     private var debounceTask: Task<Void, Never>?
     private let debounceDuration: UInt64 = 1_000_000_000  // 1 s
 
@@ -33,12 +43,28 @@ public final class FTSReindexCoordinator {
 
     // MARK: - Bulk rebuild
 
+    /// One invoice row for bulk rebuild — mirrors the invoice fields indexed in the FTS store.
+    public struct InvoiceIndexEntry: Sendable {
+        public let id: Int64
+        public let displayId: String
+        public let customerName: String
+        public let updatedAt: Date
+
+        public init(id: Int64, displayId: String, customerName: String, updatedAt: Date) {
+            self.id = id
+            self.displayId = displayId
+            self.customerName = customerName
+            self.updatedAt = updatedAt
+        }
+    }
+
     /// Call on app launch after initial GRDB sync. Provider closures fetch
     /// from the local database — no network calls here.
     public func rebuildAll(
         ticketProvider: @Sendable @escaping () async -> [Ticket],
         customerProvider: @Sendable @escaping () async -> [Customer],
-        inventoryProvider: @Sendable @escaping () async -> [InventoryItem]
+        inventoryProvider: @Sendable @escaping () async -> [InventoryItem],
+        invoiceProvider: (@Sendable () async -> [InvoiceIndexEntry])? = nil
     ) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -58,6 +84,18 @@ public final class FTSReindexCoordinator {
             let items = await inventoryProvider()
             for item in items {
                 try? await self.ftsStore.indexInventory(item)
+            }
+
+            if let invoiceProvider {
+                let invoices = await invoiceProvider()
+                for invoice in invoices {
+                    try? await self.ftsStore.indexInvoice(
+                        id: invoice.id,
+                        displayId: invoice.displayId,
+                        customerName: invoice.customerName,
+                        updatedAt: invoice.updatedAt
+                    )
+                }
             }
 
             self.lastIndexedAt = Date()
@@ -83,6 +121,21 @@ public final class FTSReindexCoordinator {
             guard let self, let item = note.userInfo?["inventoryItem"] as? InventoryItem else { return }
             Task { @MainActor in self.enqueueInventoryItem(item) }
         }
+
+        nc.addObserver(forName: .invoiceChanged, object: nil, queue: nil) { [weak self] note in
+            guard let self,
+                  let info = note.userInfo,
+                  let id = info["invoiceId"] as? Int64,
+                  let displayId = info["displayId"] as? String,
+                  let customerName = info["customerName"] as? String,
+                  let updatedAt = info["updatedAt"] as? Date
+            else { return }
+            let pending = PendingInvoice(
+                id: id, displayId: displayId,
+                customerName: customerName, updatedAt: updatedAt
+            )
+            Task { @MainActor in self.enqueueInvoice(pending) }
+        }
     }
 
     // MARK: - Queue management
@@ -105,6 +158,12 @@ public final class FTSReindexCoordinator {
         scheduleFlush()
     }
 
+    private func enqueueInvoice(_ invoice: PendingInvoice) {
+        pendingInvoices.removeAll { $0.id == invoice.id }
+        pendingInvoices.append(invoice)
+        scheduleFlush()
+    }
+
     private func scheduleFlush() {
         debounceTask?.cancel()
         debounceTask = Task { @MainActor [weak self] in
@@ -120,18 +179,28 @@ public final class FTSReindexCoordinator {
         let tickets = pendingTickets
         let customers = pendingCustomers
         let inventory = pendingInventory
+        let invoices = pendingInvoices
         pendingTickets = []
         pendingCustomers = []
         pendingInventory = []
+        pendingInvoices = []
 
-        isIndexing = !tickets.isEmpty || !customers.isEmpty || !inventory.isEmpty
+        isIndexing = !tickets.isEmpty || !customers.isEmpty || !inventory.isEmpty || !invoices.isEmpty
         defer { isIndexing = false }
 
         for ticket in tickets { try? await ftsStore.indexTicket(ticket) }
         for customer in customers { try? await ftsStore.indexCustomer(customer) }
         for item in inventory { try? await ftsStore.indexInventory(item) }
+        for invoice in invoices {
+            try? await ftsStore.indexInvoice(
+                id: invoice.id,
+                displayId: invoice.displayId,
+                customerName: invoice.customerName,
+                updatedAt: invoice.updatedAt
+            )
+        }
 
-        if !tickets.isEmpty || !customers.isEmpty || !inventory.isEmpty {
+        if !tickets.isEmpty || !customers.isEmpty || !inventory.isEmpty || !invoices.isEmpty {
             lastIndexedAt = Date()
         }
     }

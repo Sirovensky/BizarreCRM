@@ -22,7 +22,26 @@ public final class CallLogViewModel {
         case comingSoon
     }
 
+    /// Direction filter applied to the loaded list. `nil` means "all".
+    public enum DirectionFilter: String, CaseIterable, Equatable, Sendable {
+        case all       = "all"
+        case inbound   = "inbound"
+        case outbound  = "outbound"
+
+        public var label: String {
+            switch self {
+            case .all:      return "All"
+            case .inbound:  return "Inbound"
+            case .outbound: return "Outbound"
+            }
+        }
+    }
+
     public private(set) var state: State = .loading
+
+    /// Active direction filter. Changing this re-filters the loaded list immediately
+    /// without a new network request (the full list is retained in `.loaded`).
+    public var directionFilter: DirectionFilter = .all
 
     // MARK: - Dependencies
 
@@ -61,17 +80,30 @@ public final class CallLogViewModel {
     /// - customer name (case-insensitive)
     /// - phone number (digits-only substring)
     /// - direction ("inbound" / "outbound")
+    /// - active `directionFilter` (applied first, before text search)
     ///
-    /// Returns the full list when `query` is blank.
+    /// Returns the full direction-filtered list when `query` is blank.
     public func filteredCalls(_ query: String) -> [CallLogEntry] {
         guard case .loaded(let calls) = state else { return [] }
+
+        // Apply direction filter first
+        let directionFiltered: [CallLogEntry]
+        switch directionFilter {
+        case .all:
+            directionFiltered = calls
+        case .inbound:
+            directionFiltered = calls.filter { $0.direction == "inbound" }
+        case .outbound:
+            directionFiltered = calls.filter { $0.direction == "outbound" }
+        }
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return calls }
+        guard !trimmed.isEmpty else { return directionFiltered }
 
         let lower = trimmed.lowercased()
         let digitsOnly = trimmed.filter(\.isNumber)
 
-        return calls.filter { entry in
+        return directionFiltered.filter { entry in
             if let name = entry.customerName, name.lowercased().contains(lower) { return true }
             if entry.direction.lowercased().contains(lower) { return true }
             if !digitsOnly.isEmpty && entry.phoneNumber.filter(\.isNumber).contains(digitsOnly) { return true }

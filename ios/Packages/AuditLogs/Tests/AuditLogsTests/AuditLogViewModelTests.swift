@@ -38,15 +38,23 @@ actor MockAPIClient: APIClient {
 
 // MARK: - Fixtures
 
-private func makeEntry(id: String = "1", actorName: String = "Alice", action: String = "ticket.update") -> AuditLogEntry {
+private func makeEntry(
+    id: String = "1",
+    actorFirstName: String = "Alice",
+    actorLastName: String? = nil,
+    action: String = "ticket.update",
+    entityKind: String = "ticket",
+    createdAt: Date = Date()
+) -> AuditLogEntry {
     AuditLogEntry(
         id: id,
-        createdAt: Date(),
-        actorId: "actor-\(id)",
-        actorName: actorName,
+        createdAt: createdAt,
+        actorUserId: Int(id),
+        actorFirstName: actorFirstName,
+        actorLastName: actorLastName,
         action: action,
-        entityType: "ticket",
-        entityId: "t-\(id)"
+        entityKind: entityKind,
+        entityId: Int(id)
     )
 }
 
@@ -271,5 +279,204 @@ private extension MockAPIClient {
     }
     func setErrorToThrow(_ error: Error?) {
         self.errorToThrow = error
+    }
+}
+
+// MARK: - AuditLogEntry model tests
+
+@Suite("AuditLogEntry model")
+struct AuditLogEntryModelTests {
+
+    @Test func actorName_firstAndLastName() {
+        let entry = makeEntry(actorFirstName: "Alice", actorLastName: "Smith")
+        #expect(entry.actorName == "Alice Smith")
+    }
+
+    @Test func actorName_firstNameOnly() {
+        let entry = makeEntry(actorFirstName: "Bob", actorLastName: nil)
+        #expect(entry.actorName == "Bob")
+    }
+
+    @Test func actorName_bothNil_fallsBackToSystem() {
+        let entry = AuditLogEntry(
+            id: "99", createdAt: Date(),
+            actorUserId: nil, actorFirstName: nil, actorLastName: nil,
+            action: "system.event", entityKind: "system"
+        )
+        #expect(entry.actorName == "System")
+    }
+
+    @Test func actorName_emptyStrings_fallsBackToSystem() {
+        let entry = AuditLogEntry(
+            id: "100", createdAt: Date(),
+            actorUserId: nil, actorFirstName: "", actorLastName: "",
+            action: "system.event", entityKind: "system"
+        )
+        #expect(entry.actorName == "System")
+    }
+
+    @Test func entityId_isOptionalInt() {
+        let withId = makeEntry(id: "5")
+        #expect(withId.entityId == 5)
+        let noId = AuditLogEntry(
+            id: "6", createdAt: Date(),
+            action: "ticket.delete", entityKind: "ticket", entityId: nil
+        )
+        #expect(noId.entityId == nil)
+    }
+
+    @Test func jsonDecoding_fromServerShape() throws {
+        // Mirrors the exact shape the server sends inside `data.events[...]`
+        let json = """
+        {
+            "id": 42,
+            "actor_user_id": 7,
+            "entity_kind": "ticket",
+            "entity_id": 99,
+            "action": "ticket.update",
+            "metadata": {"status": "active"},
+            "created_at": "2025-01-15T10:00:00Z",
+            "actor_first_name": "Jane",
+            "actor_last_name": "Doe"
+        }
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let entry = try decoder.decode(AuditLogEntry.self, from: json)
+        #expect(entry.id == "42")
+        #expect(entry.actorUserId == 7)
+        #expect(entry.entityKind == "ticket")
+        #expect(entry.entityId == 99)
+        #expect(entry.action == "ticket.update")
+        #expect(entry.actorFirstName == "Jane")
+        #expect(entry.actorLastName == "Doe")
+        #expect(entry.actorName == "Jane Doe")
+        #expect(entry.metadata?["status"] == .string("active"))
+    }
+
+    @Test func jsonDecoding_nullableFields() throws {
+        let json = """
+        {
+            "id": 1,
+            "actor_user_id": null,
+            "entity_kind": "system",
+            "entity_id": null,
+            "action": "system.boot",
+            "metadata": null,
+            "created_at": "2025-01-15T10:00:00Z",
+            "actor_first_name": null,
+            "actor_last_name": null
+        }
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let entry = try decoder.decode(AuditLogEntry.self, from: json)
+        #expect(entry.actorUserId == nil)
+        #expect(entry.entityId == nil)
+        #expect(entry.metadata == nil)
+        #expect(entry.actorName == "System")
+    }
+}
+
+// MARK: - AuditLogRepository client-side filtering tests
+
+@Suite("AuditLogRepository client-side filtering")
+struct AuditLogRepositoryFilterTests {
+
+    // Helper: make an entry at a specific date.
+    private func entry(id: String, action: String = "ticket.update", entityKind: String = "ticket", daysAgo: Double = 0) -> AuditLogEntry {
+        let date = Date(timeIntervalSinceNow: -daysAgo * 86_400)
+        return AuditLogEntry(
+            id: id, createdAt: date,
+            actorFirstName: "Test", action: action, entityKind: entityKind
+        )
+    }
+
+    @Test func dateFilter_since_excludesOlderEntries() async throws {
+        let mock = MockAPIClient()
+        let old = entry(id: "1", daysAgo: 5)
+        let recent = entry(id: "2", daysAgo: 1)
+        await mock.setPageToReturn(.init(entries: [old, recent], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(since: Date(timeIntervalSinceNow: -2 * 86_400))
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 1)
+        #expect(page.entries[0].id == "2")
+    }
+
+    @Test func dateFilter_until_excludesNewerEntries() async throws {
+        let mock = MockAPIClient()
+        let old = entry(id: "1", daysAgo: 10)
+        let recent = entry(id: "2", daysAgo: 0)
+        await mock.setPageToReturn(.init(entries: [old, recent], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(until: Date(timeIntervalSinceNow: -3 * 86_400))
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 1)
+        #expect(page.entries[0].id == "1")
+    }
+
+    @Test func actionFilter_excludesNonMatchingActions() async throws {
+        let mock = MockAPIClient()
+        let ticketEntry  = entry(id: "1", action: "ticket.update")
+        let invoiceEntry = entry(id: "2", action: "invoice.create")
+        await mock.setPageToReturn(.init(entries: [ticketEntry, invoiceEntry], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(actions: ["ticket.update"])
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 1)
+        #expect(page.entries[0].action == "ticket.update")
+    }
+
+    @Test func actionFilter_multipleActions_keepsAllMatching() async throws {
+        let mock = MockAPIClient()
+        let e1 = entry(id: "1", action: "ticket.update")
+        let e2 = entry(id: "2", action: "invoice.create")
+        let e3 = entry(id: "3", action: "customer.delete")
+        await mock.setPageToReturn(.init(entries: [e1, e2, e3], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(actions: ["ticket.update", "invoice.create"])
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 2)
+    }
+
+    @Test func queryFilter_matchesActorName() async throws {
+        let mock = MockAPIClient()
+        let alice = AuditLogEntry(id: "1", createdAt: Date(), actorFirstName: "Alice", action: "ticket.update", entityKind: "ticket")
+        let bob   = AuditLogEntry(id: "2", createdAt: Date(), actorFirstName: "Bob",   action: "ticket.update", entityKind: "ticket")
+        await mock.setPageToReturn(.init(entries: [alice, bob], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(query: "alice")
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 1)
+        #expect(page.entries[0].actorFirstName == "Alice")
+    }
+
+    @Test func queryFilter_caseInsensitive() async throws {
+        let mock = MockAPIClient()
+        let entry = AuditLogEntry(id: "1", createdAt: Date(), actorFirstName: "Alice", action: "ticket.update", entityKind: "ticket")
+        await mock.setPageToReturn(.init(entries: [entry], nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let filters = AuditLogFilters(query: "ALICE")
+        let page = try await repo.fetch(filters: filters)
+        #expect(page.entries.count == 1)
+    }
+
+    @Test func noFilters_returnsAllEntries() async throws {
+        let mock = MockAPIClient()
+        let entries = (1...5).map { self.entry(id: "\($0)") }
+        await mock.setPageToReturn(.init(entries: entries, nextCursor: nil))
+        let repo = AuditLogRepository(api: mock)
+        let page = try await repo.fetch(filters: .empty)
+        #expect(page.entries.count == 5)
+    }
+
+    @Test func nextCursor_isPreservedAfterFiltering() async throws {
+        let mock = MockAPIClient()
+        let entries = (1...3).map { self.entry(id: "\($0)") }
+        await mock.setPageToReturn(.init(entries: entries, nextCursor: "cursor42"))
+        let repo = AuditLogRepository(api: mock)
+        let page = try await repo.fetch(filters: .empty)
+        #expect(page.nextCursor == "cursor42")
     }
 }

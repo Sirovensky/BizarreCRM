@@ -5,9 +5,12 @@ import DesignSystem
 // MARK: - RoleListView (iPhone — NavigationStack list of roles)
 
 /// iPhone layout: roles list → tap → RoleDetailView.
+/// iPad layout is handled by RolesMatrixView (columns-as-roles table).
+/// Gate on Platform.isCompact at the host's root.
 public struct RoleListView: View {
 
     @State private var viewModel: RolesMatrixViewModel
+    @State private var showCreateSheet = false
 
     public var onPreviewRoleChanged: ((String?) -> Void)?
 
@@ -29,45 +32,21 @@ public struct RoleListView: View {
                         description: Text("Add your first role using the + button.")
                     )
                 } else {
-                    List {
-                        ForEach(viewModel.roles) { role in
-                            NavigationLink {
-                                RoleDetailView(
-                                    viewModel: RoleDetailViewModel(role: role, repository: MockRepository())
-                                )
-                            } label: {
-                                roleRow(role)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button("Delete", role: .destructive) {
-                                    Task { await viewModel.deleteRole(role) }
-                                }
-                            }
-                        }
-                    }
+                    rolesList
                 }
             }
             .navigationTitle("Roles")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        ForEach(RolePresets.all, id: \.id) { preset in
-                            Button(preset.name) {
-                                Task {
-                                    await viewModel.createRole(
-                                        name: preset.name,
-                                        preset: preset.id,
-                                        capabilities: preset.capabilities
-                                    )
-                                }
-                            }
-                        }
-                        Divider()
-                        Button("Custom Role") {
-                            Task { await viewModel.createRole(name: "New Role") }
-                        }
-                    } label: {
-                        Label("Add Role", systemImage: "plus")
+            .toolbar { toolbarContent }
+            .sheet(isPresented: $showCreateSheet) {
+                CreateRoleSheet { name, description, preset in
+                    Task {
+                        let caps = preset.map { RolePresets.preset(for: $0)?.capabilities ?? [] } ?? []
+                        await viewModel.createRole(
+                            name: name,
+                            description: description,
+                            preset: preset,
+                            capabilities: caps
+                        )
                     }
                 }
             }
@@ -77,25 +56,57 @@ public struct RoleListView: View {
             viewModel.onPreviewRoleChanged = onPreviewRoleChanged
             viewModel.subscribeToRolesChangedNotification()
         }
-        .safeAreaInset(edge: .top) {
-            if let previewRole = viewModel.activePreviewRole {
-                HStack {
-                    Image(systemName: "eye.fill")
-                    Text("Previewing as \(previewRole.name). Exit")
-                        .bold()
+        .safeAreaInset(edge: .top) { previewBanner }
+    }
+
+    // MARK: Roles list
+
+    @ViewBuilder
+    private var rolesList: some View {
+        List {
+            ForEach(viewModel.roles) { role in
+                NavigationLink {
+                    RoleDetailView(
+                        viewModel: RoleDetailViewModel(
+                            role: role,
+                            repository: viewModel.repository
+                        )
+                    )
+                    .task { await viewModel.loadRole(id: role.id) }
+                } label: {
+                    roleRow(role)
                 }
-                .font(.footnote)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(.orange.opacity(0.9))
-                .foregroundStyle(.white)
-                .onTapGesture { viewModel.exitPreview() }
-                .accessibilityLabel("Previewing as \(previewRole.name). Tap to exit.")
-                .accessibilityAddTraits(.isButton)
+                .hoverEffect(.highlight)
+                .swipeActions(edge: .trailing) {
+                    Button("Delete", role: .destructive) {
+                        Task { await viewModel.deleteRole(role) }
+                    }
+                }
+                .contextMenu {
+                    Button("Delete", role: .destructive) {
+                        Task { await viewModel.deleteRole(role) }
+                    }
+                }
             }
         }
     }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showCreateSheet = true
+            } label: {
+                Label("Add Role", systemImage: "plus")
+            }
+            .brandGlass(.regular, interactive: true)
+            .accessibilityLabel("Add new role")
+        }
+    }
+
+    // MARK: Role row
 
     @ViewBuilder
     private func roleRow(_ role: Role) -> some View {
@@ -114,20 +125,27 @@ public struct RoleListView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(role.name), \(role.capabilities.count) capabilities")
     }
-}
 
-// MARK: - Temporary mock for NavigationLink (host wires real repo)
+    // MARK: Preview banner
 
-/// Placeholder repository used when building standalone previews.
-/// The host app replaces this via Factory DI injection.
-private struct MockRepository: RolesRepository {
-    func fetchAll() async throws -> [Role] { [] }
-    func create(name: String, preset: String?, capabilities: Set<String>) async throws -> Role {
-        Role(id: UUID().uuidString, name: name, preset: preset, capabilities: capabilities)
+    @ViewBuilder
+    private var previewBanner: some View {
+        if let previewRole = viewModel.activePreviewRole {
+            HStack {
+                Image(systemName: "eye.fill")
+                Text("Previewing as \(previewRole.name). Exit")
+                    .bold()
+            }
+            .font(.footnote)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(.orange.opacity(0.9))
+            .foregroundStyle(.white)
+            .brandGlass(.regular, in: Rectangle())
+            .onTapGesture { viewModel.exitPreview() }
+            .accessibilityLabel("Previewing as \(previewRole.name). Tap to exit.")
+            .accessibilityAddTraits(.isButton)
+        }
     }
-    func update(role: Role, newCapabilities: Set<String>) async throws -> Role {
-        Role(id: role.id, name: role.name, preset: role.preset, capabilities: newCapabilities)
-    }
-    func delete(roleId: String) async throws {}
-    func refresh() async throws -> [Role] { [] }
 }

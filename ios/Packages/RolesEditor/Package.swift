@@ -25,7 +25,10 @@ let package = Package(
         ),
         .testTarget(
             name: "RolesEditorTests",
-            dependencies: ["RolesEditor"]
+            dependencies: [
+                "RolesEditor",
+                .product(name: "Networking", package: "Networking")
+            ]
         )
     ]
 )

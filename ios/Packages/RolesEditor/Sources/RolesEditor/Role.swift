@@ -18,7 +18,7 @@ public struct Role: Identifiable, Codable, Sendable, Hashable {
 
 // MARK: - RolesEditorError
 
-public enum RolesEditorError: Error, Sendable, LocalizedError {
+public enum RolesEditorError: Error, Sendable, LocalizedError, Equatable {
     case roleNotFound
     case duplicateName
     case serverError(String)

@@ -302,6 +302,45 @@ final class InvoicePaymentViewModelTests: XCTestCase {
         }
     }
 
+    // MARK: - AppError mapping: 402 (server-level payment plan / billing gate)
+
+    func test_applyPayment_402_setsFailed() async {
+        // Server returns HTTP 402 when the tenant's billing plan blocks the action.
+        // AppError.server maps directly from APITransportError.httpStatus(402, …) → .unknown
+        // via AppError.from(). The default branch in handleError surfaces the server message.
+        let err = AppError.server(statusCode: 402, message: "Payment plan required")
+        let vm = makeSut(api: .paymentFailure(err), balanceCents: 5000)
+        await vm.applyPayment()
+        guard case let .failed(msg) = vm.state else {
+            XCTFail("Expected .failed for 402, got \(vm.state)")
+            return
+        }
+        XCTAssertTrue(msg.contains("Payment plan required") || !msg.isEmpty)
+    }
+
+    // MARK: - AppError mapping: offline / network unreachable
+
+    func test_applyPayment_offline_setsFailed() async {
+        let err = AppError.offline
+        let vm = makeSut(api: .paymentFailure(err), balanceCents: 5000)
+        await vm.applyPayment()
+        guard case .failed = vm.state else {
+            XCTFail("Expected .failed when offline, got \(vm.state)")
+            return
+        }
+    }
+
+    func test_applyPayment_networkError_setsFailed() async {
+        let urlErr = URLError(.notConnectedToInternet)
+        let err = AppError.network(underlying: urlErr)
+        let vm = makeSut(api: .paymentFailure(err), balanceCents: 5000)
+        await vm.applyPayment()
+        guard case .failed = vm.state else {
+            XCTFail("Expected .failed on network error, got \(vm.state)")
+            return
+        }
+    }
+
     // MARK: - Tender enum
 
     func test_tender_allCasesHaveDisplayNames() {

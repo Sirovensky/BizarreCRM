@@ -22,6 +22,7 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
     public let unreadCount: Int
     public let isFlagged: Bool
     public let isPinned: Bool
+    public let isArchived: Bool
     public let customer: Customer?
     public let recentTicket: RecentTicket?
 
@@ -38,6 +39,7 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
         unreadCount: Int = 0,
         isFlagged: Bool = false,
         isPinned: Bool = false,
+        isArchived: Bool = false,
         customer: Customer? = nil,
         recentTicket: RecentTicket? = nil
     ) {
@@ -49,6 +51,7 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
         self.unreadCount = unreadCount
         self.isFlagged = isFlagged
         self.isPinned = isPinned
+        self.isArchived = isArchived
         self.customer = customer
         self.recentTicket = recentTicket
     }
@@ -102,7 +105,25 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
         case unreadCount = "unread_count"
         case isFlagged = "is_flagged"
         case isPinned = "is_pinned"
+        case isArchived = "is_archived"
         case recentTicket = "recent_ticket"
+    }
+
+    /// Custom decode so `isArchived` defaults to `false` when the server
+    /// omits the field (older rows / responses without ENR-SMS7 flags).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        convPhone = try c.decode(String.self, forKey: .convPhone)
+        lastMessageAt = try? c.decode(String.self, forKey: .lastMessageAt)
+        lastMessage = try? c.decode(String.self, forKey: .lastMessage)
+        lastDirection = try? c.decode(String.self, forKey: .lastDirection)
+        messageCount = (try? c.decode(Int.self, forKey: .messageCount)) ?? 0
+        unreadCount = (try? c.decode(Int.self, forKey: .unreadCount)) ?? 0
+        isFlagged = (try? c.decode(Bool.self, forKey: .isFlagged)) ?? false
+        isPinned = (try? c.decode(Bool.self, forKey: .isPinned)) ?? false
+        isArchived = (try? c.decode(Bool.self, forKey: .isArchived)) ?? false
+        customer = try? c.decode(Customer.self, forKey: .customer)
+        recentTicket = try? c.decode(RecentTicket.self, forKey: .recentTicket)
     }
 }
 
@@ -127,6 +148,18 @@ public struct SmsConversationPinResult: Decodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case convPhone = "conv_phone"
         case isPinned = "is_pinned"
+    }
+}
+
+/// `PATCH /sms/conversations/:phone/archive` response data.
+/// Server: sms.routes.ts:413 (ENR-SMS7) — returns `{ conv_phone, is_archived }`.
+public struct SmsConversationArchiveResult: Decodable, Sendable {
+    public let convPhone: String
+    public let isArchived: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case convPhone = "conv_phone"
+        case isArchived = "is_archived"
     }
 }
 
@@ -173,6 +206,15 @@ public extension APIClient {
     func toggleSmsConversationPin(phone: String) async throws -> SmsConversationPinResult {
         let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? phone
         return try await patch("/api/v1/sms/conversations/\(encoded)/pin", body: EmptyBody(), as: SmsConversationPinResult.self)
+    }
+
+    // MARK: Toggle archive — PATCH /sms/conversations/:phone/archive
+
+    /// Toggles the archived state of a conversation. Server returns the new archive value.
+    /// Server: sms.routes.ts:403 (ENR-SMS7) — toggles `sms_conversation_flags.is_archived`.
+    func toggleSmsConversationArchive(phone: String) async throws -> SmsConversationArchiveResult {
+        let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? phone
+        return try await patch("/api/v1/sms/conversations/\(encoded)/archive", body: EmptyBody(), as: SmsConversationArchiveResult.self)
     }
 }
 

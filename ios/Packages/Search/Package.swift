@@ -32,6 +32,7 @@ let package = Package(
             dependencies: [
                 "Search",
                 "Core",
+                "Networking",
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         )

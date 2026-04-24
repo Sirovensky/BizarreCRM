@@ -2,8 +2,8 @@ import SwiftUI
 import Core
 import DesignSystem
 
-/// Detail view for a single audit log entry — actor info, entity info,
-/// device fingerprint, and expandable before/after JSON diff.
+/// Detail view for a single audit log entry — actor info, event/entity info,
+/// and expandable scrubbed metadata panel.
 /// §50.6, §50.1 (tap row).
 public struct AuditLogDetailView: View {
 
@@ -13,7 +13,6 @@ public struct AuditLogDetailView: View {
     private let navigateToEntity: ((_ entityType: String, _ entityId: String) -> Void)?
 
     @State private var isDiffExpanded = true
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
@@ -29,11 +28,8 @@ public struct AuditLogDetailView: View {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.lg) {
                 actorSection
                 eventSection
-                if let fingerprint = entry.deviceFingerprint {
-                    deviceSection(fingerprint: fingerprint)
-                }
-                diffSection
-                if navigateToEntity != nil {
+                metadataSection
+                if navigateToEntity != nil, entry.entityId != nil {
                     entityNavigationButton
                 }
             }
@@ -56,16 +52,8 @@ public struct AuditLogDetailView: View {
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .textSelection(.enabled)
-                HStack(spacing: DesignTokens.Spacing.xs) {
-                    if let role = entry.actorRole {
-                        Text(role.capitalized)
-                            .font(.brandLabelSmall())
-                            .padding(.horizontal, DesignTokens.Spacing.sm)
-                            .padding(.vertical, DesignTokens.Spacing.xxs)
-                            .background(Color.bizarreOrangeContainer, in: Capsule())
-                            .foregroundStyle(.bizarreOnSurface)
-                    }
-                    Text(entry.actorId)
+                if let uid = entry.actorUserId {
+                    Text("ID \(uid)")
                         .font(.brandMono(size: 11))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .textSelection(.enabled)
@@ -76,7 +64,7 @@ public struct AuditLogDetailView: View {
         .padding(DesignTokens.Spacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Actor: \(entry.actorName)\(entry.actorRole.map { ", \($0)" } ?? "")")
+        .accessibilityLabel("Actor: \(entry.actorName)")
     }
 
     // MARK: Event
@@ -91,7 +79,8 @@ public struct AuditLogDetailView: View {
                 }
                 GridRow {
                     Text("Entity").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    Text("\(entry.entityType) \(entry.entityId)").font(.brandMono(size: 13)).foregroundStyle(.bizarreOnSurface).textSelection(.enabled)
+                    let entityLabel = entry.entityId.map { "\(entry.entityKind) #\($0)" } ?? entry.entityKind
+                    Text(entityLabel).font(.brandMono(size: 13)).foregroundStyle(.bizarreOnSurface).textSelection(.enabled)
                 }
                 GridRow {
                     Text("When").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
@@ -104,23 +93,9 @@ public struct AuditLogDetailView: View {
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
     }
 
-    // MARK: Device fingerprint
+    // MARK: Metadata (scrubbed; server enforces SCAN-506 PII allowlist)
 
-    private func deviceSection(fingerprint: String) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
-            sectionHeader("Device")
-            Text(fingerprint)
-                .font(.brandMono(size: 12))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .textSelection(.enabled)
-        }
-        .padding(DesignTokens.Spacing.md)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-    }
-
-    // MARK: Diff
-
-    private var diffSection: some View {
+    private var metadataSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
             Button {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: DesignTokens.Motion.quick)) {
@@ -128,7 +103,7 @@ public struct AuditLogDetailView: View {
                 }
             } label: {
                 HStack {
-                    sectionHeader("Changes")
+                    sectionHeader("Details")
                     Spacer()
                     Image(systemName: isDiffExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
@@ -136,10 +111,10 @@ public struct AuditLogDetailView: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isDiffExpanded ? "Collapse changes" : "Expand changes")
+            .accessibilityLabel(isDiffExpanded ? "Collapse details" : "Expand details")
 
             if isDiffExpanded {
-                diffContent
+                metadataContent
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -148,23 +123,16 @@ public struct AuditLogDetailView: View {
     }
 
     @ViewBuilder
-    private var diffContent: some View {
-        if let diff = entry.diff {
-            let lines = AuditDiffRenderer.render(diff)
-            if lines.isEmpty {
-                Text("No changes recorded")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(lines) { line in
-                        DiffLineView(line: line, colorScheme: colorScheme)
-                    }
+    private var metadataContent: some View {
+        if let meta = entry.metadata, !meta.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(meta.keys.sorted(), id: \.self) { key in
+                    MetadataRow(key: key, value: meta[key]?.displayString ?? "")
                 }
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
             }
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
         } else {
-            Text("No diff data")
+            Text("No additional details")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
@@ -174,9 +142,10 @@ public struct AuditLogDetailView: View {
 
     private var entityNavigationButton: some View {
         Button {
-            navigateToEntity?(entry.entityType, entry.entityId)
+            guard let eid = entry.entityId else { return }
+            navigateToEntity?(entry.entityKind, String(eid))
         } label: {
-            Label("View \(entry.entityType.capitalized)", systemImage: "arrow.right.circle")
+            Label("View \(entry.entityKind.capitalized)", systemImage: "arrow.right.circle")
                 .font(.brandBodyMedium())
                 .frame(maxWidth: .infinity)
         }
@@ -194,49 +163,28 @@ public struct AuditLogDetailView: View {
     }
 }
 
-// MARK: - DiffLineView
+// MARK: - MetadataRow
 
-private struct DiffLineView: View {
-    let line: DiffLine
-    let colorScheme: ColorScheme
+private struct MetadataRow: View {
+    let key: String
+    let value: String
 
     var body: some View {
         HStack(alignment: .top, spacing: DesignTokens.Spacing.xs) {
-            // +/-/space prefix
-            Text(prefix)
-                .font(.brandMono(size: 12))
-                .foregroundStyle(AuditDiffRenderer.color(for: line.kind, colorScheme: colorScheme))
-                .frame(width: 10, alignment: .leading)
-            Text("\(line.key):")
+            Text("\(key):")
                 .font(.brandMono(size: 12))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text(line.value)
+                .frame(minWidth: 60, alignment: .leading)
+            Text(value)
                 .font(.brandMono(size: 12))
-                .foregroundStyle(AuditDiffRenderer.color(for: line.kind, colorScheme: colorScheme))
+                .foregroundStyle(.bizarreOnSurface)
                 .textSelection(.enabled)
                 .lineLimit(4)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, DesignTokens.Spacing.sm)
         .padding(.vertical, DesignTokens.Spacing.xxs)
-        .background(AuditDiffRenderer.backgroundColor(for: line.kind))
-        .accessibilityLabel(a11yLabel)
-    }
-
-    private var prefix: String {
-        switch line.kind {
-        case .added:     return "+"
-        case .removed:   return "-"
-        case .unchanged: return " "
-        }
-    }
-
-    private var a11yLabel: String {
-        switch line.kind {
-        case .added:     return "Added \(line.key): \(line.value)"
-        case .removed:   return "Removed \(line.key): \(line.value)"
-        case .unchanged: return "\(line.key): \(line.value)"
-        }
+        .accessibilityLabel("\(key): \(value)")
     }
 }
 

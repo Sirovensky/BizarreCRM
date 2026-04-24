@@ -49,17 +49,20 @@ public enum BackgroundIndexJob {
     ///   - ticketProvider: Async closure that fetches tickets from the local GRDB cache.
     ///   - customerProvider: Async closure that fetches customers from the local GRDB cache.
     ///   - inventoryProvider: Async closure that fetches inventory items from the local GRDB cache.
+    ///   - invoiceProvider: Optional async closure that fetches invoice index entries from the local GRDB cache.
     @MainActor
     public static func run(
         coordinator: FTSReindexCoordinator,
         ticketProvider: @Sendable @escaping () async -> [Ticket],
         customerProvider: @Sendable @escaping () async -> [Customer],
-        inventoryProvider: @Sendable @escaping () async -> [InventoryItem]
+        inventoryProvider: @Sendable @escaping () async -> [InventoryItem],
+        invoiceProvider: (@Sendable () async -> [FTSReindexCoordinator.InvoiceIndexEntry])? = nil
     ) async {
         coordinator.rebuildAll(
             ticketProvider: ticketProvider,
             customerProvider: customerProvider,
-            inventoryProvider: inventoryProvider
+            inventoryProvider: inventoryProvider,
+            invoiceProvider: invoiceProvider
         )
         // Reschedule for next opportunity.
         schedule()

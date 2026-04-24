@@ -3,11 +3,17 @@ import SwiftUI
 // MARK: - KioskModeSettingsView
 
 /// §55.1 Settings → Kiosk → mode picker.
+/// On first activation, presents PIN enrollment if no PIN is stored.
 public struct KioskModeSettingsView: View {
     @Bindable var manager: KioskModeManager
+    let pinStorage: any KioskPINStorage
 
-    public init(manager: KioskModeManager) {
+    @State private var showEnrollSheet = false
+    @State private var pendingMode: KioskMode?
+
+    public init(manager: KioskModeManager, pinStorage: (any KioskPINStorage)? = nil) {
         self.manager = manager
+        self.pinStorage = pinStorage ?? PINStoreKioskAdapter()
     }
 
     public var body: some View {
@@ -21,6 +27,22 @@ public struct KioskModeSettingsView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .sheet(isPresented: $showEnrollSheet) {
+            if let mode = pendingMode {
+                KioskPINEnrollView(
+                    pinStorage: pinStorage,
+                    onEnrolled: {
+                        showEnrollSheet = false
+                        manager.setMode(mode)
+                        pendingMode = nil
+                    },
+                    onCancel: {
+                        showEnrollSheet = false
+                        pendingMode = nil
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Mode picker section
@@ -36,7 +58,11 @@ public struct KioskModeSettingsView: View {
     @ViewBuilder
     private func modeRow(_ mode: KioskMode) -> some View {
         Button {
-            manager.setMode(mode)
+            let result = manager.requestActivation(mode: mode, pinStorage: pinStorage)
+            if case .needsEnrollment(let m) = result {
+                pendingMode = m
+                showEnrollSheet = true
+            }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {

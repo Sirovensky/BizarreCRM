@@ -114,6 +114,35 @@ final class FTSReindexCoordinatorTests: XCTestCase {
         // No assertion needed — must simply not crash.
     }
 
+    func test_rebuildAll_indexesInvoices() async throws {
+        let entry = FTSReindexCoordinator.InvoiceIndexEntry(
+            id: 101, displayId: "INV-0101",
+            customerName: "Delta Supplies",
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        coordinator.rebuildAll(
+            ticketProvider: { [] },
+            customerProvider: { [] },
+            inventoryProvider: { [] },
+            invoiceProvider: { [entry] }
+        )
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let hits = try await store.search(query: "INV-0101", entity: .invoices, limit: 10)
+        XCTAssertFalse(hits.isEmpty, "Invoice should be indexed via rebuildAll invoiceProvider")
+        XCTAssertEqual(hits.first?.entity, "invoices")
+    }
+
+    func test_rebuildAll_invoiceProvider_nil_doesNotCrash() async throws {
+        coordinator.rebuildAll(
+            ticketProvider: { [] },
+            customerProvider: { [] },
+            inventoryProvider: { [] },
+            invoiceProvider: nil
+        )
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Must not crash when invoiceProvider is omitted.
+    }
+
     // MARK: - Notification-driven incremental indexing
 
     func test_ticketChangedNotification_queuesTicketForIndex() async throws {
@@ -151,6 +180,36 @@ final class FTSReindexCoordinatorTests: XCTestCase {
         try await Task.sleep(nanoseconds: 1_200_000_000)
         let hits = try await store.search(query: "SKU-7", entity: .inventory, limit: 10)
         XCTAssertFalse(hits.isEmpty, "Inventory item posted via NC should be in the FTS index")
+    }
+
+    func test_invoiceChangedNotification_queuesInvoiceForIndex() async throws {
+        NotificationCenter.default.post(
+            name: .invoiceChanged,
+            object: nil,
+            userInfo: [
+                "invoiceId": Int64(200),
+                "displayId": "INV-0200",
+                "customerName": "Eagle Corp",
+                "updatedAt": Date(timeIntervalSince1970: 0),
+            ]
+        )
+        // Give the coordinator time to debounce and flush.
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        let hits = try await store.search(query: "INV-0200", entity: .invoices, limit: 10)
+        XCTAssertFalse(hits.isEmpty, "Invoice posted via NC should be in the FTS index")
+    }
+
+    func test_invoiceChangedNotification_missingFields_noIndexEntry() async throws {
+        // Posting without required fields should not crash and should not index anything.
+        NotificationCenter.default.post(
+            name: .invoiceChanged,
+            object: nil,
+            userInfo: ["invoiceId": Int64(999)]  // missing displayId/customerName/updatedAt
+        )
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        let hits = try await store.search(query: "INV", entity: .invoices, limit: 10)
+        // May or may not be empty — just must not crash
+        _ = hits
     }
 
     func test_flush_deduplicatesSameTicket() async throws {

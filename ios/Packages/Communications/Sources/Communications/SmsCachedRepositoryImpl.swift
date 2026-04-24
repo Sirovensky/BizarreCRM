@@ -72,6 +72,13 @@ public actor SmsCachedRepositoryImpl: SmsCachedRepository {
         return result.isPinned
     }
 
+    public func toggleArchive(phone: String) async throws -> Bool {
+        let result = try await api.toggleSmsConversationArchive(phone: phone)
+        // Invalidate cached list so archived conversations are filtered correctly.
+        cache.removeAll()
+        return result.isArchived
+    }
+
     // MARK: - SmsCachedRepository
 
     public var lastSyncedAt: Date? { globalLastSyncedAt }
