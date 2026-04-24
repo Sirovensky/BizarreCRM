@@ -708,8 +708,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:1563-1632; fix=extract-admin-dashboard-component -->
 - [ ] SCAN-968. **Customer detail `FieldBlock` wraps a label without htmlFor linking to its child input.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:2015-2032; fix=useId+htmlFor -->
-- [ ] SCAN-969. **Tech dashboard ticket status is color-only — no aria-label / title, fails WCAG non-color rule.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:968-972; fix=add-title-or-aria-label -->
 - [ ] SCAN-970. **DangerZone back navigation leaves stale termination token + typed slug in state.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/settings/DangerZoneTab.tsx:131-143; fix=onBack-reset-state -->
 - [ ] SCAN-971. **Dashboard NeedsAttentionCard fires two preference writes without try/catch — UI diverges from server on net error.**

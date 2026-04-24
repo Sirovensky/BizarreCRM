@@ -969,7 +969,7 @@ function TechDashboard({ userId }: { userId: number }) {
                         className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                         style={{ backgroundColor: `${t.status_color || '#888'}18`, color: t.status_color || '#888' }}
                       >
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.status_color || '#888' }} />
+                        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.status_color || '#888' }} />
                         {t.status_name || t.status || '--'}
                       </span>
                     </td>
