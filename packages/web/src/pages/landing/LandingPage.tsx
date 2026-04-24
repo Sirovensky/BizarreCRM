@@ -392,13 +392,24 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <button 
-                  className={t.pop ? 'btn-cyan' : 'btn-outline'} 
-                  onClick={() => t.name === 'Enterprise' ? window.location.href = 'mailto:sales@bizarreelectronics.com?subject=Enterprise%20Plan%20Inquiry' : navigate('/signup')} 
-                  style={{ width: '100%' }}
-                >
-                  {t.cta}
-                </button>
+                {t.name === 'Enterprise' ? (
+                  <a
+                    href="mailto:sales@bizarreelectronics.com?subject=Enterprise%20Plan%20Inquiry"
+                    className={t.pop ? 'btn-cyan' : 'btn-outline'}
+                    style={{ width: '100%', display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
+                  >
+                    {t.cta}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className={t.pop ? 'btn-cyan' : 'btn-outline'}
+                    onClick={() => navigate('/signup')}
+                    style={{ width: '100%' }}
+                  >
+                    {t.cta}
+                  </button>
+                )}
               </div>
             ))}
           </div>

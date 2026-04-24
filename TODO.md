@@ -726,8 +726,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
 - [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
-- [ ] SCAN-1021. **LandingPage uses `window.location.href = 'mailto:…'` instead of real `<a href>` — pattern-fragile.**
-  <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:397; fix=use-anchor-element -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 
