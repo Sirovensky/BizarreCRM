@@ -36,6 +36,7 @@ coroutines-test = "1.8.1"
 timber = "5.0.1"
 zxing-core = "3.5.3"
 play-services-auth-api-phone = "18.0.2"
+glance = "1.1.1"
 
 [libraries]
 # Core Android
@@ -129,6 +130,10 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing-c
 
 # SMS Retriever — OTP autofill without READ_SMS permission (§2.4 L302)
 play-services-auth-api-phone = { group = "com.google.android.gms", name = "play-services-auth-api-phone", version.ref = "play-services-auth-api-phone" }
+
+# Glance (home-screen widget Compose API — §1.6 plan:L225 / §24 plan:L2316)
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

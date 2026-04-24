@@ -240,6 +240,22 @@
                 android:resource="@xml/widget_info" />
         </receiver>
 
+        <!-- §1.6 / §24 plan:L225,L2316 — Glance Unread-SMS home-screen widget.
+             exported=false: only the system AppWidget framework (platform cert)
+             sends ACTION_APPWIDGET_UPDATE — no other app can reach this receiver.
+             GlanceAppWidgetReceiver handles all standard lifecycle broadcasts
+             (UPDATE / ENABLED / DISABLED / DELETED) internally. -->
+        <receiver
+            android:name=".widget.glance.UnreadSmsGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_unread_sms_info" />
+        </receiver>
+
         <!-- §1.7 L245 — BroadcastReceiver for notification action buttons (Reply, Mark as read). -->
         <receiver android:name=".service.NotificationActionReceiver" android:exported="false" />
 

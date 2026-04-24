@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal vector preview shown in the launcher's "Add widget" gallery for
+  UnreadSmsGlanceWidget.  Intentionally simple — a speech-bubble icon with
+  a badge circle — so it renders well at the small thumbnail size used by
+  most launchers without requiring a full Compose snapshot.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="110dp"
+    android:height="40dp"
+    android:viewportWidth="110"
+    android:viewportHeight="40">
+
+    <!-- Widget background pill -->
+    <path
+        android:pathData="M8,0 L102,0 A8,8 0 0 1 110,8 L110,32 A8,8 0 0 1 102,40 L8,40 A8,8 0 0 1 0,32 L0,8 A8,8 0 0 1 8,0 Z"
+        android:fillColor="#1C1B1F"
+        android:fillAlpha="0.08" />
+
+    <!-- Chat bubble icon (simplified) -->
+    <path
+        android:pathData="M14,10 L38,10 A3,3 0 0 1 41,13 L41,25 A3,3 0 0 1 38,28 L24,28 L19,33 L19,28 L14,28 A3,3 0 0 1 11,25 L11,13 A3,3 0 0 1 14,10 Z"
+        android:fillColor="#6750A4" />
+
+    <!-- Unread badge circle -->
+    <path
+        android:pathData="M37,8 A5,5 0 1 1 37,8.001 Z"
+        android:fillColor="#B3261E" />
+
+    <!-- Label "Unread SMS" -->
+    <path
+        android:pathData="M50,16 L100,16"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Sub-label "Tap to open inbox" -->
+    <path
+        android:pathData="M50,26 L88,26"
+        android:strokeColor="#49454F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

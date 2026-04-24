@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidgetProvider metadata for UnreadSmsGlanceWidget / UnreadSmsGlanceReceiver.
+
+  - minWidth  110dp  ≈ 2 grid cells on most launchers.
+  - minHeight  40dp  ≈ 1 grid row on most launchers.
+  - resizeMode horizontal|vertical — user can snap to larger sizes.
+  - updatePeriodMillis 1800000 = 30 minutes (system-enforced minimum for
+    battery-friendly polling).  Real-time updates arrive via publishUnreadCount()
+    called from the SMS sync path — this fallback interval just ensures staleness
+    is bounded even if the live-push path is delayed.
+  - widgetCategory home_screen — keyguard / search are not supported.
+  - description: use the existing widget_description string; add a dedicated
+    string resource if the UX team needs distinct copy for the add-widget gallery.
+  - previewImage: references the optional glance_preview_unread_sms vector;
+    falls back silently to the launcher icon if the drawable is absent.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_dashboard"
+    android:previewImage="@drawable/glance_preview_unread_sms"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

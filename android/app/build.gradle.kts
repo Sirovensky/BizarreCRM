@@ -245,6 +245,12 @@ dependencies {
     // TwoFaVerifyStep field (§2.4 L302).
     implementation(libs.play.services.auth.api.phone)
 
+    // §1.6 / §24 Glance — Compose-based home-screen widgets (plan:L225, plan:L2316).
+    // glance-appwidget provides GlanceAppWidget + GlanceAppWidgetReceiver.
+    // glance-material3 provides GlanceMaterialTheme + M3 colour token bindings.
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 
