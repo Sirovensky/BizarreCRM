@@ -64,6 +64,8 @@ fun KeyboardShortcutsHost(
     onSettings: () -> Unit,
     onHome: () -> Unit,
     onBack: () -> Unit,
+    // L1424 — Ctrl+T jumps to today in the Appointments calendar views
+    onJumpToToday: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -117,6 +119,9 @@ fun KeyboardShortcutsHost(
                     event.key == Key.Comma -> {
                         onSettings(); true
                     }
+                    event.key == Key.T && onJumpToToday != null -> {
+                        onJumpToToday(); true
+                    }
                     event.key == Key.Slash -> {
                         showHelp = !showHelp; true
                     }
@@ -139,6 +144,7 @@ private fun ShortcutHelpTable() {
         "Ctrl+H" to "Home",
         "Ctrl+," to "Settings",
         "Escape" to "Back",
+        "Ctrl+T" to "Jump to today (Appointments)",
         "Ctrl+/" to "Show this help",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
