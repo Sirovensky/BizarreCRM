@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-62 web/useDraft + server/stepUpTotp replay)
+
+- [x] SCAN-1085. **`useDraft` debounced-save timer could fire after the host component unmounted** — `setHasDraft` would then run against an unmounted component (React warning) and the pending `timerRef` reference lived past teardown. Added a `mountedRef` guard around every `setHasDraft` call, plus a dedicated mount/unmount `useEffect` that clears the timer + nulls the ref on teardown. Existing cleanup in the debounce effect also clears `timerRef.current` after the timer fires so a re-render doesn't see a stale handle.
+- [x] SCAN-1093. **`stepUpTotp.claimCode` keyed the consumed-code Map on only the current 30s bucket, but `verifySync` accepts ±1 step skew** — a code accepted via skew in bucket N could be replayed in bucket N-1 or N+1 because those Map keys were distinct. `claimCode` now stamps (and checks) all three adjacent buckets atomically: if any of the three keys already has a claim, reject; otherwise mint claims under all three. The reaper still drops stale entries after `CONSUMED_TTL_MS` (90s — which covers 3 buckets).
+
 ## Closed 2026-04-24 (wave-62 web/hooks — memoization + dead fallback)
 
 - [x] SCAN-1087. **`useSettings.getSetting` was recreated on every render** — any consumer that passed it as a `useEffect` / `useMemo` dependency re-ran on every unrelated render of the host. Wrapped in `useCallback` keyed on `data`, so the function identity is stable between settings refetches and consumers memoize correctly.

@@ -75,12 +75,31 @@ export function startStepUpTotpReaper(): void {
 /**
  * Attempts to claim a TOTP code for `userId`.
  * Returns `true` on first use within the window; `false` if already consumed.
+ *
+ * SCAN-1093: `verifySync` accepts codes from the previous, current, AND
+ * next 30-second windows (±1 step skew). Keying the replay Map on only
+ * the CURRENT bucket meant a code accepted via skew in bucket N could
+ * be replayed in bucket N-1 or N+1 because those keys were distinct.
+ * Stamp the code under all three adjacent buckets atomically so any
+ * replay attempt within the skew window collides with a prior claim.
+ * The reaper still drops all three entries after CONSUMED_TTL_MS.
  */
 function claimCode(userId: number, code: string): boolean {
-  const windowBucket = Math.floor(Date.now() / 30_000);
-  const key = `${userId}:${code}:${windowBucket}`;
-  if (consumedCodes.has(key)) return false;
-  consumedCodes.set(key, Date.now());
+  const now = Date.now();
+  const bucket = Math.floor(now / 30_000);
+  const keys = [
+    `${userId}:${code}:${bucket - 1}`,
+    `${userId}:${code}:${bucket}`,
+    `${userId}:${code}:${bucket + 1}`,
+  ];
+  // First pass — any existing claim across the three adjacent buckets blocks.
+  for (const k of keys) {
+    if (consumedCodes.has(k)) return false;
+  }
+  // Second pass — mint claim entries under all three buckets.
+  for (const k of keys) {
+    consumedCodes.set(k, now);
+  }
   return true;
 }
 

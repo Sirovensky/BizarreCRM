@@ -18,6 +18,19 @@ export function useDraft(
   const [hasDraft, setHasDraft] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keyRef = useRef(key);
+  // SCAN-1085: guard setState calls in the delayed timer callback so a
+  // timer that fires after the host component unmounts doesn't try to
+  // update an unmounted component (React logs a warning) and doesn't
+  // leak the pending timer reference beyond unmount.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    };
+  }, []);
 
   // Restore draft on mount or key change, clearing pending timer from previous key
   useEffect(() => {
@@ -43,28 +56,32 @@ export function useDraft(
     if (!value) {
       // If empty, remove the draft
       localStorage.removeItem(currentKey);
-      setHasDraft(false);
+      if (mountedRef.current) setHasDraft(false);
       return;
     }
     timerRef.current = setTimeout(() => {
+      timerRef.current = undefined;
       // Skip persist if the draft exceeds the quota cap. The in-memory value
       // stays live for the active editing session; we just don't survive a
       // reload if the user typed >100 KB of text into one field.
       if (value.length > DRAFT_MAX_BYTES) {
         localStorage.removeItem(currentKey);
-        setHasDraft(false);
+        if (mountedRef.current) setHasDraft(false);
         return;
       }
       try {
         localStorage.setItem(currentKey, value);
-        setHasDraft(true);
+        if (mountedRef.current) setHasDraft(true);
       } catch (err) {
         // QuotaExceededError or storage disabled — best-effort fallback.
         console.warn('[useDraft] failed to persist draft', err);
-        setHasDraft(false);
+        if (mountedRef.current) setHasDraft(false);
       }
     }, debounceMs);
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    };
   }, [value, debounceMs]);
 
   const clearDraft = useCallback(() => {

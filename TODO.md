@@ -727,12 +727,8 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
-- [ ] SCAN-1085. **[MED] `useDraft` debounced-save timer may fire after unmount — setState warn + unreliable cleanup.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:49-67; fix=guard-setState-with-mounted-ref+null-timerRef -->
 - [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
-- [ ] SCAN-1093. **[MED] `stepUpTotp` replay Map keyed on current 30s window only — skew-accepted codes replayable at bucket boundary.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/stepUpTotp.ts:79-85; fix=claim-under-three-adjacent-buckets -->
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
