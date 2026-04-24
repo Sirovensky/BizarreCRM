@@ -320,7 +320,12 @@ private fun TenderActionBar(state: PosTenderUiState, onFinalize: () -> Unit) {
                 shape = RoundedCornerShape(14.dp),
             ) {
                 if (state.isProcessing) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                    // M3 Expressive LoadingIndicator morphs between shapes for
+                    // the short (~2-5s) card-reader charge wait. Usability
+                    // guardrail #4: short wait → LoadingIndicator, never
+                    // WavyProgressIndicator.
+                    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+                    LoadingIndicator(modifier = Modifier.size(28.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else if (state.isFullyPaid) {
                     Text("Charge ${state.totalCents.toDollarString()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                 } else {
