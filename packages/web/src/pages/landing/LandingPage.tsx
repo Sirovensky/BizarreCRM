@@ -222,6 +222,11 @@ export default function LandingPage() {
         .photo-card:hover { transform: scale(1.02); }
         .photo-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
+        /* Feature-grid card hover — replaces per-card inline onMouseEnter/Leave
+           handlers that allocated new function refs on every render. */
+        .feat-card { transition: box-shadow .25s, transform .25s; }
+        .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
+
         @keyframes wave-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
         html { scroll-behavior: smooth; }
@@ -309,14 +314,12 @@ export default function LandingPage() {
           </p>
           <div className="feat-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
             {features.map((f, i) => (
-              <div key={i} className={cl('fade-up', feat.visible, `d${Math.min(i + 1, 5)}`)}
+              <div key={i} className={cl('fade-up feat-card', feat.visible, `d${Math.min(i + 1, 5)}`)}
                 style={{
                   background: '#fff', borderRadius: 12, padding: '28px 24px',
                   border: '1px solid rgba(188,57,143,.1)',
-                  transition: 'box-shadow .25s, transform .25s', cursor: 'default',
+                  cursor: 'default',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,0,0,.08)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = ''; }}
               >
                 <div style={{ fontSize: 32, marginBottom: 12 }}>{f.emoji}</div>
                 <h3 className="heading" style={{ fontSize: 18, marginBottom: 8, color: '#222' }}>{f.title}</h3>

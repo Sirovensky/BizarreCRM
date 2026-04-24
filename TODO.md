@@ -722,8 +722,6 @@ Verified working. Not TODOs.
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
-- [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
-  <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
 
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
 - [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
