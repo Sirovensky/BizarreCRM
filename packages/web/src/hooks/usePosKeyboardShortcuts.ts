@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * F-key quick tabs for the unified POS page (audit §43.10).
@@ -44,6 +44,15 @@ function isTypingInField(target: EventTarget | null): boolean {
 }
 
 export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled = true): void {
+  // Keep the latest handlers in a ref so an inline `{ onRepairsTab: ... }`
+  // literal from the caller doesn't tear down + re-add the window listener
+  // on every render. The listener itself is stable; it reads `handlersRef`
+  // at fire time, always getting the freshest callbacks.
+  const handlersRef = useRef(handlers);
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -53,7 +62,7 @@ export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled =
       // F4 (customer search) is the only one that's safe to fire from inside
       // a field — the rest would be jarring if the cashier is mid-entry.
       if (handlerKey !== 'onCustomerSearch' && isTypingInField(event.target)) return;
-      const handler = handlers[handlerKey];
+      const handler = handlersRef.current[handlerKey];
       if (!handler) return;
       event.preventDefault();
       handler();
@@ -61,5 +70,5 @@ export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled =
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlers, enabled]);
+  }, [enabled]);
 }
