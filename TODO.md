@@ -727,10 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-63 scan-loop findings (2026-04-24) — routes + services + authStore
-- [ ] SCAN-1099. **[HIGH] `roles.routes.ts PERMISSION_KEYS` drifted from shared `PERMISSIONS` — custom roles silently ineffective.**
-  <!-- meta: scope=server/routes+shared; files=packages/server/src/routes/roles.routes.ts:23-39; fix=use-Object.values(PERMISSIONS) -->
-- [ ] SCAN-1106. **[MED] `email.ts transporterCache` uncapped + not cleared on cred rotation — unbounded growth + stale creds.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/email.ts:21,99-128; fix=LRU-cap+wire-clearEmailCache-on-config-PUT -->
 
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
 

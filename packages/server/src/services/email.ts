@@ -12,6 +12,12 @@ const smtpBreaker = createBreaker('smtp');
 
 // Cached transporter per-tenant (keyed by config hash) with TTL
 const TRANSPORTER_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// SCAN-1106: cap the map so a platform with N tenants doesn't hold N live
+// SMTP connections forever. 50 is well above realistic concurrent-tenant
+// send patterns (each entry lives ~5min before TTL eviction naturally). When
+// full, we evict the oldest entry before inserting — simple LRU via Map
+// insertion order.
+const TRANSPORTER_CACHE_MAX = 50;
 
 interface CachedTransporter {
   transporter: nodemailer.Transporter;
@@ -19,6 +25,20 @@ interface CachedTransporter {
 }
 
 const transporterCache = new Map<string, CachedTransporter>();
+
+/**
+ * SCAN-1106: best-effort close of the oldest cached transporter before we
+ * mint a new one over the cap. `nodemailer.Transporter.close()` is sync in
+ * SMTP pool mode and no-op otherwise — either way it releases the socket
+ * pool so we don't leak a half-open connection when evicting.
+ */
+function evictOldestTransporter(): void {
+  const oldest = transporterCache.keys().next().value;
+  if (oldest === undefined) return;
+  const entry = transporterCache.get(oldest);
+  transporterCache.delete(oldest);
+  try { entry?.transporter.close(); } catch { /* best-effort */ }
+}
 
 interface SmtpConfig {
   host: string;
@@ -124,6 +144,12 @@ function getTransporter(db: any): { transporter: nodemailer.Transporter; from: s
     socketTimeout: 15_000,
     greetingTimeout: 15_000,
   });
+  // SCAN-1106: enforce the cap before insertion so an unbounded tenant
+  // population can't grow the cache past TRANSPORTER_CACHE_MAX. Map
+  // iteration order is insertion order, so evicting the first key is LRU.
+  if (transporterCache.size >= TRANSPORTER_CACHE_MAX) {
+    evictOldestTransporter();
+  }
   transporterCache.set(cacheKey, { transporter: t, createdAt: now });
   return { transporter: t, from: cfg.from };
 }

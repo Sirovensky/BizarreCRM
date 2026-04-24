@@ -15,58 +15,30 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { validateRequiredString, validateTextLength } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { PERMISSIONS, ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 const router = Router();
 
-// Canonical permission keys. Add new ones at the bottom — do NOT renumber.
-// Mirrors the existing hardcoded role enum behavior.
-export const PERMISSION_KEYS: readonly string[] = [
-  // Tickets
-  'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.delete', 'tickets.assign',
-  // Customers
-  'customers.view', 'customers.create', 'customers.edit', 'customers.delete', 'customers.export',
-  // Inventory
-  'inventory.view', 'inventory.adjust', 'inventory.cost', 'inventory.delete',
-  // POS / invoices
-  'pos.checkout', 'pos.refund', 'pos.discount', 'invoices.view', 'invoices.edit', 'invoices.delete',
-  // Employees + payroll
-  'employees.view', 'employees.edit', 'employees.commissions',
-  'payroll.view', 'payroll.lock', 'payroll.export',
-  // Reports + admin
-  'reports.view', 'reports.export', 'settings.view', 'settings.edit', 'admin.full',
-  // Team management
-  'team.shifts', 'team.timeoff_approve', 'team.reviews', 'team.goals',
-];
+// SCAN-1099 [HIGH]: this file previously hard-coded its OWN `PERMISSION_KEYS`
+// list (e.g. `inventory.adjust`, `customers.export`, `team.shifts`,
+// `admin.full`, `payroll.view`) that drifted from the shared `PERMISSIONS`
+// object used by `requirePermission()` on every actual route. The real
+// enforcement keys (`tickets.change_status`, `tickets.bulk_update`,
+// `inventory.adjust_stock`, `invoices.void`, `invoices.record_payment`,
+// `customers.gdpr_erase`, `sms.send`, `pos.access`, `users.manage`, …)
+// never appeared in the admin's custom-role matrix UI, and none of the
+// keys the admin *could* toggle were ever read by the middleware. Every
+// custom-role matrix edit was silently ineffective — `requirePermission()`
+// fell through to the hard-coded role fallback. Pull from the shared
+// constants so there is exactly one canonical list.
+export const PERMISSION_KEYS: readonly string[] = Object.values(PERMISSIONS);
 
-// Default permission map for the 4 seeded roles.
-const DEFAULT_ROLE_PERMS: Record<string, ReadonlySet<string>> = {
-  admin: new Set(PERMISSION_KEYS), // every key allowed
-  manager: new Set([
-    'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign',
-    'customers.view', 'customers.create', 'customers.edit', 'customers.export',
-    'inventory.view', 'inventory.adjust', 'inventory.cost',
-    'pos.checkout', 'pos.refund', 'pos.discount',
-    'invoices.view', 'invoices.edit',
-    'employees.view', 'employees.commissions',
-    'payroll.view', 'payroll.lock', 'payroll.export',
-    'reports.view', 'reports.export',
-    'settings.view',
-    'team.shifts', 'team.timeoff_approve', 'team.reviews', 'team.goals',
-  ]),
-  technician: new Set([
-    'tickets.view', 'tickets.create', 'tickets.edit',
-    'customers.view',
-    'inventory.view',
-    'invoices.view',
-  ]),
-  cashier: new Set([
-    'tickets.view', 'tickets.create',
-    'customers.view', 'customers.create', 'customers.edit',
-    'inventory.view',
-    'pos.checkout', 'pos.discount',
-    'invoices.view',
-  ]),
-};
+// Default permission map for the 4 seeded roles — sourced from the shared
+// `ROLE_PERMISSIONS` table so the matrix that seeds the DB matches the
+// matrix that `requirePermission()` reads at runtime.
+const DEFAULT_ROLE_PERMS: Record<string, ReadonlySet<string>> = Object.fromEntries(
+  Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => [role, new Set(perms)]),
+);
 
 interface RoleRow {
   id: number;
