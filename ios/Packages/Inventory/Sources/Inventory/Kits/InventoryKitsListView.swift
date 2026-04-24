@@ -142,7 +142,7 @@ public struct InventoryKitsListView: View {
                     .foregroundStyle(.bizarreOnSurface)
                 if let desc = kit.description, !desc.isEmpty {
                     Text(desc)
-                        .font(.brandCaption())
+                        .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
                 }
@@ -152,7 +152,7 @@ public struct InventoryKitsListView: View {
 
             if let count = kit.itemCount {
                 Text("\(count) component\(count == 1 ? "" : "s")")
-                    .font(.brandCaption())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
 

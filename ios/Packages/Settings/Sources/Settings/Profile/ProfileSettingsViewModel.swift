@@ -1,15 +1,15 @@
 import Foundation
 import Observation
 
-// MARK: - §19.1 ProfileSettingsViewModel
+// MARK: - §19.1 ProfileViewModel
 
 @MainActor
 @Observable
-public final class ProfileSettingsViewModel: Sendable {
+public final class ProfileViewModel: Sendable {
 
     // MARK: - Observed state
 
-    public var settings: ProfileSettings = ProfileSettings()
+    public var settings: ProfileModel = ProfileModel()
     public var userId: Int = 0
 
     public var isLoading: Bool = false
@@ -22,12 +22,12 @@ public final class ProfileSettingsViewModel: Sendable {
 
     // MARK: - Private
 
-    private let repository: (any ProfileSettingsRepository)?
-    private var lastSaved: ProfileSettings = ProfileSettings()
+    private let repository: (any ProfileRepository)?
+    private var lastSaved: ProfileModel = ProfileModel()
 
     // MARK: - Init
 
-    public init(repository: (any ProfileSettingsRepository)? = nil) {
+    public init(repository: (any ProfileRepository)? = nil) {
         self.repository = repository
     }
 
@@ -72,7 +72,7 @@ public final class ProfileSettingsViewModel: Sendable {
     // MARK: - Field setters (immutable update pattern)
 
     public func setFirstName(_ value: String) {
-        settings = ProfileSettings(
+        settings = ProfileModel(
             firstName: value,
             lastName:  settings.lastName,
             email:     settings.email,
@@ -84,7 +84,7 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 
     public func setLastName(_ value: String) {
-        settings = ProfileSettings(
+        settings = ProfileModel(
             firstName: settings.firstName,
             lastName:  value,
             email:     settings.email,
@@ -96,7 +96,7 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 
     public func setEmail(_ value: String) {
-        settings = ProfileSettings(
+        settings = ProfileModel(
             firstName: settings.firstName,
             lastName:  settings.lastName,
             email:     value,
@@ -108,7 +108,7 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 
     public func setPhone(_ value: String) {
-        settings = ProfileSettings(
+        settings = ProfileModel(
             firstName: settings.firstName,
             lastName:  settings.lastName,
             email:     settings.email,

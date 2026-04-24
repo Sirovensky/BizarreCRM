@@ -68,7 +68,7 @@ public struct OrganizationSettingsView: View {
         ScrollView {
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible())],
-                alignment: .top,
+                alignment: .leading,
                 spacing: BrandSpacing.lg
             ) {
                 identityCard

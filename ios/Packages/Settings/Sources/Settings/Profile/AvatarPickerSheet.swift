@@ -65,8 +65,8 @@ public struct AvatarPickerSheet: View {
                     Label("Choose from Library", systemImage: "photo.on.rectangle")
                         .frame(maxWidth: .infinity)
                         .padding(DesignTokens.Spacing.md)
-                        .brandGlass(.regular, interactive: true)
                 }
+                .buttonStyle(.brandGlass)
                 .padding(.horizontal, DesignTokens.Spacing.lg)
                 .onChange(of: selectedItem) { _, newItem in
                     Task { await handlePickedItem(newItem) }
@@ -121,7 +121,7 @@ public struct AvatarPickerSheet: View {
 
     private var placeholderCircle: some View {
         Circle()
-            .fill(Color.bizarrePrimary.opacity(0.12))
+            .fill(Color.bizarreOrange.opacity(0.12))
             .overlay {
                 Image(systemName: "person.fill")
                     .resizable()

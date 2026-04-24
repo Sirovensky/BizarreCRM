@@ -3,18 +3,18 @@ import Core
 import DesignSystem
 import Networking
 
-// MARK: - §19.1 ProfileSettingsView
+// MARK: - §19.1 ProfileView
 
 /// Full-screen profile editor.
 /// iPhone: NavigationStack + Form, Liquid Glass navigation bar.
 /// iPad: Two-column layout — glass avatar header on left, form on right.
-public struct ProfileSettingsView: View {
+public struct ProfileView: View {
 
-    @State private var vm: ProfileSettingsViewModel
+    @State private var vm: ProfileViewModel
     @State private var showAvatarPicker: Bool = false
 
-    public init(repository: (any ProfileSettingsRepository)? = nil) {
-        _vm = State(initialValue: ProfileSettingsViewModel(repository: repository))
+    public init(repository: (any ProfileRepository)? = nil) {
+        _vm = State(initialValue: ProfileViewModel(repository: repository))
     }
 
     public var body: some View {

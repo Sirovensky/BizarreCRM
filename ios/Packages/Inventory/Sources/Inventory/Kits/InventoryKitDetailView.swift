@@ -129,7 +129,7 @@ public struct InventoryKitDetailView: View {
         }
         if let createdAt = kit.createdAt {
             LabeledContent("Created", value: createdAt)
-                .font(.brandCaption())
+                .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
     }
@@ -173,7 +173,7 @@ public struct InventoryKitDetailView: View {
                     .foregroundStyle(.bizarreOrange)
                 if let stock = component.inStock {
                     Text("Stock: \(stock)")
-                        .font(.brandCaption())
+                        .font(.brandLabelSmall())
                         .foregroundStyle(
                             (component.isStockInsufficient ?? false)
                                 ? .bizarreError
@@ -235,11 +235,11 @@ public struct InventoryKitDetailView: View {
             if let totalRetail = kit.totalRetailCents {
                 HStack {
                     Text("Total Retail Value")
-                        .font(.brandCaption())
+                        .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     Spacer()
                     Text(formatCents(totalRetail))
-                        .font(.brandCaption())
+                        .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
             }

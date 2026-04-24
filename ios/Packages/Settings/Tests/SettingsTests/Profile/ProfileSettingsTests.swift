@@ -7,13 +7,13 @@ import Core
 // MARK: - Stubs
 
 /// Returns a preset MeResponse for GET, and the same response for PUT.
-private actor StubProfileRepository: ProfileSettingsRepository {
-    let fetchResult: Result<(id: Int, settings: ProfileSettings), Error>
-    let saveResult: Result<ProfileSettings, Error>
+private actor StubProfileRepository: ProfileRepository {
+    let fetchResult: Result<(id: Int, settings: ProfileModel), Error>
+    let saveResult: Result<ProfileModel, Error>
 
     init(
-        fetchResult: Result<(id: Int, settings: ProfileSettings), Error>,
-        saveResult: Result<ProfileSettings, Error>? = nil
+        fetchResult: Result<(id: Int, settings: ProfileModel), Error>,
+        saveResult: Result<ProfileModel, Error>? = nil
     ) {
         self.fetchResult = fetchResult
         // Default save result mirrors the fetched settings on success
@@ -28,32 +28,32 @@ private actor StubProfileRepository: ProfileSettingsRepository {
         }
     }
 
-    func fetchProfile() async throws -> (id: Int, settings: ProfileSettings) {
+    func fetchProfile() async throws -> (id: Int, settings: ProfileModel) {
         try fetchResult.get()
     }
 
-    func saveProfile(id: Int, settings: ProfileSettings) async throws -> ProfileSettings {
+    func saveProfile(id: Int, settings: ProfileModel) async throws -> ProfileModel {
         try saveResult.get()
     }
 }
 
-private actor FailingProfileRepository: ProfileSettingsRepository {
-    func fetchProfile() async throws -> (id: Int, settings: ProfileSettings) {
+private actor FailingProfileRepository: ProfileRepository {
+    func fetchProfile() async throws -> (id: Int, settings: ProfileModel) {
         throw URLError(.notConnectedToInternet)
     }
-    func saveProfile(id: Int, settings: ProfileSettings) async throws -> ProfileSettings {
+    func saveProfile(id: Int, settings: ProfileModel) async throws -> ProfileModel {
         throw URLError(.notConnectedToInternet)
     }
 }
 
-// MARK: - ProfileSettings model tests
+// MARK: - ProfileModel model tests
 
-@Suite("ProfileSettings model")
-struct ProfileSettingsModelTests {
+@Suite("ProfileModel model")
+struct ProfileModelTests {
 
     @Test("Default init produces empty fields")
     func defaultInit() {
-        let s = ProfileSettings()
+        let s = ProfileModel()
         #expect(s.firstName == "")
         #expect(s.lastName == "")
         #expect(s.email == "")
@@ -65,49 +65,49 @@ struct ProfileSettingsModelTests {
 
     @Test("Equatable: same fields are equal")
     func sameFieldsAreEqual() {
-        let a = ProfileSettings(firstName: "Jane", lastName: "Doe", email: "j@d.com", phone: "555")
-        let b = ProfileSettings(firstName: "Jane", lastName: "Doe", email: "j@d.com", phone: "555")
+        let a = ProfileModel(firstName: "Jane", lastName: "Doe", email: "j@d.com", phone: "555")
+        let b = ProfileModel(firstName: "Jane", lastName: "Doe", email: "j@d.com", phone: "555")
         #expect(a == b)
     }
 
     @Test("Equatable: different firstName breaks equality")
     func differentFirstName() {
-        let a = ProfileSettings(firstName: "Jane")
-        let b = ProfileSettings(firstName: "John")
+        let a = ProfileModel(firstName: "Jane")
+        let b = ProfileModel(firstName: "John")
         #expect(a != b)
     }
 
     @Test("validationError returns firstNameEmpty when firstName is blank")
     func validationFirstNameEmpty() {
-        let s = ProfileSettings(firstName: "  ", lastName: "Doe")
+        let s = ProfileModel(firstName: "  ", lastName: "Doe")
         #expect(s.validationError() == .firstNameEmpty)
     }
 
     @Test("validationError returns lastNameEmpty when lastName is blank")
     func validationLastNameEmpty() {
-        let s = ProfileSettings(firstName: "Jane", lastName: "")
+        let s = ProfileModel(firstName: "Jane", lastName: "")
         #expect(s.validationError() == .lastNameEmpty)
     }
 
     @Test("validationError returns emailInvalid for malformed email")
     func validationEmailInvalid() {
-        let s = ProfileSettings(firstName: "Jane", lastName: "Doe", email: "not-an-email")
+        let s = ProfileModel(firstName: "Jane", lastName: "Doe", email: "not-an-email")
         #expect(s.validationError() == .emailInvalid)
     }
 
     @Test("validationError returns nil for valid settings")
     func validationNilWhenValid() {
-        let s = ProfileSettings(firstName: "Jane", lastName: "Doe", email: "j@d.com")
+        let s = ProfileModel(firstName: "Jane", lastName: "Doe", email: "j@d.com")
         #expect(s.validationError() == nil)
     }
 
     @Test("validationError returns nil when email is empty (optional field)")
     func validationNilForEmptyEmail() {
-        let s = ProfileSettings(firstName: "Jane", lastName: "Doe", email: "")
+        let s = ProfileModel(firstName: "Jane", lastName: "Doe", email: "")
         #expect(s.validationError() == nil)
     }
 
-    @Test("MeResponse.toProfileSettings maps snake_case fields correctly")
+    @Test("MeResponse.toProfileModel maps snake_case fields correctly")
     func meResponseMapping() {
         let me = MeResponse(
             id: 42,
@@ -119,7 +119,7 @@ struct ProfileSettingsModelTests {
             timezone: "America/New_York",
             locale: "en_US"
         )
-        let settings = me.toProfileSettings()
+        let settings = me.toProfileModel()
         #expect(settings.firstName == "Alice")
         #expect(settings.lastName == "Smith")
         #expect(settings.email == "alice@example.com")
@@ -129,7 +129,7 @@ struct ProfileSettingsModelTests {
         #expect(settings.locale == "en_US")
     }
 
-    @Test("MeResponse.toProfileSettings uses empty string for nil fields")
+    @Test("MeResponse.toProfileModel uses empty string for nil fields")
     func meResponseNilFields() {
         let me = MeResponse(
             id: 1,
@@ -141,22 +141,22 @@ struct ProfileSettingsModelTests {
             timezone: nil,
             locale: nil
         )
-        let s = me.toProfileSettings()
+        let s = me.toProfileModel()
         #expect(s.firstName == "")
         #expect(s.avatarUrl == nil)
     }
 }
 
-// MARK: - ProfileSettingsViewModel tests
+// MARK: - ProfileViewModel tests
 
-@Suite("ProfileSettingsViewModel")
-struct ProfileSettingsViewModelTests {
+@Suite("ProfileViewModel")
+struct ProfileViewModelTests {
 
     @Test("Initial state: empty, not loading, no error")
     @MainActor
     func initialState() {
-        let vm = ProfileSettingsViewModel()
-        #expect(vm.settings == ProfileSettings())
+        let vm = ProfileViewModel()
+        #expect(vm.settings == ProfileModel())
         #expect(!vm.isLoading)
         #expect(!vm.isSaving)
         #expect(vm.errorMessage == nil)
@@ -167,9 +167,9 @@ struct ProfileSettingsViewModelTests {
     @Test("load() populates settings and userId from repository")
     @MainActor
     func loadPopulates() async {
-        let profile = ProfileSettings(firstName: "Bob", lastName: "Builder", email: "b@b.com")
+        let profile = ProfileModel(firstName: "Bob", lastName: "Builder", email: "b@b.com")
         let repo = StubProfileRepository(fetchResult: .success((id: 7, settings: profile)))
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         #expect(vm.userId == 7)
         #expect(vm.settings.firstName == "Bob")
@@ -181,7 +181,7 @@ struct ProfileSettingsViewModelTests {
     @Test("load() sets errorMessage on network failure")
     @MainActor
     func loadSetsError() async {
-        let vm = ProfileSettingsViewModel(repository: FailingProfileRepository())
+        let vm = ProfileViewModel(repository: FailingProfileRepository())
         await vm.load()
         #expect(vm.errorMessage != nil)
         #expect(!vm.isLoading)
@@ -190,24 +190,24 @@ struct ProfileSettingsViewModelTests {
     @Test("save() rejects blank firstName with validation error")
     @MainActor
     func saveRejectsBlankFirstName() async {
-        let repo = StubProfileRepository(fetchResult: .success((id: 1, settings: ProfileSettings())))
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let repo = StubProfileRepository(fetchResult: .success((id: 1, settings: ProfileModel())))
+        let vm = ProfileViewModel(repository: repo)
         vm.setFirstName("  ")
         vm.setLastName("Smith")
         await vm.save()
-        #expect(vm.errorMessage == ProfileSettings.ValidationError.firstNameEmpty.localizedDescription)
+        #expect(vm.errorMessage == ProfileModel.ValidationError.firstNameEmpty.localizedDescription)
         #expect(vm.successMessage == nil)
     }
 
     @Test("save() sets successMessage on success")
     @MainActor
     func saveSuccess() async {
-        let profile = ProfileSettings(firstName: "Jane", lastName: "Doe")
+        let profile = ProfileModel(firstName: "Jane", lastName: "Doe")
         let repo = StubProfileRepository(
             fetchResult: .success((id: 3, settings: profile)),
             saveResult: .success(profile)
         )
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         vm.setFirstName("Janet")
         await vm.save()
@@ -218,12 +218,12 @@ struct ProfileSettingsViewModelTests {
     @Test("save() sets errorMessage on repository failure")
     @MainActor
     func saveFailure() async {
-        let profile = ProfileSettings(firstName: "Jane", lastName: "Doe")
+        let profile = ProfileModel(firstName: "Jane", lastName: "Doe")
         let repo = StubProfileRepository(
             fetchResult: .success((id: 3, settings: profile)),
             saveResult: .failure(URLError(.badServerResponse))
         )
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         vm.setFirstName("Janet")
         await vm.save()
@@ -234,9 +234,9 @@ struct ProfileSettingsViewModelTests {
     @Test("isDirty is false after fresh load")
     @MainActor
     func isDirtyFalseAfterLoad() async {
-        let profile = ProfileSettings(firstName: "A", lastName: "B")
+        let profile = ProfileModel(firstName: "A", lastName: "B")
         let repo = StubProfileRepository(fetchResult: .success((id: 1, settings: profile)))
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         #expect(!vm.isDirty)
     }
@@ -244,9 +244,9 @@ struct ProfileSettingsViewModelTests {
     @Test("isDirty is true after setFirstName changes value")
     @MainActor
     func isDirtyAfterMutation() async {
-        let profile = ProfileSettings(firstName: "A", lastName: "B")
+        let profile = ProfileModel(firstName: "A", lastName: "B")
         let repo = StubProfileRepository(fetchResult: .success((id: 1, settings: profile)))
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         vm.setFirstName("C")
         #expect(vm.isDirty)
@@ -255,9 +255,9 @@ struct ProfileSettingsViewModelTests {
     @Test("setEmail updates settings immutably, other fields unchanged")
     @MainActor
     func setEmailImmutable() async {
-        let profile = ProfileSettings(firstName: "X", lastName: "Y", phone: "123")
+        let profile = ProfileModel(firstName: "X", lastName: "Y", phone: "123")
         let repo = StubProfileRepository(fetchResult: .success((id: 1, settings: profile)))
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         vm.setEmail("x@y.com")
         #expect(vm.settings.email == "x@y.com")
@@ -268,7 +268,7 @@ struct ProfileSettingsViewModelTests {
     @Test("dismissError clears errorMessage")
     @MainActor
     func dismissErrorClears() async {
-        let vm = ProfileSettingsViewModel(repository: FailingProfileRepository())
+        let vm = ProfileViewModel(repository: FailingProfileRepository())
         await vm.load()
         #expect(vm.errorMessage != nil)
         vm.dismissError()
@@ -278,12 +278,12 @@ struct ProfileSettingsViewModelTests {
     @Test("dismissSuccess clears successMessage")
     @MainActor
     func dismissSuccessClears() async {
-        let profile = ProfileSettings(firstName: "A", lastName: "B")
+        let profile = ProfileModel(firstName: "A", lastName: "B")
         let repo = StubProfileRepository(
             fetchResult: .success((id: 1, settings: profile)),
             saveResult: .success(profile)
         )
-        let vm = ProfileSettingsViewModel(repository: repo)
+        let vm = ProfileViewModel(repository: repo)
         await vm.load()
         vm.setFirstName("C")
         await vm.save()
@@ -293,10 +293,10 @@ struct ProfileSettingsViewModelTests {
     }
 }
 
-// MARK: - LiveProfileSettingsRepository contract tests
+// MARK: - LiveProfileRepository contract tests
 
-@Suite("LiveProfileSettingsRepository")
-struct LiveProfileSettingsRepositoryTests {
+@Suite("LiveProfileRepository")
+struct LiveProfileRepositoryTests {
 
     /// Mock APIClient that returns a MeResponse on GET and an updated row on PUT.
     private actor MockAPIClient: APIClient {
@@ -339,7 +339,7 @@ struct LiveProfileSettingsRepositoryTests {
         let me = MeResponse(id: 55, firstName: "Lu", lastName: "C", email: "lu@c.com",
                             phone: nil, avatarUrl: nil, timezone: "UTC", locale: "en")
         let api = MockAPIClient(me: me)
-        let repo = LiveProfileSettingsRepository(api: api)
+        let repo = LiveProfileRepository(api: api)
         let result = try await repo.fetchProfile()
         #expect(result.id == 55)
         #expect(result.settings.firstName == "Lu")
@@ -355,8 +355,8 @@ struct LiveProfileSettingsRepositoryTests {
                                  email: "a@b.com", phone: nil, avatarUrl: nil,
                                  timezone: nil, locale: nil)
         let api = MockAPIClient(me: original, updated: updated)
-        let repo = LiveProfileSettingsRepository(api: api)
-        var settings = original.toProfileSettings()
+        let repo = LiveProfileRepository(api: api)
+        var settings = original.toProfileModel()
         settings.firstName = "C"
         let saved = try await repo.saveProfile(id: 10, settings: settings)
         #expect(saved.firstName == "C")

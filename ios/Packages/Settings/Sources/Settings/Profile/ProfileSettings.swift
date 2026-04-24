@@ -1,12 +1,12 @@
 import Foundation
 
-// MARK: - §19.1 ProfileSettings model
+// MARK: - §19.1 ProfileModel model
 
 /// Codable model representing the current user's editable profile fields.
 /// Decoded from GET /auth/me (envelope: { success, data }).
 /// The write path goes through PUT /settings/users/:id (admin-capable callers)
 /// or PATCH /auth/me when that endpoint is available.
-public struct ProfileSettings: Codable, Sendable, Equatable {
+public struct ProfileModel: Codable, Sendable, Equatable {
     public var firstName: String
     public var lastName: String
     public var email: String
@@ -48,7 +48,7 @@ public struct ProfileSettings: Codable, Sendable, Equatable {
 
 /// Decoded from GET /auth/me → { success, data: MeResponse }
 /// The server injects req.user which includes more fields; we pick only what
-/// ProfileSettings needs plus the numeric id required for the PUT route.
+/// ProfileModel needs plus the numeric id required for the PUT route.
 public struct MeResponse: Decodable, Sendable {
     public let id: Int
     public let firstName: String?
@@ -71,8 +71,8 @@ public struct MeResponse: Decodable, Sendable {
     }
 
     /// Convert to the domain model, substituting safe defaults for nil fields.
-    public func toProfileSettings() -> ProfileSettings {
-        ProfileSettings(
+    public func toProfileModel() -> ProfileModel {
+        ProfileModel(
             firstName: firstName ?? "",
             lastName:  lastName  ?? "",
             email:     email     ?? "",
@@ -103,7 +103,7 @@ public struct ProfileUpdateRequest: Encodable, Sendable {
 
 // MARK: - Validation helpers
 
-extension ProfileSettings {
+extension ProfileModel {
 
     public enum ValidationError: LocalizedError, Sendable {
         case firstNameEmpty

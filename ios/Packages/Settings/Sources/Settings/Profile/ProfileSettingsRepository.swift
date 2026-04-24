@@ -1,36 +1,36 @@
 import Foundation
 import Networking
 
-// MARK: - §19.1 ProfileSettingsRepository
+// MARK: - §19.1 ProfileRepository
 
 /// Abstract contract for fetching and persisting the current user's profile.
-public protocol ProfileSettingsRepository: Sendable {
+public protocol ProfileRepository: Sendable {
     /// Fetch the current user's profile from GET /auth/me.
-    func fetchProfile() async throws -> (id: Int, settings: ProfileSettings)
+    func fetchProfile() async throws -> (id: Int, settings: ProfileModel)
 
     /// Persist profile changes via PUT /settings/users/:id.
     /// - Parameters:
     ///   - id: The numeric user ID returned by fetchProfile.
     ///   - settings: The updated profile settings.
     @discardableResult
-    func saveProfile(id: Int, settings: ProfileSettings) async throws -> ProfileSettings
+    func saveProfile(id: Int, settings: ProfileModel) async throws -> ProfileModel
 }
 
 // MARK: - Live implementation
 
-public final class LiveProfileSettingsRepository: ProfileSettingsRepository {
+public final class LiveProfileRepository: ProfileRepository {
     private let api: any APIClient
 
     public init(api: any APIClient) {
         self.api = api
     }
 
-    public func fetchProfile() async throws -> (id: Int, settings: ProfileSettings) {
+    public func fetchProfile() async throws -> (id: Int, settings: ProfileModel) {
         let me: MeResponse = try await api.get("/auth/me", as: MeResponse.self)
-        return (id: me.id, settings: me.toProfileSettings())
+        return (id: me.id, settings: me.toProfileModel())
     }
 
-    public func saveProfile(id: Int, settings: ProfileSettings) async throws -> ProfileSettings {
+    public func saveProfile(id: Int, settings: ProfileModel) async throws -> ProfileModel {
         let body = ProfileUpdateRequest(
             firstName: settings.firstName,
             lastName:  settings.lastName,
@@ -47,7 +47,7 @@ public final class LiveProfileSettingsRepository: ProfileSettingsRepository {
         )
         // Merge server response back — keep avatarUrl/timezone/locale unchanged
         // if server does not echo them (COALESCE keeps their old values).
-        return ProfileSettings(
+        return ProfileModel(
             firstName: updated.firstName ?? settings.firstName,
             lastName:  updated.lastName  ?? settings.lastName,
             email:     updated.email     ?? settings.email,
