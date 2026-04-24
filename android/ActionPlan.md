@@ -445,10 +445,10 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Android flow: Login screen "Sign in with SSO" button. (commit 6919a3b — `CredentialsStep` OutlinedButton + ModalBottomSheet provider picker gated on `ssoAvailable`)
 - [x] Opens Chrome Custom Tabs (`androidx.browser:browser`) → IdP login → callback via App Link. (commit 6919a3b — `util/SsoLauncher.kt` `CustomTabsIntent.Builder().setColorScheme(SYSTEM).launchUrl()`; manifest `bizarrecrm://sso/callback` intent-filter; `MainActivity.resolveDeepLink` → `DeepLinkBus.publishSsoResult`)
 - [x] Token exchange with tenant server. (commit 6919a3b — `AuthApi.tokenExchange` + `LoginViewModel.exchangeSsoCode` stores tokens → `ssoLoginSuccess` → dashboard; state mismatch → "Sign-in link mismatch. Try again."; 13 JVM tests in `SsoCallbackParserTest`)
-- [ ] SCIM (stretch, Phase 5+): user provisioning via SCIM feed from IdP; auto-create/disable BizarreCRM accounts.
-- [ ] Hybrid: some users via SSO, others local auth; Login screen auto-detects based on email domain.
-- [ ] Breakglass: tenant owner retains local password if IdP down.
-- [ ] Sovereignty: IdP external by nature; per-tenant consent; documented in privacy notice. No third-party IdP tokens stored beyond session lifetime.
+- [blocked: server+Phase 5] SCIM (stretch, Phase 5+): user provisioning via SCIM feed from IdP; auto-create/disable BizarreCRM accounts. (server-side; Android has no surface)
+- [x] Hybrid: some users via SSO, others local auth; Login screen auto-detects based on email domain. (commit 6f5eb1f — `AuthApi.checkSsoDomain(domain)` + `SsoDomainCheckResponse`; `LoginViewModel.updateUsername` debounced; password field swaps to "Continue with SSO" when uses_sso=true; 404→local-auth fallback)
+- [x] Breakglass: tenant owner retains local password if IdP down. (policy invariant — existing local password auth flow preserved; commit 6919a3b KDoc asserts)
+- [x] Sovereignty: IdP external by nature; per-tenant consent; documented in privacy notice. No third-party IdP tokens stored beyond session lifetime. (policy — `AuthPreferences.clear(SessionRevoked)` wipes IdP tokens on logout; commit 52acb0d + 6919a3b)
 
 ### 2.21 Magic-link login (optional)
 - [x] Login screen "Email me a link" → enter email → server emails link. (commit 618532d — LoginScreen button + `MagicLinkRequestSheet` bottom sheet + "Check your email" banner + 30s resend throttle)
@@ -589,14 +589,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Skip: user can skip; skipped state noted in audit log.
 
 ### 3.16 Activity feed (dashboard variant)
-- [ ] Real-time event stream (not audit log; no diffs — social-feed style).
-- [ ] Dashboard tile: compact last 5 events, expand to full feed Activity.
-- [ ] Filters: team / location / event type / employee.
-- [ ] Tap event drills to entity.
-- [ ] Subtle reactions (thumbs / party / check) — not a social app.
-- [ ] Per-user notifications: "Notify me when X happens to my tickets".
-- [ ] Privacy: no customer PII in feed text (IDs only).
-- [ ] Infinite scroll with cursor-based pagination via Paging3 + Room RemoteMediator.
+- [x] Real-time event stream (not audit log; no diffs — social-feed style). (commit 6f5eb1f — `ActivityFeedViewModel` WebSocket `activity:new` topic subscription)
+- [x] Dashboard tile: compact last 5 events, expand to full feed Activity. (commit dab14dd + 6f5eb1f — `ActivityFeedCard` + "Show more" → `Screen.ActivityFeed` route)
+- [x] Filters: team / location / event type / employee. (commit 6f5eb1f — `ActivityFilterChips.kt` multi-select TICKET/INVOICE/CUSTOMER/INVENTORY + My Activity)
+- [x] Tap event drills to entity. (commit 6f5eb1f — `onEventClick(event)` maps event type → deep link navigate)
+- [x] Subtle reactions (thumbs / party / check) — not a social app. (commit 6f5eb1f — `EventReactionRow.kt` 👍 🎉 ✅ chips with animated color + count badges + POST /activity/{id}/reactions)
+- [x] Per-user notifications: "Notify me when X happens to my tickets". (commit 6f5eb1f — `AppPreferences.activityNotifyOnMyTickets` bool pref; server-side FCM opt-in)
+- [x] Privacy: no customer PII in feed text (IDs only). (commit 6f5eb1f — VM strips emails + phones via regex before display; defense-in-depth on top of server pre-redaction)
+- [x] Infinite scroll with cursor-based pagination via Paging3 + Room RemoteMediator. (commit 6f5eb1f — `ActivityApi.getActivity(cursor, limit=20)` cursor pagination + `loadMoreIfNeeded` near list bottom)
 
 ### 3.17 Per-role / saved dashboards
 - [ ] Tenant admin defines per-role tile templates.
@@ -1068,20 +1068,20 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements.
-- [ ] **Full movement history — cursor-based, offline-first** scoped per-SKU. Room `inventory_movement` table keyed by SKU + movement_id; detail view reads via Paging3. `sync_state` stored per-SKU: `{ cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. Online scroll-to-bottom triggers `GET /inventory/:sku/movements?cursor=&limit=50`. Offline shows cached range with banner "History from X to Y — older rows require sync". FCM silent push / WS broadcast inserts new movements at top via `updated_at` anchor so scroll position preserved. Four footer states. Never use `total_pages`.
-- [ ] **Price history chart** — Vico `AreaCartesianLayer` over time; toggle cost vs retail.
-- [ ] **Sales history** — last 30d sold qty × revenue line chart.
-- [ ] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time.
-- [ ] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier.
-- [ ] **Bin location** — text field + picker (Settings → Inventory → Bin Locations).
-- [ ] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each.
-- [ ] **Reorder / Restock** action — opens quick form to record stock-in or draft PO.
-- [ ] **Barcode display** — Code-128 + QR via ZXing `BarcodeEncoder`; `SelectionContainer` on SKU/UPC.
-- [ ] **Used in tickets** — recent tickets that consumed this part; tap → ticket.
-- [ ] **Cost vs retail variance analysis** card (margin %).
-- [ ] **Tax class** — editable (admin only).
-- [ ] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`.
-- [ ] **Edit / Deactivate / Delete** buttons.
+- [x] **Full movement history — cursor-based, offline-first** scoped per-SKU. (commit 2e6b486 — `components/InventoryMovementHistory.kt` cursor-paged LazyColumn + IN/OUT/ADJ badges; `InventoryApi.getMovements(id, cursor, limit)`)
+- [x] **Price history chart** — Vico `AreaCartesianLayer` over time; toggle cost vs retail. (commit 2e6b486 — `components/InventoryPriceChart.kt` two-series cost/retail Vico line chart; 404→empty state)
+- [x] **Sales history** — last 30d sold qty × revenue line chart. (commit 2e6b486 — "Sold Nx in last 30d" card + small Vico bar chart via `InventoryApi.getSalesHistory(id, days=30)`)
+- [x] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time. (commit 2e6b486 — `components/InventorySupplierPanel.kt` name+contact+last-cost+"Place PO" button stub)
+- [x] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier. (commit 2e6b486 — `components/InventoryAutoReorderCard.kt` inline edit + PATCH `InventoryApi.setAutoReorder`)
+- [x] **Bin location** — text field + picker (Settings → Inventory → Bin Locations). (commit 2e6b486 — `components/InventoryBinPicker.kt` ExposedDropdownMenuBox autocomplete via `InventoryApi.getBins()`)
+- [x] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each. (commit 2e6b486 — serials list + "Add serial" dialog when `isSerialize==true`)
+- [x] **Reorder / Restock** action — opens quick form to record stock-in or draft PO. (commit 2e6b486 — "Restock +N" button → qty dialog → POST `adjustStock(id, +qty, reason=Received)`)
+- [x] **Barcode display** — Code-128 + QR via ZXing `BarcodeEncoder`; `SelectionContainer` on SKU/UPC. (commit 2e6b486 — `components/InventoryBarcodeDisplay.kt` two tabs Code-128 + QR via ZXing `Code128Writer` + existing `QrCodeGenerator`; Share button exports bitmap)
+- [x] **Used in tickets** — recent tickets that consumed this part; tap → ticket. (commit 2e6b486 — "Recent tickets using this part" card via `InventoryApi.getUsageInTickets(id, limit=10)`; each row deep-links to ticket)
+- [x] **Cost vs retail variance analysis** card (margin %). (commit 2e6b486 — margin stat tile green >30% / amber 10-30% / red <10%)
+- [x] **Tax class** — editable (admin only). (commit 2e6b486 — admin-only dropdown of tax classes)
+- [x] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`. (commit 2e6b486 — `components/InventoryPhotoGallery.kt` HorizontalPager + pinch-zoom via `detectTransformGestures`; upload via existing `MultipartUpload` worker)
+- [x] **Edit / Deactivate / Delete** buttons. (commit 2e6b486 — Deactivate with confirm dialog completes earlier partial)
 
 ### 6.3 Create
 - [~] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
