@@ -35,6 +35,7 @@ import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
 import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
+import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
 
 const logger = createLogger('dunning');
 
@@ -513,14 +514,26 @@ function loadCustomer(
  * safe values drawn from the invoice, customer, and store config. This is
  * a minimal renderer — we only support flat variable substitution, NOT
  * conditional blocks. More complex logic belongs in services/automations.
+ *
+ * `escape` controls how variable values are transformed before substitution:
+ *   - 'html' : run `escapeHtml` so `<img src=x onerror=...>` inside a name
+ *              can't inject markup into the rendered HTML body.
+ *   - 'sms'  : run `stripSmsControlChars` so a name containing control bytes
+ *              can't truncate / poison a UCS-2 SMS segment.
+ *   - 'none' : substitute as-is (plain-text subject lines).
  */
+type RenderEscape = 'html' | 'sms' | 'none';
 function renderTemplate(
   template: string,
   vars: Record<string, string>,
+  escape: RenderEscape = 'none',
 ): string {
   return template.replace(/\{(\w+(?:\.\w+)?)\}/g, (_match, key: string) => {
-    const val = vars[key];
-    return val !== undefined ? val : '';
+    const raw = vars[key];
+    if (raw === undefined) return '';
+    if (escape === 'html') return escapeHtml(raw);
+    if (escape === 'sms') return stripSmsControlChars(raw);
+    return raw;
   });
 }
 
@@ -652,7 +665,7 @@ async function dispatchStep(
       template?.sms_body ??
       'Hi {customer_name}, this is {store_name}. Your invoice {invoice_id} ' +
         'for ${amount_due} is overdue. Please call {store_phone} to resolve.';
-    const body = renderTemplate(bodyTemplate, vars);
+    const body = renderTemplate(bodyTemplate, vars, 'sms');
 
     try {
       // Tenant slug is not known inside this worker — pass null and let
@@ -735,7 +748,7 @@ async function dispatchStep(
       'is overdue. Please pay at your earliest convenience.</p>' +
       '<p>— {store_name}</p>';
   const subject = renderTemplate(subjectTemplate, vars);
-  const html = renderTemplate(bodyTemplate, vars);
+  const html = renderTemplate(bodyTemplate, vars, 'html');
 
   try {
     const sent = await sendEmail(db, {

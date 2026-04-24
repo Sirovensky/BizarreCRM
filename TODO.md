@@ -752,10 +752,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/settings,server/services; files=AutomationsTab.tsx:208-214,email.ts; fix=maxLength+server-sanitize -->
 - [ ] SCAN-1052. **AutomationsTab rule name input has no client-side length cap.**
   <!-- meta: scope=web/pages/settings; files=AutomationsTab.tsx:386-392; fix=maxLength-255 -->
-- [ ] SCAN-1053. **[HIGH/XSS] dunningScheduler `renderTemplate` substitutes unescaped customer_name into HTML email body.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/dunningScheduler.ts:517-525,735-738; fix=escapeHtml-on-vars -->
-- [ ] SCAN-1054. **dunningScheduler SMS templates skip `stripSmsControlChars` on customer-controlled vars.**
-  <!-- meta: scope=server/services; files=packages/server/src/services/dunningScheduler.ts:651-655; fix=strip-control-chars -->
 - [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**
   <!-- meta: scope=server/services; files=packages/server/src/services/backup.ts:971-998; fix=accept-getDb-factory -->
 - [ ] SCAN-1056. **slaBreachCron `markFirstResponseBreached` SELECT-then-INSERT needs UNIQUE index for concurrency safety.**
