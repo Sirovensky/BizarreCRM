@@ -37,7 +37,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.components.auth.PasswordStrengthMeter
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
+import com.bizarreelectronics.crm.util.PasswordStrength
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -117,8 +119,10 @@ data class LoginUiState(
     val unreachableHost: Boolean = false,
     // §2.12-L357 — true when the server returned 429 Too Many Requests.
     // rateLimitResetMs is the System.currentTimeMillis() at which the wait expires.
+    // rateLimitScope: "ip" | "username" | null (null = unknown, use generic copy).
     val rateLimited: Boolean = false,
     val rateLimitResetMs: Long? = null,
+    val rateLimitScope: String? = null,
     // §2.12-L358 — mirrors NetworkMonitor.isOnline; true when device has no network.
     // Auth is online-only: this banner is informational only, cannot be bypassed.
     val networkOffline: Boolean = false,
@@ -574,18 +578,27 @@ class LoginViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                // §2.12-L357: 429 Too Many Requests → rate-limit countdown.
-                // Prefer Retry-After header if present; otherwise default to 60s.
+                // §2.12-L357/L289: 429 Too Many Requests → rate-limit countdown.
+                // Priority order for retry delay:
+                //   1. Body JSON { retry_in_seconds: N } — most accurate (per-rule)
+                //   2. Retry-After header (seconds) — standard HTTP
+                //   3. Fallback 60s
+                // Body JSON may also carry { scope: "ip" | "username" } to tailor banner copy.
                 // Avoid touching AuthApi.kt (Wave-7G scope) — no signature change.
                 if (e is retrofit2.HttpException && e.code() == 429) {
-                    val retryAfterSec: Long = try {
-                        e.response()?.headers()?.get("Retry-After")?.toLong() ?: 60L
-                    } catch (_: NumberFormatException) { 60L }
+                    val errorBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
+                    val bodyJson = try { if (errorBody != null) JSONObject(errorBody) else null } catch (_: Exception) { null }
+                    val bodyRetrySec = bodyJson?.optLong("retry_in_seconds", -1L).let { if (it == -1L) null else it }
+                    val scope = bodyJson?.optString("scope")?.takeIf { it.isNotBlank() }
+                    val retryAfterSec: Long = bodyRetrySec
+                        ?: try { e.response()?.headers()?.get("Retry-After")?.toLong() ?: 60L }
+                           catch (_: NumberFormatException) { 60L }
                     val resetAt = System.currentTimeMillis() + retryAfterSec * 1000L
                     _state.value = _state.value.copy(
                         isLoading = false,
                         rateLimited = true,
                         rateLimitResetMs = resetAt,
+                        rateLimitScope = scope,
                         error = null,
                     )
                     return@launch
@@ -723,7 +736,7 @@ class LoginViewModel @Inject constructor(
 
     /** §2.12-L357 — called by the UI countdown LaunchedEffect when the timer reaches zero. */
     fun clearRateLimit() {
-        _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null)
+        _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null, rateLimitScope = null)
     }
 
     /**
@@ -1429,30 +1442,53 @@ private fun CredentialsStep(
         }
     }
 
-    // §2.1 — needs-setup banner: server has no users yet.
+    // §2.1/L276 — needs-setup banner: server has no users yet.
+    // Wizard (§2.10) is not implemented; informational banner directs admin to docs.
+    // Does NOT block the login form — admin may already have credentials if setup
+    // was completed outside the wizard flow.
     if (state.setupNeeded == true) {
+        val setupContext = LocalContext.current
         Surface(
             color = MaterialTheme.colorScheme.secondaryContainer,
             shape = MaterialTheme.shapes.small,
             modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 12.dp),
         ) {
-            Row(
-                modifier = androidx.compose.ui.Modifier.padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = androidx.compose.ui.Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Text(
-                    "This server needs first-time setup. Contact your administrator.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = androidx.compose.ui.Modifier.weight(1f),
-                )
+            Column(modifier = androidx.compose.ui.Modifier.padding(10.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = androidx.compose.ui.Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Text(
+                        "This server needs initial setup. A setup wizard will appear in a future release. Please contact your admin to complete setup manually.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = androidx.compose.ui.Modifier.weight(1f),
+                    )
+                }
+                Spacer(androidx.compose.ui.Modifier.height(4.dp))
+                TextButton(
+                    onClick = {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://bizarrecrm.com/docs/setup"),
+                        )
+                        setupContext.startActivity(intent)
+                    },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    modifier = androidx.compose.ui.Modifier.height(24.dp),
+                ) {
+                    Text(
+                        "View setup guide",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }
@@ -1520,8 +1556,10 @@ private fun CredentialsStep(
         }
     }
 
-    // §2.12-L357 — rate-limit banner with ticking countdown.
-    // Countdown runs via LaunchedEffect; button re-enables automatically when timer expires.
+    // §2.12-L357/L289 — rate-limit banner with ticking countdown.
+    // Countdown format: "Nm Ss" for ≥60s remaining, "Ns" for <60s.
+    // Banner copy is scope-aware: "ip" = generic, "username" = per-username message.
+    // Button re-enables automatically when timer expires.
     if (state.rateLimited) {
         // Derive remaining seconds from rateLimitResetMs, floor at 0.
         val resetMs = state.rateLimitResetMs ?: (System.currentTimeMillis() + 60_000L)
@@ -1535,6 +1573,21 @@ private fun CredentialsStep(
             }
             // Countdown expired — clear rate-limit state so button re-enables.
             viewModel.clearRateLimit()
+        }
+        val countdownText = when {
+            remainingSec <= 0L  -> "You can try again now."
+            remainingSec >= 60L -> {
+                val m = remainingSec / 60
+                val s = remainingSec % 60
+                val scopePrefix = if (state.rateLimitScope == "username")
+                    "Too many attempts for this username." else "Too many attempts."
+                "$scopePrefix Wait ${m}m ${s}s."
+            }
+            else -> {
+                val scopePrefix = if (state.rateLimitScope == "username")
+                    "Too many attempts for this username." else "Too many attempts."
+                "$scopePrefix Wait ${remainingSec}s."
+            }
         }
         Surface(
             color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1553,8 +1606,7 @@ private fun CredentialsStep(
                     tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Text(
-                    if (remainingSec > 0L) "Too many attempts. Try again in ${remainingSec}s."
-                    else "You can try again now.",
+                    countdownText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.weight(1f),
@@ -1671,6 +1723,11 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
+    // §2.10/L294 — strength meter: shows progress and per-rule checks live as user types.
+    if (state.newPassword.isNotEmpty()) {
+        Spacer(Modifier.height(8.dp))
+        PasswordStrengthMeter(password = state.newPassword)
+    }
     Spacer(Modifier.height(12.dp))
     OutlinedTextField(
         value = state.confirmPassword,
@@ -1682,14 +1739,16 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { viewModel.setPassword() }),
     )
-    Text("Minimum 8 characters", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
+    // §2.10/L294 — CTA disabled until strength is at least FAIR.
+    val newPassStrength = PasswordStrength.evaluate(state.newPassword).level
+    val strengthAcceptable = newPassStrength >= PasswordStrength.Level.FAIR
     Button(
         onClick = viewModel::setPassword,
-        enabled = state.newPassword.length >= 8 && !state.isLoading,
+        enabled = strengthAcceptable && !state.isLoading,
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
