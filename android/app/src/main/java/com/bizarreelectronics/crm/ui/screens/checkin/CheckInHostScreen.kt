@@ -179,6 +179,7 @@ fun CheckInHostScreen(
                         optInSms = state.optInSms,
                         depositCents = state.depositCents,
                         signatureBase64 = state.signatureBase64,
+                        customerName = customerName,
                         onAgreedChange = viewModel::setAgreedToTerms,
                         onConsentChange = viewModel::setConsentBackup,
                         onAuthorizeChange = viewModel::setAuthorizedDeposit,

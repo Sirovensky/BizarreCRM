@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ fun CheckInStep6Sign(
     optInSms: Boolean,
     depositCents: Long,
     signatureBase64: String?,
+    customerName: String,
     onAgreedChange: (Boolean) -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onAuthorizeChange: (Boolean) -> Unit,
@@ -150,6 +152,21 @@ fun CheckInStep6Sign(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = "Customer signs here",
+                    )
+                    // Mockup CI-6 pattern — `<customer> · <timestamp>` legend
+                    // below the pad so the paper receipt's footer row maps
+                    // cleanly onto the captured signature.
+                    val now = remember {
+                        java.time.LocalDateTime.now().format(
+                            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+                        )
+                    }
+                    Text(
+                        "$customerName · $now",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.End,
                     )
                 }
             }
