@@ -724,8 +724,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
-- [ ] SCAN-1048. **Several server services still use `db: any` parameter — type safety gone.**
-  <!-- meta: scope=server/services; files=notifications.ts:168,backup.ts:382,catalogScraper.ts:348,dunningScheduler.ts:661; fix=use-Database-type -->
+- [ ] SCAN-1048b. **server services still use `db: any` in: backup.ts:382, catalogScraper.ts:348, dunningScheduler.ts:661 (notifications.ts done).**
+  <!-- meta: scope=server/services; files=backup.ts,catalogScraper.ts,dunningScheduler.ts; fix=use-Database-type -->
 - [ ] SCAN-1051b. **[HIGH/XSS] AutomationsTab email body — client 10KB cap shipped; server-side HTML sanitize/escape still pending.**
   <!-- meta: scope=server/services; files=packages/server/src/services/email.ts; fix=sanitize-or-escape-on-send -->
 - [ ] SCAN-1055. **backup.ts `scheduleBackup` captures DB handle at registration — stale after restore/cycling.**

@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
 import { createLogger } from '../utils/logger.js';
@@ -196,7 +197,7 @@ const RETRY_PHONE_MAX = 32;     // E.164 is ≤15; pad for leading 00 + formatti
 const RETRY_ERROR_MAX = 500;
 
 export function enqueueRetry(
-  db: any,
+  db: Database.Database,
   phone: string,
   message: string,
   entityType: string | null,
@@ -242,7 +243,7 @@ function retryJitterSeconds(): number {
  * retry_count the UPDATE affects 0 rows (changes===0) and we skip the
  * item — eliminating the double-processing race.
  */
-export async function processRetryQueue(db: any, tenantSlug: string | null): Promise<void> {
+export async function processRetryQueue(db: Database.Database, tenantSlug: string | null): Promise<void> {
   const candidates = db.prepare(`
     SELECT * FROM notification_retry_queue
     WHERE retry_count < max_retries AND next_retry_at <= datetime('now')
@@ -341,7 +342,7 @@ const AUTO_SMS_COOLDOWN_HOURS = 4;
  * Callers that successfully send will insert a second row with provider='auto' and
  * status='sent' via their normal path — that row is what future checks will see.
  */
-export function isAutoSmsAllowed(db: any, phone: string): boolean {
+export function isAutoSmsAllowed(db: Database.Database, phone: string): boolean {
   if (!phone) return false;
   const convPhone = phone.replace(/\D/g, '').replace(/^1/, '');
   const result = db.prepare(`
@@ -363,7 +364,7 @@ export function isAutoSmsAllowed(db: any, phone: string): boolean {
  * Send auto-notifications (SMS/email) when a ticket status changes.
  * Looks up the notification template matching the status, substitutes variables, and sends.
  */
-export async function sendTicketStatusNotification(db: any, ctx: NotifyContext): Promise<void> {
+export async function sendTicketStatusNotification(db: Database.Database, ctx: NotifyContext): Promise<void> {
   const ticket = db.prepare(`
     SELECT t.id, t.order_id, t.customer_id,
       c.first_name AS customer_name, c.mobile AS customer_phone, c.phone AS customer_phone2, c.email AS customer_email,
