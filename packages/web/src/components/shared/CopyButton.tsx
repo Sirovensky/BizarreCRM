@@ -32,12 +32,13 @@ export function CopyButton({ text, className }: CopyButtonProps) {
         className ??
         'inline-flex items-center justify-center rounded p-0.5 text-surface-400 transition-colors hover:text-surface-600 dark:hover:text-surface-300'
       }
+      aria-label={copied ? 'Copied to clipboard' : 'Copy to clipboard'}
       title="Copy to clipboard"
     >
       {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check aria-hidden="true" className="h-3.5 w-3.5 text-green-500" />
       ) : (
-        <Copy className="h-3.5 w-3.5" />
+        <Copy aria-hidden="true" className="h-3.5 w-3.5" />
       )}
     </button>
   );
