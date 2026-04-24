@@ -60,18 +60,21 @@ fun Modifier.draggableItem(
     flags: Int = View.DRAG_FLAG_GLOBAL,
 ): Modifier = this.dragAndDropSource(
     drawDragDecoration = {},
-) {
-    detectTapGestures(
-        onLongPress = {
-            startTransfer(
-                DragAndDropTransferData(
-                    clipData = clipData,
-                    flags = flags,
-                ),
-            )
-        },
-    )
-}
+    // Named `block` arg disambiguates from the new `transferData`
+    // overload introduced in compose-foundation 1.8 / material3 1.4.
+    block = {
+        detectTapGestures(
+            onLongPress = {
+                startTransfer(
+                    DragAndDropTransferData(
+                        clipData = clipData,
+                        flags = flags,
+                    ),
+                )
+            },
+        )
+    },
+)
 
 /**
  * Marks this composable as a drop target. [onDrop] is called when a
