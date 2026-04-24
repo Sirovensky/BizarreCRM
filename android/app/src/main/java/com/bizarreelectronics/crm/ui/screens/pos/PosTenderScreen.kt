@@ -13,11 +13,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +86,7 @@ fun PosTenderScreen(
                         Text(
                             "✓ PAID · ${state.appliedTenders.size}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
+                            color = LocalExtendedColors.current.success,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
@@ -160,14 +162,14 @@ private fun BalanceHeroCard(state: PosTenderUiState) {
             LinearProgressIndicator(
                 progress = { state.paidPercent },
                 modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                color = MaterialTheme.colorScheme.tertiary,
+                color = LocalExtendedColors.current.success,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
                     "✓ Paid ${state.paidCents.toDollarString()}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    color = LocalExtendedColors.current.success,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
@@ -184,24 +186,29 @@ private fun BalanceHeroCard(state: PosTenderUiState) {
 
 @Composable
 private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
+    val success = LocalExtendedColors.current.success
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, MaterialTheme.colorScheme.tertiary, RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.12f))
+            .border(1.dp, success, RoundedCornerShape(10.dp))
+            .background(success.copy(alpha = 0.08f))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
-            modifier = Modifier.size(26.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary),
+            modifier = Modifier.size(26.dp).clip(CircleShape).background(success),
             contentAlignment = Alignment.Center,
         ) {
-            Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiary)
+            Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFF002817))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text("${tender.label} · ${tender.amountCents.toDollarString()}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "${tender.label} · ${tender.amountCents.toDollarString()}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
             tender.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         IconButton(

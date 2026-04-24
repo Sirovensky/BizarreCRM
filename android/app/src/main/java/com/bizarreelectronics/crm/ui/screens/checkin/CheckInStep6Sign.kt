@@ -37,7 +37,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.text.NumberFormat
+import java.util.Locale
 import android.util.Base64
+
+private val currencyFmt = NumberFormat.getCurrencyInstance(Locale.US)
+private fun formatDollars(cents: Long): String = currencyFmt.format(cents / 100.0)
 
 // TODO(Phase 4): Replace this stub with real SignatureRouter.capture() once
 // BlockChyp SDK + SignatureRouter.kt are wired (see plan Phase 4).
@@ -101,7 +106,7 @@ fun CheckInStep6Sign(
                 )
                 if (depositCents > 0L) {
                     AcknowledgementRow(
-                        label = "I authorize the deposit charge",
+                        label = "Authorize ${formatDollars(depositCents)} deposit charge",
                         checked = authorizedDeposit,
                         onCheckedChange = onAuthorizeChange,
                         required = true,

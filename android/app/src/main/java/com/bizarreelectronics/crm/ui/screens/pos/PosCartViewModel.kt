@@ -19,6 +19,8 @@ data class PosCartUiState(
     val editingLineId: String? = null,
     val taxRate: Double = 0.0,
     val scanMessage: String? = null,
+    /** Linked repair-ticket draft id — drives the "Ticket draft" topbar subtitle */
+    val linkedTicketId: Long? = null,
 ) {
     val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
     val taxCents: Long get() = lines.sumOf { it.taxCents }
@@ -46,6 +48,7 @@ class PosCartViewModel @Inject constructor(
                         customer = session.customer,
                         lines = session.lines,
                         cartDiscountCents = session.cartDiscountCents,
+                        linkedTicketId = session.linkedTicketId,
                     )
                 }
             }
@@ -62,7 +65,13 @@ class PosCartViewModel @Inject constructor(
         pushLines(_uiState.value.lines + line)
     }
 
-    fun addInventoryItem(itemId: Long, name: String, unitPriceCents: Long, taxRate: Double = 0.0) {
+    fun addInventoryItem(
+        itemId: Long,
+        name: String,
+        unitPriceCents: Long,
+        sku: String? = null,
+        taxRate: Double = 0.0,
+    ) {
         val existing = _uiState.value.lines.indexOfFirst { it.itemId == itemId && it.type == "inventory" }
         val updated = if (existing >= 0) {
             _uiState.value.lines.mapIndexed { i, l ->
@@ -73,6 +82,7 @@ class PosCartViewModel @Inject constructor(
                 type = "inventory",
                 itemId = itemId,
                 name = name,
+                sku = sku,
                 unitPriceCents = unitPriceCents,
                 taxRate = taxRate,
             )
@@ -81,8 +91,8 @@ class PosCartViewModel @Inject constructor(
     }
 
     /** Called when BarcodeAnalyzer resolves a barcode to an inventory item. */
-    fun onBarcodeResolved(itemId: Long, name: String, priceCents: Long) =
-        addInventoryItem(itemId, name, priceCents)
+    fun onBarcodeResolved(itemId: Long, name: String, priceCents: Long, sku: String? = null) =
+        addInventoryItem(itemId, name, priceCents, sku = sku)
 
     /**
      * Look up a scanned barcode / SKU against `/inventory/barcode/{code}`
@@ -106,6 +116,7 @@ class PosCartViewModel @Inject constructor(
                         itemId = item.id,
                         name = item.name ?: "Item #${item.id}",
                         unitPriceCents = priceCents,
+                        sku = item.sku,
                     )
                     _uiState.update { it.copy(scanMessage = "Added: ${item.name ?: "item"}") }
                 }

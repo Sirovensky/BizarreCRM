@@ -30,8 +30,23 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import java.text.NumberFormat
 import java.util.Locale
+
+/**
+ * Mockup CI-5 pattern: each repair line renders name + status helper row +
+ * right-aligned primary price. Status enum drives the helper-line colour so
+ * the UI reads: reserved = green, ordered = amber, labor/meta = muted.
+ */
+data class RepairLinePreview(
+    val name: String,
+    val status: RepairLineStatus,
+    val statusDetail: String,   // "stock 7 → 6", "ETA Mon Apr 27", "~60 min · tech: Mike"
+    val amountCents: Long,
+)
+
+enum class RepairLineStatus { RESERVED, ORDERED, LABOR }
 
 private val currencyFmt = NumberFormat.getCurrencyInstance(Locale.US)
 private fun centsToDisplay(cents: Long) = currencyFmt.format(cents / 100.0)
@@ -52,6 +67,7 @@ fun CheckInStep5Quote(
     onLaborMinutesChange: (Int) -> Unit,
     onLaborTechChange: (Long) -> Unit,
     onSubtotalChange: (Long) -> Unit,
+    repairLines: List<RepairLinePreview> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -60,14 +76,24 @@ fun CheckInStep5Quote(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(key = "repair_lines_header") {
-            Text("Repair lines", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "REPAIR LINES",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        item(key = "repair_lines_placeholder") {
-            RepairLinesPlaceholder(
-                subtotalCents = subtotalCents,
-                onSubtotalChange = onSubtotalChange,
-            )
+        if (repairLines.isEmpty()) {
+            item(key = "repair_lines_placeholder") {
+                RepairLinesPlaceholder(
+                    subtotalCents = subtotalCents,
+                    onSubtotalChange = onSubtotalChange,
+                )
+            }
+        } else {
+            items(repairLines, key = { it.name }) { line ->
+                RepairLineRow(line = line)
+            }
         }
 
         item(key = "labor_row") {
@@ -103,6 +129,33 @@ fun CheckInStep5Quote(
             )
         }
     }
+}
+
+@Composable
+private fun RepairLineRow(line: RepairLinePreview) {
+    val ext = LocalExtendedColors.current
+    val (glyph, statusColor) = when (line.status) {
+        RepairLineStatus.RESERVED -> "✓ Reserved · ${line.statusDetail}" to ext.success
+        RepairLineStatus.ORDERED -> "⏳ Ordered · ${line.statusDetail}" to ext.warning
+        RepairLineStatus.LABOR -> line.statusDetail to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(line.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(glyph, style = MaterialTheme.typography.bodySmall, color = statusColor)
+        }
+        Text(
+            centsToDisplay(line.amountCents),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    HorizontalDivider()
 }
 
 @Composable

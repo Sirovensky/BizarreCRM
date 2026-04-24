@@ -13,12 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,14 +46,14 @@ fun PosReceiptScreen(
                 actions = {
                     Surface(
                         shape = RoundedCornerShape(99.dp),
-                        color = MaterialTheme.colorScheme.tertiary,
+                        color = LocalExtendedColors.current.success,
                     ) {
                         Text(
                             "✓ Paid",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiary,
+                            color = Color(0xFF002817),
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -86,11 +88,11 @@ fun PosReceiptScreen(
                     modifier = Modifier
                         .size(72.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.tertiary)
+                        .background(LocalExtendedColors.current.success)
                         .semantics { contentDescription = "Payment complete checkmark" },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("✓", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onTertiary)
+                    Text("✓", style = MaterialTheme.typography.displaySmall, color = Color(0xFF002817))
                 }
                 Text(state.totalCents.toDollarString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                 Text(
@@ -99,11 +101,19 @@ fun PosReceiptScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 state.linkedTicketId?.let { ticketId ->
-                    Text(
-                        "Parts reserved to Ticket #$ticketId",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(horizontalArrangement = Arrangement.Center) {
+                        Text(
+                            "Parts reserved to Ticket ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "#$ticketId",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LocalExtendedColors.current.info,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
                 // Tracking URL
                 state.trackingUrl?.let { url ->
@@ -111,7 +121,7 @@ fun PosReceiptScreen(
                     Text(
                         displayUrl,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        color = LocalExtendedColors.current.info,
                         textDecoration = TextDecoration.Underline,
                     )
                 }
@@ -200,7 +210,7 @@ private fun SendRow(
         }
         when (sendState) {
             SendState.SENDING -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            SendState.SENT -> Text("✓", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+            SendState.SENT -> Text("✓", style = MaterialTheme.typography.bodyLarge, color = LocalExtendedColors.current.success, fontWeight = FontWeight.Bold)
             SendState.ERROR -> Text("!", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
             SendState.IDLE -> Text("›", style = MaterialTheme.typography.bodyLarge, color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         }

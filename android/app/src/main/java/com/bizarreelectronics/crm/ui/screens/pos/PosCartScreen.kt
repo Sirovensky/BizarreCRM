@@ -83,14 +83,26 @@ fun PosCartScreen(
                             modifier = Modifier.clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
                         ) {
                             Box(
-                                modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary),
+                                modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(c.name.take(2).uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiary)
+                                Text(
+                                    c.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondary,
+                                )
                             }
                             Column {
                                 Text(c.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                Text("${state.lines.size} items", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                // Mockup phone 3 subtitle pattern: show the linked-ticket-draft
+                                // state when set; otherwise fall back to an items count.
+                                val subtitle = when {
+                                    state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
+                                    state.lines.isEmpty() -> "Empty cart"
+                                    else -> "${state.lines.size} items"
+                                }
+                                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
@@ -203,12 +215,30 @@ private fun CartLineRow(line: CartLine, onTap: () -> Unit, onRemove: () -> Unit)
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // Mockup phone 3 pattern: 40dp rounded surface-2 square with a
+            // type-based emoji glyph. Inventory = 🔧, service = ⚙️, custom = 🔌.
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                val glyph = when (line.type) {
+                    "service" -> "⚙"
+                    "custom" -> "🔌"
+                    else -> "🔧"
+                }
+                Text(glyph, style = MaterialTheme.typography.titleMedium)
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(line.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Qty ${line.qty}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    line.note?.let { Text("· ✎ note", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                val subtitle = buildString {
+                    line.sku?.takeIf { it.isNotBlank() }?.let { append("SKU ").append(it).append(" · ") }
+                    append("Qty ").append(line.qty)
+                    line.note?.let { append(" · ✎ note") }
                 }
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
@@ -217,11 +247,20 @@ private fun CartLineRow(line: CartLine, onTap: () -> Unit, onRemove: () -> Unit)
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                if (line.discountCents > 0) {
+                val original = line.originalUnitPriceCents
+                if (original != null && original > line.unitPriceCents) {
+                    Text(
+                        (original * line.qty).toDollarString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                    )
+                } else if (line.discountCents > 0) {
                     Text(
                         (line.unitPriceCents * line.qty).toDollarString(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
                     )
                 }
             }

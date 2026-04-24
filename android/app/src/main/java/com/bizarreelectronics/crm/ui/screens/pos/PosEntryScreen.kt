@@ -533,10 +533,10 @@ private fun CustomerResultRow(customer: CustomerResult, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
-            modifier = Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary),
+            modifier = Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
             contentAlignment = Alignment.Center,
         ) {
-            Text(customer.initials, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiary)
+            Text(customer.initials, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondary)
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(customer.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)

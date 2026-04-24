@@ -247,9 +247,11 @@ private fun CheckInBottomBar(
     onAdvance: () -> Unit,
 ) {
     val isLastStep = step == CheckInViewModel.TOTAL_STEPS - 1
+    val isQuoteStep = step == 4
     val ctaLabel = when {
         isSubmitting -> "Creating ticket…"
         isLastStep -> "Create ticket · print label"
+        isQuoteStep -> "Get signature & check in →"
         else -> "Next"
     }
 

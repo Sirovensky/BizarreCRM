@@ -9,8 +9,10 @@ data class CartLine(
     val type: String = "inventory",     // "inventory" | "service" | "custom"
     val itemId: Long? = null,
     val name: String,
+    val sku: String? = null,
     val qty: Int = 1,
     val unitPriceCents: Long,
+    val originalUnitPriceCents: Long? = null,   // set when a manual discount is applied; shown as strikethrough
     val discountCents: Long = 0L,
     val taxClassId: Long? = null,
     val taxRate: Double = 0.0,
