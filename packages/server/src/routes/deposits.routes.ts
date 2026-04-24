@@ -79,8 +79,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   const where: string[] = [];
   const params: any[] = [];
-  if (Number.isFinite(customerId)) { where.push('d.customer_id = ?'); params.push(customerId); }
-  if (Number.isFinite(ticketId))   { where.push('d.ticket_id = ?');   params.push(ticketId); }
+  // SCAN-1125: `Number.isFinite(null)` returns false, so this branch worked
+  // by accident — but it's ambiguous with "passed 0" (impossible since
+  // validateId rejects that, yet the intent isn't self-evident). Switch to
+  // explicit `!== null` for readability; the validator above guarantees
+  // the value is a positive integer when non-null.
+  if (customerId !== null) { where.push('d.customer_id = ?'); params.push(customerId); }
+  if (ticketId !== null)   { where.push('d.ticket_id = ?');   params.push(ticketId); }
   if (applied === 'unapplied')     { where.push('d.applied_to_invoice_id IS NULL AND d.refunded_at IS NULL'); }
   if (applied === 'applied')       { where.push('d.applied_to_invoice_id IS NOT NULL'); }
 

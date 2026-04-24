@@ -184,9 +184,15 @@ router.get(
     // clause works (previously the count query had no `t` alias).
     const [countRow, notes] = await Promise.all([
       adb.get<any>(`SELECT COUNT(DISTINCT tn.id) as c FROM ticket_notes tn JOIN tickets t ON t.id = tn.ticket_id WHERE ${whereClause}`, ...params),
+      // SCAN-1129: `LEFT JOIN ticket_devices` returns N rows per note when a
+      // ticket has multiple devices. The GROUP BY tn.id collapsed them, but
+      // `td.device_name` was then an arbitrary SQLite pick across the joined
+      // rows (non-standard aggregate). Make the aggregate explicit via MIN —
+      // deterministic across polls and matches the collapsed row count
+      // used in the DISTINCT tn.id count query above.
       adb.all<any>(`
         SELECT tn.id, tn.ticket_id, tn.type, tn.content, tn.created_at,
-               t.order_id, td.device_name,
+               t.order_id, MIN(td.device_name) AS device_name,
                u.first_name AS author_first, u.last_name AS author_last,
                c.first_name AS customer_first, c.last_name AS customer_last
         FROM ticket_notes tn

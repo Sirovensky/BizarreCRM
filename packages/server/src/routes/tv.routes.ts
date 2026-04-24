@@ -264,8 +264,12 @@ async function buildTvBoard(adb: Request['asyncDb']): Promise<TvBoardPayload> {
 
   const devices: DeviceRow[] = allTicketIds.length
     ? await adb.all<DeviceRow>(
-        `SELECT ticket_id, device_name FROM ticket_devices
-         WHERE ticket_id IN (${allTicketIds.map(() => '?').join(',')})`,
+        // SCAN-1126: DISTINCT + ORDER BY so duplicate device-name rows
+        // (accumulated via edit history) don't double-render on the TV
+        // and poll-to-poll ordering is deterministic.
+        `SELECT DISTINCT ticket_id, device_name FROM ticket_devices
+         WHERE ticket_id IN (${allTicketIds.map(() => '?').join(',')})
+         ORDER BY ticket_id, device_name`,
         ...allTicketIds,
       )
     : [];

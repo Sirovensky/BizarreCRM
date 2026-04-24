@@ -727,16 +727,6 @@ Verified working. Not TODOs.
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 
 ### Wave-65 scan-loop findings (2026-04-24) — tv + pos + recurring + ws + gift/deposits/bench/search
-- [ ] SCAN-1125. **[LOW] deposits.routes Number.isFinite vs null — type-hygiene smell.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/deposits.routes.ts:62-83; fix=use-!==null -->
-- [ ] SCAN-1126. **[LOW] tv.routes device_names join no DISTINCT/ORDER BY — unstable duplicates.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/tv.routes.ts:234-240; fix=DISTINCT+ORDER-BY -->
-- [ ] SCAN-1127. **[LOW] bench.routes multer destination sync mkdir every upload — event-loop hit + race.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/bench.routes.ts:100-105; fix=async-recursive-mkdir -->
-- [ ] SCAN-1128. **[LOW/perf] bench defects stats uses `datetime('now', ?)` modifier — forces scan over reported_at.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/bench.routes.ts:1085-1099; fix=compute-cutoff-in-js+plain-compare -->
-- [ ] SCAN-1129. **[LOW] search /notes data query LEFT JOIN ticket_devices no DISTINCT — paged rows duplicate notes.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/search.routes.ts:168-201; fix=move-device_name-join-to-subquery-or-drop -->
 
 ### Wave-64 scan-loop findings (2026-04-24) — team-chat + automations + roles + web components
 

@@ -1,4 +1,12 @@
 
+## Closed 2026-04-24 (wave-65 LOW tail — tv/bench/deposits/search cleanup)
+
+- [x] SCAN-1125. **`deposits.routes` used `Number.isFinite(customerId)` / `Number.isFinite(ticketId)` against `number | null`** — worked by accident (`isFinite(null)` returns false) but semantically unclear. Switched to explicit `!== null`. `validateId` already guarantees a positive integer on the non-null branch, so the intent now matches the narrowing.
+- [x] SCAN-1126. **`tv.routes` device_names subquery joined without DISTINCT or ORDER BY** — duplicate device-name rows (from edit history) double-rendered on the wall TV, and poll-to-poll ordering was non-deterministic. Added `SELECT DISTINCT` + `ORDER BY ticket_id, device_name`.
+- [x] SCAN-1127. **`bench.routes` multer `destination` ran `existsSync + mkdirSync` synchronously on every upload** — blocked the event loop on slow filesystems and raced against concurrent uploads on a fresh tenant directory. Swapped to `fs.promises.mkdir(dest, { recursive: true })` wired through multer's (err, dest) callback — recursive mkdir is idempotent, no existsSync needed.
+- [x] SCAN-1128 [perf]. **`GET /bench/defects/stats` used `WHERE d.reported_at >= datetime('now', ?)` with the days modifier as a bound param** — the planner couldn't reliably index-seek across the modifier form. Compute `cutoffIso` in JS (`Date.now() - days*86_400_000`) and pass as a plain ISO string. SQLite now index-seeks straight to the lower bound on `reported_at`.
+- [x] SCAN-1129. **`/search/notes` data query had `LEFT JOIN ticket_devices` with bare `td.device_name` in SELECT + `GROUP BY tn.id`** — SQLite's non-standard aggregate picked an arbitrary row per note, so the displayed device flipped poll-to-poll. Wrapped with `MIN(td.device_name)` so the aggregate is deterministic. Pagination already matched via `COUNT(DISTINCT tn.id)`.
+
 ## Closed 2026-04-24 (wave-65 WS reconnect + giftCards validation)
 
 - [x] SCAN-1123. **`useWebSocket` visibilitychange handler didn't unstuck `authRejectedRef`** — if a 4001 auth-reject latched the ref, the tab never reconnected after a re-login in another tab (remote tab doesn't dispatch `auth-cleared` for this window). Reworked `handleVisibilityChange`: when visible-and-not-connected, if `authRejected` is set we now look for a fresh `accessToken` in localStorage and clear the latch before reconnecting; backoff is unconditionally reset to `INITIAL_BACKOFF` so back-to-back hidden-drops don't keep escalating the retry delay.

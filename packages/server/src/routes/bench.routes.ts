@@ -99,8 +99,15 @@ function makeBenchUpload(kind: string) {
     storage: multer.diskStorage({
       destination: (req, _file, cb) => {
         const dest = benchUploadDir(req, kind);
-        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-        cb(null, dest);
+        // SCAN-1127: `existsSync + mkdirSync` ran on every upload, blocking
+        // the event loop on slow filesystems and racing against concurrent
+        // uploads on a fresh tenant. `fs.promises.mkdir({ recursive: true })`
+        // is idempotent and async — no existsSync check needed (mkdir is
+        // a no-op for already-present directories with recursive:true) and
+        // the callback path preserves multer's expected signature.
+        fs.promises.mkdir(dest, { recursive: true })
+          .then(() => cb(null, dest))
+          .catch((err) => cb(err as Error, ''));
       },
       filename: (_req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
@@ -1083,6 +1090,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+    // SCAN-1128: `datetime('now', ?)` modifier prevents SQLite's planner
+    // from using an index range scan on `reported_at` reliably. Compute
+    // the cutoff in JS and pass it as a plain ISO string — lets SQLite
+    // seek straight to the lower bound on the reported_at index.
+    const cutoffIso = new Date(Date.now() - days * 86_400_000)
+      .toISOString().replace('T', ' ').slice(0, 19);
     const rows = (await adb.all(
       `SELECT
          d.inventory_item_id,
@@ -1092,11 +1105,11 @@ router.get(
          MAX(d.reported_at) AS last_reported_at
        FROM parts_defect_reports d
        LEFT JOIN inventory_items i ON i.id = d.inventory_item_id
-       WHERE d.reported_at >= datetime('now', ?)
+       WHERE d.reported_at >= ?
        GROUP BY d.inventory_item_id
        ORDER BY defect_count DESC
        LIMIT 50`,
-      `-${days} days`,
+      cutoffIso,
     )) as Array<{
       inventory_item_id: number;
       name: string | null;
