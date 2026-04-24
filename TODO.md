@@ -732,15 +732,10 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/photo-capture; files=packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:75; fix=unknown+toast-error -->
 - [ ] SCAN-1018. **SetupPage `(setupData as any)` triple-cast for wizard status fields.**
   <!-- meta: scope=web/pages/setup; files=packages/web/src/pages/setup/SetupPage.tsx:60-62; fix=type-useQuery-generic -->
-- [ ] SCAN-1019. **LoanersPage "Mark Returned" button missing `type="button"`.**
-  <!-- meta: scope=web/pages/loaners; files=packages/web/src/pages/loaners/LoanersPage.tsx:179; fix=add-type-button -->
 - [ ] SCAN-1020. **LandingPage inline onMouseEnter/Leave handlers recreated every render across mapped pricing cards.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:318-319; fix=extract-stable-or-CSS-hover -->
 - [ ] SCAN-1021. **LandingPage uses `window.location.href = 'mailto:…'` instead of real `<a href>` — pattern-fragile.**
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:397; fix=use-anchor-element -->
-- [ ] SCAN-1022. **LoanersPage list query has no `staleTime`.**
-  <!-- meta: scope=web/pages/loaners; files=packages/web/src/pages/loaners/LoanersPage.tsx:105; fix=staleTime-30000 -->
-- [ ] SCAN-1023. **PrintPage query fires with `Number(undefined)`=NaN when route missing `:id`.**
-  <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:874,876; fix=enabled-isFinite-guard -->- [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
+- [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
   <!-- meta: scope=web/pages/billing; files=AgingReportPage.tsx,DunningPage.tsx,PaymentLinksPage.tsx; fix=audit-aria-labels -->
 

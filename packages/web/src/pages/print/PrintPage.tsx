@@ -871,9 +871,14 @@ export function PrintPage() {
   const size = (params.get('size') || 'receipt80') as PaperSize;
   const isReceiptType = params.get('type') === 'receipt';
 
+  // Guard against missing or non-numeric :id — `Number(undefined)` is NaN
+  // and `ticketApi.get(NaN)` hits the backend with a bad id.
+  const numericId = id ? Number(id) : NaN;
+  const idIsValid = Number.isFinite(numericId);
   const { data, isLoading, error } = useQuery({
     queryKey: ['ticket-print', id],
-    queryFn: () => ticketApi.get(Number(id)),
+    queryFn: () => ticketApi.get(numericId),
+    enabled: idIsValid,
   });
   const ticket = data?.data?.data as any;
 

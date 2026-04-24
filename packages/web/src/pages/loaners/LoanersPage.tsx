@@ -105,6 +105,7 @@ export function LoanersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['loaners'],
     queryFn: () => loanerApi.list({ per_page: 100 }),
+    staleTime: 30_000,
   });
 
   const devices: LoanerDevice[] = data?.data?.data ?? [];
@@ -177,10 +178,11 @@ export function LoanersPage() {
                 {/* Action */}
                 {isOut && (
                   <button
+                    type="button"
                     onClick={() => setReturningDevice(device)}
                     className="mt-auto inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors"
                   >
-                    <CheckCircle2 className="h-4 w-4" /> Mark Returned
+                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" /> Mark Returned
                   </button>
                 )}
               </div>
