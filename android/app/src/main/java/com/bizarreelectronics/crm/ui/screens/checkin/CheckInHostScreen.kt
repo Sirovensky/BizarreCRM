@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -246,14 +248,27 @@ private fun CheckInBottomBar(
     val isLastStep = step == CheckInViewModel.TOTAL_STEPS - 1
     val ctaLabel = when {
         isSubmitting -> "Creating ticket…"
-        isLastStep && depositCents > 0L -> "Create ticket · print label"
         isLastStep -> "Create ticket · print label"
         else -> "Next"
+    }
+
+    // Mockup CI-6 pattern: the terminal CTA uses success (green) styling to
+    // signal finality. Intermediate-step CTAs stay on the default primary
+    // (cream) filled button.
+    val successGreen = com.bizarreelectronics.crm.ui.theme.LocalExtendedColors.current.success
+    val buttonColors = if (isLastStep) {
+        ButtonDefaults.buttonColors(
+            containerColor = successGreen,
+            contentColor = Color(0xFF002817),
+        )
+    } else {
+        ButtonDefaults.buttonColors()
     }
 
     Button(
         onClick = onAdvance,
         enabled = canAdvance && !isSubmitting,
+        colors = buttonColors,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
