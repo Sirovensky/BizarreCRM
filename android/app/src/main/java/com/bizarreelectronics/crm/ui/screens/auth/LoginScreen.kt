@@ -52,8 +52,10 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
+import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.SmsOtpBus
 import com.bizarreelectronics.crm.util.SmsRetrieverHelper
+import com.bizarreelectronics.crm.util.SsoLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -187,6 +189,20 @@ data class LoginUiState(
     // Carries the credentials to stash — cleared immediately after the prompt.
     val pendingStashUsername: String = "",
     val pendingStashPassword: String = "",
+    // §2.20 L443 — SSO provider list. Null = not yet loaded. Empty = no SSO on tenant.
+    // The "Sign in with SSO" button is visible only when this list is non-empty.
+    val ssoProviders: List<SsoProvider>? = null,
+    // §2.20 — true while GET /auth/sso/providers is in flight.
+    val ssoProvidersLoading: Boolean = false,
+    // §2.20 — pending SSO provider picked from the bottom sheet. Cleared after launch.
+    val pendingSsoProvider: SsoProvider? = null,
+    // §2.20 — true while POST /auth/sso/token-exchange is in flight.
+    val ssoExchangeLoading: Boolean = false,
+    // §2.20 — CSRF state token generated at launch time, validated on callback.
+    val ssoState: String = "",
+    // §2.20 — set to true after a successful SSO token exchange. LoginScreen
+    // reacts by calling onLoginSuccess() and clearing this flag.
+    val ssoLoginSuccess: Boolean = false,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -198,6 +214,7 @@ class LoginViewModel @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val biometricCredentialStore: BiometricCredentialStore,
     private val biometricAuth: BiometricAuth,
+    private val deepLinkBus: DeepLinkBus,
 ) : ViewModel() {
 
     companion object {
@@ -304,6 +321,36 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             networkMonitor.isOnline.collect { online ->
                 _state.value = _state.value.copy(networkOffline = !online)
+            }
+        }
+
+        // §2.20 L443 — load SSO providers on init so the button shows (or hides)
+        // before the user reaches the credentials step. 404 is silenced.
+        viewModelScope.launch { loadSsoProviders() }
+
+        // §2.20 L446 — collect SSO callbacks published by MainActivity.
+        // DeepLinkBus.publishSsoResult is called when bizarrecrm://sso/callback arrives.
+        viewModelScope.launch {
+            deepLinkBus.pendingSsoResult.collect { result ->
+                if (result != null) {
+                    deepLinkBus.consumeSsoResult()
+                    val currentState = _state.value
+                    val pendingProvider = currentState.pendingSsoProvider
+                    if (pendingProvider == null) {
+                        _state.value = currentState.copy(error = "Sign-in link mismatch. Try again.")
+                        return@collect
+                    }
+                    // CSRF state check
+                    if (result.state != currentState.ssoState) {
+                        _state.value = currentState.copy(
+                            error = "Sign-in link mismatch. Try again.",
+                            pendingSsoProvider = null,
+                            ssoState = "",
+                        )
+                        return@collect
+                    }
+                    exchangeSsoCode(pendingProvider.id, result.code, result.state)
+                }
             }
         }
     }
@@ -1105,6 +1152,98 @@ class LoginViewModel @Inject constructor(
         )
     }
 
+    // §2.20 — SSO functions
+
+    /**
+     * Loads the SSO provider list from GET /auth/sso/providers.
+     * 404 → silently hides the "Sign in with SSO" button (no SSO configured on tenant).
+     * Any other error is also silenced — SSO is optional; credentials login still works.
+     */
+    private suspend fun loadSsoProviders() {
+        _state.value = _state.value.copy(ssoProvidersLoading = true)
+        try {
+            val response = authApi.getSsoProviders()
+            _state.value = _state.value.copy(
+                ssoProviders = response.data?.providers ?: emptyList(),
+                ssoProvidersLoading = false,
+            )
+        } catch (e: retrofit2.HttpException) {
+            // 404 = no SSO on this tenant — hide the button silently
+            _state.value = _state.value.copy(ssoProviders = emptyList(), ssoProvidersLoading = false)
+        } catch (_: Exception) {
+            // Network error — hide the button; credentials login still works
+            _state.value = _state.value.copy(ssoProviders = emptyList(), ssoProvidersLoading = false)
+        }
+    }
+
+    /** Clears the SSO success flag after LoginScreen has dispatched onLoginSuccess(). */
+    fun clearSsoLoginSuccess() {
+        _state.value = _state.value.copy(ssoLoginSuccess = false)
+    }
+
+    /** Called from the provider-picker sheet when the user taps an SSO provider. */
+    fun launchSsoProvider(activity: Activity, provider: SsoProvider) {
+        val state = java.util.UUID.randomUUID().toString().replace("-", "")
+        _state.value = _state.value.copy(
+            pendingSsoProvider = provider,
+            ssoState = state,
+            error = null,
+        )
+        SsoLauncher.launch(activity, provider.authUrl, state)
+    }
+
+    /**
+     * Exchanges the SSO authorization [code] for tokens via POST /auth/sso/token-exchange.
+     * On success: stores accessToken + refreshToken, navigates to dashboard.
+     * On state mismatch (400): surfaces "Sign-in link mismatch. Try again."
+     * 404 → server doesn't support token exchange yet; surfaces generic error.
+     */
+    fun exchangeSsoCode(provider: String, code: String, state: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(ssoExchangeLoading = true, error = null)
+            try {
+                val response = authApi.tokenExchange(
+                    SsoTokenExchangeRequest(provider = provider, code = code, state = state),
+                )
+                val data = response.data ?: throw Exception("Empty token response")
+                authPreferences.saveUser(
+                    token = data.accessToken,
+                    refreshToken = data.refreshToken,
+                    id = data.user.id,
+                    username = data.user.username,
+                    firstName = data.user.firstName,
+                    lastName = data.user.lastName,
+                    role = data.user.role,
+                )
+                _state.value = _state.value.copy(
+                    ssoExchangeLoading = false,
+                    pendingSsoProvider = null,
+                    ssoState = "",
+                    ssoLoginSuccess = true,
+                )
+            } catch (e: retrofit2.HttpException) {
+                val msg = when (e.code()) {
+                    400  -> "Sign-in link mismatch. Try again."
+                    404  -> "SSO token exchange is not supported on this server."
+                    else -> "SSO sign-in failed (${e.code()}). Try again."
+                }
+                _state.value = _state.value.copy(
+                    ssoExchangeLoading = false,
+                    error = msg,
+                    pendingSsoProvider = null,
+                    ssoState = "",
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    ssoExchangeLoading = false,
+                    error = "SSO sign-in failed: ${e.message}",
+                    pendingSsoProvider = null,
+                    ssoState = "",
+                )
+            }
+        }
+    }
+
     // endregion
 
     private fun extractErrorMessage(e: Exception): String {
@@ -1206,6 +1345,15 @@ fun LoginScreen(
         val activity = (context as? FragmentActivity)
         if (activity != null) {
             viewModel.attemptBiometricAutoLogin(activity, onLoginSuccess)
+        }
+    }
+
+    // §2.20 L447 — SSO token-exchange success: navigate to dashboard.
+    val ssoLoginSuccess = state.ssoLoginSuccess
+    LaunchedEffect(ssoLoginSuccess) {
+        if (ssoLoginSuccess) {
+            viewModel.clearSsoLoginSuccess()
+            onLoginSuccess()
         }
     }
 
@@ -2102,6 +2250,7 @@ private fun ShopTypeSelector(
 
 // ─── Step 2: Credentials ────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CredentialsStep(
     state: LoginUiState,
@@ -2416,6 +2565,58 @@ private fun CredentialsStep(
                 "Forgot password?",
                 style = MaterialTheme.typography.labelMedium,
             )
+        }
+    }
+
+    // §2.20 L445 — "Sign in with SSO" button + provider picker.
+    // Visible only when the server returned at least one SSO provider (404 = hidden).
+    val ssoAvailable = !state.ssoProviders.isNullOrEmpty()
+    if (ssoAvailable) {
+        var showSsoSheet by remember { mutableStateOf(false) }
+        val activity = LocalContext.current as? Activity
+
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = { showSsoSheet = true },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            enabled = !state.ssoExchangeLoading,
+        ) {
+            if (state.ssoExchangeLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Sign in with SSO")
+            }
+        }
+
+        if (showSsoSheet) {
+            ModalBottomSheet(onDismissRequest = { showSsoSheet = false }) {
+                Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+                    Text(
+                        "Choose your sign-in provider",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    state.ssoProviders?.forEach { provider ->
+                        OutlinedButton(
+                            onClick = {
+                                showSsoSheet = false
+                                if (activity != null) {
+                                    viewModel.launchSsoProvider(activity, provider)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            Text(provider.name)
+                        }
+                    }
+                }
+            }
         }
     }
 }

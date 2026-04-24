@@ -13,6 +13,8 @@ import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
 import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetupStatusResponse
+import com.bizarreelectronics.crm.data.remote.dto.SsoDiscoveryResponse
+import com.bizarreelectronics.crm.data.remote.dto.SsoTokenExchangeRequest
 import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
 import com.bizarreelectronics.crm.data.remote.dto.SwitchUserResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
@@ -126,4 +128,21 @@ interface AuthApi {
 
     @POST("auth/2fa/factors/enroll")
     suspend fun enrollFactor(@Body body: Map<String, String>): ApiResponse<Unit>
+
+    // §2.20 L443 — SSO provider discovery + token exchange.
+    //
+    // GET /auth/sso/providers — lists IdP configurations enabled for this tenant.
+    //   404 → no SSO configured; ViewModel hides the "Sign in with SSO" button silently.
+    //   Response: SsoDiscoveryResponse { providers: List<SsoProvider> }
+    //
+    // POST /auth/sso/token-exchange — exchanges the authorization code from the
+    //   Chrome Custom Tabs callback for an access + refresh token pair.
+    //   Body: { provider, code, state }. 400 → state mismatch (CSRF guard).
+    //   Response: LoginResponse (re-uses the same token shape as password login).
+    //   404 → server predates this endpoint; treat as unsupported.
+    @GET("auth/sso/providers")
+    suspend fun getSsoProviders(): ApiResponse<SsoDiscoveryResponse>
+
+    @POST("auth/sso/token-exchange")
+    suspend fun tokenExchange(@Body request: SsoTokenExchangeRequest): ApiResponse<TwoFactorResponse>
 }

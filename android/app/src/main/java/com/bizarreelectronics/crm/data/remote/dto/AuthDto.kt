@@ -204,6 +204,64 @@ data class TwoFactorFactorDto(
 )
 
 /**
+ * §2.20 L442 — SSO discovery and token-exchange DTOs.
+ *
+ * SAML vs OIDC note: the distinction is handled entirely on the server.
+ * Android sees only the [authUrl] (the IdP redirect URL) and exchanges the
+ * resulting authorization code via [SsoTokenExchangeRequest]. Whether the
+ * server validates a SAML assertion or an OIDC id_token behind that is
+ * deferred to server-side implementation.
+ *
+ * L444 — Certificate rotation: TODO follow-up. When the IdP rotates its
+ * signing certificate the server must re-fetch OIDC metadata / SAML metadata
+ * and update its trust store. Android is unaffected (it only touches tokens,
+ * never raw certs). Future tracking: server-side background task that polls
+ * IdP metadata every 24 h and logs a WARN when the cert changes.
+ */
+
+/**
+ * A single SSO provider entry from GET /auth/sso/providers.
+ *
+ * [id]      — opaque provider identifier sent back in [SsoTokenExchangeRequest.provider].
+ * [name]    — display name shown to the user in the provider-picker sheet (e.g. "Google Workspace").
+ * [authUrl] — the IdP authorization URL that Chrome Custom Tabs must navigate to.
+ * [iconUrl] — optional URL for the provider's branded icon; UI falls back to a generic icon.
+ */
+data class SsoProvider(
+    @SerializedName("id")      val id: String,
+    @SerializedName("name")    val name: String,
+    @SerializedName("authUrl") val authUrl: String,
+    @SerializedName("iconUrl") val iconUrl: String? = null,
+)
+
+/**
+ * Response from GET /auth/sso/providers.
+ *
+ * 404 → this tenant has not configured any SSO providers.
+ * The ViewModel maps 404 to an empty list and hides the "Sign in with SSO" button.
+ */
+data class SsoDiscoveryResponse(
+    @SerializedName("providers")
+    val providers: List<SsoProvider>,
+)
+
+/**
+ * Body for POST /auth/sso/token-exchange.
+ *
+ * Sent after the SSO callback delivers `code` + `state` via the
+ * `bizarrecrm://sso/callback` deep link. The server verifies [state] against
+ * its own session-bound value before exchanging [code] for tokens.
+ *
+ * SECURITY: [state] mismatch (CSRF check) results in a 400; the ViewModel
+ * surfaces "Sign-in link mismatch. Try again." to the user.
+ */
+data class SsoTokenExchangeRequest(
+    @SerializedName("provider") val provider: String,
+    @SerializedName("code")     val code: String,
+    @SerializedName("state")    val state: String,
+)
+
+/**
  * §2.11 — Active session as returned by GET /auth/sessions.
  *
  * Fields mirror the server's session record. [current] is true for the

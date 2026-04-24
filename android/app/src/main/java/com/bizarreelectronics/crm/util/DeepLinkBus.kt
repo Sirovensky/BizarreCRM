@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Carries the code + state pair from a `bizarrecrm://sso/callback` deep link. */
+data class SsoResult(val code: String, val state: String)
+
 /**
  * AND-20260414-H1: single-writer / single-reader handoff for deep-link
  * routes resolved in [com.bizarreelectronics.crm.MainActivity].
@@ -54,5 +57,27 @@ class DeepLinkBus @Inject constructor() {
      */
     fun consume() {
         _pendingRoute.value = null
+    }
+
+    // §2.20 L446 — SSO callback bus.
+    //
+    // MainActivity.resolveDeepLink recognises `bizarrecrm://sso/callback` and
+    // calls [publishSsoResult] with the extracted code + state.
+    // LoginViewModel collects from [pendingSsoResult] and dispatches token exchange.
+    // Consumers MUST call [consumeSsoResult] after processing.
+
+    private val _pendingSsoResult = MutableStateFlow<SsoResult?>(null)
+
+    /** Collected by LoginViewModel to exchange the SSO authorization code for tokens. */
+    val pendingSsoResult: StateFlow<SsoResult?> = _pendingSsoResult.asStateFlow()
+
+    /** Called by MainActivity when `bizarrecrm://sso/callback` is received. */
+    fun publishSsoResult(code: String, state: String) {
+        _pendingSsoResult.value = SsoResult(code, state)
+    }
+
+    /** Called by the ViewModel after [pendingSsoResult] has been processed. */
+    fun consumeSsoResult() {
+        _pendingSsoResult.value = null
     }
 }

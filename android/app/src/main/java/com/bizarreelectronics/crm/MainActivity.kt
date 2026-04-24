@@ -431,6 +431,19 @@ class MainActivity : FragmentActivity() {
 
         if (data.scheme != "bizarrecrm") return null
 
+        // §2.20 L446 — SSO callback: bizarrecrm://sso/callback?code=…&state=…
+        // Recognised before the generic whitelist check so the query params can
+        // be extracted. The result is dispatched via DeepLinkBus.publishSsoResult
+        // instead of a nav route — LoginViewModel collects and calls token exchange.
+        if (data.host == "sso" && data.path?.trimStart('/') == "callback") {
+            val code = data.getQueryParameter("code")
+            val state = data.getQueryParameter("state")
+            if (!code.isNullOrBlank() && !state.isNullOrBlank()) {
+                deepLinkBus.publishSsoResult(code, state)
+            }
+            return null // no nav route — VM handles the result via pendingSsoResult
+        }
+
         // Normalise "bizarrecrm://ticket/new" → "ticket/new". We intentionally
         // do NOT include query parameters: a route is just a static path,
         // and the current whitelist has no route that needs arguments.

@@ -254,6 +254,10 @@ dependencies {
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
 
+    // §2.20 L441 — Chrome Custom Tabs for SSO / SAML / OIDC browser-based auth.
+    // androidx.browser 1.8.0 ships CustomTabsIntent + CustomTabColorSchemeParams.
+    implementation(libs.androidx.browser)
+
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))
 

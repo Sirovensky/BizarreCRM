@@ -199,6 +199,19 @@
                 <data android:scheme="bizarrecrm" android:host="setup" />
             </intent-filter>
 
+            <!-- §2.20 L448 — SSO callback intent filter.
+                 Chrome Custom Tabs redirect the IdP back to:
+                   bizarrecrm://sso/callback?code=<auth-code>&state=<csrf-state>
+                 MainActivity.resolveDeepLink recognises this host+path and dispatches
+                 code + state to DeepLinkBus.publishSsoResult for token exchange.
+                 pathPrefix="/callback" ensures only the callback path is handled. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" android:host="sso" android:pathPrefix="/callback" />
+            </intent-filter>
+
             <!-- Static shortcuts + App Actions metadata. -->
             <meta-data
                 android:name="android.app.shortcuts"
