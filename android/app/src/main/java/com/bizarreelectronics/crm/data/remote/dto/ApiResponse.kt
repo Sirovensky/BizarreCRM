@@ -229,7 +229,60 @@ data class TicketStatusItem(
     @SerializedName("is_cancelled")
     val isCancelled: Int,
     @SerializedName("notify_customer")
-    val notifyCustomer: Int
+    val notifyCustomer: Int,
+    /** L740 — transition guards; server returns list like ["note_added","photos_taken"]. */
+    @SerializedName("transition_requirements")
+    val transitionRequirements: List<String> = emptyList(),
+    /** L739 — group label for grouping statuses in pickers (e.g. "open", "closed"). */
+    val group: String? = null,
+    /** L738 — sort order within group. */
+    val order: Int = sortOrder,
+)
+
+// ─── L725 — Warranty lookup result ───────────────────────────────────────────
+
+data class WarrantyResult(
+    @SerializedName("device_name")
+    val deviceName: String?,
+    @SerializedName("customer_name")
+    val customerName: String?,
+    val status: String?,
+    @SerializedName("purchase_date")
+    val purchaseDate: String?,
+    @SerializedName("warranty_end")
+    val warrantyEnd: String?,
+    @SerializedName("last_repair_date")
+    val lastRepairDate: String?,
+    @SerializedName("ticket_id")
+    val ticketId: Long?,
+)
+
+// ─── L726 — Device history entry ─────────────────────────────────────────────
+
+data class DeviceHistoryEntry(
+    @SerializedName("ticket_id")
+    val ticketId: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("customer_name")
+    val customerName: String?,
+    @SerializedName("service_name")
+    val serviceName: String?,
+    @SerializedName("status_name")
+    val statusName: String?,
+    @SerializedName("created_at")
+    val createdAt: String?,
+)
+
+data class DeviceHistoryData(
+    val history: List<DeviceHistoryEntry>,
+)
+
+// ─── L727 — Pin to dashboard response ────────────────────────────────────────
+
+data class PinDashboardResponse(
+    @SerializedName("is_pinned")
+    val isPinned: Boolean?,
 )
 
 data class EmployeeListItem(

@@ -25,6 +25,12 @@ interface SettingsApi {
     @GET("employees")
     suspend fun getEmployees(): ApiResponse<List<EmployeeListItem>>
 
+    /** L731 — keyword search for @mention suggestions (debounced). */
+    @GET("employees")
+    suspend fun searchEmployees(
+        @retrofit2.http.Query("keyword") keyword: String,
+    ): ApiResponse<List<EmployeeListItem>>
+
     @POST("settings/users")
     suspend fun createEmployee(
         @Body body: CreateEmployeeRequest,

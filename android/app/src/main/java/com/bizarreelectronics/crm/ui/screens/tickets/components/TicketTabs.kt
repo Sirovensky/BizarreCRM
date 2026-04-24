@@ -47,6 +47,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.data.remote.dto.TicketHistory
 import com.bizarreelectronics.crm.data.remote.dto.TicketNote
+import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.util.DateFormatter
@@ -88,6 +89,7 @@ fun TicketDetailTabs(
     isActionInProgress: Boolean,
     reduceMotion: Boolean,
     modifier: Modifier = Modifier,
+    employees: List<EmployeeListItem> = emptyList(),
     onStatusSelected: (Long) -> Unit = {},
     onAddNote: (String) -> Unit = {},
     onEditDevice: (Long) -> Unit = {},
@@ -131,8 +133,9 @@ fun TicketDetailTabs(
                 2 -> TicketNotesTab(
                     notes = notes,
                     isSubmitting = isActionInProgress,
+                    employees = employees,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    onSubmit = { text, _ -> onAddNote(text) },
+                    onSubmit = { text, _, _, _ -> onAddNote(text) },
                 )
                 3 -> PaymentsTab(
                     ticket = ticket,

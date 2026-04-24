@@ -3,7 +3,9 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
+import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
+import com.bizarreelectronics.crm.data.remote.dto.PinDashboardResponse
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevicePart
@@ -13,6 +15,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketPageResponse
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import com.bizarreelectronics.crm.data.remote.dto.WarrantyResult
 import retrofit2.http.Query
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -137,6 +140,38 @@ interface TicketApi {
     /** Delete a photo by its server-assigned ID. */
     @DELETE("tickets/photos/{photoId}")
     suspend fun deletePhoto(@Path("photoId") photoId: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    // ─── L725 — Warranty lookup ───────────────────────────────────────────────
+
+    /**
+     * POST /tickets/warranty-lookup — look up warranty record by IMEI / serial / phone.
+     * Returns [WarrantyResult] on match; 404 when no record exists (tolerated).
+     */
+    @POST("tickets/warranty-lookup")
+    suspend fun warrantyLookup(
+        @Body body: Map<String, @JvmSuppressWildcards String>,
+    ): ApiResponse<WarrantyResult>
+
+    // ─── L726 — Device history ────────────────────────────────────────────────
+
+    /**
+     * GET /tickets/device-history — list past repairs for a device identifier.
+     * Query param: `imei` (or `serial`). Returns [DeviceHistoryData].
+     */
+    @GET("tickets/device-history")
+    suspend fun getDeviceHistory(
+        @Query("imei") imei: String? = null,
+        @Query("serial") serial: String? = null,
+    ): ApiResponse<DeviceHistoryData>
+
+    // ─── L727 — Pin to dashboard ──────────────────────────────────────────────
+
+    /**
+     * POST /tickets/:id/pin-dashboard — pin this ticket to the Dashboard "Pinned" row.
+     * Returns updated pin state. 404 tolerated — pin is kept local-only in that case.
+     */
+    @POST("tickets/{id}/pin-dashboard")
+    suspend fun pinToDashboard(@Path("id") id: Long): ApiResponse<PinDashboardResponse>
 
     // U3 fix: photo upload endpoint backing PhotoCaptureScreen's gallery picker.
     // Server matches on ticket-level photos (tickets.routes.ts POST /:id/photos).

@@ -39,8 +39,11 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.data.remote.dto.TicketHistory
 import com.bizarreelectronics.crm.data.remote.dto.TicketNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
+import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
+import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
+import com.bizarreelectronics.crm.data.remote.dto.WarrantyResult
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.util.formatAsMoney
 import android.content.Intent
@@ -54,11 +57,13 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
+import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPhotoGallery
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPrintActions
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketQrCard
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRelatedRail
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketWarrantyDialog
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
@@ -131,6 +136,20 @@ data class TicketDetailUiState(
     val isDeletedWhileViewing: Boolean = false,
     /** L681 — current user role from [AuthPreferences.userRole] for permission gating. */
     val userRole: String? = null,
+    // ─── L725 — Warranty ─────────────────────────────────────────────────────
+    val showWarrantyDialog: Boolean = false,
+    val warrantyLoading: Boolean = false,
+    val warrantyResult: com.bizarreelectronics.crm.data.remote.dto.WarrantyResult? = null,
+    val warrantyError: String? = null,
+    // ─── L726 — Device history ────────────────────────────────────────────────
+    val showDeviceHistory: Boolean = false,
+    val deviceHistoryLoading: Boolean = false,
+    val deviceHistoryEntries: List<com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry> = emptyList(),
+    val deviceHistoryError: String? = null,
+    // ─── L731 — Employees for @mention ───────────────────────────────────────
+    val employees: List<com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem> = emptyList(),
+    // ─── L740 — Transition guard inline errors ────────────────────────────────
+    val statusTransitionError: String? = null,
 )
 
 @HiltViewModel
@@ -140,6 +159,7 @@ class TicketDetailViewModel @Inject constructor(
     private val ticketApi: TicketApi,
     private val settingsApi: SettingsApi,
     private val authPreferences: com.bizarreelectronics.crm.data.local.prefs.AuthPreferences,
+    private val appPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences,
     private val syncQueueDao: com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao,
     private val serverMonitor: com.bizarreelectronics.crm.util.ServerReachabilityMonitor,
     private val gson: com.google.gson.Gson,
@@ -177,6 +197,7 @@ class TicketDetailViewModel @Inject constructor(
         collectTicket()
         loadTicketDetail()
         loadStatuses()
+        loadEmployees()
         captureRoleInState()
     }
 
@@ -257,7 +278,23 @@ class TicketDetailViewModel @Inject constructor(
         val ticket = _state.value.ticket ?: return
         val oldStatusId = ticket.statusId
         val oldStatusName = ticket.statusName
-        val newStatusName = _state.value.statuses.find { it.id == newStatusId }?.name
+        val targetStatus = _state.value.statuses.find { it.id == newStatusId }
+        val newStatusName = targetStatus?.name
+
+        // L740 — Client-side transition guard check
+        val requirements = targetStatus?.transitionRequirements ?: emptyList()
+        val violations = mutableListOf<String>()
+        if ("note_added" in requirements && _state.value.notes.isEmpty()) {
+            violations += "A note must be added before moving to \"$newStatusName\""
+        }
+        if ("photos_taken" in requirements && _state.value.photos.isEmpty()) {
+            violations += "At least one photo must be attached before moving to \"$newStatusName\""
+        }
+        if (violations.isNotEmpty()) {
+            _state.value = _state.value.copy(statusTransitionError = violations.joinToString("; "))
+            return
+        }
+        _state.value = _state.value.copy(statusTransitionError = null)
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
@@ -484,6 +521,129 @@ class TicketDetailViewModel @Inject constructor(
         _state.value = _state.value.copy(actionMessage = null)
     }
 
+    fun clearStatusTransitionError() {
+        _state.value = _state.value.copy(statusTransitionError = null)
+    }
+
+    // -----------------------------------------------------------------------
+    // L731 — Employees for @mention
+    // -----------------------------------------------------------------------
+
+    private fun loadEmployees() {
+        viewModelScope.launch {
+            try {
+                val response = settingsApi.getEmployees()
+                val list = response.data ?: emptyList()
+                _state.value = _state.value.copy(employees = list)
+            } catch (_: Exception) {
+                // Non-critical — mentions will have no suggestions
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // L725 — Warranty lookup
+    // -----------------------------------------------------------------------
+
+    fun showWarrantyDialog() {
+        _state.value = _state.value.copy(
+            showWarrantyDialog = true,
+            warrantyResult = null,
+            warrantyError = null,
+        )
+    }
+
+    fun dismissWarrantyDialog() {
+        _state.value = _state.value.copy(showWarrantyDialog = false)
+    }
+
+    fun lookupWarranty(query: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
+            try {
+                val response = ticketApi.warrantyLookup(mapOf("query" to query))
+                val result = response.data
+                _state.value = if (result != null) {
+                    _state.value.copy(warrantyLoading = false, warrantyResult = result)
+                } else {
+                    _state.value.copy(warrantyLoading = false, warrantyError = "No warranty record found.")
+                }
+            } catch (e: Exception) {
+                val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
+                _state.value = _state.value.copy(
+                    warrantyLoading = false,
+                    warrantyError = if (is404) "No warranty record found." else "Lookup failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // L726 — Device history
+    // -----------------------------------------------------------------------
+
+    fun showDeviceHistory() {
+        _state.value = _state.value.copy(
+            showDeviceHistory = true,
+            deviceHistoryEntries = emptyList(),
+            deviceHistoryError = null,
+        )
+        // Resolve identifier from first device
+        val device = _state.value.devices.firstOrNull()
+        val imei = device?.imei
+        val serial = device?.serial
+        if (imei.isNullOrBlank() && serial.isNullOrBlank()) {
+            _state.value = _state.value.copy(
+                deviceHistoryLoading = false,
+                deviceHistoryError = "No IMEI or serial number on this device.",
+            )
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(deviceHistoryLoading = true)
+            try {
+                val response = ticketApi.getDeviceHistory(imei = imei?.ifBlank { null }, serial = serial?.ifBlank { null })
+                val entries = response.data?.history ?: emptyList()
+                _state.value = _state.value.copy(
+                    deviceHistoryLoading = false,
+                    deviceHistoryEntries = entries,
+                    deviceHistoryError = if (entries.isEmpty()) "No prior repairs found for this device." else null,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    deviceHistoryLoading = false,
+                    deviceHistoryError = "Failed to load device history: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun dismissDeviceHistory() {
+        _state.value = _state.value.copy(showDeviceHistory = false)
+    }
+
+    // -----------------------------------------------------------------------
+    // L727 — Pin to dashboard
+    // -----------------------------------------------------------------------
+
+    /**
+     * Pin this ticket to the Dashboard "Pinned" row. Server call is opportunistic;
+     * local [AppPreferences.pinnedTicketIds] is always updated so the pin persists
+     * offline (matching the existing pattern from plan:L653).
+     */
+    fun pinToDashboard() {
+        appPreferences.addPinnedTicketId(ticketId)
+        _state.value = _state.value.copy(actionMessage = "Ticket pinned to dashboard")
+        viewModelScope.launch {
+            try {
+                ticketApi.pinToDashboard(ticketId)
+            } catch (e: Exception) {
+                // 404 tolerated — pin is kept locally
+                Timber.tag("PinDashboard").w(e, "pinToDashboard: server returned error (local-only fallback)")
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // L678 — Bench timer
     // -----------------------------------------------------------------------
@@ -685,6 +845,36 @@ fun TicketDetailScreen(
     // which is already supported in MainActivity (see existing onProvideAssistContent).
     // Passing ticket info via Intent extras is sufficient for the handoff mechanism.
 
+    // ─── L725 — Warranty dialog ───────────────────────────────────────────────
+    if (state.showWarrantyDialog) {
+        TicketWarrantyDialog(
+            isLoading = state.warrantyLoading,
+            result = state.warrantyResult,
+            errorMessage = state.warrantyError,
+            onLookup = { viewModel.lookupWarranty(it) },
+            onDismiss = { viewModel.dismissWarrantyDialog() },
+        )
+    }
+
+    // ─── L726 — Device history sheet ─────────────────────────────────────────
+    if (state.showDeviceHistory) {
+        DeviceHistorySheet(
+            entries = state.deviceHistoryEntries,
+            isLoading = state.deviceHistoryLoading,
+            errorMessage = state.deviceHistoryError,
+            onTicketTap = { /* navigate to ticket — same screen, replace stack */ onBack() },
+            onDismiss = { viewModel.dismissDeviceHistory() },
+        )
+    }
+
+    // ─── L740 — Status transition error snackbar ──────────────────────────────
+    LaunchedEffect(state.statusTransitionError) {
+        state.statusTransitionError?.let { err ->
+            snackbarHostState.showSnackbar(err)
+            viewModel.clearStatusTransitionError()
+        }
+    }
+
     // Confirmation dialog for Convert to Invoice
     if (showConvertConfirm) {
         ConfirmDialog(
@@ -835,6 +1025,33 @@ fun TicketDetailScreen(
                                         scope.launch {
                                             snackbarHostState.showSnackbar("Link copied")
                                         }
+                                    },
+                                )
+                                // L725 — Check warranty
+                                DropdownMenuItem(
+                                    text = { Text("Check warranty") },
+                                    leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.showWarrantyDialog()
+                                    },
+                                )
+                                // L726 — Device history
+                                DropdownMenuItem(
+                                    text = { Text("Device history") },
+                                    leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.showDeviceHistory()
+                                    },
+                                )
+                                // L727 — Pin to dashboard
+                                DropdownMenuItem(
+                                    text = { Text("Pin to dashboard") },
+                                    leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.pinToDashboard()
                                     },
                                 )
                                 // L681 — Destructive actions gated on privileged role
@@ -1050,6 +1267,7 @@ fun TicketDetailScreen(
                             photos = state.photos,
                             statuses = state.statuses,
                             payments = state.ticketDetail?.payments ?: emptyList(),
+                            employees = state.employees,
                             isActionInProgress = state.isActionInProgress,
                             isBenchTimerRunning = state.isBenchTimerRunning,
                             reduceMotion = reduceMotion,
@@ -1093,6 +1311,7 @@ private fun TicketDetailContent(
     photos: List<TicketPhoto>,
     statuses: List<com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem> = emptyList(),
     payments: List<com.bizarreelectronics.crm.data.remote.dto.PaymentSummary> = emptyList(),
+    employees: List<EmployeeListItem> = emptyList(),
     isActionInProgress: Boolean = false,
     isBenchTimerRunning: Boolean = false,
     reduceMotion: Boolean = false,
@@ -1193,6 +1412,7 @@ private fun TicketDetailContent(
                 history = history,
                 payments = payments,
                 statuses = statuses,
+                employees = employees,
                 isActionInProgress = isActionInProgress,
                 reduceMotion = reduceMotion,
                 onStatusSelected = onStatusSelected,

@@ -2,6 +2,7 @@
 
 package com.bizarreelectronics.crm.ui.screens.tickets.components
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,62 +15,47 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketNote
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.MarkdownLiteParser
 
-/** Note visibility type presented in the type selector. */
+/** Note visibility type presented in the type selector. Kept for backwards compat with TicketTabs. */
 enum class NoteType(val label: String, val apiValue: String) {
     Internal("Internal", "internal"),
     CustomerVisible("Customer-visible", "customer"),
     Diagnostic("Diagnostic", "diagnostic"),
 }
 
-private fun stripHtml(html: String?): String =
-    html?.replace(Regex("<[^>]*>"), "")?.trim() ?: ""
-
 /**
- * Notes tab body: scrollable list of notes with type chips + inline compose box.
- *
- * The compose box is anchored at the bottom of the lazy list so it scrolls with
- * content (avoids it being hidden behind the keyboard on small screens — [imePadding]
- * is already applied at the Scaffold level).
+ * Notes tab body: scrollable list of notes (with markdown-lite + @mention rendering)
+ * plus the upgraded [TicketNoteCompose] at the bottom.
  *
  * @param notes        note list from VM state.
- * @param isSubmitting when true, the send button shows a disabled state.
- * @param onSubmit     callback invoked with (text, noteType) when the user taps Send.
+ * @param employees    staff list for @ mention suggestions.
+ * @param isSubmitting disable the send button while a network call is in-flight.
+ * @param onSubmit     callback invoked with (text, type, isFlagged, attachments).
  */
 @Composable
 fun TicketNotesTab(
     notes: List<TicketNote>,
     isSubmitting: Boolean,
     modifier: Modifier = Modifier,
-    onSubmit: (text: String, type: NoteType) -> Unit,
+    employees: List<EmployeeListItem> = emptyList(),
+    onSubmit: (text: String, type: NoteType, isFlagged: Boolean, attachments: List<Uri>) -> Unit = { _, _, _, _ -> },
 ) {
-    var noteText by rememberSaveable { mutableStateOf("") }
-    var selectedType by rememberSaveable { mutableStateOf(NoteType.Internal) }
-
     Column(modifier = modifier.fillMaxWidth()) {
         if (notes.isEmpty()) {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
@@ -95,17 +81,17 @@ fun TicketNotesTab(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        NoteComposeBox(
-            text = noteText,
-            onTextChange = { noteText = it },
-            selectedType = selectedType,
-            onTypeChange = { selectedType = it },
+        // Upgraded compose box — converts ExtNoteType back to legacy NoteType for callers
+        TicketNoteCompose(
+            employees = employees,
             isSubmitting = isSubmitting,
-            onSubmit = {
-                if (noteText.isNotBlank()) {
-                    onSubmit(noteText.trim(), selectedType)
-                    noteText = ""
+            onSubmit = { text, extType, flagged, uris ->
+                val legacyType = when (extType) {
+                    ExtNoteType.Customer -> NoteType.CustomerVisible
+                    ExtNoteType.Diagnostic -> NoteType.Diagnostic
+                    else -> NoteType.Internal
                 }
+                onSubmit(text, legacyType, flagged, uris)
             },
         )
     }
@@ -138,7 +124,18 @@ private fun NoteCard(note: TicketNote) {
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(stripHtml(note.msgText), style = MaterialTheme.typography.bodySmall)
+
+            // Render with markdown-lite (bold/italic/code/bullet/links)
+            val rawContent = note.msgText?.replace(Regex("<[^>]*>"), "")?.trim() ?: ""
+            val linkColor = MaterialTheme.colorScheme.primary
+            val annotated = androidx.compose.runtime.remember(rawContent) {
+                MarkdownLiteParser.parse(rawContent, linkColor)
+            }
+            Text(
+                text = annotated,
+                style = MaterialTheme.typography.bodySmall,
+            )
+
             if (note.isFlagged == true) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Icon(
@@ -157,6 +154,8 @@ private fun NoteTypeChip(type: String?) {
     val (label, color) = when (type?.lowercase()) {
         "customer" -> "Customer-visible" to MaterialTheme.colorScheme.secondary
         "diagnostic" -> "Diagnostic" to MaterialTheme.colorScheme.tertiary
+        "sms" -> "SMS" to MaterialTheme.colorScheme.tertiary
+        "email" -> "Email" to MaterialTheme.colorScheme.secondary
         else -> "Internal" to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(
@@ -169,79 +168,5 @@ private fun NoteTypeChip(type: String?) {
             style = MaterialTheme.typography.labelSmall,
             color = color,
         )
-    }
-}
-
-@Composable
-private fun NoteComposeBox(
-    text: String,
-    onTextChange: (String) -> Unit,
-    selectedType: NoteType,
-    onTypeChange: (NoteType) -> Unit,
-    isSubmitting: Boolean,
-    onSubmit: () -> Unit,
-) {
-    var typeMenuExpanded by rememberSaveable { mutableStateOf(false) }
-
-    BrandCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            ExposedDropdownMenuBox(
-                expanded = typeMenuExpanded,
-                onExpandedChange = { typeMenuExpanded = it },
-            ) {
-                OutlinedTextField(
-                    value = selectedType.label,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Type") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(typeMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodySmall,
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                )
-                ExposedDropdownMenu(
-                    expanded = typeMenuExpanded,
-                    onDismissRequest = { typeMenuExpanded = false },
-                ) {
-                    NoteType.entries.forEach { noteType ->
-                        DropdownMenuItem(
-                            text = { Text(noteType.label) },
-                            onClick = {
-                                onTypeChange(noteType)
-                                typeMenuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Add a note…") },
-                    minLines = 2,
-                    maxLines = 5,
-                )
-                IconButton(
-                    onClick = onSubmit,
-                    enabled = text.isNotBlank() && !isSubmitting,
-                ) {
-                    Icon(
-                        Icons.Default.Send,
-                        contentDescription = "Send note",
-                        tint = if (text.isNotBlank() && !isSubmitting)
-                            MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    )
-                }
-            }
-        }
     }
 }
