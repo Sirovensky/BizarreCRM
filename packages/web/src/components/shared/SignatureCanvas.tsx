@@ -57,8 +57,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Draw initial value if provided
-    if (initialValue) {
+    // Draw initial value if provided — restrict to `data:image/` URIs so a
+    // server-supplied path can't trigger arbitrary network requests or other
+    // unexpected image loads.
+    if (initialValue && typeof initialValue === 'string' && initialValue.startsWith('data:image/')) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0);
       img.src = initialValue;
@@ -185,8 +187,8 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
         />
       </div>
       {hasSignature && (
-        <button onClick={clear} className="inline-flex items-center gap-1 text-xs text-surface-500 hover:text-red-500 transition-colors">
-          <Eraser className="h-3 w-3" /> Clear signature
+        <button type="button" onClick={clear} className="inline-flex items-center gap-1 text-xs text-surface-500 hover:text-red-500 transition-colors">
+          <Eraser aria-hidden="true" className="h-3 w-3" /> Clear signature
         </button>
       )}
     </div>

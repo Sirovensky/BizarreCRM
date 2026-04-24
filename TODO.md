@@ -708,20 +708,12 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:392-394; fix=anyMutationPending-gate -->
 
 ### Wave-57 scan-loop findings (2026-04-24) — web/components/shared + web/api + web/utils
-- [ ] SCAN-1024. **[HIGH] UpgradeModal redirects to unvalidated server-supplied URL — `javascript:`/`data:` XSS risk.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/UpgradeModal.tsx:50; fix=validate-https-only -->
-- [ ] SCAN-1025. **[HIGH] iFixit helper returns `customUrl` without protocol check — consumed directly in `<a href>`.**
-  <!-- meta: scope=web/utils; files=packages/web/src/utils/ifixit.ts:2; fix=regex-http-https -->
-- [ ] SCAN-1026. **SignatureCanvas loads `initialValue` into `img.src` without `data:image/` validation.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/SignatureCanvas.tsx:63-64; fix=guard-data-image-prefix -->
 - [ ] SCAN-1027. **PinModal + UpgradeModal lack `role="dialog"` + `aria-modal` + aria-labelledby.**
   <!-- meta: scope=web/components/shared; files=PinModal.tsx:77,UpgradeModal.tsx:63; fix=add-dialog-semantics -->
 - [ ] SCAN-1028. **BackButton missing `type="button"`.**
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/BackButton.tsx:16; fix=add-type-button -->
 - [ ] SCAN-1029. **CopyButton uses `title` instead of `aria-label`.**
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CopyButton.tsx:35; fix=aria-label -->
-- [ ] SCAN-1030. **SignatureCanvas "Clear signature" button missing `type="button"`.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/SignatureCanvas.tsx:188; fix=add-type-button -->
 - [ ] SCAN-1031. **CommandPalette silently swallows search API errors — shows "No results" on backend down.**
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CommandPalette.tsx:175-176; fix=surface-error-state -->
 - [ ] SCAN-1032. **API client response interceptor uses `as any` to read `.code` + `.request_id`.**
@@ -730,8 +722,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/DateRangePicker.tsx:262; fix=add-type-button -->
 - [ ] SCAN-1034. **Breadcrumb uses array index as React `key` — stale DOM reuse on nav.**
   <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/Breadcrumb.tsx:21; fix=use-href-or-label-key -->
-- [ ] SCAN-1035. **UpgradeModal doesn't reset `loading` after redirect — button stays disabled forever if navigation blocked.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/UpgradeModal.tsx:49-50; fix=setLoading-false-after-redirect -->
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
 - [ ] SCAN-992b. **Catalog `jobs` + `items` still `any[]` — narrow interface deferred until server DTOs stabilise. `modelResults` is now typed.**

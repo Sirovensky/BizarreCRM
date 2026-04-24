@@ -46,8 +46,23 @@ export function UpgradeModal() {
     try {
       const res = await api.post('/billing/checkout');
       const url = res.data?.data?.url;
-      if (url) {
-        window.location.href = url;
+      // Validate the checkout URL before navigating — without the guard, a
+      // poisoned or misrouted response delivering `javascript:…` would fire
+      // script in the user's origin the moment we assigned `location.href`.
+      let safeUrl: string | null = null;
+      if (typeof url === 'string' && url.length > 0) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            safeUrl = parsed.href;
+          }
+        } catch { /* ignore — treated as invalid below */ }
+      }
+      if (safeUrl) {
+        window.location.href = safeUrl;
+        // Reset loading in case the navigation is blocked (popup blocker,
+        // beforeunload handler) so the button doesn't stay disabled forever.
+        setLoading(false);
       } else {
         toast.error('Unable to start checkout. Please contact support.');
         setLoading(false);
