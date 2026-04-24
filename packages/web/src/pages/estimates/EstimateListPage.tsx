@@ -407,6 +407,10 @@ export function EstimateListPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete estimate'),
   });
 
+  // Shared gate so Send/Convert/Delete row buttons can't fire in parallel
+  // and race the convert->navigate transition (SCAN-984b).
+  const anyMutationPending = sendMut.isPending || convertMut.isPending || deleteMut.isPending;
+
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -576,46 +580,55 @@ export function EstimateListPage() {
                           </button>
                           {(est.status === 'draft' || est.status === 'sent') && (
                             <button
+                              type="button"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
                                   sendMut.mutate(est.id);
                                 }
                               }}
-                              disabled={sendMut.isPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-950/30 dark:hover:text-primary-400"
+                              // Mutually disable all row actions while any mutation is in flight —
+                              // without this a rapid click on Convert mid-Send could navigate away
+                              // while the first mutation was still writing.
+                              disabled={anyMutationPending}
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-950/30 dark:hover:text-primary-400 disabled:opacity-50"
+                              aria-label={est.status === 'sent' ? 'Resend estimate to customer' : 'Send estimate to customer'}
                               title={est.status === 'sent' ? 'Resend to Customer' : 'Send to Customer'}
                             >
-                              <Send className="h-4 w-4" />
+                              <Send aria-hidden="true" className="h-4 w-4" />
                             </button>
                           )}
                           {est.status !== 'converted' && est.status !== 'rejected' && (
                             <button
+                              type="button"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (await confirm('Convert this estimate to a ticket?')) {
                                   convertMut.mutate(est.id);
                                 }
                               }}
-                              disabled={convertMut.isPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400"
+                              disabled={anyMutationPending}
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400 disabled:opacity-50"
+                              aria-label="Convert estimate to ticket"
                               title="Convert to Ticket"
                             >
-                              <ArrowRightLeft className="h-4 w-4" />
+                              <ArrowRightLeft aria-hidden="true" className="h-4 w-4" />
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (await confirm('Delete this estimate?', { danger: true })) {
                                 deleteMut.mutate(est.id);
                               }
                             }}
-                            disabled={deleteMut.isPending}
-                            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                            disabled={anyMutationPending}
+                            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
+                            aria-label="Delete estimate"
                             title="Delete Estimate"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </div>
                       </td>

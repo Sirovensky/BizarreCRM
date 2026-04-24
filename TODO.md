@@ -704,8 +704,6 @@ Verified working. Not TODOs.
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
-- [ ] SCAN-984b. **EstimateListPage action buttons still need mutual disable — detail page done (SCAN-984).**
-  <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:392-394; fix=anyMutationPending-gate -->
 
 ### Wave-57 scan-loop findings (2026-04-24) — web/components/shared + web/api + web/utils
 
