@@ -149,9 +149,13 @@ export function ReviewsPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customer-reviews', params],
+    // Destructure to primitives — an inline `params` object has fresh identity
+    // every render, which defeats React Query's cache equality and causes
+    // redundant fetches even when all filters are unchanged.
+    queryKey: ['customer-reviews', page, ratingFilter, repliedFilter],
     queryFn: () => crmApi.listReviews(params),
     placeholderData: (prev) => prev,
+    staleTime: 30_000,
   });
 
   const reviews: CustomerReview[] = (data as { data?: { data?: { reviews?: CustomerReview[] } } })?.data?.data?.reviews ?? [];
@@ -265,14 +269,18 @@ export function ReviewsPage() {
                       </span>
                     )}
                     <button
+                      type="button"
                       onClick={() => setReplyTarget(r)}
+                      aria-label={r.response ? 'Edit reply' : 'Reply to review'}
                       title={r.response ? 'Edit reply' : 'Reply'}
                       className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-2.5 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-100 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
                     >
-                      <MessageSquare className="h-3.5 w-3.5" />
+                      <MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />
                       {r.response ? 'Edit' : 'Reply'}
                     </button>
                     <button
+                      type="button"
+                      aria-label={r.public_posted ? 'Mark review private' : 'Mark review as publicly posted'}
                       title={r.public_posted ? 'Mark private' : 'Mark as publicly posted'}
                       onClick={() => markPublicMut.mutate({ id: r.id, public_posted: !r.public_posted })}
                       className={cn(
@@ -282,7 +290,7 @@ export function ReviewsPage() {
                           : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
                       )}
                     >
-                      <CheckCircle className="h-4 w-4" />
+                      <CheckCircle aria-hidden="true" className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
