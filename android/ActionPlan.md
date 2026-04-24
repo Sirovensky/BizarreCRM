@@ -4611,3 +4611,76 @@ Limitations:
 
 Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
 `/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.
+
+## POS redesign wave (2026-04-24)
+
+Fourth Android wave. Delivers the ground-up POS rewrite, the 6-step repair check-in package, BlockChyp payment terminal integration, and cream primary-color rebrand — all driven by the design spec in `../pos-phone-mockups.html`, which is the visual ground truth for every screen in this wave. Gradle build gate was verified SUCCESSFUL by Phase 2 + Phase 4 agents before merge. No server-side migrations were added this wave; all DB changes land on the Android side only (Room schema 10→11).
+
+---
+
+### 1. Cream primary rebrand
+
+- [x] `ui/theme/Theme.kt` — `DarkColorScheme.primary` set to cream `#fdeed0`; `onPrimary` updated for contrast. `LightColorScheme.primary` shifts to caramel `#A66D1F` to maintain WCAG AA. `Blue600`, `BrandAccent`, and `RefundedPurple` design tokens updated to match. (commit `0f76f013`)
+
+---
+
+### 2. POS module ground-up rewrite
+
+Deleted 16 legacy files under `ui/screens/pos/` (the original `PosScreen.kt`, `PosViewModel.kt`, all files under `components/` and `flows/`). Replaced with 13 focused files under `pos/`:
+
+- [x] `pos/PosModels.kt` — data classes `CartLine`, `PosAttachedCustomer`, `AppliedTender`; enums for tender type and transaction state. (commit `0f76f013`)
+- [x] `pos/PosCoordinator.kt` — Hilt singleton that carries session state across POS navigation destinations. (commit `0f76f013`)
+- [x] `pos/PosEntryScreen.kt` + `pos/PosEntryViewModel.kt` — product/ticket lookup and cart initialisation. (commit `0f76f013`)
+- [x] `pos/PosCartScreen.kt` + `pos/PosCartViewModel.kt` — line-item editing, discount application, sub-total display. (commit `0f76f013`)
+- [x] `pos/CartLineBottomSheet.kt` — quantity/price/discount editor as a modal bottom sheet. (commit `0f76f013`)
+- [x] `pos/PosTenderScreen.kt` + `pos/PosTenderViewModel.kt` — split-tender, cash/card/terminal flows. (commit `0f76f013`)
+- [x] `pos/PosReceiptScreen.kt` + `pos/PosReceiptViewModel.kt` — print / SMS / email receipt dispatch. TODO ID: POS-RECEIPT-001. (commit `0f76f013`)
+- [x] `pos/CashDrawerControllerStub.kt` — stub implementing the cash-drawer open command; real ESC/POS driver is a follow-up. (commit `0f76f013`)
+- [x] `AppNavGraph.kt` — routes updated to wire all new POS destinations into the main nav graph. (commit `0f76f013`, merged via `0925af7f`)
+- [x] `data/remote/api/PosApi.kt` — `notes: String?` field added to match server fix POS-NOTES-001 (`packages/server/src/routes/pos.routes.ts`). (commit `0f76f013`)
+- [x] `data/remote/RetrofitClient.kt` — `providePosApi` + `provideReceiptNotificationApi` Hilt providers added. (commit `0f76f013`)
+
+---
+
+### 3. Repair check-in 6-step package
+
+New `ui/screens/checkin/` package — 8 files total:
+
+- [x] `ui/screens/checkin/CheckInHostScreen.kt` — navigation host that sequences the 6 steps; step-progress indicator at top. (commit `80578a59`)
+- [x] `ui/screens/checkin/CheckInViewModel.kt` — shared ViewModel holding draft state across all steps; writes to Room `checkin_drafts` table. (commit `80578a59`)
+- [x] 6 step screens (`Step1CustomerScreen.kt` … `Step6SignatureScreen.kt`) inside `ui/screens/checkin/`. Step 6 reuses `ui/components/SignaturePad.kt`. (commit `80578a59`)
+- [x] Room schema migration 10→11 — `checkin_drafts` table added; migration SQL, DAO, entity class, and `DatabaseModule` Hilt provider all wired. (commit `80578a59`)
+- [ ] Legacy 7-step ticket-create package at `ui/screens/tickets/create/steps/*` left intact — removal is a planned follow-up (see Known Gaps below).
+
+---
+
+### 4. BlockChyp SDK wrapper + SignatureRouter
+
+- [x] `data/blockchyp/BlockChypClient.kt` — Hilt singleton wrapping the BlockChyp terminal SDK; typed request/response API. (commit `63f47d6a`, merged)
+- [x] `data/remote/api/BlockChypApi.kt` — 6 Retrofit endpoints proxied through the CRM server (charge, refund, void, terminal status, signature capture, terminal list). (commit `63f47d6a`)
+- [x] `util/SignatureRouter.kt` — prefers hardware terminal signature capture; falls back to on-phone `SignaturePad` when no terminal is reachable. (commit `63f47d6a`)
+- [x] `di/BlockChypModule.kt` — Hilt module providing `BlockChypClient` and `BlockChypApi`. (commit `63f47d6a`)
+- [x] `ui/screens/settings/HardwareSettingsViewModel.kt` — stub button handlers in `HardwareSettingsScreen.kt` (lines 266–324) replaced with real `BlockChypClient` calls. (commit `63f47d6a`)
+
+---
+
+### 5. 16 KB page-size alignment
+
+- [x] `app/build.gradle` — `packaging.jniLibs.useLegacyPackaging = false` added. (commit `87a6d64a`)
+- [x] `gradle.properties` — `android.bundle.enableUncompressedNativeLibs=true` added. (commit `87a6d64a`)
+
+These two flags together satisfy the Play Store requirement for 16 KB ELF page-size alignment, required for devices running Linux kernel 6.x with 16 KB pages.
+
+---
+
+### 6. Build gate
+
+- [x] Gradle build verified **BUILD SUCCESSFUL** by Phase 2 + Phase 4 agents after all five items above were merged. No outstanding compile errors or lint blockers at wave close.
+
+---
+
+### Known gaps (deferred to follow-up waves)
+
+- [ ] **Legacy 7-step ticket-create package** — `ui/screens/tickets/create/steps/*` remains in the codebase. Removal blocked until the new 6-step check-in flow has been validated in production. Track as a follow-up cleanup task.
+- [ ] **SMS receipt (POS-SMS-001)** — server-side endpoint for sending a receipt via SMS is not yet implemented. `PosReceiptViewModel.kt` has the client call site stubbed; requires `packages/server/src/routes/pos.routes.ts` to expose `POST /api/v1/pos/receipts/:id/sms`. Track as POS-SMS-001 in `TODO.md`.
+- [ ] **Cash drawer real driver** — `pos/CashDrawerControllerStub.kt` sends no actual ESC/POS command. Needs hardware integration work tied to the supported receipt-printer model.
