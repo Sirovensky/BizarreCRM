@@ -16,12 +16,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.ReportApi
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -144,6 +152,10 @@ data class ReportsUiState(
     val isSalesLoading: Boolean = false,
     val salesError: String? = null,
     val salesReport: SalesReport = SalesReport(),
+    // Overview / charts tab — §15 Vico charts
+    val salesByDay: List<SalesByDayPoint> = emptyList(),
+    val revenueOverTime: List<RevenueOverTimePoint> = emptyList(),
+    val categoryBreakdown: List<CategoryBreakdownSlice> = emptyList(),
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -153,6 +165,7 @@ class ReportsViewModel @Inject constructor(
     private val dashboardRepository: DashboardRepository,
     private val reportApi: ReportApi,
     private val serverMonitor: ServerReachabilityMonitor,
+    val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReportsUiState())
@@ -280,6 +293,20 @@ class ReportsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Parses the `/reports/sales` response into a [SalesReport] and chart data.
+     *
+     * Chart mappings (§15):
+     *   - [SalesByDayPoint]        — from `data.rows[].{ period, revenue }`. Revenue is
+     *     stored in dollars from the server; we convert to cents (× 100) to keep the
+     *     chart data as Long integers and avoid floating-point drift in axis labels.
+     *   - [RevenueOverTimePoint]   — same rows, same conversion.
+     *   - [CategoryBreakdownSlice] — from `data.byMethod[].{ method, revenue }`. Colour
+     *     assignment is index-based using a fixed palette; the call site resolves
+     *     MaterialTheme tokens before constructing slices.
+     *
+     * If `data.rows` is absent (e.g. old server version), chart lists default to empty.
+     */
     private fun parseSalesResponse(data: Map<String, Any>?): SalesReport {
         if (data == null) return SalesReport()
         val totalsRaw = data["totals"] as? Map<*, *>
@@ -297,6 +324,41 @@ class ReportsViewModel @Inject constructor(
                 method = (map["method"] as? String) ?: "Other",
                 revenue = (map["revenue"] as? Number)?.toDouble() ?: 0.0,
                 count = (map["count"] as? Number)?.toInt() ?: 0,
+            )
+        }
+
+        // ── Chart data — parsed from rows, not totals ────────────────────────
+        // TODO(§15-drill): wire category breakdown to actual service-category data
+        //   once /reports/services endpoint is available. For now, payment-method
+        //   revenue breakdown is a reasonable proxy for category breakdown.
+        val rowsRaw = data["rows"] as? List<*> ?: emptyList<Any>()
+        val salesByDay = rowsRaw.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            val period = map["period"] as? String ?: return@mapNotNull null
+            val revenueDollars = (map["revenue"] as? Number)?.toDouble() ?: 0.0
+            SalesByDayPoint(
+                isoDate = period,
+                totalCents = (revenueDollars * 100).toLong(),
+            )
+        }
+        val revenueOverTime = rowsRaw.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            val period = map["period"] as? String ?: return@mapNotNull null
+            val revenueDollars = (map["revenue"] as? Number)?.toDouble() ?: 0.0
+            RevenueOverTimePoint(
+                isoDate = period,
+                revenueCents = (revenueDollars * 100).toLong(),
+            )
+        }
+
+        // Update state with chart data (immutably via _state.update)
+        _state.update { current ->
+            current.copy(
+                salesByDay = salesByDay,
+                revenueOverTime = revenueOverTime,
+                // categoryBreakdown colours are resolved in the composable layer;
+                // store as raw breakdown here, composable maps colours from theme
+                categoryBreakdown = emptyList(), // resolved in OverviewChartsTab
             )
         }
 
@@ -322,7 +384,9 @@ fun ReportsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Dashboard", "Sales", "Needs Attention")
+    // "Overview" tab (index 1) hosts the §15 Vico charts.
+    // Existing indices shifted: Dashboard=0, Overview=1, Sales=2, Needs Attention=3.
+    val tabs = listOf("Dashboard", "Overview", "Sales", "Needs Attention")
 
     Scaffold(
         topBar = { BrandTopAppBar(title = "Reports") },
@@ -353,6 +417,16 @@ fun ReportsScreen(
                         },
                         selectedContentColor = MaterialTheme.colorScheme.primary,
                         unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // a11y: Role.Tab + explicit selection announcement so TalkBack says
+                        // "<tab name> tab, selected/not selected" rather than just the label.
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$title tab, selected"
+                            } else {
+                                "$title tab, not selected"
+                            }
+                        },
                     )
                 }
             }
@@ -362,13 +436,28 @@ fun ReportsScreen(
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (state.isLoading && !state.isRefreshing && selectedTabIndex != 1) {
-                    BrandSkeleton(
-                        rows = 4,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    )
-                } else if (state.error != null && selectedTabIndex != 1) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // Sales tab index is now 2 (Overview added at 1).
+                val isSalesTab = selectedTabIndex == 2
+                if (state.isLoading && !state.isRefreshing && !isSalesTab) {
+                    // a11y: mergeDescendants so TalkBack announces "Loading report" as a single item.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading report"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 4,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        )
+                    }
+                } else if (state.error != null && !isSalesTab) {
+                    // a11y: liveRegion=Assertive so TalkBack immediately interrupts and announces the error.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Failed to load reports.",
                             onRetry = { viewModel.loadData() },
@@ -377,15 +466,127 @@ fun ReportsScreen(
                 } else {
                     when (selectedTabIndex) {
                         0 -> DashboardReportTab(state)
-                        1 -> SalesReportTab(
+                        1 -> OverviewChartsTab(
+                            state = state,
+                            appPreferences = viewModel.appPreferences,
+                        )
+                        2 -> SalesReportTab(
                             state = state,
                             onPresetSelected = viewModel::selectPreset,
                             onCustomRangeSelected = viewModel::setCustomRange,
                             onRetry = viewModel::loadSalesReport,
                         )
-                        2 -> NeedsAttentionTab(state)
+                        3 -> NeedsAttentionTab(state)
                     }
                 }
+            }
+        }
+    }
+}
+
+// ─── Overview / Charts tab (§15 Vico charts) ─────────────────────────────────
+
+/**
+ * Stacks the three Vico chart composables vertically inside a [LazyColumn].
+ *
+ * Data is mapped from [ReportsUiState]:
+ *   - salesByDay / revenueOverTime: populated by [ReportsViewModel.parseSalesResponse]
+ *     after a successful /reports/sales fetch. Empty lists show "No data" placeholders.
+ *   - categoryBreakdown: derived here from [ReportsUiState.salesReport.paymentMethods]
+ *     (a proxy until a dedicated /reports/services endpoint is available — see TODO above).
+ *
+ * The [AppPreferences] reference is needed by [SalesByDayBarChart] and
+ * [RevenueOverTimeLineChart] to honour the ReduceMotion preference.
+ */
+@Composable
+private fun OverviewChartsTab(
+    state: ReportsUiState,
+    appPreferences: AppPreferences,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    val error = MaterialTheme.colorScheme.error
+    val outline = MaterialTheme.colorScheme.outline
+
+    // Map payment-method breakdown to CategoryBreakdownSlice for the pie chart.
+    // Colours cycle through 5 theme tokens; remaining slices reuse from the start.
+    val themeColors = remember(primary, secondary, tertiary, error, outline) {
+        listOf(primary, secondary, tertiary, error, outline)
+    }
+    val categorySlices = remember(state.salesReport.paymentMethods, themeColors) {
+        state.salesReport.paymentMethods.mapIndexed { index, method ->
+            CategoryBreakdownSlice(
+                label = method.method,
+                value = method.revenue,
+                color = themeColors[index % themeColors.size],
+            )
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding = PaddingValues(vertical = 16.dp),
+    ) {
+        item {
+            // a11y: heading() on the section title column so TalkBack users can jump between chart sections.
+            ChartSection(title = "Sales by Period") {
+                SalesByDayBarChart(
+                    points = state.salesByDay,
+                    appPreferences = appPreferences,
+                )
+            }
+        }
+        item {
+            // a11y: heading() on the section title column so TalkBack users can jump between chart sections.
+            ChartSection(title = "Revenue Over Time") {
+                RevenueOverTimeLineChart(
+                    points = state.revenueOverTime,
+                    appPreferences = appPreferences,
+                )
+            }
+        }
+        item {
+            // a11y: heading() on the section title column so TalkBack users can jump between chart sections.
+            ChartSection(title = "Payment Method Breakdown") {
+                CategoryBreakdownPieChart(slices = categorySlices)
+            }
+        }
+        // Spacer so the last card is not clipped by system navigation bar
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+    }
+}
+
+/** Thin section container: title + content card. */
+@Composable
+private fun ChartSection(
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    // a11y: heading() on the outer Column so TalkBack navigation-by-heading jumps to each chart section.
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.semantics { heading() },
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        ) {
+            Box(modifier = Modifier.padding(12.dp)) {
+                content()
             }
         }
     }
@@ -404,19 +605,24 @@ private fun DashboardReportTab(state: ReportsUiState) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                val revenueFormatted = com.bizarreelectronics.crm.util.CurrencyFormatter.format(state.revenueToday)
                 SummaryCard(
                     // @audit-fixed: was a hand-rolled "$%.2f" — switching to
                     // CurrencyFormatter centralises money formatting and means
                     // future locale/currency-symbol changes only need to land in
                     // one place. The locale-aware formatter also gives proper
                     // grouping ("$1,234.00") which the old code lacked.
-                    value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(state.revenueToday),
+                    value = revenueFormatted,
                     label = "Revenue Today",
+                    // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                    a11yDescription = "Revenue Today: $revenueFormatted",
                     modifier = Modifier.weight(1f),
                 )
                 SummaryCard(
                     value = "${state.openTickets}",
                     label = "Open Tickets",
+                    // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                    a11yDescription = "Open Tickets: ${state.openTickets}",
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -463,8 +669,9 @@ private fun SalesReportTab(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(DateRangePreset.values(), key = { it }) { preset ->
+                    val isSelected = state.selectedPreset == preset
                     FilterChip(
-                        selected = state.selectedPreset == preset,
+                        selected = isSelected,
                         onClick = {
                             if (preset == DateRangePreset.CUSTOM) {
                                 showDatePicker = true
@@ -472,6 +679,16 @@ private fun SalesReportTab(
                             onPresetSelected(preset)
                         },
                         label = { Text(preset.label) },
+                        // a11y: Role.Button + selection state so TalkBack announces
+                        // "<preset> period, selected/not selected. Tap to select."
+                        modifier = Modifier.semantics {
+                            role = Role.Button
+                            contentDescription = if (isSelected) {
+                                "${preset.label} period, selected"
+                            } else {
+                                "${preset.label} period, not selected. Tap to select."
+                            }
+                        },
                     )
                 }
             }
@@ -479,20 +696,29 @@ private fun SalesReportTab(
 
         // Selected range display
         item {
+            val fromDisplay = formatDisplayDate(state.fromDate)
+            val toDisplay = formatDisplayDate(state.toDate)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 ),
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                // a11y: mergeDescendants so TalkBack reads the date range card as one unit.
+                Column(
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Date range: $fromDisplay to $toDisplay"
+                        },
+                ) {
                     Text(
                         "Date Range",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "${formatDisplayDate(state.fromDate)} – ${formatDisplayDate(state.toDate)}",
+                        "$fromDisplay – $toDisplay",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -532,18 +758,30 @@ private fun SalesReportTab(
         when {
             state.isSalesLoading -> {
                 item {
-                    BrandSkeleton(
-                        rows = 4,
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
+                    // a11y: mergeDescendants so TalkBack announces "Loading report" as a single item.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading report"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 4,
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                    }
                 }
             }
             state.salesError != null -> {
                 item {
-                    ErrorState(
-                        message = state.salesError ?: "Failed to load sales report.",
-                        onRetry = onRetry,
-                    )
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately to announce sales load error.
+                    Box(
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                    ) {
+                        ErrorState(
+                            message = state.salesError ?: "Failed to load sales report.",
+                            onRetry = onRetry,
+                        )
+                    }
                 }
             }
             else -> {
@@ -553,15 +791,20 @@ private fun SalesReportTab(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        val totalRevenueFormatted = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.totalRevenue)
                         SummaryCard(
                             // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
-                            value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.totalRevenue),
+                            value = totalRevenueFormatted,
                             label = "Total Revenue",
+                            // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                            a11yDescription = "Total Revenue: $totalRevenueFormatted",
                             modifier = Modifier.weight(1f),
                         )
                         SummaryCard(
                             value = "${report.transactionCount}",
                             label = "Transactions",
+                            // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                            a11yDescription = "Transactions: ${report.transactionCount}",
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -571,15 +814,20 @@ private fun SalesReportTab(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        val avgFormatted = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.averageTransaction)
                         SummaryCard(
                             // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
-                            value = com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.averageTransaction),
+                            value = avgFormatted,
                             label = "Avg Transaction",
+                            // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                            a11yDescription = "Average Transaction: $avgFormatted",
                             modifier = Modifier.weight(1f),
                         )
                         SummaryCard(
                             value = "${report.uniqueCustomers}",
                             label = "Unique Customers",
+                            // a11y: liveRegion=Polite + contentDescription so TalkBack announces updated KPI value.
+                            a11yDescription = "Unique Customers: ${report.uniqueCustomers}",
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -589,11 +837,14 @@ private fun SalesReportTab(
                 }
                 if (report.paymentMethods.isNotEmpty()) {
                     item {
+                        // a11y: heading() so TalkBack navigation-by-heading can jump to Payment Methods section.
                         Text(
                             "Payment Methods",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .semantics { heading() },
                         )
                     }
                     items(report.paymentMethods, key = { it.method }) { method ->
@@ -617,8 +868,17 @@ private fun RevenueChangeCard(changePct: Double) {
         ErrorRed.copy(alpha = 0.15f)
     }
     val textColor = if (isPositive) SuccessGreen else ErrorRed
+    val changeSign = if (isPositive) "+" else ""
+    val changePctFormatted = "$changeSign${String.format(Locale.US, "%.1f", changePct)}%"
+    val direction = if (isPositive) "up" else "down"
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // a11y: mergeDescendants + liveRegion=Polite so TalkBack announces when the trend card updates.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Revenue vs previous period: $changePctFormatted ($direction)"
+                liveRegion = LiveRegionMode.Polite
+            },
         colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
         Row(
@@ -639,7 +899,7 @@ private fun RevenueChangeCard(changePct: Double) {
                     color = textColor,
                 )
                 Text(
-                    "${if (isPositive) "+" else ""}${String.format(Locale.US, "%.1f", changePct)}%",
+                    changePctFormatted,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = textColor,
@@ -651,7 +911,15 @@ private fun RevenueChangeCard(changePct: Double) {
 
 @Composable
 private fun PaymentMethodRow(method: PaymentMethodBreakdown) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val revenueFormatted = com.bizarreelectronics.crm.util.CurrencyFormatter.format(method.revenue)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            // a11y: mergeDescendants so TalkBack reads the entire payment method row as one unit.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${method.method}: ${method.count} transactions, $revenueFormatted"
+            },
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -667,7 +935,7 @@ private fun PaymentMethodRow(method: PaymentMethodBreakdown) {
             }
             Text(
                 // @audit-fixed: hand-rolled "$%.2f" replaced with CurrencyFormatter
-                com.bizarreelectronics.crm.util.CurrencyFormatter.format(method.revenue),
+                revenueFormatted,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -732,8 +1000,11 @@ private fun NeedsAttentionTab(state: ReportsUiState) {
         state.lowStockCount > 0
 
     if (!hasAnyAlerts) {
+        // a11y: mergeDescendants so TalkBack reads the empty "All clear" state as one unit.
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics(mergeDescendants = true) {},
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -812,7 +1083,13 @@ private fun AttentionRow(
     count: Int,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // a11y: mergeDescendants so TalkBack reads the entire attention row as one unit.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$label: $count"
+                liveRegion = LiveRegionMode.Polite
+            },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.errorContainer,
         ),
@@ -887,6 +1164,8 @@ private fun SummaryCard(
     value: String,
     label: String,
     modifier: Modifier = Modifier,
+    // a11y: optional override for the full TalkBack announcement; defaults to "<label>: <value>".
+    a11yDescription: String = "$label: $value",
 ) {
     // CROSS36: was primaryContainer (brown/tan) which read as "milk chocolate"
     // — out of place in a dark UI. Switched to dark-surface + 1dp outline to
@@ -898,7 +1177,13 @@ private fun SummaryCard(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline,
                 shape = MaterialTheme.shapes.medium,
-            ),
+            )
+            // a11y: mergeDescendants + liveRegion=Polite so TalkBack announces the card as one unit
+            // and re-reads when the value changes (e.g. after a refresh).
+            .semantics(mergeDescendants = true) {
+                contentDescription = a11yDescription
+                liveRegion = LiveRegionMode.Polite
+            },
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,

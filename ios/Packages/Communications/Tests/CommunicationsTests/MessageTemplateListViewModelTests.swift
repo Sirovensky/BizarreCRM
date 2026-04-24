@@ -108,7 +108,8 @@ private actor TemplateStubAPIClient: APIClient {
 
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         if let err = listError { throw err }
-        if path.contains("/message-templates") {
+        // Server endpoint is /sms/templates (per sms.routes.ts:839)
+        if path.contains("/sms/templates") || path.contains("/message-templates") {
             let resp = MessageTemplateListResponse(templates: templates)
             guard let t = resp as? T else { throw APITransportError.decoding("type") }
             return t

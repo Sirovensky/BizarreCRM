@@ -8,31 +8,30 @@
  *     response with a filename attachment header. Admin-role-gated,
  *     rate-limited to 1 export per tenant per hour.
  *
- * Streaming strategy: we res.write() the envelope, then iterate tables and
- * emit each one in sequence using JSON.stringify(row) per row. Writing one
- * row at a time keeps peak memory bounded for large tenants (otherwise a
- * 500k-row invoices table would balloon the process heap before the first
- * byte hits the wire).
+ * Streaming strategy: delegates to services/dataExportGenerator.ts which
+ * writes the JSON to a temp file in config.exportsPath, then pipes it back
+ * to the HTTP response via createReadStream. The temp file is unlinked
+ * after the response finishes. This keeps the serialisation logic shared
+ * with the cron scheduler (dataExportScheduleCron.ts).
  *
  * Security:
  *   - authMiddleware ensures a valid user token is present.
  *   - adminOnly ensures non-admins cannot trigger an export.
- *   - SENSITIVE_FIELDS strips password hashes, TOTP secrets, and other
- *     auth material from user rows before serializing — a GDPR export
- *     should hand over business data, not the tenant's admin login.
- *   - EXCLUDED_TABLES drops per-session / bookkeeping tables that have
- *     no value to the tenant and may contain short-lived auth tokens.
+ *   - SENSITIVE_FIELDS / EXCLUDED_TABLES redaction lives in the service.
  *   - Rate limiting uses store_config.last_data_export_at so a burst of
  *     concurrent exports cannot overlap.
  *   - Audit log entry (`data_export`) records user_id, tenant, row counts.
  */
 
+import fs from 'fs';
 import { Router, Request, Response, NextFunction } from 'express';
 import type Database from 'better-sqlite3';
 import { AppError } from '../middleware/errorHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { config } from '../config.js';
+import { generateExportToFile } from '../services/dataExportGenerator.js';
 
 const logger = createLogger('data-export');
 
@@ -46,70 +45,6 @@ const EXPORT_RATE_LIMIT_MS = 60 * 60 * 1000;
 /** Key used to store the last-export timestamp in store_config. */
 const LAST_EXPORT_KEY = 'last_data_export_at';
 
-/**
- * Tables that are NEVER exported. Either tenant-irrelevant (SQLite
- * bookkeeping, migration tracking) or contain short-lived auth material
- * that has no reason to live in a customer-portable archive.
- */
-const EXCLUDED_TABLES = new Set<string>([
-  'sqlite_sequence',
-  '_migrations',
-  'sessions',
-  'refresh_tokens',
-  'password_history',
-  'login_attempts',
-  'rate_limits',
-  'rate_limit_windows',
-  'api_key_revocations',
-  'admin_tokens',
-  'pending_2fa_challenges',
-  'recovery_codes_used',
-]);
-
-/**
- * Per-table field blacklist. When a row from the table on the left is
- * emitted, each listed column is rewritten to null. This is narrower than
- * EXCLUDED_TABLES — the user still gets the row, they just don't get the
- * password hash.
- */
-const SENSITIVE_FIELDS: Record<string, ReadonlySet<string>> = {
-  users: new Set([
-    'password_hash',
-    'totp_secret',
-    'pin_hash',
-    'recovery_codes',
-    'reset_token_hash',
-    'remember_token_hash',
-  ]),
-  store_config: new Set([
-    // Secret values stored in the key/value store. We keep the keys so
-    // the tenant can see which integrations are configured, but we blank
-    // the sensitive values before emitting.
-  ]),
-};
-
-/**
- * Sensitive store_config keys. When we emit a store_config row whose
- * `key` matches any entry here, its `value` is rewritten to null — the
- * export is for the tenant's own records, not for onward transmission,
- * and we still do not want to hand a plaintext bearer token to anyone
- * who intercepts the JSON file on the way to the user's disk.
- */
-const SENSITIVE_CONFIG_KEYS = new Set<string>([
-  'blockchyp_api_key',
-  'blockchyp_bearer_token',
-  'blockchyp_signing_key',
-  'sms_twilio_auth_token',
-  'sms_telnyx_api_key',
-  'sms_bandwidth_password',
-  'sms_plivo_auth_token',
-  'sms_vonage_api_secret',
-  'smtp_pass',
-  'tcx_password',
-  'stripe_secret_key',
-  'twilio_auth_token',
-]);
-
 // ─── Middleware ───────────────────────────────────────────────────────────
 
 function adminOnly(req: Request, _res: Response, next: NextFunction): void {
@@ -120,22 +55,6 @@ function adminOnly(req: Request, _res: Response, next: NextFunction): void {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
-/**
- * List every user table in the tenant DB. Excludes sqlite bookkeeping,
- * migration tracking, and the blacklist above.
- */
-function listExportableTables(db: Database.Database): string[] {
-  const rows = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    )
-    .all() as Array<{ name: string }>;
-
-  return rows
-    .map((r) => r.name)
-    .filter((name) => !EXCLUDED_TABLES.has(name));
-}
 
 /**
  * Read the last-export timestamp (ISO string) from store_config. Returns
@@ -170,28 +89,6 @@ function writeLastExportAt(db: Database.Database, iso: string): void {
 }
 
 /**
- * Sanitize a row according to the per-table field blacklist. Returns a
- * NEW object (immutable) so the original row (possibly shared with the
- * SQLite cache) is not mutated.
- */
-function sanitizeRow(table: string, row: Record<string, unknown>): Record<string, unknown> {
-  const fieldBlacklist = SENSITIVE_FIELDS[table];
-
-  // store_config has a key/value shape — redact by key name.
-  if (table === 'store_config' && typeof row.key === 'string' && SENSITIVE_CONFIG_KEYS.has(row.key)) {
-    return { ...row, value: null };
-  }
-
-  if (!fieldBlacklist || fieldBlacklist.size === 0) return row;
-
-  const redacted: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) {
-    redacted[k] = fieldBlacklist.has(k) ? null : v;
-  }
-  return redacted;
-}
-
-/**
  * Parse an ISO timestamp to epoch ms, tolerating garbage input.
  */
 function parseIsoMs(iso: string | null): number {
@@ -211,15 +108,13 @@ function safeFilenameToken(raw: string): string {
 
 // ─── GET /export-all-data ─────────────────────────────────────────────────
 
-router.get('/export-all-data', adminOnly, (req: Request, res: Response) => {
+router.get('/export-all-data', adminOnly, async (req: Request, res: Response) => {
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const tenantSlug = req.tenantSlug ?? 'single-tenant';
   const userId = req.user?.id ?? null;
 
-  // Rate-limit: 1 export per hour per tenant. We read the timestamp from
-  // store_config (per-tenant by virtue of req.db pointing at the tenant
-  // DB after tenantResolver) so the limit survives a process restart.
+  // Rate-limit: 1 export per hour per tenant.
   const lastExportIso = readLastExportAt(db);
   const lastExportMs = parseIsoMs(lastExportIso);
   const elapsedMs = Date.now() - lastExportMs;
@@ -234,32 +129,32 @@ router.get('/export-all-data', adminOnly, (req: Request, res: Response) => {
     return;
   }
 
-  // Reserve the rate-limit slot BEFORE streaming starts. If the export
-  // then fails mid-stream we do not refund the slot — an abortive
-  // export still counts, to protect against a client that intentionally
-  // disconnects early in a loop.
+  // Reserve the rate-limit slot BEFORE generating. An abortive export still
+  // counts to prevent rapid-fire calls that disconnect early.
   const startedAtIso = new Date().toISOString();
   writeLastExportAt(db, startedAtIso);
 
-  // List tables up-front so we can compute row_counts for the audit log.
-  let tables: string[];
-  try {
-    tables = listExportableTables(db);
-  } catch (err) {
-    logger.error('failed to list tenant tables for export', {
-      tenantSlug,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    res.status(500).json({ success: false, message: 'Failed to read tenant schema.' });
-    return;
-  }
-
-  const rowCounts: Record<string, number> = {};
-
-  // Build the attachment filename.
+  // Build the attachment filename from safe tokens only.
   const dateToken = startedAtIso.slice(0, 10); // YYYY-MM-DD
   const slugToken = safeFilenameToken(tenantSlug);
   const filename = `bizarre-crm-export-${slugToken}-${dateToken}.json`;
+
+  let exportResult: Awaited<ReturnType<typeof generateExportToFile>> | undefined;
+
+  try {
+    // Delegate to the shared service which writes the JSON to a temp file.
+    // outputDir is config.exportsPath — never caller-supplied.
+    exportResult = await generateExportToFile(db, 'full', config.exportsPath, tenantSlug);
+  } catch (err) {
+    logger.error('export generation failed', {
+      tenantSlug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Export generation failed.' });
+    return;
+  }
+
+  const { file_path: filePath, row_count: totalRows } = exportResult;
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -267,86 +162,42 @@ router.get('/export-all-data', adminOnly, (req: Request, res: Response) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
-  // Begin the streaming envelope. We write the top-level object shape
-  // by hand so we can emit tables lazily without building the full
-  // payload in memory first.
-  try {
-    res.write('{');
-    res.write(`"tenant_slug":${JSON.stringify(tenantSlug)},`);
-    res.write(`"exported_at":${JSON.stringify(startedAtIso)},`);
-    res.write(`"version":1,`);
-    res.write('"tables":{');
+  // Stream the generated file back to the client, then clean up the temp file.
+  const readStream = fs.createReadStream(filePath);
 
-    let firstTable = true;
-    for (const table of tables) {
-      // Table name came from sqlite_master, not user input — safe to
-      // interpolate into the SQL. Still wrap in double-quotes so reserved
-      // keywords (if any) don't break the SELECT.
-      let rows: Array<Record<string, unknown>>;
-      try {
-        rows = db.prepare(`SELECT * FROM "${table}"`).all() as Array<Record<string, unknown>>;
-      } catch (err) {
-        // A single unreadable table should not abort the whole export —
-        // log and record zero rows instead.
-        logger.warn('failed to read table during export', {
-          tenantSlug,
-          table,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        rows = [];
-      }
-
-      rowCounts[table] = rows.length;
-
-      if (!firstTable) res.write(',');
-      firstTable = false;
-
-      res.write(`${JSON.stringify(table)}:[`);
-
-      for (let i = 0; i < rows.length; i++) {
-        if (i > 0) res.write(',');
-        const clean = sanitizeRow(table, rows[i]!);
-        res.write(JSON.stringify(clean));
-      }
-
-      res.write(']');
-    }
-
-    // Emit row_counts AFTER tables so the tenant can verify the manifest
-    // without scanning backwards through the tables payload.
-    res.write('},');
-    res.write(`"row_counts":${JSON.stringify(rowCounts)}`);
-    res.write('}');
-    res.end();
-  } catch (err) {
-    logger.error('export stream aborted mid-flight', {
+  readStream.on('error', (err) => {
+    logger.error('export read-stream error', {
       tenantSlug,
-      error: err instanceof Error ? err.message : String(err),
+      error: err.message,
     });
-    // At this point we already set the attachment headers and streamed
-    // bytes — the client will see a truncated JSON file. Best-effort
-    // end the response; the audit log below still records the attempt.
-    try {
-      if (!res.writableEnded) res.end();
-    } catch {
-      // swallow
-    }
-  }
+    if (!res.writableEnded) res.end();
+  });
 
-  // Audit log — always fire, even on partial stream.
+  res.on('finish', () => {
+    // Best-effort cleanup of the temp export file after delivery.
+    fs.unlink(filePath, (unlinkErr) => {
+      if (unlinkErr) {
+        logger.warn('export temp file cleanup failed', {
+          filePath,
+          error: unlinkErr.message,
+        });
+      }
+    });
+  });
+
+  readStream.pipe(res);
+
+  // Audit log — always fire.
   audit(db, 'data_export', userId, ip, {
     tenant: tenantSlug,
     filename,
-    table_count: tables.length,
-    row_counts: rowCounts,
-    total_rows: Object.values(rowCounts).reduce((sum, n) => sum + n, 0),
+    total_rows: totalRows,
   });
 
   logger.info('tenant data export completed', {
     tenantSlug,
     userId,
-    tables: tables.length,
-    totalRows: Object.values(rowCounts).reduce((sum, n) => sum + n, 0),
+    totalRows,
   });
 });
 

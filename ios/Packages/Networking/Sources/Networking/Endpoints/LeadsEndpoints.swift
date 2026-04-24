@@ -134,21 +134,41 @@ public struct LeadDetail: Decodable, Sendable, Hashable {
     }
 }
 
+/// Device row from `lead_devices` table.
+/// Server columns (from leads.routes.ts): device_name, repair_type, service_type,
+/// service_id, price, tax, problem, customer_notes, security_code, start_time, end_time.
 public struct LeadDevice: Decodable, Sendable, Hashable, Identifiable {
     public let id: Int64
-    public let deviceMake: String?
-    public let deviceModel: String?
-    public let deviceColor: String?
-    public let issueDescription: String?
-    public let estimatedPrice: Double?
+    /// Human-readable device name (e.g. "iPhone 14 Pro").
+    public let deviceName: String?
+    /// Repair category (e.g. "screen", "battery").
+    public let repairType: String?
+    /// Service category string.
+    public let serviceType: String?
+    /// Linked service template ID.
+    public let serviceId: Int64?
+    /// Quoted repair price.
+    public let price: Double?
+    /// Tax on this line item.
+    public let tax: Double?
+    /// Problem description / customer notes about the fault.
+    public let problem: String?
+    /// Additional notes from the customer.
+    public let customerNotes: String?
+
+    /// Convenience display name for the device (falls back to id).
+    public var displayName: String {
+        if let n = deviceName, !n.isEmpty { return n }
+        return "Device #\(id)"
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case deviceMake = "device_make"
-        case deviceModel = "device_model"
-        case deviceColor = "device_color"
-        case issueDescription = "issue_description"
-        case estimatedPrice = "estimated_price"
+        case id, price, tax, problem
+        case deviceName    = "device_name"
+        case repairType    = "repair_type"
+        case serviceType   = "service_type"
+        case serviceId     = "service_id"
+        case customerNotes = "customer_notes"
     }
 }
 
@@ -174,6 +194,67 @@ public struct LeadStatusUpdateBody: Encodable, Sendable {
     public init(status: String) { self.status = status }
 }
 
+// MARK: - Full lead update body (PUT /leads/{id})
+
+/// Payload for `PUT /api/v1/leads/{id}`.
+/// All fields are optional; only non-nil values are encoded.
+/// The server merges supplied fields over the existing row.
+public struct LeadUpdateBody: Encodable, Sendable {
+    public let status: String?
+    public let notes: String?
+    public let assignedTo: Int?
+    public let source: String?
+    public let lostReason: String?
+    public let firstName: String?
+    public let lastName: String?
+    public let email: String?
+    public let phone: String?
+
+    public init(
+        status: String? = nil,
+        notes: String? = nil,
+        assignedTo: Int? = nil,
+        source: String? = nil,
+        lostReason: String? = nil,
+        firstName: String? = nil,
+        lastName: String? = nil,
+        email: String? = nil,
+        phone: String? = nil
+    ) {
+        self.status = status
+        self.notes = notes
+        self.assignedTo = assignedTo
+        self.source = source
+        self.lostReason = lostReason
+        self.firstName = firstName
+        self.lastName = lastName
+        self.email = email
+        self.phone = phone
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status, notes, source, email, phone
+        case assignedTo  = "assigned_to"
+        case lostReason  = "lost_reason"
+        case firstName   = "first_name"
+        case lastName    = "last_name"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        // Only encode fields the caller actually supplied (nil means "don't touch").
+        if let v = status     { try c.encode(v, forKey: .status)     }
+        if let v = notes      { try c.encode(v, forKey: .notes)      }
+        if let v = assignedTo { try c.encode(v, forKey: .assignedTo) }
+        if let v = source     { try c.encode(v, forKey: .source)     }
+        if let v = lostReason { try c.encode(v, forKey: .lostReason) }
+        if let v = firstName  { try c.encode(v, forKey: .firstName)  }
+        if let v = lastName   { try c.encode(v, forKey: .lastName)   }
+        if let v = email      { try c.encode(v, forKey: .email)      }
+        if let v = phone      { try c.encode(v, forKey: .phone)      }
+    }
+}
+
 // MARK: - Convert body + response
 
 public struct LeadConvertBody: Encodable, Sendable {
@@ -182,13 +263,28 @@ public struct LeadConvertBody: Encodable, Sendable {
     enum CodingKeys: String, CodingKey { case createTicket = "create_ticket" }
 }
 
-public struct LeadConvertResponse: Decodable, Sendable {
-    public let customerId: Int64
-    public let ticketId: Int64?
+/// Minimal ticket summary returned inside the convert response data.
+public struct ConvertedTicket: Decodable, Sendable {
+    public let id: Int64
+    public let orderId: String?
+    public let customerId: Int64?
     enum CodingKeys: String, CodingKey {
+        case id
+        case orderId    = "order_id"
         case customerId = "customer_id"
-        case ticketId   = "ticket_id"
     }
+}
+
+/// `POST /api/v1/leads/{id}/convert` response data.
+/// Server returns `{ ticket: {...}, message: "Lead converted to ticket" }`.
+public struct LeadConvertResponse: Decodable, Sendable {
+    public let ticket: ConvertedTicket
+    public let message: String?
+    /// Convenience accessor so call-sites can reach the new ticket ID without
+    /// two levels of indirection.
+    public var ticketId: Int64 { ticket.id }
+    /// Customer ID threaded through from the ticket row.
+    public var customerId: Int64? { ticket.customerId }
 }
 
 // MARK: - Lose body
@@ -255,7 +351,13 @@ public extension APIClient {
         try await put("/api/v1/leads/\(id)", body: body, as: LeadDetail.self)
     }
 
-    /// `POST /api/v1/leads/{id}/convert` → creates customer (+ optional ticket).
+    /// `PUT /api/v1/leads/{id}` — full field update (status, notes, assignee, source, lost reason).
+    @discardableResult
+    func updateLead(id: Int64, body: LeadUpdateBody) async throws -> LeadDetail {
+        try await put("/api/v1/leads/\(id)", body: body, as: LeadDetail.self)
+    }
+
+    /// `POST /api/v1/leads/{id}/convert` → creates ticket from lead.
     func convertLead(id: Int64, body: LeadConvertBody) async throws -> LeadConvertResponse {
         try await post("/api/v1/leads/\(id)/convert", body: body, as: LeadConvertResponse.self)
     }

@@ -91,8 +91,11 @@ class ClockInOutViewModel @Inject constructor(
 
     private suspend fun submitOnline() {
         try {
+            // Capture pin before any state mutation so it's available for the API call.
+            val pin = _state.value.pin
+
             // Step 1: verify the PIN
-            val pinResponse = authApi.verifyPin(mapOf("pin" to _state.value.pin))
+            val pinResponse = authApi.verifyPin(mapOf("pin" to pin))
             val verified = (pinResponse.data as? Map<*, *>)?.get("verified") == true
             if (!verified) {
                 _state.value = _state.value.copy(
@@ -103,14 +106,15 @@ class ClockInOutViewModel @Inject constructor(
                 return
             }
 
-            // Step 2: clock in or out
+            // Step 2: clock in or out — server requires pin in the request body
+            // (bcrypt.compareSync on the server side validates it there too).
             val userId = authPreferences.userId
             val wasClockedIn = _state.value.isClockedIn
 
             if (wasClockedIn) {
-                settingsApi.clockOut(userId)
+                settingsApi.clockOut(userId, mapOf("pin" to pin))
             } else {
-                settingsApi.clockIn(userId)
+                settingsApi.clockIn(userId, mapOf("pin" to pin))
             }
 
             _state.value = _state.value.copy(
@@ -133,7 +137,10 @@ class ClockInOutViewModel @Inject constructor(
         val wasClockedIn = _state.value.isClockedIn
         val operation = if (wasClockedIn) "clock_out" else "clock_in"
 
-        val payload = gson.toJson(mapOf("userId" to userId))
+        // Include the pin in the offline payload so SyncManager can forward it
+        // to the server when the queue is flushed (server requires pin in body).
+        val pin = _state.value.pin
+        val payload = gson.toJson(mapOf("userId" to userId, "pin" to pin))
         syncQueueDao.insert(
             SyncQueueEntity(
                 entityType = "employee",

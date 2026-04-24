@@ -71,6 +71,7 @@ class PhotoCaptureViewModel @Inject constructor(
     fun uploadImage(
         context: Context,
         ticketId: Long,
+        deviceId: Long,
         uri: Uri,
         photoType: String,
     ) {
@@ -98,11 +99,16 @@ class PhotoCaptureViewModel @Inject constructor(
                 val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
                 val part = MultipartBody.Part.createFormData("photos", fileName, requestBody)
                 val typeBody = photoType.toRequestBody("text/plain".toMediaTypeOrNull())
+                // bug:gallery-400 fix: server requires ticket_device_id in the
+                // multipart body (tickets.routes.ts line 2422). Omitting it returns
+                // HTTP 400 "ticket_device_id is required".
+                val deviceIdBody = deviceId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
 
                 ticketApi.uploadTicketPhotos(
                     ticketId = ticketId,
                     photos = listOf(part),
                     type = typeBody,
+                    ticketDeviceId = deviceIdBody,
                 )
 
                 _state.value = _state.value.copy(
@@ -176,6 +182,11 @@ class PhotoCaptureViewModel @Inject constructor(
 @Composable
 fun PhotoCaptureScreen(
     ticketId: Long,
+    // bug:gallery-400 fix: the server photo-upload endpoint requires
+    // ticket_device_id in the multipart body. The device ID is resolved by
+    // the caller (AppNavGraph reads it from the route) so this screen stays
+    // stateless with respect to device lookup.
+    deviceId: Long,
     onBack: () -> Unit,
     viewModel: PhotoCaptureViewModel = hiltViewModel(),
 ) {
@@ -260,6 +271,7 @@ fun PhotoCaptureScreen(
             viewModel.uploadImage(
                 context = context,
                 ticketId = ticketId,
+                deviceId = deviceId,
                 uri = uri,
                 photoType = selectedType,
             )

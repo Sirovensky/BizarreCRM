@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { WorkerPoolQueueFullError } from '../db/worker-pool.js';
 import { ERROR_CODES, type ErrorCode } from '../utils/errorCodes.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('errorHandler');
 
 /**
  * Thrown inside route handlers to surface a specific HTTP status + message
@@ -37,9 +40,9 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   // forwards stderr to a less-trusted sink. `err.message` remains for triage.
   // Client responses never include the stack regardless of env — that was
   // already the case and is preserved below.
-  console.error('Error:', err?.message);
+  logger.error('unhandled_error', { message: err?.message });
   if (process.env.NODE_ENV !== 'production') {
-    console.error(err?.stack);
+    logger.error('unhandled_error_stack', { stack: err?.stack });
   }
 
   // @audit-fixed: Guard against headers already sent — writing a status

@@ -13,6 +13,8 @@ public final class ExpenseListViewModel {
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    /// Active filter — drives server-side filtering via query params.
+    public var filter: ExpenseListFilter = .init()
     /// Exposed for `StalenessIndicator` chip in toolbar.
     public private(set) var lastSyncedAt: Date?
 
@@ -25,6 +27,8 @@ public final class ExpenseListViewModel {
         self.cachedRepo = cachedRepo
     }
 
+    public var isFiltered: Bool { !filter.isEmpty }
+
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
@@ -33,10 +37,16 @@ public final class ExpenseListViewModel {
             let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
             let resp: ExpensesListResponse
             if let repo = cachedRepo {
-                resp = try await repo.listExpenses(keyword: keyword)
+                resp = try await repo.listExpenses(keyword: keyword, filter: filter)
                 lastSyncedAt = await repo.lastSyncedAt
             } else {
-                resp = try await api.listExpenses(keyword: keyword)
+                resp = try await api.listExpenses(
+                    keyword: keyword,
+                    category: filter.category.flatMap { $0.isEmpty ? nil : $0 },
+                    fromDate: filter.fromDate.flatMap { $0.isEmpty ? nil : $0 },
+                    toDate: filter.toDate.flatMap { $0.isEmpty ? nil : $0 },
+                    status: filter.status.flatMap { $0.isEmpty ? nil : $0 }
+                )
             }
             items = resp.expenses
             summary = resp.summary
@@ -53,10 +63,16 @@ public final class ExpenseListViewModel {
             let keyword: String? = searchQuery.isEmpty ? nil : searchQuery
             let resp: ExpensesListResponse
             if let repo = cachedRepo {
-                resp = try await repo.forceRefresh(keyword: keyword)
+                resp = try await repo.forceRefresh(keyword: keyword, filter: filter)
                 lastSyncedAt = await repo.lastSyncedAt
             } else {
-                resp = try await api.listExpenses(keyword: keyword)
+                resp = try await api.listExpenses(
+                    keyword: keyword,
+                    category: filter.category.flatMap { $0.isEmpty ? nil : $0 },
+                    fromDate: filter.fromDate.flatMap { $0.isEmpty ? nil : $0 },
+                    toDate: filter.toDate.flatMap { $0.isEmpty ? nil : $0 },
+                    status: filter.status.flatMap { $0.isEmpty ? nil : $0 }
+                )
             }
             items = resp.expenses
             summary = resp.summary
@@ -75,12 +91,26 @@ public final class ExpenseListViewModel {
             await load()
         }
     }
+
+    public func clearFilter() {
+        filter = .init()
+    }
+
+    /// Optimistically removes an expense from the in-memory list after a
+    /// successful delete from the detail or via swipe/context-menu.
+    public func removeItem(id: Int64) {
+        items.removeAll { $0.id == id }
+    }
 }
 
 public struct ExpenseListView: View {
     @State private var vm: ExpenseListViewModel
     @State private var searchText: String = ""
     @State private var showingCreate: Bool = false
+    @State private var showingFilter: Bool = false
+    /// Tracks which expense is pending delete confirmation from swipe/context menu.
+    @State private var pendingDeleteId: Int64?
+    @State private var showDeleteConfirm: Bool = false
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: ExpenseCachedRepository? = nil) {
@@ -97,7 +127,43 @@ public struct ExpenseListView: View {
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
             ExpenseCreateView(api: api)
         }
+        .sheet(isPresented: $showingFilter, onDismiss: { Task { await vm.load() } }) {
+            ExpenseFilterSheet(filter: $vm.filter)
+                .presentationDetents([.medium])
+        }
+        .confirmationDialog(
+            "Delete this expense?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                guard let id = pendingDeleteId else { return }
+                Task {
+                    await deleteExpense(id: id)
+                    pendingDeleteId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteId = nil }
+        } message: {
+            Text("This action cannot be undone.")
+        }
+        .onChange(of: vm.filter) { _, _ in
+            Task { await vm.load() }
+        }
     }
+
+    // MARK: - Delete from list
+
+    private func deleteExpense(id: Int64) async {
+        do {
+            try await api.deleteExpense(id: id)
+            vm.removeItem(id: id)
+        } catch {
+            AppLog.ui.error("Expense delete from list failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Layouts
 
     private var compactLayout: some View {
         NavigationStack {
@@ -109,6 +175,7 @@ public struct ExpenseListView: View {
             .searchable(text: $searchText, prompt: "Search expenses")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .toolbar {
+                filterButton
                 newButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
@@ -131,6 +198,7 @@ public struct ExpenseListView: View {
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .toolbar {
+                filterButton
                 newButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
@@ -158,6 +226,8 @@ public struct ExpenseListView: View {
         .navigationSplitViewStyle(.balanced)
     }
 
+    // MARK: - Toolbar items
+
     private var newButton: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button { showingCreate = true } label: { Image(systemName: "plus") }
@@ -167,10 +237,27 @@ public struct ExpenseListView: View {
         }
     }
 
+    private var filterButton: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button {
+                showingFilter = true
+            } label: {
+                Image(systemName: vm.isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(vm.isFiltered ? Color.bizarreOrange : Color.bizarreOnSurface)
+            }
+            .keyboardShortcut("F", modifiers: .command)
+            .accessibilityLabel(vm.isFiltered ? "Edit filter (active)" : "Filter expenses")
+            .accessibilityIdentifier("expenses.filter")
+        }
+    }
+
+    // MARK: - Content states
+
     @ViewBuilder
     private var content: some View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Loading expenses")
         } else if let err = vm.errorMessage {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
@@ -186,55 +273,124 @@ public struct ExpenseListView: View {
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "dollarsign.circle").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityHidden(true)
-                Text(searchText.isEmpty ? "No expenses" : "No results")
+                Text(vm.isFiltered ? "No results for this filter" : (searchText.isEmpty ? "No expenses" : "No results"))
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                if vm.isFiltered {
+                    Button("Clear filter") { vm.clearFilter() }
+                        .buttonStyle(.bordered)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Clear expense filter")
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List {
-                if let s = vm.summary {
-                    Section {
-                        HStack {
-                            Text("Total").foregroundStyle(.bizarreOnSurfaceMuted)
-                            Spacer()
-                            Text(formatMoney(s.totalAmount))
-                                .font(.brandTitleMedium())
-                                .foregroundStyle(.bizarreOnSurface)
-                                .monospacedDigit()
-                        }
-                        HStack {
-                            Text("Count").foregroundStyle(.bizarreOnSurfaceMuted)
-                            Spacer()
-                            Text("\(s.totalCount)").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
-                        }
-                    }
-                    .listRowBackground(Color.bizarreSurface1)
-                }
-                Section {
-                    ForEach(vm.items) { exp in
-                        NavigationLink(value: exp.id) {
-                            Row(expense: exp)
-                        }
-                        .listRowBackground(Color.bizarreSurface1)
-                        #if canImport(UIKit)
-                        .hoverEffect(.highlight)
-                        #endif
-                    }
-                }
-            }
-            #if canImport(UIKit)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .scrollContentBackground(.hidden)
+            expenseList
         }
     }
 
-    private func formatMoney(_ v: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
-        return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+    private var expenseList: some View {
+        List {
+            if let s = vm.summary {
+                Section {
+                    ExpenseSummaryHeaderView(
+                        summary: s,
+                        categoryTotals: ExpenseSummaryHeaderView.categoryTotals(from: vm.items)
+                    )
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.xs, trailing: BrandSpacing.base))
+            }
+            if vm.isFiltered {
+                Section {
+                    activeFilterChips
+                }
+                .listRowBackground(Color.bizarreSurface1)
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            }
+            Section {
+                ForEach(vm.items) { exp in
+                    NavigationLink(value: exp.id) {
+                        Row(expense: exp)
+                    }
+                    .listRowBackground(Color.bizarreSurface1)
+                    #if canImport(UIKit)
+                    .hoverEffect(.highlight)
+                    #endif
+                    // MARK: Swipe actions
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            pendingDeleteId = exp.id
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .accessibilityLabel("Delete expense")
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        NavigationLink(value: exp.id) {
+                            Label("Open", systemImage: "arrow.up.forward.square")
+                        }
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Open expense detail")
+                    }
+                    // MARK: Context menu
+                    .contextMenu {
+                        NavigationLink(value: exp.id) {
+                            Label("Open", systemImage: "arrow.up.forward.square")
+                        }
+                        .accessibilityLabel("Open expense")
+                        Divider()
+                        Button(role: .destructive) {
+                            pendingDeleteId = exp.id
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .accessibilityLabel("Delete expense")
+                    }
+                }
+            }
+        }
+        #if canImport(UIKit)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
+        .scrollContentBackground(.hidden)
     }
+
+    // MARK: - Active filter chips
+
+    @ViewBuilder
+    private var activeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                if let cat = vm.filter.category, !cat.isEmpty {
+                    FilterChip(label: cat) { vm.filter = ExpenseListFilter(fromDate: vm.filter.fromDate, toDate: vm.filter.toDate, status: vm.filter.status) }
+                }
+                if let from = vm.filter.fromDate, !from.isEmpty {
+                    FilterChip(label: "From \(from)") { vm.filter = ExpenseListFilter(category: vm.filter.category, toDate: vm.filter.toDate, status: vm.filter.status) }
+                }
+                if let to = vm.filter.toDate, !to.isEmpty {
+                    FilterChip(label: "To \(to)") { vm.filter = ExpenseListFilter(category: vm.filter.category, fromDate: vm.filter.fromDate, status: vm.filter.status) }
+                }
+                if let status = vm.filter.status, !status.isEmpty {
+                    FilterChip(label: status.capitalized) { vm.filter = ExpenseListFilter(category: vm.filter.category, fromDate: vm.filter.fromDate, toDate: vm.filter.toDate) }
+                }
+                Button {
+                    vm.clearFilter()
+                } label: {
+                    Text("Clear all")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreError)
+                }
+                .accessibilityLabel("Clear all expense filters")
+            }
+            .padding(.vertical, BrandSpacing.xxs)
+        }
+    }
+
+    // MARK: - Row
 
     private struct Row: View {
         let expense: Expense
@@ -277,5 +433,32 @@ public struct ExpenseListView: View {
         }
 
         private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
+    }
+}
+
+// MARK: - FilterChip helper
+
+private struct FilterChip: View {
+    let label: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnOrange)
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.bizarreOnOrange)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(label) filter")
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(Color.bizarreOrange, in: Capsule())
     }
 }

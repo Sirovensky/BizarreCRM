@@ -98,21 +98,13 @@ private struct LoadedBody: View {
     /// round trip; the user's first name would need `/auth/me` which is
     /// still TBD, so for now we keep it impersonal.
     private var greeting: some View {
-        Text(Self.greetingText(for: Date()))
+        Text(dashboardGreeting(for: Date()))
             .font(.brandTitleLarge())
             .foregroundStyle(.bizarreOnSurface)
             .accessibilityAddTraits(.isHeader)
     }
 
-    static func greetingText(for date: Date) -> String {
-        let hour = Calendar.current.component(.hour, from: date)
-        switch hour {
-        case 5..<12:  return "Good morning"
-        case 12..<17: return "Good afternoon"
-        case 17..<22: return "Good evening"
-        default:      return "Working late"
-        }
-    }
+    // greetingText extracted to module-level `dashboardGreeting(for:)` for testability.
 
     // Hero = the one primary focus. On a repair-shop dashboard that's
     // "open tickets right now". Larger, more visual weight than the rest.
@@ -125,20 +117,27 @@ private struct LoadedBody: View {
         )
     }
 
-    // Compact stat tiles — muted hierarchy, 3 columns on iPhone, more on iPad.
+    // Compact stat tiles — muted hierarchy.
+    // iPhone: 2-column grid (adaptive minimum 140 pt).
+    // iPad (regular-width): fixed 3-column grid per §3 spec.
     private var secondaryGrid: some View {
         let s = snapshot.summary
         let tiles: [StatTile] = [
-            .init(label: "Revenue",     value: Self.money(s.revenueToday),    icon: "dollarsign.circle"),
-            .init(label: "Closed",      value: "\(s.closedToday)",            icon: "checkmark.seal"),
+            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
+            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
             .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",   value: Self.money(s.inventoryValue),  icon: "shippingbox"),
+            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
         ]
 
-        return LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 150), spacing: BrandSpacing.md)],
-            spacing: BrandSpacing.md
-        ) {
+        let columns: [GridItem] = Platform.isCompact
+            ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
+            : [
+                GridItem(.flexible(), spacing: BrandSpacing.md),
+                GridItem(.flexible(), spacing: BrandSpacing.md),
+                GridItem(.flexible(), spacing: BrandSpacing.md),
+              ]
+
+        return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
             ForEach(tiles) { tile in
                 StatTileCard(tile: tile)
             }
@@ -320,6 +319,45 @@ private struct AttentionRow: View {
             }
             #endif
         }
+    }
+}
+
+// MARK: - Layout helpers (internal for testability)
+
+/// Returns the number of KPI grid columns for the given compactness flag.
+/// - compact (iPhone): adaptive — 1 or 2 columns depending on available width.
+///   We return 1 here to signal "adaptive" mode; the real minimum is 140 pt.
+/// - regular (iPad): always 3 fixed columns.
+func kpiGridColumnCount(isCompact: Bool) -> Int {
+    isCompact ? 1 : 3
+}
+
+/// Returns the attention items from a `NeedsAttention` snapshot,
+/// in a stable order. Caller sums `.count` to decide whether to show the card.
+func attentionItems(from attention: NeedsAttention) -> [AttentionItemModel] {
+    [
+        .init(label: "Stale tickets",    count: attention.staleTickets.count),
+        .init(label: "Overdue invoices", count: attention.overdueInvoices.count),
+        .init(label: "Missing parts",    count: attention.missingPartsCount),
+        .init(label: "Low stock",        count: attention.lowStockCount),
+    ]
+}
+
+/// View-model for a single row in the Needs Attention card.
+struct AttentionItemModel: Equatable {
+    let label: String
+    let count: Int
+}
+
+/// Returns the time-of-day greeting string for the given date.
+/// Extracted from `LoadedBody` so tests can reach it without UIKit.
+func dashboardGreeting(for date: Date) -> String {
+    let hour = Calendar.current.component(.hour, from: date)
+    switch hour {
+    case 5..<12:  return "Good morning"
+    case 12..<17: return "Good afternoon"
+    case 17..<22: return "Good evening"
+    default:      return "Working late"
     }
 }
 

@@ -12,6 +12,8 @@ public struct SmsComposerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: SmsComposerViewModel
     @State private var showTemplatePicker = false
+    @State private var isSending = false
+    @State private var sendError: String?
     @FocusState private var composerFocused: Bool
 
     @ObservationIgnored private let api: APIClient
@@ -112,7 +114,7 @@ public struct SmsComposerView: View {
         .accessibilityLabel("Live preview: \(vm.livePreview)")
     }
 
-    // MARK: - Bottom composer bar (chip bar + text field)
+    // MARK: - Bottom composer bar (chip bar + text field + send button)
 
     private var composerBar: some View {
         VStack(spacing: 0) {
@@ -132,11 +134,55 @@ public struct SmsComposerView: View {
                     .focused($composerFocused)
                     .lineLimit(1...6)
                     .accessibilityLabel("Message body")
+
+                Button {
+                    Task { await performSend() }
+                } label: {
+                    Image(systemName: isSending ? "ellipsis" : "paperplane.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            (!vm.isValid || isSending)
+                                ? Color.bizarreOnSurfaceMuted
+                                : Color.bizarreOrange,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!vm.isValid || isSending)
+                .accessibilityLabel(isSending ? "Sending message" : "Send message")
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.vertical, BrandSpacing.sm)
+
+            if let err = sendError {
+                Text(err)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreError)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.xs)
+                    .accessibilityLabel("Send error: \(err)")
+            }
         }
         .background(Color.bizarreSurface1.ignoresSafeArea(edges: .bottom))
+    }
+
+    // MARK: - Send action
+
+    @MainActor
+    private func performSend() async {
+        guard vm.isValid, !isSending else { return }
+        isSending = true
+        sendError = nil
+        defer { isSending = false }
+        do {
+            try await onSend(vm.phoneNumber, vm.draft.trimmingCharacters(in: .whitespacesAndNewlines))
+            vm.draft = ""
+            dismiss()
+        } catch {
+            sendError = error.localizedDescription
+        }
     }
 
     @ViewBuilder

@@ -38,14 +38,14 @@ in-progress and lags the audit.
 | 2 | Auth & Onboarding | ~55% | Login + 2FA + setPassword + signup + logout + refresh-retry + **PIN lock end-to-end (NEW Settings + nav)** + **SessionRevoked banner (NEW)** + **/auth/me cold-start (NEW)** DONE. Missing: passkeys, SSO, magic-link, hardware key, shared-device. |
 | 3 | Dashboard | ~55% | KPIs, my-queue, FAB, sync badge, greeting, error states, onboarding checklist, clock-in tile + **KPI tile tap-through to Tickets / Appointments / Inventory (NEW)** DONE. Missing: BI widgets, role-based dashboards, activity feed, TV mode, filtered-list params. |
 | 4 | Tickets | ~16% | List + detail + create scaffolds; §4.17 IMEI Luhn validator + **live IMEI supportingText + TAC model suggestion in TicketCreate (NEW)** DONE. Missing: Paging3, signatures, bench, SLA, QC checklist, inventory trade-in hookup. |
-| 5 | Customers | ~30% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. Missing: tags UI, segments, merge, bulk, communication prefs. |
+| 5 | Customers | ~33% | Detail, create, notes (CROSS9b), health score, recent tickets DONE. **Tag chips row on detail (commit 392d1d5 via `ui/components/TagChip.kt` + FlowRow).** Missing: tag picker in create/edit, segments, merge, bulk, communication prefs. |
 | 6 | Inventory | ~25% | List (type tabs + search), create scaffold, detail w/ movements + group prices DONE. Missing: stocktake, PO, loaner, serials, ML Kit barcode wire. |
 | 7 | Invoices | ~30% | List (status tabs), detail w/ payments DONE. Missing: create, refund, send, dunning, pagination. |
 | 8 | Estimates | ~15% | List + detail header DONE. Missing: send, approve, e-sign, versioning, create. |
-| 9 | Leads | ~25% | List, detail, create DONE. Missing: Kanban pipeline, conversions, lost-reason. |
+| 9 | Leads | ~35% | List, detail, create DONE. **Read-only Kanban view + List/Kanban toggle (commit 5bec1e4 — `ui/screens/leads/LeadKanbanBoard.kt` horizontal-scroll stage columns; drag-drop deferred).** Missing: conversions, lost-reason, drag-drop stage change. |
 | 10 | Appointments | ~20% | Day-list + create DONE. Missing: week/month/agenda, RRULE recurrence, scheduling engine. |
 | 11 | Expenses | ~25% | List w/ summary + filter, create DONE. Missing: receipt OCR, approval, pie chart, PhotoPicker. |
-| 12 | SMS | ~30% | Thread list, WebSocket realtime, compose-new DONE. Missing: filters, attachments, templates, voice calls, bulk. |
+| 12 | SMS | ~40% | Thread list, WebSocket realtime, compose-new DONE. **Template picker sheet in thread compose with `{{placeholder}}` interpolation (commit 33a2608 — `GET /sms/templates` + `SmsTemplatePickerSheet` ModalBottomSheet).** Missing: filters, attachments, voice calls, bulk. |
 | 13 | Notifications | ~65% | List + **group-by-day sticky headers (NEW)** + FCM token + deep-link whitelist + 12 granular channels + POST_NOTIFICATIONS prompt + **quiet hours UI (NEW)** DONE. Missing: rich push, in-app toast, launcher badge. |
 | 14 | Employees & Timeclock | ~45% | List, clock in/out, **detail screen (NEW)** DONE. Missing: real-time presence, permissions matrix, edit/reset-PIN/deactivate (server endpoints pending). |
 | 15 | Reports | ~30% | Tab shell + date picker + Sales DONE. Missing: Vico charts, drill-through, export. |
@@ -59,7 +59,7 @@ in-progress and lags the audit.
 | 23 | Foldable / Desktop | 0% | Not started. |
 | 24 | Widgets/Live/Shortcuts | ~30% | Static shortcuts + QS tile + classic widget DONE. Missing: Glance widgets, Live Updates, dynamic shortcuts. |
 | 25 | App Search/Share/Clipboard | ~25% | **ClipboardUtil w/ OTP detect + sensitive-clear (NEW)** DONE. Missing: AppSearchSession, share intent filter, cross-device. |
-| 26 | Accessibility | ~16% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() semantics + **BrandListItem mergeDescendants/Role.Button (NEW)** DONE. Missing: full contentDescription sweep, fontScale, a11y framework tests. |
+| 26 | Accessibility | ~88% | ReduceMotion util + Settings toggle + tests + BrandTopAppBar heading() + BrandListItem mergeDescendants/Role.Button + 13 screen list sweeps (Dashboard/Tickets/Customers/Invoices/Expenses/Appointments/Inventory/Estimates/Leads/SmsList/SmsThread/POS/BarcodeScan) + **Reports tabs+charts (9360501) + Profile + NotificationSettings (dfabb5d) sweeps — 16 screens covered.** Missing: fontScale stress test, a11y framework tests, remaining Settings sub-screens (Security/ChangePassword/SwitchUser/Theme/Language — small surfaces), Checkout. |
 | 27 | i18n | 0% | Not started. |
 | 28 | Security | ~72% | SQLCipher + EncryptedSharedPrefs + cert pinning + Network Security Config + FLAG_SECURE (partial) + setRecentsScreenshotEnabled + RedactingHttpLogger + ClipboardUtil sensitive-clear + OTP detect + SessionRevoked banner + Biometric STRONG + 401 remote sign-out + ProGuard Firebase ban DONE. Missing: Play Integrity, GDPR endpoints, Blur-on-recents, Timber RedactorTree. |
 | 29 | Performance | ~18% | minifyEnabled true + JankStats beadrumb integration. Missing: Macrobenchmark, baseline profiles, CI gate. |
@@ -161,7 +161,7 @@ Baseline infra rest of app depends on. All of it ships before anything domain-sp
 - [x] Bearer-token Authenticator from EncryptedSharedPreferences — inject on every request.
 - [x] **Token refresh on 401 with retry-of-original-request.** OkHttp `Authenticator` queues concurrent calls behind single refresh in-flight, replays original once, drops to Login only if refresh itself 401s. Backend: `POST /auth/refresh`.
 - [x] **Typed endpoint namespaces** — Retrofit interface per domain (`TicketsApi`, `CustomersApi`, …). No ad-hoc string paths in repositories.
-- [ ] **Multipart upload helper** (`ApiClient.upload(file, to, fields)`) for photos, receipts, avatars. Runs as WorkManager `Worker` so uploads survive app kill + Doze + OEM task killers.
+- [x] **Multipart upload helper** (`ApiClient.upload(file, to, fields)`) for photos, receipts, avatars. Runs as WorkManager `Worker` so uploads survive app kill + Doze + OEM task killers. (commit da67d14 — `util/MultipartUpload.kt` + `data/sync/MultipartUploadWorker.kt`; path-sandbox validated; idempotency key deduplicates)
 - [~] **Retries with jitter** on transient network failures (5xx, SocketTimeout, UnknownHostException). Respect `Retry-After` on 429.
 - [~] **Offline detection banner** driven by `ConnectivityManager.NetworkCallback` — sticky banner at top of scaffold with "Offline — showing cached data" copy + Retry button.
 
@@ -202,7 +202,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
 - [ ] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag.
 - [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
-- [ ] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`.
+- [~] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`. (commit a629898 — intent-filter + autoVerify added; `assetlinks.json` server-side deploy pending)
 
 ### 1.6 Environment & config
 - [x] `AndroidManifest.xml` permission audit — declare only what's used; runtime-request each lazy.
@@ -210,8 +210,8 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [~] `minSdk = 26` (Android 8.0 — covers foreground service + adaptive icons); `targetSdk = 36` once Android 16 stable (currently 35); `compileSdk = 36`.
 - [~] Required runtime permissions prompted just-in-time: `CAMERA`, `READ_MEDIA_IMAGES` (Android 13+) / `READ_EXTERNAL_STORAGE` (≤12), `POST_NOTIFICATIONS` (13+), `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (12+), `ACCESS_FINE_LOCATION` (geofence/tech dispatch — 33+ conditional), `RECORD_AUDIO` (SMS voice memo optional), `READ_CONTACTS` (import), `WRITE_EXTERNAL_STORAGE` never (use SAF).
 - [~] Foreground service type declarations per Android 14+ requirement: `dataSync`, `connectedDevice`, `shortService`, `mediaPlayback` (call ringing), `specialUse` (repair-in-progress live update).
-- [ ] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+).
-- [ ] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs.
+- [x] `queries` manifest entries — declare intent filters for Tel, Sms, Maps, Email (package visibility on Android 11+). (commit a629898 — `<queries>` block added)
+- [x] Gradle version catalog (`libs.versions.toml`) — move deps from inline to catalog; renovate bot opens PRs. (commit d97dfa7 — `gradle/libs.versions.toml` + `build.gradle.kts` + `app/build.gradle.kts`)
 - [ ] Room `AutoMigration` declared where shape changes; manual `Migration` for data shifts. Immutable once shipped.
 - [ ] Migration-tracking table records applied names; app refuses to launch if known migration missing.
 - [ ] Forward-only (no downgrades). Reverted client version → "Database newer than app — contact support".
@@ -224,21 +224,21 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Lint rule bans `object Foo { val shared = ... }` singletons except Hilt-provided; also bans `GlobalScope.launch`.
 - [ ] Widgets (Glance) + App-Actions shortcuts import `:core` module + register own Hilt sub-scope.
 - [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
-- [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss).
-- [ ] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor.
+- [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
+- [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
 - [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
-- [ ] Error-recovery UI per taxonomy case lives in each feature module.
-- [ ] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss.
-- [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove.
-- [ ] Undo trigger: Snackbar action button; Ctrl+Z on hardware keyboard (tablet/ChromeOS); `TYPE_CONTEXT_CLICK` long-press on phone; shake gesture optional.
-- [ ] Redo: Ctrl+Shift+Z.
-- [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed".
-- [ ] Audit integration: each undo creates audit entry (not silent).
+- [x] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee + d90f652 — `ErrorRecovery.recover()` util + `Action` enum + `ui/components/ErrorSurface.kt` composable with compact/full layouts, icon mapping, destructive styling; feature modules call `ErrorSurface(error, onAction)` and wire actions)
+- [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
+- [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
+- [~] Undo trigger: Snackbar action button; Ctrl+Z on hardware keyboard (tablet/ChromeOS); `TYPE_CONTEXT_CLICK` long-press on phone; shake gesture optional. (commit 2e53665 — util ready; Snackbar+chord wiring pending)
+- [~] Redo: Ctrl+Shift+Z. (commit 2e53665 — redo logic in util; chord wiring pending)
+- [x] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed". (commit 2e53665 — `compensatingSync` contract + `UndoEvent.Failed`)
+- [x] Audit integration: each undo creates audit entry (not silent). (commit 2e53665 — `UndoEvent.Undone` / `UndoEvent.Redone` carry `auditDescription`)
 - [x] Activity lifecycle: `Application.onCreate` → init Hilt + WorkManager + Timber + NotificationChannels; `Activity.onStart` → resolve last tenant, attempt token refresh in background Worker.
 - [~] Foreground: `Lifecycle.ON_RESUME` → kick delta-sync Worker, refresh push token, ping `last seen`; resume paused animations; re-evaluate lock-screen gate (biometric required if inactive > 15min). (`BizarreCrmApp` registers `ProcessLifecycleOwner` observer; ON_START re-bootstraps the session, runs `SyncWorker.syncNow`, and reconnects WebSocket if dropped. Push-token refresh + lock-gate re-eval still pending.)
-- [ ] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required.
-- [ ] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy.
-- [ ] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data.
+- [~] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 + 39556c7 — ON_STOP reschedules delta-sync via SyncWorker KEEP + calls `ClipboardUtil.clearSensitiveIfPresent`; FLAG_SECURE + draft flush still pending)
+- [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
+- [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
 - [ ] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes.
 - [ ] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68).
 - [ ] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact.
@@ -247,23 +247,23 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
-- [ ] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min.
-- [ ] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings.
-- [ ] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error.
-- [ ] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative.
-- [ ] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile.
-- [ ] Client rate limit: token-bucket per endpoint category — read 60/min, write 20/min; excess queued with backoff.
-- [ ] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal.
-- [ ] UI: silent unless sustained; show "Slow down" banner if queue > 10.
-- [ ] Debug drawer exposes current bucket state per endpoint.
-- [ ] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead).
-- [ ] Auto-save drafts every 2s to Room for ticket-create, customer-create, SMS-compose; never lost on crash/background.
-- [ ] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview.
-- [ ] Age indicator on draft ("Saved 3h ago").
-- [ ] One draft per type (not multi); explicit discard required before starting new.
-- [ ] Sensitive: drafts encrypted at rest; PIN/password fields never drafted.
-- [ ] Drafts stay on device (no cross-device sync — avoid confusion).
-- [ ] Auto-delete drafts older than 30 days.
+- [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
+- [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 + a762605 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; mounted in root Scaffold when logged in)
+- [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
+- [x] Timestamp logging: all client timestamps include UTC offset; server stamps its own time; audit uses server time as authoritative. (commit 5ba8e58 — `ClockDrift.toAuditTimestamp()`)
+- [x] Offline timer: record both device time + offline duration on sync-pending ops so server can reconcile. (commit 5ba8e58 — `ClockDrift.recordPendingOp()` + `PendingOpTimestamps`)
+- [x] Client rate limit: token-bucket per endpoint category — read 60/min, write 20/min; excess queued with backoff. (commit 51a2995 + hardening b10f8ca — `util/RateLimiter.kt` + `RateLimitInterceptor.kt`; fail-fast when pause > timeout; jitter on wake)
+- [x] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal. (commit 51a2995 + hardening b10f8ca — `recordServerHint()`; interceptor synthesizes 429 instead of re-firing request when `acquire()` returns false)
+- [x] UI: silent unless sustained; show "Slow down" banner if queue > 10. (commit 51a2995 + 0e82441 + a762605 — `ui/components/RateLimitBanner.kt` collects `RateLimiter.queueState`, tertiaryContainer surface + depth readout; mounted in root Scaffold when logged in)
+- [~] Debug drawer exposes current bucket state per endpoint. (commit 51a2995 — `StateFlow<Map<Category, BucketState>>` exposed; drawer UI pending)
+- [x] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead). (commit 51a2995 — `isExempt()` matches `/auth/*` and tag `sync-flush`)
+- [x] Auto-save drafts every 2s to Room for ticket-create, customer-create, SMS-compose; never lost on crash/background. (commit 9fb71216 + c7dd6f5 + 7656ab2 + bec40b4 + 8f3264f — `DraftStore` + 2s debounce shipped for TicketCreate / CustomerCreate / SmsThread compose / ExpenseCreate via per-VM `onFieldChanged()` + `DraftType` enum extended with EXPENSE)
+- [x] Recovery prompt on next launch or screen open: "You have an unfinished <type> — Resume / Discard" sheet with preview. (commit 9fb71216 + e8377a7 — `ui/components/DraftRecoveryPrompt.kt` ModalBottomSheet consumes `DraftStore.Draft`; 140-char preview + relative-age "Saved Nh ago" + Discard/Resume actions; 19 pure-JVM tests)
+- [x] Age indicator on draft ("Saved 3h ago"). (commit 9fb71216 + e8377a7 — `formatDraftAge(savedAtMs, nowMs)` pure helper with 5 branches + clock-skew guard; rendered in DraftRecoveryPrompt)
+- [x] One draft per type (not multi); explicit discard required before starting new. (commit 9fb71216 — unique index on `(user_id, draft_type)`)
+- [x] Sensitive: drafts encrypted at rest; PIN/password fields never drafted. (commit 9fb71216 — `sanitiseDraftPayload()` strips 5 key families; SQLCipher at-rest)
+- [x] Drafts stay on device (no cross-device sync — avoid confusion). (commit 9fb71216 — KDoc asserts; no SyncQueue entries)
+- [x] Auto-delete drafts older than 30 days. (commit 9fb71216 — `pruneOlderThanDays(30)`)
 
 ---
 ## 2. Authentication & Onboarding
@@ -271,9 +271,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
 ### 2.1 Setup-status probe
-- [ ] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, Android hits this before rendering login form.
-- [ ] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login.
-- [ ] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen.
+- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, Android hits this before rendering login form. (commit 038db99 — `AuthApi.getSetupStatus()` + `SetupStatusResponse` DTO)
+- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (commit 038db99 — `SetupStatusGateScreen` + LoginScreen banner; `InitialSetupFlow` navigation deferred to §2.10)
+- [~] **Expected UX:** transparent to user; ≤400ms overlay `CircularProgressIndicator` with "Connecting to your server…" label. Fail → inline retry on login screen. (commit 038db99 — probe non-blocking, overlay + inline retry implemented; `needsSetup=true` shows informational banner pending §2.10 wizard)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage in EncryptedSharedPreferences.
@@ -299,15 +299,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [~] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
-- [ ] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present.
-- [ ] **Paste-from-clipboard** auto-detect 6-digit string.
-- [ ] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
+- [~] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep)
+- [x] **Paste-from-clipboard** auto-detect 6-digit string. (commit 8301aa5 — `detectOtpFromClipboard` + `OtpParser.extractOtpDigits`)
+- [blocked: policy — 2FA disable not allowed per user directive 2026-04-23. Android client must never surface a "Disable 2FA" action; server endpoint may exist but UI is intentionally absent.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; `POST /auth/change-pin` with `{ newPin }`; server bcrypts; store hash mirror in EncryptedSharedPreferences. (Settings → Set up PIN routes to `PinSetupScreen` via `Screen.PinSetup`. Local hash mirror not stored — server is source of truth.)
 - [x] **Verify PIN** — `POST /auth/verify-pin` with `{ pin }` → `{ verified }`.
 - [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (Settings row label flips to "Change PIN" when `pinPreferences.isPinSet`; routes to same `PinSetupScreen`.)
-- [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in top bar.
+- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in top bar. (commit 69e3c1b — `ui/screens/settings/SwitchUserScreen.kt` reuses PinKeypad; Settings row + AppNavGraph route; long-press avatar path deferred)
 - [~] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (Cold-start + timeout grace via `PinPreferences.shouldLock`; Settings slider + "Lock now" action pending.)
 - [x] **Keypad UX** — custom numeric keypad Composable; `HapticFeedbackConstants.VIRTUAL_KEY` per tap, `HapticFeedbackConstants.REJECT` on wrong PIN, lockout after 5 wrong tries → full re-auth.
 - [x] **Forgot PIN** → "Sign out and re-login" destructive action.
@@ -315,11 +315,11 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.6 Biometric (fingerprint / face)
 - [x] **Manifest:** no permission required (BiometricPrompt handles).
-- [ ] **Enable toggle** — Settings → Security (availability via `BiometricManager.canAuthenticate(BIOMETRIC_STRONG or BIOMETRIC_WEAK)`).
-- [ ] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth.
-- [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `BiometricPrompt.CryptoObject` (Android Keystore-backed AES256) and auto-POST `/auth/login`.
+- [x] **Enable toggle** — Settings → Security (availability via `BiometricManager.canAuthenticate(BIOMETRIC_STRONG or BIOMETRIC_WEAK)`). (commit 4d3ee12 — `ui/screens/settings/SecurityScreen.kt`)
+- [x] **Unlock chain** — bio → fail-3x → PIN → fail-5x → full re-auth. (commit 4d3ee12 — policy documented + `lockNow()` + PinPreferences hardLockout)
+- [~] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `BiometricPrompt.CryptoObject` (Android Keystore-backed AES256) and auto-POST `/auth/login`. (commit 4d3ee12 — Keystore key + CryptoObject scaffolded; credential-decrypt TODO pending EncryptedSharedPreferences credential store)
 - [~] **Respect disabled biometry** gracefully — never crash, fall back to PIN silently.
-- [ ] **Re-enrollment detection** — Keystore invalidates key on new biometric enrollment when `setInvalidatedByBiometricEnrollment(true)`; catch `KeyPermanentlyInvalidatedException` → prompt user to re-enable biometric.
+- [x] **Re-enrollment detection** — Keystore invalidates key on new biometric enrollment when `setInvalidatedByBiometricEnrollment(true)`; catch `KeyPermanentlyInvalidatedException` → prompt user to re-enable biometric. (commit 4d3ee12 — `handleReEnrollRequired()` + ConfirmDialog)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
 - [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
@@ -337,7 +337,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.9 Change password (in-app)
 - [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
-- [ ] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option.
+- [x] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option. (commit c7dd9852 — `ui/screens/settings/ChangePasswordScreen.kt` + SecurityScreen row + AppNavGraph route; `current_password`/`new_password` body matches server)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
 - [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up 13-step wizard mirroring web (/setup).
@@ -352,18 +352,18 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.12 Error / empty states
 - [x] Wrong password → inline error + shake animation (`Animatable.animateTo(10f, tween(50))` back and forth) + `HapticFeedbackConstants.REJECT`.
-- [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address.
-- [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
-- [ ] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`).
-- [ ] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only).
-- [ ] TLS pin failure → red error dialog "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
+- [~] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no mail intent rather than wrong address. (commit c04bcee — Android: `ui/components/AccountLockedModal.kt` + `TenantsApi.getSupportContact()` + `TenantSupportDto`; graceful 404 fallback to no-intent copy; no hardcoded email. Server endpoint `GET /tenants/me/support-contact` still pending.)
+- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (commit 049b35e — LoginScreen catch UnknownHostException/ConnectException)
+- [x] Rate-limit 429 → banner with human-readable countdown (parse `Retry-After`). (commit 049b35e — 429 banner with 1s ticker + disabled Sign In button)
+- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (commit 049b35e — NetworkMonitor.isOnline observed; offline banner + disabled Sign In button)
+- [x] TLS pin failure → red error dialog "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (commit 7eb8c90 — `ui/components/TlsPinFailureDialog.kt` non-dismissable AlertDialog + "Copy details" + "Sign out"; caller wires show/hide from CertificatePinner exception)
 
 ### 2.13 Security polish
 - [x] `FLAG_SECURE` on password / 2FA / PIN windows to block screenshots + screen capture + recent-app preview.
 - [x] `Window.setRecentsScreenshotEnabled(false)` on Android 12+ for sensitive activities.
 - [x] Clipboard clears OTP after 30s via `ClipboardManager.clearPrimaryClip()` + `postDelayed`. (`util/ClipboardUtil.kt`: `copySensitive` auto-clear + `detectOtp` for paste).
 - [x] Timber never logs `password`, `accessToken`, `refreshToken`, `pin`, `backupCode` (Redactor interceptor at Timber tree level). (`data/remote/RedactingHttpLogger.kt` masks 14 sensitive JSON keys + form-urlencoded variants. Wired into HttpLoggingInterceptor.)
-- [ ] Challenge token expires silently after 10min → prompt restart login.
+- [x] Challenge token expires silently after 10min → prompt restart login. (commit c04bcee — LoginUiState `challengeTokenExpiresAtMs` + ticker; MM:SS countdown under Submit turns red < 60s; on expiry: snackbar "Sign-in timed out. Please start over." + reset to Credentials step preserving username)
 
 ### 2.14 Shared-device mode (counter / kiosk multi-staff)
 - [ ] Use case: counter tablet shared by 3 cashiers.
@@ -391,16 +391,16 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Digits shown as dots after entry; "Show" tap-hold reveals briefly.
 
 ### 2.16 Session timeout policy
-- [ ] Threshold: inactive > 15m → require biometric re-auth.
-- [ ] Threshold: inactive > 4h → require full password.
-- [ ] Threshold: inactive > 30d → force full re-auth including email.
-- [ ] Activity signals: user touches (`Window.Callback.dispatchTouchEvent`), scroll, text entry.
-- [ ] Activity exclusions: silent push, background sync don't count.
-- [ ] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons.
-- [ ] Countdown ring visible during warning.
-- [ ] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout.
-- [ ] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d.
-- [ ] Sovereignty: no server-side idle detection; purely device-local.
+- [x] Threshold: inactive > 15m → require biometric re-auth. (commit b35d122 — `util/SessionTimeout.kt`)
+- [x] Threshold: inactive > 4h → require full password. (commit b35d122)
+- [x] Threshold: inactive > 30d → force full re-auth including email. (commit b35d122)
+- [x] Activity signals: user touches (`Window.Callback.dispatchTouchEvent`), scroll, text entry. (commit b35d122 — `MainActivity.dispatchTouchEvent` → `sessionTimeout.onActivity()`)
+- [x] Activity exclusions: silent push, background sync don't count. (commit b35d122 — KDoc enforces onActivity is user-touch only)
+- [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (commit b35d122 + ab6f9169 + a762605 — `ui/components/SessionTimeoutOverlay.kt` Dialog collects `SessionTimeout.state`; mounted in root Scaffold when logged in; sign-out invokes `authPreferences.clear()`)
+- [x] Countdown ring visible during warning. (commit b35d122 + ab6f9169 + a762605 — `CircularProgressIndicator` ring with remaining-seconds overlay, ReduceMotion-aware, mounted in root)
+- [~] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout. (commit b35d122 — `requireReAuthNow(level)` hook exposed; composable wiring pending)
+- [x] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d. (commit b35d122 — `Config` data class + `require()`)
+- [x] Sovereignty: no server-side idle detection; purely device-local. (commit b35d122 — KDoc)
 
 ### 2.17 Remember-me scope
 - [x] Remember email / username only (never password without biometric bind).
@@ -1470,8 +1470,8 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [x] Base list + summary header.
 - [~] **Filters** — category / date range / employee / reimbursable flag / approval status.
 - [ ] **Sort** — date / amount / category.
-- [ ] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending.
-- [ ] **Category breakdown pie** (tablet/ChromeOS).
+- [~] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending. (commit f8f6a90 — By-category donut pie shipped; Total tile + Reimbursable-pending tile pending)
+- [x] **Category breakdown pie** (tablet/ChromeOS). (commit f8f6a90 — `ExpenseCategoryPieChart.kt` Canvas donut + tappable legend + collapsible card on ExpenseListScreen; ReduceMotion-aware)
 - [ ] **Export CSV** via SAF.
 - [ ] **Swipe** — edit / delete.
 - [ ] **Context menu** — Open, Duplicate, Delete.
@@ -1726,8 +1726,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Schedule report** — `GET /reports/scheduled`; create schedule; auto-email.
 
 ### 15.2 Sales report
-- [ ] Revenue line chart (Vico `LineCartesianLayer`) + period compare.
-- [ ] Drill-through: tap chart point → sales of that day.
+- [x] Revenue line chart (Vico `LineCartesianLayer`) + period compare. (commit 10fa332 — `RevenueOverTimeLineChart` + `SalesByDayBarChart` + donut `CategoryBreakdownPieChart` in `ReportsCharts.kt`; Overview tab added to ReportsScreen)
+- [~] Drill-through: tap chart point → sales of that day. (commit 10fa332 — chart surfaces live; tap-to-drill pending)
 - [ ] Top-items table; top-customers table.
 - [ ] Gross / net / refunds / tax split.
 - [ ] Export CSV.
@@ -1992,15 +1992,15 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`.
 
 ### 19.4 Appearance
-- [~] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`).
-- [ ] Dynamic color on/off (Android 12+).
+- [x] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`). (commit 6cfcefa — `ui/screens/settings/ThemeScreen.kt` with radio rows; `AppPreferences.darkModeFlow` + MainActivity observes via `collectAsState`; no activity recreate needed)
+- [x] Dynamic color on/off (Android 12+). (commit 6cfcefa — ThemeScreen Switch gated on `SDK_INT >= S`; `AppPreferences.dynamicColorFlow` → BizarreCrmTheme)
 - [ ] Tenant accent override color picker.
 - [ ] Density mode (§3.18).
 - [ ] Font-scale preview.
 - [ ] High-contrast toggle (swaps to AA 7:1 palette).
 
 ### 19.5 Language & region
-- [ ] Per-app language via `LocaleManager.setApplicationLocales` (Android 13+); pre-13 falls back to in-app `ConfigurationCompat` + `AppCompatDelegate.setApplicationLocales`.
+- [x] Per-app language via `LocaleManager.setApplicationLocales` (Android 13+); pre-13 falls back to in-app `ConfigurationCompat` + `AppCompatDelegate.setApplicationLocales`. (commit d3d546c — `util/LanguageManager.kt` + `ui/screens/settings/LanguageScreen.kt` + `locales_config.xml`)
 - [ ] Timezone override.
 - [ ] Date / time / number formats follow locale.
 - [ ] Currency display override (§5.17).
@@ -2311,8 +2311,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
 
 ### 24.1 Glance widgets
-- [ ] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
-- [ ] My Queue widget — shows 3 next tickets; tap → ticket detail.
+- [blocked: deps — `androidx.glance:glance-appwidget` absent from version catalog; classic `DashboardWidgetProvider` (RemoteViews) ships today. Unblock by adding `androidx.glance:glance-appwidget:1.1.0` to `gradle/libs.versions.toml` + `app/build.gradle.kts` (note: must be done under policy review — Glance adds ~200KB + another artifact).] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
+- [blocked: same — glance dep] My Queue widget — shows 3 next tickets; tap → ticket detail.
 - [ ] Unread SMS widget.
 - [ ] Clock-in/out toggle widget.
 - [ ] Low-stock widget.
@@ -2438,9 +2438,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 27. Internationalization & Per-App Language
 
 ### 27.1 Locale handling
-- [ ] Per-app language (Android 13+) via `LocaleManager.setApplicationLocales(LocaleList.forLanguageTags("es-MX"))`.
-- [ ] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply.
-- [ ] Settings → Language picker lists all translated locales plus "System default".
+- [x] Per-app language (Android 13+) via `LocaleManager.setApplicationLocales(LocaleList.forLanguageTags("es-MX"))`. (commit d3d546c — `util/LanguageManager.kt` with TIRAMISU-gated LocaleManager path)
+- [x] Pre-13: `AppCompatDelegate.setApplicationLocales`; on app restart re-apply. (commit d3d546c + 112b67f — API 26-32 Configuration override + `Activity.recreate()`; `LanguageManager.wrapContext` now called from `MainActivity.attachBaseContext` so cold starts honor persisted locale pre-Hilt)
+- [x] Settings → Language picker lists all translated locales plus "System default". (commit d3d546c — `ui/screens/settings/LanguageScreen.kt` radio list + Settings row with current-language subtitle; `locales_config.xml` declares en/es/fr)
 
 ### 27.2 Translations
 - [ ] Phase-1 languages: en-US, es-US, es-MX, fr-CA.
@@ -4094,3 +4094,519 @@ All events target tenant server (§32).
 ## Changelog
 
 - 2026-04-20 — Initial skeleton. Android-native adaptation of iOS ActionPlan. Content fills in batch; every item starts `[ ]`.
+
+## Web-Parity Backend Contracts (2026-04-23)
+
+New server endpoints built to close mobile → web parity gaps flagged in `todo.md` (SCAN-472, SCAN-475, SCAN-478-482, SCAN-484-489, SCAN-497). All routes require a Bearer JWT (`authMiddleware` applied at parent mount). Per-endpoint role gates + rate-limits + input validation are enforced inside each router. Response shape is the project convention `{ success: true, data: <payload> }`.
+
+Migrations added this wave: **120_expenses_approval_mileage_perdiem.sql**, **121_shifts_timeoff_timesheet.sql**, **122_inventory_variants_bundles.sql**, **123_recurring_invoices.sql**, **124_activity_notifprefs_heldcarts.sql**.
+
+Cron added: `startRecurringInvoicesCron` — fires every 15 min from `index.ts` post-listen, scanning every tenant DB for active `invoice_templates` whose `next_run_at <= now()`, generating invoices, advancing the cycle.
+
+---
+
+### 1. Expense Approvals + Mileage + Per-Diem (SCAN-480/481/482)
+
+Base: `/api/v1/expenses/…`. Approve/deny require manager or admin. Mileage/per-diem use the same approval workflow as general expenses.
+
+**GET /** — extended with two new query filters:
+| Param | Values |
+|---|---|
+| `status` | `pending` / `approved` / `denied` |
+| `expense_subtype` | `general` / `mileage` / `perdiem` |
+
+**POST /mileage** — compute `amount_cents = round(miles * rate_cents)`.
+```json
+{
+  "vendor": "Personal vehicle",
+  "description": "Customer site visit",
+  "incurred_at": "2026-04-23",
+  "miles": 42.5,
+  "rate_cents": 67,
+  "category": "Travel",
+  "customer_id": 101
+}
+```
+Constraints: `miles` 0–1000, `rate_cents` 1–50000, `customer_id` optional.
+
+**POST /perdiem** — compute `amount_cents = days * rate_cents`.
+```json
+{
+  "description": "Conference travel — Atlanta",
+  "incurred_at": "2026-04-20",
+  "days": 3,
+  "rate_cents": 7500,
+  "category": "Per Diem"
+}
+```
+Constraints: `days` 1–90, `rate_cents` 1–50000.
+
+**POST /:id/approve** — manager/admin. Empty body. Sets `status=approved` + `approved_by_user_id` + `approved_at`.
+
+**POST /:id/deny** — manager/admin. Body `{ "reason": "..." }` (≤500 chars). Sets `status=denied` + `denial_reason`.
+
+Response shapes mirror existing expense row + new columns (`status`, `expense_subtype`, `mileage_miles`, `mileage_rate_cents`, `perdiem_days`, `perdiem_rate_cents`, `approved_by_user_id`, `approved_at`, `denial_reason`).
+
+---
+
+### 2. Shift Schedule + Time-Off + Timesheet (SCAN-475/484/485)
+
+#### Shifts — `/api/v1/schedule`
+- `GET /shifts?user_id=&from_date=&to_date=` — non-managers see own only.
+- `POST /shifts` (manager+) `{ user_id, start_at, end_at, role_tag?, location_id?, notes? }`.
+- `PATCH /shifts/:id` (manager+) — partial.
+- `DELETE /shifts/:id` (manager+).
+- `POST /shifts/:id/swap-request` (shift owner only) `{ target_user_id }` → returns pending swap row.
+- `POST /swap/:requestId/accept` (target user) — transfers shift.user_id.
+- `POST /swap/:requestId/decline` (target user).
+- `POST /swap/:requestId/cancel` (requester only, only while pending).
+
+Example create:
+```json
+POST /api/v1/schedule/shifts
+{ "user_id": 3, "start_at": "2026-05-01T09:00:00", "end_at": "2026-05-01T17:00:00",
+  "role_tag": "tech", "location_id": 1, "notes": "Opening shift" }
+```
+
+#### Time-off — `/api/v1/time-off`
+- `POST /` — self-service `{ start_date, end_date, kind: "pto"|"sick"|"unpaid", reason? }`.
+- `GET /?user_id=&status=` — self by default; manager+ sees all.
+- `POST /:id/approve` (manager+).
+- `POST /:id/deny` (manager+) `{ reason? }`.
+
+Writes dual-column (`approver_user_id` + legacy `approved_by_user_id`, `decided_at` + legacy `approved_at`) for migration-096 backward compatibility.
+
+#### Timesheet — `/api/v1/timesheet`
+- `GET /clock-entries?user_id=&from_date=&to_date=` — manager+ or self.
+- `PATCH /clock-entries/:id` (manager+) `{ clock_in?, clock_out?, notes?, reason }`. `reason` REQUIRED. Audit row inserted into `clock_entry_edits` with before/after JSON. `audit()` fires with `event='clock_entry_edited'`.
+
+---
+
+### 3. Inventory Variants + Bundles (SCAN-486/487)
+
+Mutating endpoints gated by `requirePermission('inventory.adjust')`. Money stored as INTEGER cents per SEC-H34 policy.
+
+#### Variants — `/api/v1/inventory-variants`
+- `GET /items/:itemId/variants?active_only=true|false` — list.
+- `POST /items/:itemId/variants` `{ sku, variant_type, variant_value, retail_price_cents, cost_price_cents?, in_stock? }`.
+- `PATCH /variants/:id` — partial.
+- `DELETE /variants/:id` — soft (`is_active=0`).
+- `PATCH /variants/:id/stock` `{ delta, reason }` — atomic in tx. Rejects negative result.
+
+Example:
+```json
+POST /api/v1/inventory-variants/items/42/variants
+{ "sku": "SCRN-IPHONE14-BLK", "variant_type": "color", "variant_value": "Black",
+  "retail_price_cents": 8999, "cost_price_cents": 4500, "in_stock": 10 }
+```
+
+#### Bundles — `/api/v1/inventory-bundles`
+- `GET /?page=&pagesize=&is_active=&keyword=` — list.
+- `GET /:id` — detail + resolved items array.
+- `POST /` `{ name, sku, retail_price_cents, description?, items:[{item_id, variant_id?, qty}] }`.
+- `PATCH /:id` — partial.
+- `DELETE /:id` — soft.
+- `POST /:id/items` `{ item_id, variant_id?, qty }`.
+- `DELETE /:id/items/:bundleItemId`.
+
+Audit events: `inventory_variant_*` (created/updated/deactivated/stock_adjusted), `inventory_bundle_*`.
+
+---
+
+### 4. Recurring Invoices + Credit Notes (SCAN-478/479/489) + cron
+
+#### Recurring Invoices — `/api/v1/recurring-invoices` (admin-only writes)
+- `GET /?page=&pagesize=&status=` — list templates.
+- `GET /:id` — detail + last 20 runs from `invoice_template_runs`.
+- `POST /` `{ name, customer_id, interval_kind: "daily"|"weekly"|"monthly"|"yearly", interval_count, start_date, line_items:[{description, quantity, unit_price_cents, tax_class_id?}], notes_template? }`.
+- `PATCH /:id` — partial (`status`, `next_run_at`, `notes_template`, `line_items`).
+- `POST /:id/pause` | `/resume` | `/cancel` — lifecycle transitions. Audited.
+
+Example:
+```json
+POST /api/v1/recurring-invoices
+{ "name": "Monthly hosting fee", "customer_id": 42,
+  "interval_kind": "monthly", "interval_count": 1, "start_date": "2026-05-01",
+  "line_items": [{ "description": "Hosting", "quantity": 1, "unit_price_cents": 4999 }] }
+```
+
+#### Cron — `startRecurringInvoicesCron`
+Runs every 15 minutes. Per tenant DB it executes:
+1. Atomically advance `next_run_at` (UPDATE ... WHERE next_run_at <= now()) → double-fire protection.
+2. Create `invoices` + `invoice_line_items` rows.
+3. Insert `invoice_template_runs` row (`succeeded=1`).
+On error: record `succeeded=0` + `error_message` and move on.
+
+#### Credit Notes — `/api/v1/credit-notes` (manager+ for apply/void)
+- `GET /?page=&pagesize=&status=&customer_id=`.
+- `GET /:id`.
+- `POST /` `{ customer_id, original_invoice_id, amount_cents, reason }`.
+- `POST /:id/apply` `{ invoice_id }` — tx: reduce `invoices.amount_due` by the credit; mark `status=applied`; audit.
+- `POST /:id/void` — only `open` notes. Audit.
+
+---
+
+### 5. Activity Feed + Notification Preferences + Held Carts (SCAN-488/472/497)
+
+#### Activity Feed — `/api/v1/activity`
+- `GET /?cursor=&limit=&entity_kind=&actor_user_id=` — cursor-based (monotonic id). Non-managers: `actor_user_id` clamped to `req.user.id`. Default 25, max 100.
+- `GET /me` — shortcut.
+
+Response:
+```json
+{ "success": true, "data": {
+  "events": [
+    { "id": 42, "actor_user_id": 1, "entity_kind": "ticket", "entity_id": 519,
+      "action": "status_changed", "created_at": "2026-04-23 14:00:00",
+      "actor_first_name": "Pavel", "actor_last_name": "Ivanov",
+      "metadata": { "from": "open", "to": "in_progress" } }
+  ],
+  "next_cursor": "41"
+}}
+```
+
+Helper `logActivity(adb, {...})` exported from `utils/activityLog.ts` — call from any route handler to emit an event (never throws; logs warn on failure).
+
+#### Notification Preferences — `/api/v1/notification-preferences`
+- `GET /me` — returns matrix backfilled with `enabled=true` defaults.
+- `PUT /me` `{ preferences: [{ event_type, channel, enabled, quiet_hours? }, ...] }` — batch upsert.
+
+Valid `event_type` (20): `ticket_created`, `ticket_status`, `invoice_created`, `payment_received`, `estimate_sent`, `estimate_signed`, `customer_created`, `lead_new`, `appointment_reminder`, `inventory_low`, `backup_complete`, `backup_failed`, `marketing_campaign`, `dunning_step`, `security_alert`, `system_update`, `review_received`, `refund_processed`, `expense_submitted`, `time_off_requested`.
+Valid `channel` (4): `push`, `in_app`, `email`, `sms`.
+
+Payload cap: 32 KB total. Rate limit 30/min.
+
+#### Held Carts — `/api/v1/pos/held-carts`
+- `GET /` — own active carts (admins may add `?all=1`).
+- `GET /:id` — own or admin.
+- `POST /` `{ cart_json, label?, workstation_id?, customer_id?, total_cents? }` — `cart_json` ≤ 64 KB.
+- `DELETE /:id` — soft via `discarded_at`. Audited.
+- `POST /:id/recall` — sets `recalled_at`, returns full row (client reads `cart_json` to restore).
+
+---
+
+### Security checklist applied to every endpoint in this wave
+
+- Integer IDs validated `Number.isInteger && > 0` before SQL.
+- Parameterized queries only — no string-interpolated SQL.
+- Length caps on every string field + byte caps on JSON bodies.
+- Role gates via `requireAdmin` / `requireManagerOrAdmin` / `requirePermission` from `middleware/auth.ts`.
+- Rate limits via `checkWindowRate` + `recordWindowAttempt` (not deprecated `recordWindowFailure`).
+- Audit writes via `audit(db, {...})` for every sensitive operation.
+- Money columns `INTEGER` cents with `CHECK >= 0` at schema level.
+- Soft deletes (`is_active=0` / `discarded_at`) to preserve FK integrity where needed.
+- Errors thrown via `AppError(msg, status)` — no raw `throw` leaking stack traces.
+
+### Registration order in `packages/server/src/index.ts`
+
+After existing `bench` mount, authenticated routes registered in this order:
+`/schedule`, `/time-off`, `/timesheet`, `/inventory-variants`, `/inventory-bundles`, `/recurring-invoices`, `/credit-notes`, `/activity`, `/notification-preferences`, `/pos/held-carts`.
+
+## Web-Parity Backend Contracts — Wave 2 (2026-04-23)
+
+Second wave of endpoints built to close mobile → web parity gaps. Closes SCAN-464, 465, 468, 469, 470, 490, 494, 495, 498. All routes JWT-gated (authMiddleware applied at parent mount in index.ts) EXCEPT the explicitly-public estimate-sign endpoints — those use signed single-use tokens as the credential.
+
+Migrations added: **125_labels_shared_device.sql**, **126_estimate_signatures_export_schedules.sql**, **127_sms_autoresponders_groups.sql**, **128_checklist_sla.sql**, **129_ticket_signatures_receipt_ocr.sql**.
+
+Crons added: **startDataExportScheduleCron** (hourly), **startSlaBreachCron** (every 5 min).
+
+---
+
+### 1. Ticket Labels + Shared-Device Mode (SCAN-470 / SCAN-469)
+
+#### Labels — `/api/v1/ticket-labels` (manager+ on writes)
+- `GET /?show_inactive=true|false` — list.
+- `POST /` `{ name, color_hex?, description?, sort_order? }` — 409 on UNIQUE(name) collision.
+- `PATCH /:id` — partial.
+- `DELETE /:id` — soft (`is_active=0`). Assignments preserved via CASCADE.
+- `POST /tickets/:ticketId/assign` `{ label_id }` — 409 if already assigned, 422 if label deactivated.
+- `DELETE /tickets/:ticketId/labels/:labelId`.
+- `GET /tickets/:ticketId` — list labels on ticket.
+
+Color validated against `/^#[0-9A-Fa-f]{6}$/`. Rate-limit 60 writes/min/user.
+
+#### Shared-Device Mode — settings config keys (admin PUT, any authed GET)
+Accessed via existing `/api/v1/settings/config`. New keys added to `ALLOWED_CONFIG_KEYS`:
+- `shared_device_mode_enabled` — `"0"` / `"1"` (default `"0"`)
+- `shared_device_auto_logoff_minutes` — integer string (default `"0"` disables)
+- `shared_device_require_pin_on_switch` — `"0"` / `"1"` (default `"1"`)
+
+Seed row `INSERT OR IGNORE` in migration 125 sets safe defaults.
+
+---
+
+### 2. Estimate E-Sign Public URL (SCAN-494) + Data-Export Schedules (SCAN-498)
+
+#### Estimate Sign Token
+Format: `base64url(estimateId) + '.' + hex(HMAC-SHA256(key, estimateId + '.' + expiresTs))`. Signing key: `ESTIMATE_SIGN_SECRET` env var (≥32 chars) OR HKDF-SHA256 over `JWT_SECRET` with info `estimate-sign`. Persisted as `sha256(rawToken)` in `estimate_sign_tokens.token_hash` — raw token returned to caller once, never stored.
+
+#### Authed endpoints
+- `POST /api/v1/estimates/:id/sign-url` (manager+) body `{ ttl_minutes?=4320 }` → `{ url, expires_at, estimate_id }`. Rate-limit 5/hr/estimate.
+- `GET /api/v1/estimates/:id/signatures` (manager+) — lists captured signatures (data URL omitted from list view).
+
+#### Public endpoints — NO JWT, token is credential, 10 req/hr per IP
+- `GET /public/api/v1/estimate-sign/:token` — returns estimate summary (line items, totals, customer name). 410 if consumed/expired.
+- `POST /public/api/v1/estimate-sign/:token` body `{ signer_name, signer_email?, signature_data_url }` — atomic tx marks token consumed + inserts `estimate_signatures` row + sets `estimates.status='signed'`. Size cap: decoded image ≤ 200 KB.
+
+#### Data-Export Schedules — `/api/v1/data-export/schedules` (admin-only)
+- `GET /`, `GET /:id` (with last 20 runs), `POST /`, `PATCH /:id`.
+- `POST /:id/pause` | `/resume` | `/cancel`.
+
+Create payload:
+```json
+{ "name": "Weekly full backup", "export_type": "full",
+  "interval_kind": "weekly", "interval_count": 1,
+  "start_date": "2026-04-28T00:00:00Z",
+  "delivery_email": "owner@example.com" }
+```
+`export_type`: `full|customers|tickets|invoices|inventory|expenses`. `interval_kind`: `daily|weekly|monthly`.
+
+#### Cron — `startDataExportScheduleCron`
+Hourly. Claims due schedules via atomic UPDATE. Heartbeat row inserted into `data_export_schedule_runs`. Full generation deferred until `dataExport.routes.ts` streaming logic is extracted to a service.
+
+---
+
+### 3. SMS Auto-Responders + Group Messaging (SCAN-495)
+
+#### Auto-Responders — `/api/v1/sms/auto-responders` (manager+ writes)
+- `GET /`, `GET /:id` (+ last 20 matches), `POST /`, `PATCH /:id`, `DELETE /:id`, `POST /:id/toggle`.
+
+`rule_json` shape:
+```json
+{ "type": "keyword", "match": "STOP", "case_sensitive": false }
+```
+or
+```json
+{ "type": "regex", "match": "\\bhours?\\b", "case_sensitive": false }
+```
+
+#### Groups — `/api/v1/sms/groups`
+- `GET /`, `GET /:id` (paginated members), `POST /`, `PATCH /:id`, `DELETE /:id` (manager+).
+- `POST /:id/members` (static groups only) `{ customer_ids: number[] }` (max 500) → `{ added, skipped }`.
+- `DELETE /:id/members/:customerId`.
+- `POST /:id/send` `{ body, send_at? }` → 202 with queued `sms_group_sends` row. Rate-limit 5/day/group. TCPA opt-in filter applied.
+- `GET /:id/sends` — past sends + status.
+
+#### `tryAutoRespond(adb, {from, body, tenant_slug?})` helper — exported from `services/smsAutoResponderMatcher.ts`. Returns `{ matched: boolean, response?, responder_id? }`. Never throws. Caller decides to send.
+
+---
+
+### 4. Daily Checklist (SCAN-468) + SLA Tracking (SCAN-464)
+
+#### Checklist — `/api/v1/checklists`
+- `GET /templates?kind=open|close|midday|custom&active=1`, `POST /templates` (manager+), `PATCH /templates/:id` (manager+), `DELETE /templates/:id` (manager+ soft).
+- `GET /instances?user_id=&template_id=&from_date=&to_date=` (non-managers scoped to self).
+- `POST /instances` `{ template_id }` → new instance with `status='in_progress'`, empty `completed_items_json="[]"`.
+- `PATCH /instances/:id` `{ completed_items_json?, notes?, status? }` — owner or manager+.
+- `POST /instances/:id/complete` → marks `status='completed'` + `completed_at`.
+- `POST /instances/:id/abandon`.
+
+`items_json` shape:
+```json
+[ { "id": "unlock_door", "label": "Unlock front door", "required": true } ]
+```
+
+#### SLA — `/api/v1/sla`
+- `GET /policies?active=1`, `POST /policies` (manager+), `PATCH /policies/:id` (manager+), `DELETE /policies/:id` (manager+ soft).
+- `GET /tickets/:ticketId/status` — computed SLA state: `{ policy, first_response_due_at, resolution_due_at, remaining_ms, breached, breach_log_entries }`.
+- `GET /breaches?from=&to=&breach_type=` (manager+).
+
+Policy payload:
+```json
+{ "name": "High Priority SLA", "priority_level": "high",
+  "first_response_hours": 2, "resolution_hours": 24,
+  "business_hours_only": true }
+```
+`priority_level`: `low|normal|high|critical`. Only one active policy per level (409 collision).
+
+`tickets` table extended with `sla_policy_id`, `sla_first_response_due_at`, `sla_resolution_due_at`, `sla_breached`. Call `computeSlaForTicket(adb, {...})` from ticket create/update (future wave).
+
+#### Cron — `startSlaBreachCron`
+Every 5 min. Per tenant: scans for first-response + resolution breaches (idempotent — only flips `sla_breached=0→1`). Inserts `sla_breach_log` rows. Broadcasts `sla_breached` WS event (best-effort; failures logged not rethrown).
+
+---
+
+### 5. Ticket Signatures (SCAN-465) + Expense Receipt OCR (SCAN-490)
+
+#### Signatures — `/api/v1/tickets/:ticketId/signatures`
+- `GET /` — list (data URL omitted from list).
+- `POST /` `{ signature_kind, signer_name, signer_role?, signature_data_url, waiver_text?, waiver_version? }`. Rate-limit 30/min/user. `signature_data_url` must start with `data:image/png;base64,` or `data:image/jpeg;base64,`; length ≤ 500k chars. IP from `req.socket.remoteAddress` (not `req.ip` — SCAN-194 anti-spoof). user_agent capped 500 chars.
+- `GET /:signatureId` — full row (includes data URL).
+- `DELETE /:signatureId` (admin+).
+
+`signature_kind`: `check_in|check_out|waiver|payment`. `signer_role`: `customer|technician|manager`.
+
+#### Receipt OCR — `/api/v1/expenses/:expenseId/receipt`
+Expense owner OR manager+ required.
+- `POST /` multipart `receipt` field. MIME allowlist: jpeg/png/webp/heic. Max 10 MB. Rate-limit 20/min. Stored at `packages/server/uploads/{tenant_slug}/receipts/{hex16}.{ext}`. `ocr_status='pending'` on insert.
+- `GET /` — returns current receipt + OCR state.
+- `DELETE /` — deletes file + row + NULLs the 4 `expenses.receipt_*` columns.
+
+OCR enum: `pending|processing|completed|failed`. Real OCR processor wired future wave — current `receiptOcr.ts` stub only enqueues + logs.
+
+---
+
+### Security checklist (uniform across wave 2)
+
+- Integer IDs: `validateId` / `validateIntId` accepts `unknown`, narrows, requires `Number.isInteger && > 0`.
+- Parameterized SQL only.
+- Length caps on every string field + byte caps on JSON bodies (32 KB notif prefs, 64 KB cart_json, 8 KB metadata, 200 KB signature data URL, 500 KB ticket signature, 10 MB receipt upload).
+- Role gates: `requireAdmin` / `requireManagerOrAdmin` / `requirePermission`.
+- Rate limits via `checkWindowRate` + `recordWindowAttempt`.
+- Audit writes via `audit(db, {...})` on every sensitive op.
+- Money columns INTEGER cents with CHECK >= 0.
+- Soft deletes where FK preservation needed.
+- HMAC signed tokens with `timingSafeEqual` + single-use consumed-at atomic flag for public estimate sign.
+- IP capture for audit via `req.socket.remoteAddress` (XFF-spoofable `req.ip` avoided per SCAN-194).
+
+### Registration order in `packages/server/src/index.ts`
+
+Wave 2 routes mount AFTER wave 1 block, in this order: `/ticket-labels`, `/public/api/v1/estimate-sign` (NO auth), `/estimates/:id` (authed sub-router), `/data-export/schedules`, `/sms/auto-responders`, `/sms/groups`, `/checklists`, `/sla`, `/tickets/:ticketId/signatures`, `/expenses/:expenseId/receipt`.
+
+Wave 2 crons start inside `server.listen` callback alongside wave-1 `recurringInvoicesCron`: `startDataExportScheduleCron` + `startSlaBreachCron`. Timer handles pushed into `backgroundIntervals[]` for graceful shutdown.
+
+## Web-Parity Backend Contracts — Wave 3 (2026-04-23)
+
+Third wave. Closes SCAN-462, 466, 467, 471, 473 + wires previously-exported helpers into existing route handlers (SMS auto-responder on inbound webhook; SLA compute on ticket create/update).
+
+Migrations 130–134. No new crons this wave. Public endpoints: `/public/api/v1/booking/*` (IP rate-limited).
+
+---
+
+### 1. Helper wiring (SCAN-465 / SCAN-495 follow-through)
+
+#### `tryAutoRespond` — wired into `sms.routes.ts` inbound webhook
+After successful inbound INSERT + opt-out filter, calls `tryAutoRespond(adb, {from, body, tenant_slug})`. On match: sends via `sendSmsTenant`, inserts outbound row, audits `sms_auto_responder_matched` with redacted phone. Entire block try/catch — autoresponder failure never breaks webhook 2xx response. Opt-out keywords (STOP/UNSUBSCRIBE/CANCEL) bypass auto-reply entirely.
+
+#### `computeSlaForTicket` — wired into `tickets.routes.ts` POST / + PATCH /:id
+On ticket create: after INSERT, captures `ticketCreatedAt`, calls `computeSlaForTicket(adb, {ticket_id, priority_level: body.priority || 'normal', created_at})` fail-open. On PATCH: if `body.priority !== undefined`, re-computes with new priority + existing created_at. Ticket operations never fail on SLA errors.
+
+Note: `tickets` table has no `priority` column yet (only `sla_policy_id`/`sla_*_due_at`/`sla_breached` from migration 128). The helper accepts whatever `priority_level` string is passed; migration adding the column lands in a future wave.
+
+---
+
+### 2. Field Service + Dispatch (SCAN-466)
+
+Base: `/api/v1/field-service`. Mobile §57 (iOS) / §59 (Android). Manager+ on writes; technician sees own assigned jobs only.
+
+#### Jobs
+- `GET /jobs?status=&assigned_technician_id=&from_date=&to_date=&page=&pagesize=`
+- `GET /jobs/:id`, `POST /jobs`, `PATCH /jobs/:id`, `DELETE /jobs/:id` (soft → `canceled`)
+- `POST /jobs/:id/assign` `{technician_id}` + `POST /jobs/:id/unassign`
+- `POST /jobs/:id/status` `{status, location_lat?, location_lng?, notes?}` — technician-self-or-manager+, state machine validated, inserts `dispatch_status_history`
+
+State machine:
+```
+unassigned → assigned → en_route → on_site → completed (terminal)
+any non-terminal → canceled (terminal)
+any non-terminal → deferred → unassigned
+```
+
+#### Routes
+- `GET /routes?technician_id=&from_date=&to_date=`, `GET /routes/:id`
+- `POST /routes` (manager+) `{technician_id, route_date, job_order_json: [job_ids]}` — validates jobs belong to tech
+- `PATCH /routes/:id`, `DELETE /routes/:id`
+- `POST /routes/optimize` `{technician_id, route_date, job_ids}` — returns `{proposed_order, total_distance_km, algorithm: "greedy-nearest-neighbor", note}`. Does NOT persist — caller follows up with POST /routes.
+
+lat/lng: required on create, validated `[-90,90]` / `[-180,180]`. Stored as REAL.
+
+Audit: `job_created`, `job_assigned`, `job_unassigned`, `job_canceled`, `job_status_changed`, `route_created`, `route_updated`, `route_deleted`.
+
+---
+
+### 3. Owner P&L Aggregator (SCAN-467)
+
+Base: `/api/v1/owner-pl`. **Admin-only**. 30 req/min/user rate-limit. 60s LRU cache (64 entries, keyed by tenant+from+to+rollup).
+
+#### `GET /summary?from=YYYY-MM-DD&to=YYYY-MM-DD&rollup=day|week|month`
+Default 30-day span, max 365 days. Response composes revenue/COGS/gross-profit/expenses/net-profit/tax/AR-aging/inventory-value/time-series/top-customers/top-services. All money INTEGER cents. SQL patterns reused from reports.routes.ts + dunning.routes.ts.
+
+#### `POST /snapshot` (admin) `{from, to}` — persists to `pl_snapshots` + returns `{snapshot_id, summary}`. Invalidates cache for that (tenant, from, to).
+#### `GET /snapshots`, `GET /snapshots/:id` — list + retrieve saved snapshots.
+
+---
+
+### 4. Multi-Location (core) (SCAN-462)
+
+Base: `/api/v1/locations`. SCOPE: **core only**. This wave adds the locations registry + user-location assignments. `location_id` is NOT yet on tickets/invoices/inventory/users — that is a separate migration epic.
+
+#### Location CRUD (admin on writes)
+- `GET /`, `GET /:id` (with user_count)
+- `POST /`, `PATCH /:id`, `DELETE /:id` (soft `is_active=0`; blocked if only active OR `is_default=1`)
+- `POST /:id/set-default` — trigger cascades other rows to `is_default=0`
+
+#### User-location assignment (manager+)
+- `GET /users/:userId/locations`, `POST /users/:userId/locations/:locationId` `{is_primary?, role_at_location?}`, `DELETE /users/:userId/locations/:locationId` (blocked if would leave user with 0)
+- `GET /me/locations`, `GET /me/default-location`
+
+Seeded row: `id=1 "Main Store" is_default=1` (single-location tenants see no behavior change).
+
+**Follow-up epic:** Add `location_id INTEGER REFERENCES locations(id)` to tickets / invoices / inventory / users, backfill to id=1, scope domain queries.
+
+---
+
+### 5. Appointment Self-Booking Admin + Public (SCAN-471)
+
+#### Admin — `/api/v1/booking-config` (admin writes)
+- Services CRUD: `GET /services`, `POST /services`, `PATCH /services/:id`, `DELETE /services/:id` (soft). Fields: name, description, duration_minutes, buffer_before_minutes, buffer_after_minutes, deposit_required, deposit_amount_cents, visible_on_booking, sort_order.
+- Hours: `GET /hours`, `PATCH /hours/:dayOfWeek` (dayOfWeek 0=Sun..6=Sat).
+- Exceptions: `GET /exceptions?from=&to=`, `POST /exceptions` `{date, is_closed, open_time?, close_time?, reason?}`, `PATCH /exceptions/:id`, `DELETE /exceptions/:id` (hard).
+
+Settings keys seeded via `store_config`: `booking_enabled`, `booking_min_notice_hours` (24), `booking_max_lead_days` (30), `booking_require_phone` (1), `booking_require_email` (0), `booking_confirmation_mode` (manual).
+
+#### Public — `/public/api/v1/booking` (NO auth, IP rate-limited)
+- `GET /config` (60/IP/hr) — returns enabled flag + visible services + weekly hours + next-90-day exceptions + store name/phone + settings. Returns `{enabled:false}` if booking_enabled != '1'.
+- `GET /availability?service_id=&date=YYYY-MM-DD` (120/IP/hr, `Cache-Control: max-age=60`) — returns 30-min slot array `[{start_time, end_time, available}]`. Empty on booking-disabled/closed-day/below-min-notice/past-max-lead-days.
+
+Availability algorithm:
+1. Validate service_id int + date regex
+2. Service active + visible on booking
+3. booking_exceptions first; fallback booking_hours
+4. Generate 30-min windows open..(close-duration)
+5. Subtract overlapping appointments (expanded by buffer_before + buffer_after)
+6. For today: filter slots before now + min_notice_hours
+7. Return with boolean `available` only — NEVER customer names/appointment ids
+
+---
+
+### 6. Sync Conflict Resolution (SCAN-473)
+
+Base: `/api/v1/sync/conflicts`. **Lightweight queue only** — declarative resolution. Server records the decision; client must replay the chosen version via regular entity endpoints.
+
+#### Report (any authed user, 60/min/user, 202 Accepted)
+- `POST /` `{entity_kind, entity_id, conflict_type, client_version_json, server_version_json, device_id?, platform?}`. Blobs ≤ 32KB each.
+
+`conflict_type`: `concurrent_update | stale_write | duplicate_create | deleted_remote`.
+`platform`: `android | ios | web`.
+
+#### Manage (manager+)
+- `GET /?status=&entity_kind=&page=&pagesize=` (default 25, max 100)
+- `GET /:id`
+- `POST /:id/resolve` `{resolution, resolution_notes?}` — `resolution`: `keep_client | keep_server | merge | manual | rejected`. Atomic status/resolution/resolved_by/at. Audit.
+- `POST /:id/reject` `{notes?}`
+- `POST /:id/defer`
+- `POST /bulk-resolve` `{conflict_ids: number[] (≤100), resolution}` — skips already-resolved silently.
+
+Limitations:
+- No merge engine. `resolution='merge'|'manual'` records intent only.
+- No entity writeback — client replays via regular routes.
+- Opaque blobs — server validates JSON + size only, no schema interpretation.
+- `device_id` client-supplied, not cryptographically verified.
+
+---
+
+### Security applied uniformly
+
+- Parameterized SQL; integer id guards; length/byte caps (conflict blobs 32KB/64KB, cart_json 64KB, signature data URL 500KB, receipt 10MB, notif prefs 32KB)
+- Role gates inside handlers: `requireAdmin` / `requireManagerOrAdmin` / `requirePermission`
+- Rate-limits via `checkWindowRate` + `recordWindowAttempt` (30/min writes generally; 60/IP/hr public booking; 120/IP/hr availability)
+- Audit via `audit(db, {...})` on every sensitive op
+- Money INTEGER cents with CHECK ≥ 0
+- Soft delete where FK preservation needed
+- IP via `req.socket.remoteAddress` (XFF-resistant, SCAN-194)
+- Public booking: no customer names/appointment IDs in responses; only boolean availability
+
+### Registration order in `packages/server/src/index.ts`
+
+Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
+`/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.

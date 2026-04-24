@@ -3,7 +3,7 @@ import Observation
 import Core
 import Networking
 
-// §63 ext — EstimateCreateViewModel (Phase 2)
+// §8 Phase 4 — EstimateCreateViewModel
 // Creates a new estimate via POST /api/v1/estimates.
 
 public let PendingSyncEstimateId: Int64 = -1
@@ -12,15 +12,19 @@ public let PendingSyncEstimateId: Int64 = -1
 @Observable
 public final class EstimateCreateViewModel {
 
-    // MARK: — Form fields
+    // MARK: - Header fields
 
     public var customerId: Int64?
     public var customerDisplayName: String = ""
-    public var subject: String = ""
     public var notes: String = ""
     public var validUntil: String = ""   // YYYY-MM-DD
+    public var discountText: String = "" // decimal string
 
-    // MARK: — Submit state
+    // MARK: - Line items
+
+    public var lineItems: [EstimateDraft.LineItemDraft] = []
+
+    // MARK: - Submit state
 
     public internal(set) var isSubmitting: Bool = false
     public internal(set) var errorMessage: String?
@@ -40,28 +44,88 @@ public final class EstimateCreateViewModel {
 
     public init(api: APIClient) { self.api = api }
 
-    // MARK: — Validation
+    // MARK: - Validation
 
-    public var isValid: Bool { customerId != nil }
+    public var isValid: Bool {
+        guard customerId != nil else { return false }
+        // All line items present must have a valid description, positive quantity, and non-negative price
+        let allItemsValid = lineItems.allSatisfy { item in
+            !item.description.trimmingCharacters(in: .whitespaces).isEmpty &&
+            (Double(item.unitPrice) != nil) &&
+            (Int(item.quantity).map { $0 > 0 } ?? false)
+        }
+        return allItemsValid
+    }
 
-    // MARK: — Submit
+    // MARK: - Computed totals
+
+    public var computedSubtotal: Double {
+        lineItems.reduce(0) { acc, item in
+            let qty = Double(item.quantity) ?? 0
+            let price = Double(item.unitPrice) ?? 0
+            return acc + qty * price
+        }
+    }
+
+    public var computedTax: Double {
+        lineItems.reduce(0) { acc, item in
+            let tax = Double(item.taxAmount) ?? 0
+            return acc + tax
+        }
+    }
+
+    public var computedDiscount: Double { Double(discountText) ?? 0 }
+
+    public var computedTotal: Double {
+        max(0, computedSubtotal - computedDiscount + computedTax)
+    }
+
+    // MARK: - Line item mutations
+
+    public func addLineItem() {
+        lineItems.append(EstimateDraft.LineItemDraft())
+        scheduleAutoSave()
+    }
+
+    public func removeLineItem(at offsets: IndexSet) {
+        lineItems.remove(atOffsets: offsets)
+        scheduleAutoSave()
+    }
+
+    public func removeLineItem(id: UUID) {
+        lineItems.removeAll { $0.id == id }
+        scheduleAutoSave()
+    }
+
+    // MARK: - Submit
 
     public func submit() async {
         guard !isSubmitting else { return }
         errorMessage = nil
+        validationErrors = [:]
         queuedOffline = false
         guard let cid = customerId else {
             errorMessage = "Pick a customer first."
             return
         }
+        guard isValid else {
+            errorMessage = "Check all line items — description and price are required."
+            return
+        }
+
         isSubmitting = true
         defer { isSubmitting = false }
 
+        let requestLineItems: [EstimateLineItemRequest]? = lineItems.isEmpty ? nil :
+            lineItems.compactMap { $0.toRequest() }
+        let discountValue: Double? = discountText.isEmpty ? nil : Double(discountText)
+
         let body = CreateEstimateRequest(
             customerId: cid,
-            subject: subject.isEmpty ? nil : subject,
             notes: notes.isEmpty ? nil : notes,
-            validUntil: validUntil.isEmpty ? nil : validUntil
+            validUntil: validUntil.isEmpty ? nil : validUntil,
+            discount: discountValue,
+            lineItems: requestLineItems
         )
 
         do {
@@ -76,7 +140,7 @@ public final class EstimateCreateViewModel {
     }
 }
 
-// MARK: — DraftRecoverable
+// MARK: - DraftRecoverable
 
 @MainActor
 extension EstimateCreateViewModel: DraftRecoverable {
@@ -84,7 +148,7 @@ extension EstimateCreateViewModel: DraftRecoverable {
     public nonisolated static let screenId = "estimate.create"
 }
 
-// MARK: — Draft lifecycle
+// MARK: - Draft lifecycle
 
 extension EstimateCreateViewModel {
 
@@ -114,9 +178,10 @@ extension EstimateCreateViewModel {
         guard let d = _pendingDraft else { return }
         customerId          = d.customerId.flatMap { Int64($0) }
         customerDisplayName = d.customerDisplayName ?? ""
-        subject             = d.subject
         notes               = d.notes
         validUntil          = d.validUntil
+        discountText        = d.discount
+        lineItems           = d.lineItems
         _pendingDraft = nil
         _draftRecord  = nil
     }
@@ -131,9 +196,10 @@ extension EstimateCreateViewModel {
         EstimateDraft(
             customerId: customerId.map { String($0) },
             customerDisplayName: customerDisplayName.isEmpty ? nil : customerDisplayName,
-            subject: subject,
             notes: notes,
             validUntil: validUntil,
+            discount: discountText,
+            lineItems: lineItems,
             updatedAt: Date()
         )
     }
@@ -143,7 +209,7 @@ extension EstimateCreateViewModel {
     }
 }
 
-// MARK: — AppError mapping
+// MARK: - AppError mapping
 
 extension EstimateCreateViewModel {
 

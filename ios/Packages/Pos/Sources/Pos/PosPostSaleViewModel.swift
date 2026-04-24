@@ -66,6 +66,7 @@ public final class PosPostSaleViewModel: Identifiable {
     public let methodLabel: String
     public let receiptText: String
     public let receiptHtml: String
+    public let receiptPayload: PosReceiptRenderer.Payload?
     public let invoiceId: Int64
     public let defaultEmail: String?
     public let defaultPhone: String?
@@ -82,6 +83,7 @@ public final class PosPostSaleViewModel: Identifiable {
         methodLabel: String,
         receiptText: String,
         receiptHtml: String,
+        receiptPayload: PosReceiptRenderer.Payload? = nil,
         invoiceId: Int64 = -1,
         defaultEmail: String? = nil,
         defaultPhone: String? = nil,
@@ -93,6 +95,7 @@ public final class PosPostSaleViewModel: Identifiable {
         self.methodLabel = methodLabel
         self.receiptText = receiptText
         self.receiptHtml = receiptHtml
+        self.receiptPayload = receiptPayload
         self.invoiceId = invoiceId
         self.defaultEmail = defaultEmail
         self.defaultPhone = defaultPhone

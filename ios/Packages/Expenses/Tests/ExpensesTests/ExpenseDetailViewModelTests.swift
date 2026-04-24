@@ -4,17 +4,33 @@ import XCTest
 
 // MARK: - Inline mock API client
 
-/// A minimal `APIClient` conformance for testing. Only `getExpense` is
-/// wired; all other protocol requirements throw an assertion failure so tests
-/// surface unexpected calls immediately.
+/// Shared mock `APIClient` used by all test files in this target.
+/// Add configurable outcomes here as new endpoint tests are needed.
 actor MockAPIClient: APIClient {
     enum Outcome {
         case success(Expense)
         case failure(Error)
     }
 
+    enum WriteOutcome {
+        case success(Int64)   // returned id
+        case failure(Error)
+    }
+
+    enum VoidOutcome {
+        case success
+        case failure(Error)
+    }
+
     var getExpenseOutcome: Outcome = .failure(MockError.notConfigured)
+    var putExpenseOutcome: WriteOutcome = .failure(MockError.notConfigured)
+    var postExpenseOutcome: WriteOutcome = .failure(MockError.notConfigured)
+    var deleteExpenseOutcome: VoidOutcome = .failure(MockError.notConfigured)
+
     private(set) var getExpenseCallCount: Int = 0
+    private(set) var putCallCount: Int = 0
+    private(set) var postCallCount: Int = 0
+    private(set) var deleteCallCount: Int = 0
 
     // MARK: - APIClient
 
@@ -33,11 +49,27 @@ actor MockAPIClient: APIClient {
     }
 
     func post<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
-        throw MockError.notConfigured
+        postCallCount += 1
+        switch postExpenseOutcome {
+        case .success(let id):
+            let resp = ExpenseWriteResponse(id: id)
+            guard let typed = resp as? T else { throw MockError.typeMismatch }
+            return typed
+        case .failure(let err):
+            throw err
+        }
     }
 
     func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
-        throw MockError.notConfigured
+        putCallCount += 1
+        switch putExpenseOutcome {
+        case .success(let id):
+            let resp = ExpenseWriteResponse(id: id)
+            guard let typed = resp as? T else { throw MockError.typeMismatch }
+            return typed
+        case .failure(let err):
+            throw err
+        }
     }
 
     func patch<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
@@ -45,7 +77,11 @@ actor MockAPIClient: APIClient {
     }
 
     func delete(_ path: String) async throws {
-        throw MockError.notConfigured
+        deleteCallCount += 1
+        switch deleteExpenseOutcome {
+        case .success: return
+        case .failure(let err): throw err
+        }
     }
 
     func getEnvelope<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> APIResponse<T> {
@@ -82,26 +118,42 @@ extension Expense {
         description: String? = "Desk lamp",
         date: String? = "2026-03-01",
         receiptPath: String? = nil,
+        receiptImagePath: String? = nil,
+        receiptUploadedAt: String? = nil,
         userId: Int64? = 5,
         firstName: String? = "Alice",
         lastName: String? = "Smith",
         createdAt: String? = "2026-03-01T09:00:00Z",
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        vendor: String? = nil,
+        taxAmount: Double? = nil,
+        paymentMethod: String? = nil,
+        notes: String? = nil,
+        isReimbursable: Bool? = nil,
+        status: String? = nil
     ) -> Expense {
         // Build via JSON round-trip. Use a plain JSONDecoder so that the
         // struct's explicit snake_case CodingKeys are matched against the
         // literal JSON keys (no auto-conversion interfering).
         var dict: [String: Any] = ["id": id]
-        if let category   { dict["category"]     = category }
-        if let amount     { dict["amount"]        = amount }
-        if let description { dict["description"]  = description }
-        if let date       { dict["date"]          = date }
-        if let receiptPath { dict["receipt_path"] = receiptPath }
-        if let userId     { dict["user_id"]       = userId }
-        if let firstName  { dict["first_name"]    = firstName }
-        if let lastName   { dict["last_name"]     = lastName }
-        if let createdAt  { dict["created_at"]    = createdAt }
-        if let updatedAt  { dict["updated_at"]    = updatedAt }
+        if let category    { dict["category"]            = category }
+        if let amount      { dict["amount"]              = amount }
+        if let description  { dict["description"]         = description }
+        if let date        { dict["date"]                = date }
+        if let receiptPath { dict["receipt_path"]        = receiptPath }
+        if let receiptImagePath  { dict["receipt_image_path"] = receiptImagePath }
+        if let receiptUploadedAt { dict["receipt_uploaded_at"] = receiptUploadedAt }
+        if let userId      { dict["user_id"]             = userId }
+        if let firstName   { dict["first_name"]          = firstName }
+        if let lastName    { dict["last_name"]           = lastName }
+        if let createdAt   { dict["created_at"]          = createdAt }
+        if let updatedAt   { dict["updated_at"]          = updatedAt }
+        if let vendor      { dict["vendor"]              = vendor }
+        if let taxAmount   { dict["tax_amount"]          = taxAmount }
+        if let paymentMethod { dict["payment_method"]    = paymentMethod }
+        if let notes       { dict["notes"]               = notes }
+        if let isReimbursable { dict["is_reimbursable"]  = isReimbursable }
+        if let status      { dict["status"]              = status }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         return try! JSONDecoder().decode(Expense.self, from: data)
     }
@@ -300,5 +352,17 @@ final class ExpenseDetailViewModelTests: XCTestCase {
 extension MockAPIClient {
     func setOutcome(_ outcome: Outcome) {
         getExpenseOutcome = outcome
+    }
+
+    func setPutOutcome(_ outcome: WriteOutcome) {
+        putExpenseOutcome = outcome
+    }
+
+    func setPostOutcome(_ outcome: WriteOutcome) {
+        postExpenseOutcome = outcome
+    }
+
+    func setDeleteOutcome(_ outcome: VoidOutcome) {
+        deleteExpenseOutcome = outcome
     }
 }

@@ -59,7 +59,13 @@ export function CommissionPeriodLock() {
       setNewStart('');
       setNewEnd('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to create period'),
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      toast.error(msg || 'Failed to create period');
+    },
   });
 
   const lockMut = useMutation({
@@ -70,13 +76,19 @@ export function CommissionPeriodLock() {
       toast.success('Period locked');
       queryClient.invalidateQueries({ queryKey: ['team', 'payroll', 'periods'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Lock failed'),
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      toast.error(msg || 'Lock failed');
+    },
   });
 
   function downloadCsv(periodId: number) {
     // Open in a new tab — the server returns text/csv with Content-Disposition.
     const url = `/api/v1/team/payroll/export.csv?period=${periodId}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   return (

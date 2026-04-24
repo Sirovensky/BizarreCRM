@@ -52,6 +52,33 @@ public actor SmsCachedRepositoryImpl: SmsCachedRepository {
         return try await fetchAndCache(keyword: keyword)
     }
 
+    public func markRead(phone: String) async throws {
+        try await api.markSmsThreadRead(phone: phone)
+        // Invalidate cache so unread count refreshes on next list load.
+        cache.removeAll()
+    }
+
+    public func toggleFlag(phone: String) async throws -> Bool {
+        let result = try await api.toggleSmsConversationFlag(phone: phone)
+        // Invalidate cached list so flag badge updates.
+        cache.removeAll()
+        return result.isFlagged
+    }
+
+    public func togglePin(phone: String) async throws -> Bool {
+        let result = try await api.toggleSmsConversationPin(phone: phone)
+        // Invalidate cached list so pin icon and sort order update.
+        cache.removeAll()
+        return result.isPinned
+    }
+
+    public func toggleArchive(phone: String) async throws -> Bool {
+        let result = try await api.toggleSmsConversationArchive(phone: phone)
+        // Invalidate cached list so archived conversations are filtered correctly.
+        cache.removeAll()
+        return result.isArchived
+    }
+
     // MARK: - SmsCachedRepository
 
     public var lastSyncedAt: Date? { globalLastSyncedAt }

@@ -456,9 +456,9 @@ export const expenseApi = {
   list: (params?: { page?: number; pagesize?: number; category?: string; from_date?: string; to_date?: string; keyword?: string }) =>
     api.get('/expenses', { params }),
   get: (id: number) => api.get(`/expenses/${id}`),
-  create: (data: { category: string; amount: number; description?: string; date?: string }) =>
+  create: (data: { category: string; amount: number; description?: string; date?: string; location_id?: number }) =>
     api.post('/expenses', data),
-  update: (id: number, data: Partial<{ category: string; amount: number; description: string; date: string }>) =>
+  update: (id: number, data: Partial<{ category: string; amount: number; description: string; date: string; location_id: number }>) =>
     api.put(`/expenses/${id}`, data),
   delete: (id: number) => api.delete(`/expenses/${id}`),
 };
@@ -732,8 +732,8 @@ export const estimateApi = {
 export const employeeApi = {
   list: () => api.get('/employees'),
   get: (id: number) => api.get(`/employees/${id}`),
-  clockIn: (id: number, pin: string) => api.post(`/employees/${id}/clock-in`, { pin }),
-  clockOut: (id: number, pin: string) => api.post(`/employees/${id}/clock-out`, { pin }),
+  clockIn: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-in`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
+  clockOut: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-out`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
   hours: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>

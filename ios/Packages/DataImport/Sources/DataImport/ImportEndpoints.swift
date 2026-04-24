@@ -1,11 +1,27 @@
 import Foundation
 import Networking
 
-// MARK: - Import API endpoints
+// MARK: - Import API endpoints (CSV wizard stubs)
+//
+// STUB NOTE: The server (import.routes.ts) only implements source-specific
+// routes: /repairdesk/start, /repairshopr/start, /myrepairapp/start, etc.
+// It has NO generic /imports REST resource. All endpoints below are forward-
+// looking stubs for a planned server-side CSV-upload pipeline.
+// They will return 404 until the server ships:
+//   POST /import/csv/upload
+//   GET  /import/csv/:id/preview
+//   PUT  /import/csv/:id/mapping
+//   POST /import/csv/:id/start
+//   GET  /import/csv/:id/status
+//   GET  /import/csv/:id/errors
+//
+// For the source-backed (RepairDesk / Shopr / MRA) import endpoints that DO
+// exist on the server, use APIClient+DataImport.swift in the Networking package.
 
 extension APIClient {
 
     /// POST /imports/upload — multipart form upload. Returns fileId.
+    /// STUB: server endpoint not yet implemented (see note above).
     public func uploadImportFile(data: Data, filename: String) async throws -> FileUploadResponse {
         // Build multipart body manually
         let boundary = "BizarreCRM-\(UUID().uuidString)"
@@ -21,9 +37,26 @@ extension APIClient {
     }
 
     /// POST /imports — create import job
-    public func createImportJob(source: ImportSource, fileId: String?, mapping: [String: String]?) async throws -> CreateImportJobResponse {
-        let req = CreateImportJobRequest(source: source, fileId: fileId, mapping: mapping)
+    /// - Parameters:
+    ///   - source: Import source system (csv, repairDesk, etc.)
+    ///   - entityType: Target entity (customers, inventory, tickets)
+    ///   - fileId: Server file ID from the upload step
+    ///   - mapping: Column→field mapping dict (optional at create time, required before start)
+    public func createImportJob(
+        source: ImportSource,
+        entityType: ImportEntityType,
+        fileId: String?,
+        mapping: [String: String]?
+    ) async throws -> CreateImportJobResponse {
+        let req = CreateImportJobRequest(source: source, entityType: entityType, fileId: fileId, mapping: mapping)
         return try await post("/imports", body: req, as: CreateImportJobResponse.self)
+    }
+
+    /// POST /imports/:id/rollback — roll back a completed import (within 24 h window).
+    /// Server endpoint: POST /api/v1/import/:id/rollback
+    /// NOTE: This endpoint is not yet present in import.routes.ts — tracked as missing endpoint.
+    public func rollbackImport(id: String) async throws -> RollbackImportResponse {
+        return try await post("/imports/\(id)/rollback", body: RollbackImportRequest(), as: RollbackImportResponse.self)
     }
 
     /// GET /imports/:id — poll status

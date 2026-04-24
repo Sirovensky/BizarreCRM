@@ -31,10 +31,16 @@ interface SettingsApi {
     ): ApiResponse<EmployeeListItem>
 
     @POST("employees/{id}/clock-in")
-    suspend fun clockIn(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Any>
+    suspend fun clockIn(
+        @Path("id") id: Long,
+        @Body body: Map<String, String>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
 
     @POST("employees/{id}/clock-out")
-    suspend fun clockOut(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Any>
+    suspend fun clockOut(
+        @Path("id") id: Long,
+        @Body body: Map<String, String>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
 
     @GET("settings/condition-checks/{category}")
     suspend fun getConditionChecks(

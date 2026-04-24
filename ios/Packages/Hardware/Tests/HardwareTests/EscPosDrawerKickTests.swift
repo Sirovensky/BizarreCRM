@@ -158,3 +158,60 @@ final class EscPosDrawerKickTests: XCTestCase {
         }
     }
 }
+
+// MARK: - EscPosNetworkEngine EscPosSender conformance tests
+
+final class EscPosNetworkEngineSenderTests: XCTestCase {
+
+    // MARK: - isConnected based on config
+
+    func test_isConnected_trueForNonEmptyHost() {
+        let engine = EscPosNetworkEngine(config: .init(host: "10.0.0.1"))
+        XCTAssertTrue(engine.isConnected,
+                      "isConnected must be true when host is configured")
+    }
+
+    func test_isConnected_falseForEmptyHost() {
+        let engine = EscPosNetworkEngine(config: .init(host: ""))
+        XCTAssertFalse(engine.isConnected,
+                       "isConnected must be false when host is empty")
+    }
+
+    // MARK: - EscPosSender conformance
+
+    func test_conformsToEscPosSender() {
+        let engine: any EscPosSender = EscPosNetworkEngine(config: .init(host: "10.0.0.1"))
+        XCTAssertNotNil(engine)
+    }
+
+    // MARK: - sendBytes with unreachable host throws
+
+    func test_sendBytes_unreachableHost_throws() async {
+        // TEST-NET-1 address (RFC 5737) — guaranteed not reachable.
+        let engine = EscPosNetworkEngine(
+            config: .init(host: "192.0.2.1", port: 9100, connectionTimeoutSeconds: 0.5)
+        )
+        do {
+            try await engine.sendBytes([0x1B, 0x40])
+            XCTFail("Expected an error for unreachable host")
+        } catch {
+            // Any error is acceptable — network timeout, refused, etc.
+            XCTAssertNotNil(error)
+        }
+    }
+
+    // MARK: - EscPosDrawerKick wired to EscPosNetworkEngine
+
+    func test_drawerKick_usingNetworkEngine_isConnected_whenHostSet() {
+        let engine = EscPosNetworkEngine(config: .init(host: "10.0.0.1", port: 9100))
+        let drawer = EscPosDrawerKick(sender: engine)
+        XCTAssertTrue(drawer.isConnected,
+                      "Drawer must report connected when the engine has a configured host")
+    }
+
+    func test_drawerKick_usingNetworkEngine_notConnected_whenHostEmpty() {
+        let engine = EscPosNetworkEngine(config: .init(host: ""))
+        let drawer = EscPosDrawerKick(sender: engine)
+        XCTAssertFalse(drawer.isConnected)
+    }
+}

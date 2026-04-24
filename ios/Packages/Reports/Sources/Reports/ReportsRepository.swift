@@ -4,17 +4,31 @@ import Networking
 // MARK: - ReportsRepository (protocol)
 
 public protocol ReportsRepository: Sendable {
+    // Revenue — wired to GET /api/v1/reports/sales
     func getRevenue(from: String, to: String, groupBy: String) async throws -> [RevenuePoint]
+    func getSalesReport(from: String, to: String, groupBy: String) async throws -> SalesReportResponse
+    // Tickets — wired to GET /api/v1/reports/tickets
     func getTicketsByStatus(from: String, to: String) async throws -> [TicketStatusPoint]
+    func getTicketsReport(from: String, to: String) async throws -> TicketsReportResponse
+    // Avg ticket value — derived from GET /api/v1/reports/tickets
     func getAvgTicketValue(from: String, to: String) async throws -> AvgTicketValue
+    // Employees — wired to GET /api/v1/reports/employees
     func getEmployeesPerformance(from: String, to: String) async throws -> [EmployeePerf]
+    // Inventory — wired to GET /api/v1/reports/inventory
+    func getInventoryReport(from: String, to: String) async throws -> InventoryReport
     func getInventoryTurnover(from: String, to: String) async throws -> [InventoryTurnoverRow]
+    // Expenses — derived from GET /api/v1/reports/dashboard-kpis
+    func getExpensesReport(from: String, to: String) async throws -> ExpensesReport
+    // CSAT / NPS — endpoint stubs: server routes not yet present; graceful fallback
     func getCSAT(from: String, to: String) async throws -> CSATScore
     func getNPS(from: String, to: String) async throws -> NPSScore
+    // Drill-through — endpoint stub
     func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord]
+    // Scheduled reports — wired to GET /api/v1/reports/scheduled
     func getScheduledReports() async throws -> [ScheduledReport]
     func createScheduledReport(reportType: String, frequency: String, emails: [String]) async throws -> ScheduledReport
     func deleteScheduledReport(id: Int64) async throws
+    // Email report
     func emailReport(recipient: String, pdfBase64: String) async throws
 }
 
@@ -27,88 +41,180 @@ public actor LiveReportsRepository: ReportsRepository {
         self.api = api
     }
 
-    // MARK: - Revenue
+    // MARK: - Revenue → GET /api/v1/reports/sales
 
     public func getRevenue(from: String, to: String, groupBy: String = "day") async throws -> [RevenuePoint] {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to),
-            URLQueryItem(name: "groupBy", value: groupBy)
-        ]
-        return try await api.get("/api/v1/reports/revenue", query: query, as: [RevenuePoint].self)
+        let report = try await getSalesReport(from: from, to: to, groupBy: groupBy)
+        return report.rows
     }
 
-    // MARK: - Tickets by Status
+    public func getSalesReport(from: String, to: String, groupBy: String = "day") async throws -> SalesReportResponse {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to),
+            URLQueryItem(name: "group_by", value: groupBy)
+        ]
+        return try await api.get("/api/v1/reports/sales", query: query, as: SalesReportResponse.self)
+    }
+
+    // MARK: - Tickets → GET /api/v1/reports/tickets
 
     public func getTicketsByStatus(from: String, to: String) async throws -> [TicketStatusPoint] {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
-        ]
-        return try await api.get("/api/v1/reports/tickets-by-status", query: query, as: [TicketStatusPoint].self)
+        let report = try await getTicketsReport(from: from, to: to)
+        return report.byStatus
     }
 
-    // MARK: - Avg Ticket Value
+    public func getTicketsReport(from: String, to: String) async throws -> TicketsReportResponse {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        return try await api.get("/api/v1/reports/tickets", query: query, as: TicketsReportResponse.self)
+    }
+
+    // MARK: - Avg Ticket Value → derived from GET /api/v1/reports/tickets
 
     public func getAvgTicketValue(from: String, to: String) async throws -> AvgTicketValue {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
-        ]
-        return try await api.get("/api/v1/reports/avg-ticket-value", query: query, as: AvgTicketValue.self)
+        let report = try await getTicketsReport(from: from, to: to)
+        let current = report.summary.avgTicketValue
+        // Compute previous period of same length for trend
+        let (prevFrom, prevTo) = previousPeriod(from: from, to: to)
+        let prevReport = try? await getTicketsReport(from: prevFrom, to: prevTo)
+        let previous = prevReport?.summary.avgTicketValue ?? current
+        return AvgTicketValue(currentDollars: current, previousDollars: previous)
     }
 
-    // MARK: - Employees Performance
+    // MARK: - Employees → GET /api/v1/reports/employees
 
     public func getEmployeesPerformance(from: String, to: String) async throws -> [EmployeePerf] {
         let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
         ]
-        return try await api.get("/api/v1/reports/employees-performance", query: query, as: [EmployeePerf].self)
+        let response = try await api.get("/api/v1/reports/employees", query: query, as: EmployeesReportResponse.self)
+        return response.rows
     }
 
-    // MARK: - Inventory Turnover
+    // MARK: - Inventory → GET /api/v1/reports/inventory
 
+    public func getInventoryReport(from: String, to: String) async throws -> InventoryReport {
+        let response = try await api.get("/api/v1/reports/inventory", as: InventoryReportResponse.self)
+        return InventoryReport(
+            outOfStockCount: response.outOfStock,
+            lowStockCount: response.lowStock.count,
+            valueSummary: response.valueSummary,
+            topMoving: response.topMoving
+        )
+    }
+
+    /// Inventory turnover by category → GET /api/v1/reports/inventory-turnover
     public func getInventoryTurnover(from: String, to: String) async throws -> [InventoryTurnoverRow] {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
-        ]
-        return try await api.get("/api/v1/reports/inventory-turnover", query: query, as: [InventoryTurnoverRow].self)
+        struct TurnoverResponse: Decodable, Sendable {
+            let byCategory: [InventoryTurnoverRow]
+            enum CodingKeys: String, CodingKey { case byCategory = "by_category" }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                self.byCategory = (try? c.decode([InventoryTurnoverRow].self, forKey: .byCategory)) ?? []
+            }
+        }
+        let response = try await api.get("/api/v1/reports/inventory-turnover", as: TurnoverResponse.self)
+        return response.byCategory
     }
 
-    // MARK: - CSAT
+    // MARK: - Expenses → derived from GET /api/v1/reports/dashboard-kpis
+
+    public func getExpensesReport(from: String, to: String) async throws -> ExpensesReport {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        let kpis = try await api.get("/api/v1/reports/dashboard-kpis", query: query, as: DashboardKpisResponse.self)
+        let dailyBreakdown = kpis.dailySales.map { day in
+            ExpenseDayPoint(date: day.date, revenue: day.sale, cogs: day.cogs)
+        }
+        return ExpensesReport(
+            totalDollars: kpis.expenses,
+            revenueDollars: kpis.totalSales,
+            dailyBreakdown: dailyBreakdown
+        )
+    }
+
+    // MARK: - CSAT — endpoint stub (GET /api/v1/reports/csat not yet on server)
+    // Returns a neutral placeholder so the UI degrades gracefully.
 
     public func getCSAT(from: String, to: String) async throws -> CSATScore {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
-        ]
-        return try await api.get("/api/v1/reports/csat", query: query, as: CSATScore.self)
+        // When the server implements /reports/csat, replace this body with:
+        // let query = [URLQueryItem(name: "from_date", value: from), ...]
+        // return try await api.get("/api/v1/reports/csat", query: query, as: CSATScore.self)
+        throw ReportsRepositoryError.endpointNotImplemented("/reports/csat")
     }
 
-    // MARK: - NPS
+    // MARK: - NPS — wired to GET /api/v1/reports/nps-trend (best available)
 
     public func getNPS(from: String, to: String) async throws -> NPSScore {
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "from", value: from),
-            URLQueryItem(name: "to", value: to)
-        ]
-        return try await api.get("/api/v1/reports/nps", query: query, as: NPSScore.self)
+        struct NpsTrendResponse: Decodable, Sendable {
+            let currentNps: Int?
+            let overall: NpsOverall?
+            enum CodingKeys: String, CodingKey {
+                case currentNps = "current_nps"
+                case overall
+            }
+        }
+        struct NpsOverall: Decodable, Sendable {
+            let promoters: Int
+            let passives: Int
+            let detractors: Int
+            let nps: Double
+        }
+        let response = try await api.get("/api/v1/reports/nps-trend", as: NpsTrendResponse.self)
+        let overall = response.overall
+        let total = Double((overall?.promoters ?? 0) + (overall?.passives ?? 0) + (overall?.detractors ?? 0))
+        let promoterPct = total > 0 ? (Double(overall?.promoters ?? 0) / total) * 100.0 : 0.0
+        let detractorPct = total > 0 ? (Double(overall?.detractors ?? 0) / total) * 100.0 : 0.0
+        return NPSScore(
+            current: Int(overall?.nps ?? 0),
+            previous: 0,
+            promoterPct: promoterPct,
+            detractorPct: detractorPct,
+            themes: []
+        )
     }
 
-    // MARK: - Drill-through
+    // MARK: - Drill-through → GET /api/v1/reports/sales (single-day slice)
+    //
+    // The server has no dedicated drill-through endpoint.
+    // For `metric == "revenue"` we fetch /reports/sales narrowed to the
+    // exact date (from_date == to_date == date, group_by=day).
+    // Each row in the response becomes a DrillThroughRecord.
 
     public func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord] {
+        guard metric == "revenue" else {
+            // Other metrics have no drill-through endpoint yet.
+            throw ReportsRepositoryError.endpointNotImplemented("/reports/drill-through[\(metric)]")
+        }
+
+        // Narrow the sales report to a single day.
         let query: [URLQueryItem] = [
-            URLQueryItem(name: "metric", value: metric),
-            URLQueryItem(name: "date", value: date)
+            URLQueryItem(name: "from_date", value: date),
+            URLQueryItem(name: "to_date",   value: date),
+            URLQueryItem(name: "group_by",  value: "day")
         ]
-        return try await api.get("/api/v1/reports/drill-through", query: query, as: [DrillThroughRecord].self)
+        let response = try await api.get(
+            "/api/v1/reports/sales", query: query, as: SalesReportResponse.self
+        )
+
+        // Map each revenue row to a DrillThroughRecord.
+        return response.rows.enumerated().map { idx, row in
+            DrillThroughRecord(
+                id: Int64(idx + 1),
+                label: row.date,
+                detail: "\(row.saleCount) sale\(row.saleCount == 1 ? "" : "s")",
+                amountCents: row.amountCents
+            )
+        }
     }
 
-    // MARK: - Scheduled Reports
+    // MARK: - Scheduled Reports → GET /api/v1/reports/scheduled
 
     public func getScheduledReports() async throws -> [ScheduledReport] {
         try await api.get("/api/v1/reports/scheduled", as: [ScheduledReport].self)
@@ -123,11 +229,39 @@ public actor LiveReportsRepository: ReportsRepository {
         try await api.delete("/api/v1/reports/scheduled/\(id)")
     }
 
-    // MARK: - Email Report
+    // MARK: - Email Report → POST /api/v1/reports/email
 
     public func emailReport(recipient: String, pdfBase64: String) async throws {
         let body = EmailReportRequest(recipient: recipient, pdfBase64: pdfBase64)
         _ = try await api.post("/api/v1/reports/email", body: body, as: EmptyReportPayload.self)
+    }
+
+    // MARK: - Private helpers
+
+    /// Compute the previous period of equal length for period-over-period comparison.
+    private func previousPeriod(from fromStr: String, to toStr: String) -> (String, String) {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withFullDate]
+        guard let f = fmt.date(from: fromStr), let t = fmt.date(from: toStr) else {
+            return (fromStr, toStr)
+        }
+        let duration = t.timeIntervalSince(f)
+        let prevTo = f.addingTimeInterval(-86400)
+        let prevFrom = prevTo.addingTimeInterval(-duration)
+        return (fmt.string(from: prevFrom), fmt.string(from: prevTo))
+    }
+}
+
+// MARK: - Errors
+
+public enum ReportsRepositoryError: Error, LocalizedError, Sendable {
+    case endpointNotImplemented(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .endpointNotImplemented(let path):
+            return "Server endpoint \(path) is not yet implemented."
+        }
     }
 }
 

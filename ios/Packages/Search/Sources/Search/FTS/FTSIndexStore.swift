@@ -14,9 +14,22 @@ public actor FTSIndexStore {
 
     // MARK: - Init
 
-    /// Production init — pass the shared `DatabasePool`.
+    /// Production init — pass the shared `DatabasePool` (or `DatabaseQueue`).
     public init(db: any DatabaseWriter) {
         self.index = FTSIndex(db: db)
+    }
+
+    /// Convenience factory that opens the **isolated** App Group FTS database
+    /// and returns a ready-to-use `FTSIndexStore`. Use this at app launch
+    /// instead of threading the main Persistence `DatabasePool` through.
+    ///
+    /// - Parameter appGroupIdentifier: The App Group ID.
+    ///   Pass `nil` to use the production default `"group.com.bizarrecrm"`.
+    public static func isolated(
+        appGroupIdentifier: String = "group.com.bizarrecrm"
+    ) throws -> FTSIndexStore {
+        let queue = try IsolatedFTSDatabase.open(appGroupIdentifier: appGroupIdentifier)
+        return FTSIndexStore(db: queue)
     }
 
     // MARK: - Indexing
@@ -91,6 +104,27 @@ public actor FTSIndexStore {
                 score:    hit.rank
             )
         }
+    }
+
+    // MARK: - Scope counts
+
+    /// Return per-entity hit counts for `query` across all entity types.
+    /// Used to populate count badges on scope filter chips.
+    public func scopeCounts(query: String) async throws -> ScopeCounts {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .zero
+        }
+        let allHits = try index.search(query: query, entityFilter: nil, limit: 200)
+        let searchHits = allHits.map { raw in
+            SearchHit(
+                entity:   raw.entity,
+                entityId: raw.entityId,
+                title:    raw.title,
+                snippet:  raw.snippet,
+                score:    raw.rank
+            )
+        }
+        return ScopeCounts.from(localHits: searchHits)
     }
 
     // MARK: - Delete

@@ -54,11 +54,27 @@ public final class AppointmentListViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// Quick status update from context menu (mark complete / no-show).
+    public func updateStatus(for id: Int64, status: AppointmentStatus) async {
+        let req = UpdateAppointmentRequest(status: status.rawValue)
+        do {
+            let updated = try await api.updateAppointment(id: id, req)
+            if let idx = items.firstIndex(where: { $0.id == id }) {
+                items[idx] = updated
+            }
+        } catch {
+            AppLog.ui.error("Appt status update failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 public struct AppointmentListView: View {
     @State private var vm: AppointmentListViewModel
     @State private var showingCreate: Bool = false
+    @State private var selectedAppointment: Appointment?
+    @State private var cancelTarget: Appointment?
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
@@ -77,8 +93,13 @@ public struct AppointmentListView: View {
         .task { await vm.load() }
         .refreshable { await vm.forceRefresh() }
         .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
-            // Phase 4: use full scheduling engine view with availability + conflict detection.
             AppointmentCreateFullView(api: api)
+        }
+        .sheet(item: $cancelTarget) { appt in
+            AppointmentCancelView(appointment: appt, api: api) {
+                Task { await vm.load() }
+                cancelTarget = nil
+            }
         }
     }
 
@@ -93,6 +114,12 @@ public struct AppointmentListView: View {
                 newButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
+            .navigationDestination(item: $selectedAppointment) { appt in
+                AppointmentDetailView(appointment: appt, api: api) {
+                    selectedAppointment = nil
+                    Task { await vm.load() }
                 }
             }
         }
@@ -113,20 +140,27 @@ public struct AppointmentListView: View {
                 }
             }
         } detail: {
-            ZStack {
-                Color.bizarreSurfaceBase.ignoresSafeArea()
-                VStack(spacing: BrandSpacing.md) {
-                    Image(systemName: "calendar.circle")
-                        .font(.system(size: 52))
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .accessibilityHidden(true)
-                    Text("Select an appointment")
-                        .font(.brandTitleMedium())
-                        .foregroundStyle(.bizarreOnSurface)
+            if let appt = selectedAppointment {
+                AppointmentDetailView(appointment: appt, api: api) {
+                    selectedAppointment = nil
+                    Task { await vm.load() }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ZStack {
+                    Color.bizarreSurfaceBase.ignoresSafeArea()
+                    VStack(spacing: BrandSpacing.md) {
+                        Image(systemName: "calendar.circle")
+                            .font(.system(size: 52))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityHidden(true)
+                        Text("Select an appointment")
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .navigationTitle("")
             }
-            .navigationTitle("")
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -153,10 +187,17 @@ public struct AppointmentListView: View {
         } else {
             List {
                 ForEach(vm.items) { appt in
-                    Row(appointment: appt)
-                        .listRowBackground(Color.bizarreSurface1)
-                        .brandHover()
-                        .contextMenu { appointmentContextMenu(for: appt) }
+                    Button {
+                        selectedAppointment = appt
+                    } label: {
+                        Row(appointment: appt)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.bizarreSurface1)
+                    .brandHover()
+                    .contextMenu { appointmentContextMenu(for: appt) }
+                    .accessibilityLabel(Row.a11y(for: appt))
+                    .accessibilityHint("Double tap to view details")
                 }
             }
             .listStyle(.plain)
@@ -168,9 +209,17 @@ public struct AppointmentListView: View {
 
     @ViewBuilder
     private func appointmentContextMenu(for appt: Appointment) -> some View {
-        // Reschedule
+        // View Details
         Button {
-            // TODO: present reschedule picker — Phase 4 / §10
+            selectedAppointment = appt
+        } label: {
+            Label("View Details", systemImage: "calendar")
+        }
+        .accessibilityLabel("View details for \(appt.title ?? "appointment")")
+
+        // Reschedule (opens edit view)
+        Button {
+            selectedAppointment = appt
         } label: {
             Label("Reschedule", systemImage: "calendar.badge.plus")
         }
@@ -178,19 +227,27 @@ public struct AppointmentListView: View {
 
         // Mark Complete
         Button {
-            // TODO: PATCH /appointments/:id { status: "completed" } — Phase 4 / §10
+            Task { await vm.updateStatus(for: appt.id, status: .completed) }
         } label: {
             Label("Mark Complete", systemImage: "checkmark.circle")
         }
         .accessibilityLabel("Mark \(appt.title ?? "appointment") as complete")
 
+        // Mark No-Show
+        Button {
+            Task { await vm.updateStatus(for: appt.id, status: .noShow) }
+        } label: {
+            Label("No-Show", systemImage: "person.slash")
+        }
+        .accessibilityLabel("Mark \(appt.title ?? "appointment") as no-show")
+
         Divider()
 
         // Cancel (destructive)
         Button(role: .destructive) {
-            // TODO: PATCH /appointments/:id { status: "cancelled" } — Phase 4 / §10
+            cancelTarget = appt
         } label: {
-            Label("Cancel", systemImage: "xmark.circle")
+            Label("Cancel Appointment", systemImage: "xmark.circle")
         }
         .accessibilityLabel("Cancel \(appt.title ?? "appointment")")
     }

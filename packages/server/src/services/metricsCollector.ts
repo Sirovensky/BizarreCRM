@@ -12,6 +12,10 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { config } from '../config.js';
+import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
+
+const logger = createLogger('metricsCollector');
 import {
   getRequestsPerSecond,
   getRequestsPerSecondPeak,
@@ -141,7 +145,7 @@ function rollupHourly(): void {
       }
     });
     doInsert();
-    console.log(`[Metrics] Rolled up ${hours.length} hour(s) into metrics_hourly`);
+    logger.info('metrics_hourly_rollup', { hours_rolled: hours.length });
   }
 
   // Cleanup: delete raw older than 48 hours
@@ -174,7 +178,7 @@ function maybeDailyVacuum(db: Database.Database): void {
   } catch (err) {
     // Non-fatal: log and keep going. A failed vacuum just means disk space
     // isn't reclaimed this tick; the data is still intact.
-    console.warn('[Metrics] incremental_vacuum failed', err instanceof Error ? err.message : err);
+    logger.warn('metrics_vacuum_failed', { err: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -304,7 +308,7 @@ let rollupTimer: ReturnType<typeof setInterval> | null = null;
 export function startMetricsCollector(): void {
   // Initialize DB eagerly
   getDb();
-  console.log('[Metrics] Collector started — sampling every 60s, hourly rollup');
+  logger.info('metrics_collector_started', { sample_interval_s: 60, rollup_interval_h: 1 });
 
   // D3-8: wrap cron callbacks so a transient DB error in sampleMetrics /
   // rollupHourly cannot kill the background timer permanently. Previously an
@@ -312,24 +316,22 @@ export function startMetricsCollector(): void {
   // process restart.
   const safeSample = () => {
     try { sampleMetrics(); }
-    catch (err) { console.error('[Metrics] sampleMetrics threw', err instanceof Error ? err.message : err); }
+    catch (err) { logger.error('metrics_sample_error', { err: err instanceof Error ? err.message : String(err) }); }
   };
   const safeRollup = () => {
     try { rollupHourly(); }
-    catch (err) { console.error('[Metrics] rollupHourly threw', err instanceof Error ? err.message : err); }
+    catch (err) { logger.error('metrics_rollup_error', { err: err instanceof Error ? err.message : String(err) }); }
   };
 
   // Sample immediately so the first data point exists right away
   safeSample();
 
   // Then sample every 60 seconds
-  sampleTimer = setInterval(safeSample, 60_000);
-  sampleTimer.unref();
+  sampleTimer = trackInterval(safeSample, 60_000, { unref: true });
 
   // Hourly rollup + cleanup (run at startup too for any missed rollups)
   safeRollup();
-  rollupTimer = setInterval(safeRollup, 3600_000);
-  rollupTimer.unref();
+  rollupTimer = trackInterval(safeRollup, 3600_000, { unref: true });
 }
 
 export function stopMetricsCollector(): void {

@@ -60,7 +60,24 @@ public enum SettingsSearchIndex {
               iconSystemName: "lock.rotation",
               breadcrumb: ["Profile", "Change Password"]),
 
+        .init(id: "preferences",
+              title: "Preferences",
+              path: "settings.preferences",
+              keywords: ["theme", "dark mode", "light mode", "compact", "default view", "tickets", "sort", "filter",
+                         "notification sound", "desktop notifications", "language", "timezone", "sidebar",
+                         "user preferences", "per-user", "page size"],
+              iconSystemName: "slider.horizontal.3",
+              breadcrumb: ["Preferences"]),
+
         // MARK: Company / Organization
+        .init(id: "businessProfile",
+              title: "Business Profile",
+              path: "settings.businessProfile",
+              keywords: ["store name", "store", "shop name", "address", "phone", "email", "timezone",
+                         "currency", "receipt header", "receipt footer", "business identity", "store config"],
+              iconSystemName: "building",
+              breadcrumb: ["Business Profile"]),
+
         .init(id: "company",
               title: "Company Info",
               path: "settings.company",

@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_BASE = '/api/v1';
+const AUTH_REFRESH_PATH = '/auth/refresh';
+const AUTH_REFRESH_URL = `${API_BASE}${AUTH_REFRESH_PATH}`;
 
 /**
  * Logout-required event — emitted when the refresh pipeline has definitively
@@ -61,7 +63,7 @@ async function performRefresh(): Promise<string> {
       // this refresh was initiated by our own JS (not a cross-origin CSRF request).
       const csrfToken = getCsrfTokenCookie();
       const res = await axios.post(
-        `${API_BASE}/auth/refresh`,
+        AUTH_REFRESH_URL,
         {},
         { withCredentials: true, headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {} },
       );
@@ -84,7 +86,18 @@ function scheduleTokenRefresh() {
   const token = localStorage.getItem('accessToken');
   if (!token) return;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = token.split('.');
+    if (parts.length < 3) throw new Error('malformed');
+    if (parts[1].length > 4096) throw new Error('payload too large');
+    const decoded = atob(parts[1]);
+    if (decoded.length > 8192) throw new Error('decoded payload too large');
+    const payload = JSON.parse(decoded);
+    // Without this guard, a token with a missing or non-numeric `exp` would
+    // turn expiresIn into NaN, Math.max(NaN, 10_000) into NaN, and setTimeout
+    // into a 0-ms fire — causing a refresh storm on every request.
+    if (typeof payload?.exp !== 'number' || !Number.isFinite(payload.exp)) {
+      throw new Error('token missing numeric exp claim');
+    }
     const expiresIn = (payload.exp * 1000) - Date.now();
     const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
     refreshScheduled = true;
@@ -99,7 +112,14 @@ function scheduleTokenRefresh() {
       }
     }, refreshIn);
   } catch (err) {
-    // Invalid token format — can't decode, skip scheduling
+    // Invalid token format — reset scheduling flag so future requests can
+    // re-enter scheduleTokenRefresh instead of being silently skipped.
+    refreshScheduled = false;
+    // Clear the malformed token so it doesn't block every subsequent request.
+    // Only remove it if it hasn't been replaced by a concurrent refresh.
+    if (localStorage.getItem('accessToken') === token) {
+      localStorage.removeItem('accessToken');
+    }
     console.warn('Could not decode access token for refresh scheduling:', err);
   }
 }
@@ -113,7 +133,7 @@ client.interceptors.request.use((config) => {
   }
   // SEC-H89: Automatically attach the CSRF double-submit token for every
   // POST to /auth/refresh, regardless of which callsite triggered it.
-  if (config.url?.includes('/auth/refresh') && config.method?.toUpperCase() === 'POST') {
+  if (config.url?.includes(AUTH_REFRESH_PATH) && config.method?.toUpperCase() === 'POST') {
     const csrfToken = getCsrfTokenCookie();
     if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
@@ -261,9 +281,10 @@ export { client as api };
 // regular tenant refresh pipeline.
 // ──────────────────────────────────────────────────────────────────
 export const SUPER_ADMIN_TOKEN_KEY = 'superAdminToken';
+export const SUPER_ADMIN_LOGOUT_EVENT = 'bizarre-crm:super-admin-logout';
 
 export const superAdminClient = axios.create({
-  baseURL: '/super-admin',
+  baseURL: '/super-admin/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -274,3 +295,26 @@ superAdminClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Response interceptor: on 401/403 the super-admin token is dead. Without
+// this, every subsequent call silently fails and the stored credential is
+// never cleaned up. Clear the token, surface a toast, and dispatch an event
+// so mounted pages can unmount the authed view.
+superAdminClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) {
+      if (localStorage.getItem(SUPER_ADMIN_TOKEN_KEY)) {
+        localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+        try {
+          window.dispatchEvent(new CustomEvent(SUPER_ADMIN_LOGOUT_EVENT));
+        } catch (err) {
+          console.warn('Failed to emit super-admin-logout event', err);
+        }
+        toast.error('Super-admin session expired. Please sign in again.');
+      }
+    }
+    return Promise.reject(error);
+  },
+);

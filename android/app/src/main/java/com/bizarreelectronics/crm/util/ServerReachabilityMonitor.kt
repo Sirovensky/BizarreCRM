@@ -102,9 +102,18 @@ class ServerReachabilityMonitor @Inject constructor(
                     startPinging()
                 } else {
                     stopPinging()
-                    // No interface at all → definitely unreachable, and reset counter
-                    // so we re-ping immediately when an interface comes back.
-                    _isServerReachable.value = false
+                    // No interface at all — reset consecutive-failure counter so the
+                    // ping loop gets a clean slate when an interface comes back.
+                    // NOTE: we deliberately do NOT flip _isServerReachable=false here.
+                    // Flipping eagerly on interface-loss causes a race: if a login
+                    // response lands just as WiFi briefly drops, the next
+                    // createTicket() call reads isEffectivelyOnline=false and opens
+                    // an OFFLINE- ticket even though the server is reachable. The
+                    // ping loop will set _isServerReachable=false itself after
+                    // FAILURES_BEFORE_OFFLINE consecutive failed pings once the
+                    // interface is truly gone. The checkNow() guard in
+                    // TicketRepository.createTicket() provides an additional
+                    // safety net for the narrow startup window.
                     consecutiveFailures = 0
                 }
             }
@@ -196,7 +205,12 @@ class ServerReachabilityMonitor @Inject constructor(
 
     private fun pingServer(): Boolean {
         val serverUrl = authPreferences.serverUrl
-        if (serverUrl.isNullOrBlank()) return false
+        // No URL yet (e.g. user hasn't logged in / URL not committed yet).
+        // Treat as "unknown" (optimistic true) rather than a server failure so the
+        // ping loop does not accumulate consecutive-failure counts and flip
+        // isEffectivelyOnline to false before the user has a chance to submit a ticket.
+        // The next ping after serverUrl is populated will give a real result.
+        if (serverUrl.isNullOrBlank()) return true
 
         // GET /api/v1/info is a lightweight endpoint that returns {lan_ip, port, server_url}
         // without requiring auth. It's the same endpoint the desktop setup wizard uses.

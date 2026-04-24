@@ -15,6 +15,7 @@ import {
   validateEmail,
   validatePhoneDigits,
   validateRequiredString,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
@@ -24,6 +25,7 @@ import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { logActivity } from '../utils/activityLog.js';
 
 type AnyRow = Record<string, any>;
 
@@ -304,8 +306,8 @@ router.get(
                AND (c.code IS NULL OR c.code != 'WALK-IN')
              LIMIT 10`,
           matchExpr);
-      } catch {
-        // FTS can fail on odd characters – fall back to LIKE
+      } catch (err) {
+        log.warn('customers FTS fallback triggered', { err: err instanceof Error ? err.message : String(err), queryLen: q.length });
         results = await likeSearch(adb, q);
       }
     } else {
@@ -525,11 +527,13 @@ router.post(
       }
     }
     // Also add merge customer's main phone/mobile if not already present
-    if (mergeCustomer.phone && !keepPhoneSet.has(normalizePhone(mergeCustomer.phone))) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.phone), 'merged');
+    const normalizedMergePhone = mergeCustomer.phone ? normalizePhone(mergeCustomer.phone) : '';
+    if (normalizedMergePhone && !keepPhoneSet.has(normalizedMergePhone)) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergePhone, 'merged');
     }
-    if (mergeCustomer.mobile && !keepPhoneSet.has(normalizePhone(mergeCustomer.mobile))) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizePhone(mergeCustomer.mobile), 'merged');
+    const normalizedMergeMobile = mergeCustomer.mobile ? normalizePhone(mergeCustomer.mobile) : '';
+    if (normalizedMergeMobile && !keepPhoneSet.has(normalizedMergeMobile)) {
+      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergeMobile, 'merged');
     }
 
     // Merge email addresses (avoid duplicates)
@@ -552,15 +556,18 @@ router.post(
     // Merge tags (combine, deduplicate)
     // @audit-fixed: parseTags helper — JSON.parse without try/catch used to crash
     // the merge for any customer whose tags column held legacy non-JSON content.
-    const parseTags = (raw: unknown): string[] => {
+    const parseTags = (raw: unknown, customer_id?: number): string[] => {
       if (!raw) return [];
       try {
         const v = JSON.parse(String(raw));
         return Array.isArray(v) ? v.filter((t) => typeof t === 'string') : [];
-      } catch { return []; }
+      } catch (err) {
+        log.warn('customer tags JSON.parse failed, dropping', { customer_id, raw_len: String(raw).length, err: err instanceof Error ? err.message : String(err) });
+        return [];
+      }
     };
-    const keepTags = parseTags(keepCustomer.tags);
-    const mergeTags = parseTags(mergeCustomer.tags);
+    const keepTags = parseTags(keepCustomer.tags, kid);
+    const mergeTags = parseTags(mergeCustomer.tags, mid);
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
     await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
@@ -619,12 +626,16 @@ router.post(
 
     const trimmedTag = tag.trim();
     let updated = 0;
+    const invalidIds: unknown[] = [];
 
-    for (const id of customer_ids) {
+    for (const rawId of customer_ids) {
       // @audit-fixed: validate id and skip non-numeric entries silently rather
       // than letting Number("abc") = NaN flow into SQL.
-      const cid = Number(id);
-      if (!Number.isInteger(cid) || cid <= 0) continue;
+      const cid = Number(rawId);
+      if (!Number.isInteger(cid) || cid <= 0) {
+        invalidIds.push(rawId);
+        continue;
+      }
       const customer = await adb.get<AnyRow>('SELECT id, tags FROM customers WHERE id = ? AND is_deleted = 0', cid);
       if (!customer) continue;
 
@@ -634,7 +645,10 @@ router.post(
       try {
         const parsed = JSON.parse(customer.tags || '[]');
         currentTags = Array.isArray(parsed) ? parsed.filter((t: unknown) => typeof t === 'string') : [];
-      } catch { currentTags = []; }
+      } catch (err) {
+        log.warn('customer tags JSON.parse failed, dropping', { customer_id: cid, raw_len: String(customer.tags).length, err: err instanceof Error ? err.message : String(err) });
+        currentTags = [];
+      }
       if (currentTags.includes(trimmedTag)) continue;
 
       const newTags = [...currentTags, trimmedTag];
@@ -645,7 +659,7 @@ router.post(
 
     res.json({
       success: true,
-      data: { updated, tag: trimmedTag, total_requested: customer_ids.length },
+      data: { updated, tag: trimmedTag, total_requested: customer_ids.length, invalid_ids: invalidIds },
     });
   }),
 );
@@ -758,10 +772,22 @@ router.post(
       sent: 0, failed: 0, skipped: 0, errors: [],
     };
 
+    // Batch-fetch all customers in a single query instead of N round-trips (SCAN-749)
+    const customerIds = customer_ids.map((id: unknown) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0);
+    if (customerIds.length === 0) {
+      return void res.json({ success: true, data: results });
+    }
+    const placeholders = customerIds.map(() => '?').join(',');
+    const fetchedRows = await adb.all<{ id: number; first_name: string; last_name: string; phone: string | null; mobile: string | null; sms_opt_in: number; sms_consent_marketing: number }>(
+      `SELECT id, first_name, last_name, phone, mobile, sms_opt_in, sms_consent_marketing FROM customers WHERE id IN (${placeholders}) AND is_deleted = 0`,
+      ...customerIds,
+    );
+    const byId = new Map(fetchedRows.map((r) => [r.id, r]));
+    const missingCount = customer_ids.length - customerIds.length;
+    if (missingCount > 0) log.warn('bulk-sms: skipped non-numeric customer_ids', { count: missingCount });
+
     for (const id of customer_ids) {
-      const customer = await adb.get<AnyRow>(
-        'SELECT id, first_name, last_name, phone, mobile, sms_opt_in FROM customers WHERE id = ? AND is_deleted = 0',
-        Number(id));
+      const customer = byId.get(Number(id));
 
       if (!customer) {
         results.skipped++;
@@ -775,10 +801,10 @@ router.post(
         continue;
       }
 
-      // ENR-SMS2: Validate SMS opt-in for bulk/broadcast messages
-      if (!customer.sms_opt_in) {
+      // ENR-SMS2: Validate SMS opt-in and marketing consent for bulk/broadcast messages
+      if (!customer.sms_opt_in || customer.sms_consent_marketing === 0) {
         results.skipped++;
-        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in not enabled' });
+        results.errors.push({ customer_id: Number(id), error: 'SMS opt-in or marketing consent not enabled' });
         continue;
       }
 
@@ -1012,6 +1038,18 @@ router.post(
     // Fire automations (async, non-blocking)
     runAutomations(db, 'customer_created', { customer: { ...(customer as any), phones, emails } });
 
+    // SCAN-522: fire-and-forget activity log
+    logActivity(adb, {
+      actor_user_id: req.user!.id,
+      entity_kind: 'customer',
+      entity_id: customerId,
+      action: 'created',
+    }).catch((err: unknown) => {
+      log.warn('customers: activity log (customer_created) failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+
     res.status(201).json({
       success: true,
       data: { ...(customer as any), phones, emails },
@@ -1055,7 +1093,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const customer = await adb.get<AnyRow>(
         `SELECT c.*,
@@ -1158,7 +1196,7 @@ router.put(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const input: UpdateCustomerInput = req.body;
 
     const existing = await adb.get<any>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
@@ -1323,7 +1361,7 @@ router.delete(
     }
 
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const existing = await adb.get<AnyRow>(
       'SELECT id, first_name, last_name FROM customers WHERE id = ? AND is_deleted = 0',
@@ -1380,7 +1418,7 @@ router.get(
   '/:id/analytics',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const stats = await adb.get<any>(`
       SELECT
         COUNT(DISTINCT t.id) AS total_tickets,
@@ -1412,7 +1450,7 @@ router.get(
   '/:id/tickets',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
 
@@ -1463,7 +1501,7 @@ router.get(
   '/:id/invoices',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
 
@@ -1502,7 +1540,7 @@ router.get(
   '/:id/communications',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
     const typeFilter = (req.query.type as string || '').toLowerCase(); // 'sms', 'call', 'email', or '' for all
@@ -1636,7 +1674,7 @@ router.get(
   '/:id/assets',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
     if (!existing) throw new AppError('Customer not found', 404);
@@ -1658,7 +1696,7 @@ router.post(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     const { name, device_type, serial, imei, color, notes } = req.body;
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
@@ -1685,7 +1723,7 @@ router.put(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const assetId = Number(req.params.assetId);
+    const assetId = validateId(req.params.assetId, 'assetId');
     const { name, device_type, serial, imei, color, notes } = req.body;
 
     const existing = await adb.get<any>('SELECT * FROM customer_assets WHERE id = ?', assetId);
@@ -1718,7 +1756,7 @@ router.delete(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const assetId = Number(req.params.assetId);
+    const assetId = validateId(req.params.assetId, 'assetId');
 
     const existing = await adb.get<AnyRow>('SELECT id FROM customer_assets WHERE id = ?', assetId);
     if (!existing) throw new AppError('Asset not found', 404);
@@ -1739,7 +1777,7 @@ router.get(
   requireStepUpTotp('GET /customers/:id/export'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const customer = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!customer) throw new AppError('Customer not found', 404);
@@ -1836,7 +1874,7 @@ router.delete(
     // Defence-in-depth: requirePermission above is authoritative.
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { password } = req.body;
 
     if (!password) throw new AppError('Password confirmation is required for GDPR erasure', 400);
@@ -2195,7 +2233,7 @@ router.get(
   '/:id/notes',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     if (!Number.isFinite(customerId) || customerId <= 0) {
       throw new AppError('Invalid customer id', 400);
     }
@@ -2228,7 +2266,7 @@ router.post(
   requirePermission('customers.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const customerId = Number(req.params.id);
+    const customerId = validateId(req.params.id, 'customerId');
     if (!Number.isFinite(customerId) || customerId <= 0) {
       throw new AppError('Invalid customer id', 400);
     }
@@ -2267,6 +2305,37 @@ router.post(
     );
 
     res.status(201).json({ success: true, data: note });
+  }),
+);
+
+// DELETE /:id/notes/:noteId — hard-delete a single customer note.
+// SEC-H25: deleting a customer note is a write — gate behind customers.edit.
+// Used by the Android undo compensatingSync to roll back an accidental postNote.
+router.delete(
+  '/:id/notes/:noteId',
+  requirePermission('customers.edit'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const customerId = validateId(req.params.id, 'customerId');
+    const noteId = validateId(req.params.noteId, 'noteId');
+
+    // Confirm the customer exists and is not soft-deleted.
+    const customer = await adb.get<AnyRow>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customerId,
+    );
+    if (!customer) throw new AppError('Customer not found', 404);
+
+    // Confirm the note belongs to this customer before deleting.
+    const note = await adb.get<AnyRow>(
+      'SELECT id FROM customer_notes WHERE id = ? AND customer_id = ?',
+      noteId, customerId,
+    );
+    if (!note) throw new AppError('Note not found', 404);
+
+    await adb.run('DELETE FROM customer_notes WHERE id = ?', noteId);
+
+    res.json({ success: true, data: null });
   }),
 );
 

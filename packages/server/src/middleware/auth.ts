@@ -4,6 +4,9 @@ import { config } from '../config.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('auth-middleware');
 
 // SEC (A6/A10): Centralize JWT signing & verification options so both
 // auth.routes.ts and middleware/auth.ts use the exact same algorithm,
@@ -74,12 +77,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       tenantSlug?: string | null;
     };
 
-    // Reject refresh tokens used as access tokens
-    // @audit-fixed: Previously only rejected `type === 'refresh'` which still
-    // allows a refresh token signed with a different `type` marker to pass.
-    // Require an explicit `type === 'access'` marker AND a valid sessionId /
-    // userId shape to slip through — any unknown token type is rejected.
-    if (payload.type !== undefined && payload.type !== 'access') {
+    // SEC (SCAN-613): Strict positive assertion — only tokens whose payload
+    // carries type === 'access' are accepted.  Previously the guard was
+    // `type !== undefined && type !== 'access'`, which silently passed tokens
+    // where type was absent (legacy tokens, scoped tokens without the field).
+    // All issueTokens() call-sites now embed type:'access' so no grace period
+    // is needed; any token without the field is definitively not an access token.
+    if (payload.type !== 'access') {
       res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN_TYPE, 'Invalid token type', rid));
       return;
     }
@@ -151,7 +155,9 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       // Best-effort — failure doesn't block the request.
       req.asyncDb
         .run("UPDATE sessions SET last_active = datetime('now') WHERE id = ?", payload.sessionId)
-        .catch(() => { /* ignore */ });
+        .catch((err: unknown) => {
+          logger.warn('auth: last_active update failed', { err: err instanceof Error ? err.message : String(err) });
+        });
 
       // AUD-H2: if a custom_roles row is assigned, load its allowed=1 keys
       // and cap at the active-role check. Inactive custom_roles are ignored
@@ -182,6 +188,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       next();
     }).catch(() => {
       res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));
+      return;
     });
   } catch (err) {
     res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_INVALID_TOKEN, 'Invalid token', rid));

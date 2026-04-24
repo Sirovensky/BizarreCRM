@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const log = createLogger('ws');
 
@@ -140,10 +141,10 @@ const wsConnsByTenant = new Map<string, number>();
 
 // SEC-H86: Periodic sweeper removes any zero-count entries that survived a
 // race between increment and a very-early-close (edge case, belt-and-suspenders).
-setInterval(() => {
+trackInterval(() => {
   for (const [k, v] of wsConnsByIp) if (v <= 0) wsConnsByIp.delete(k);
   for (const [k, v] of wsConnsByTenant) if (v <= 0) wsConnsByTenant.delete(k);
-}, 60_000).unref();
+}, 60_000, { unref: true });
 
 // SEC: Use composite key "tenantSlug:userId" to prevent cross-tenant userId collision.
 // In single-tenant mode, key is "null:userId".
@@ -218,11 +219,12 @@ async function isTenantOriginAllowed(
   // at upgrade time.
   if (!tenantSlug) return true;
 
+  // Lazy import keeps ws/server.ts free of DB concerns on the hot path for
+  // non-auth messages and avoids a circular init in single-tenant mode.
+  const { getTenantDb, releaseTenantDb } = await import('../db/tenant-pool.js');
+  let tdb: Awaited<ReturnType<typeof getTenantDb>> | undefined;
   try {
-    // Lazy import keeps ws/server.ts free of DB concerns on the hot path for
-    // non-auth messages and avoids a circular init in single-tenant mode.
-    const { getTenantDb } = await import('../db/tenant-pool.js');
-    const tdb = getTenantDb(tenantSlug);
+    tdb = await getTenantDb(tenantSlug);
     if (!tdb) return true;
 
     const row = tdb
@@ -252,6 +254,8 @@ async function isTenantOriginAllowed(
       error: err instanceof Error ? err.message : String(err),
     });
     return false;
+  } finally {
+    if (tdb !== undefined) releaseTenantDb(tenantSlug);
   }
 }
 
@@ -329,7 +333,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
       }
     };
 
-    ws.on('message', (data) => {
+    ws.on('message', async (data) => {
       // SEC (WS3): Drop oversized frames before JSON.parse touches them.
       // @audit-fixed: Previously compared `raw.length` (JS character count) to
       // MAX_INBOUND_BYTES (16384). For a unicode-heavy payload, UTF-8 bytes can
@@ -379,6 +383,9 @@ export function setupWebSocket(wss: WebSocketServer): void {
           userId: ws.userId ?? null,
           tenantSlug: ws.tenantSlug ?? null,
         });
+        // SEC (WS4): Clear the auth timer so it cannot fire on a malformed-drop
+        // path, which otherwise leaves a dangling timeout on the socket.
+        clearAuthTimeout();
         return;
       }
 
@@ -442,27 +449,31 @@ export function setupWebSocket(wss: WebSocketServer): void {
           // Mark the key on the socket so the close handler can decrement correctly.
           ws._tenantCapKey = tenantKey;
 
-          // SEC (WS1 rerun §24): Now that we know the tenant, re-validate the
-          // Origin header against the tenant's store_config allowlist. This
-          // layers on TOP of the platform-level check in index.ts. Fire and
-          // forget the async check because we don't want to stall the rest of
-          // the handler — if it fails we terminate the socket afterwards.
-          (async () => {
-            const ok = await isTenantOriginAllowed(ws.tenantSlug ?? null, ws.origin ?? null);
-            if (!ok) {
-              log.warn('ws tenant origin rejected after auth', {
-                tenantSlug: ws.tenantSlug,
-                origin: ws.origin,
-                userId: ws.userId,
-              });
-              try {
-                ws.send(JSON.stringify({ type: 'auth', success: false, error: 'origin not allowed' }));
-                ws.close(1008, 'origin not allowed');
-              } catch {
-                /* already closed */
-              }
+          // SEC (SCAN-609): Re-validate Origin against the tenant's store_config
+          // allowlist BEFORE adding to clients map or sending success frame.
+          // Previously this was fire-and-forget (TOCTOU): the success frame was
+          // sent and the socket registered in `clients` before the async check
+          // completed, allowing the client to participate in broadcasts during
+          // the async gap even when the origin should be rejected.
+          const originOk = await isTenantOriginAllowed(ws.tenantSlug ?? null, ws.origin ?? null);
+          if (!originOk) {
+            log.warn('ws tenant origin rejected', {
+              tenantSlug: ws.tenantSlug,
+              origin: ws.origin,
+              userId: ws.userId,
+            });
+            // Decrement the tenant counter we incremented above since we are
+            // closing before completing registration.
+            wsConnsByTenant.set(tenantKey, tenantCount - 1);
+            ws._tenantCapKey = undefined;
+            try {
+              ws.send(JSON.stringify({ type: 'auth', success: false, reason: 'origin_not_allowed' }));
+              ws.close(1008, 'origin rejected');
+            } catch {
+              /* already closed */
             }
-          })();
+            return;
+          }
 
           const key = clientKey(ws.tenantSlug, payload.userId);
           if (!clients.has(key)) {
@@ -579,7 +590,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   if (wsHeartbeatHandle) {
     clearInterval(wsHeartbeatHandle);
   }
-  wsHeartbeatHandle = setInterval(() => {
+  wsHeartbeatHandle = trackInterval(() => {
     allClients.forEach((ws) => {
       if (!ws.isAlive) {
         allClients.delete(ws);
@@ -599,12 +610,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
         });
       }
     });
-  }, 30000);
-  // @audit-fixed: .unref() so the heartbeat does not hold the process open
-  // during shutdown if stopWebSocketHeartbeat() is somehow skipped.
-  if (typeof wsHeartbeatHandle.unref === 'function') {
-    wsHeartbeatHandle.unref();
-  }
+  }, 30000, { unref: true });
 }
 
 // Broadcast to all authenticated clients, scoped to a tenant.

@@ -194,8 +194,10 @@ export function useUndoableAction<TArgs = void>(
         toastIdRef.current = null;
         if (runArgs !== null) {
           // Fire and forget — we are unmounting, no UI to update.
-          actionRef.current(runArgs).catch(() => {
-            // Swallow: no UI left to show the error on.
+          // Log the error so silent data-loss failures are still visible in
+          // browser console / error telemetry rather than vanishing entirely.
+          actionRef.current(runArgs).catch((err) => {
+            console.error('[useUndoableAction] unmount-fired action failed', err);
           });
         }
       }

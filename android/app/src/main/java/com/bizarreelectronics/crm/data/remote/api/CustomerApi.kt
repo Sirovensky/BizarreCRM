@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -62,4 +63,12 @@ interface CustomerApi {
         @Path("id") id: Long,
         @Body request: CreateCustomerNoteRequest,
     ): ApiResponse<CustomerNote>
+
+    // CROSS9b: undo compensatingSync — hard-deletes a single note by its server
+    // id. Matches DELETE /customers/:id/notes/:noteId on the server.
+    @DELETE("customers/{id}/notes/{noteId}")
+    suspend fun deleteNote(
+        @Path("id") customerId: Long,
+        @Path("noteId") noteId: Long,
+    ): ApiResponse<Unit>
 }

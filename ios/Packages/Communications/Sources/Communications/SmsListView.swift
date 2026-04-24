@@ -19,6 +19,18 @@ public struct SmsListView: View {
     }
 
     public var body: some View {
+        Group {
+            if Platform.isCompact {
+                compactBody
+            } else {
+                regularBody
+            }
+        }
+    }
+
+    // MARK: - iPhone layout
+
+    private var compactBody: some View {
         NavigationStack(path: $path) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -34,9 +46,7 @@ public struct SmsListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showTemplates = true
-                    } label: {
+                    Button { showTemplates = true } label: {
                         Image(systemName: "text.bubble.badge.clock")
                     }
                     .accessibilityLabel("Message Templates")
@@ -48,8 +58,50 @@ public struct SmsListView: View {
             .sheet(isPresented: $showTemplates) {
                 MessageTemplateListView(api: api)
             }
+            .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
+                vm.clearActionError()
+            }
         }
     }
+
+    // MARK: - iPad layout (NavigationSplitView handled by parent; this adds keyboard shortcuts + hover)
+
+    private var regularBody: some View {
+        NavigationStack(path: $path) {
+            ZStack {
+                Color.bizarreSurfaceBase.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("SMS")
+            .searchable(text: $searchText, prompt: "Search by name or phone")
+            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .task { await vm.load() }
+            .refreshable { await vm.refresh() }
+            .navigationDestination(for: String.self) { phone in
+                SmsThreadView(repo: threadRepo, phoneNumber: phone)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showTemplates = true } label: {
+                        Image(systemName: "text.bubble.badge.clock")
+                    }
+                    .accessibilityLabel("Message Templates")
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                }
+                ToolbarItem(placement: .automatic) {
+                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+            }
+            .sheet(isPresented: $showTemplates) {
+                MessageTemplateListView(api: api)
+            }
+            .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
+                vm.clearActionError()
+            }
+        }
+    }
+
+    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
@@ -80,19 +132,103 @@ public struct SmsListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List {
-                ForEach(vm.conversations) { c in
-                    NavigationLink(value: c.convPhone) {
-                        ConversationRow(conversation: c)
-                    }
-                    .listRowBackground(Color.bizarreSurface1)
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            conversationList
         }
     }
+
+    private var conversationList: some View {
+        List {
+            ForEach(vm.conversations) { c in
+                NavigationLink(value: c.convPhone) {
+                    ConversationRow(conversation: c)
+                }
+                .listRowBackground(Color.bizarreSurface1)
+                // Leading swipe: mark read / unread
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    if c.unreadCount > 0 {
+                        Button {
+                            Task { await vm.markRead(phone: c.convPhone) }
+                        } label: {
+                            Label("Mark Read", systemImage: "envelope.open")
+                        }
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Mark conversation with \(c.displayName) as read")
+                    }
+                }
+                // Trailing swipe: flag / pin / archive
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        Task { await vm.toggleFlag(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isFlagged ? "Unflag" : "Flag",
+                              systemImage: c.isFlagged ? "flag.slash" : "flag")
+                    }
+                    .tint(c.isFlagged ? .bizarreOnSurfaceMuted : .bizarreError)
+                    .accessibilityLabel(c.isFlagged ? "Unflag conversation with \(c.displayName)" : "Flag conversation with \(c.displayName)")
+
+                    Button {
+                        Task { await vm.togglePin(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isPinned ? "Unpin" : "Pin",
+                              systemImage: c.isPinned ? "pin.slash" : "pin")
+                    }
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel(c.isPinned ? "Unpin conversation with \(c.displayName)" : "Pin conversation with \(c.displayName)")
+
+                    Button {
+                        Task { await vm.toggleArchive(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isArchived ? "Unarchive" : "Archive",
+                              systemImage: c.isArchived ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    .tint(.bizarreMagenta)
+                    .accessibilityLabel(c.isArchived ? "Unarchive conversation with \(c.displayName)" : "Archive conversation with \(c.displayName)")
+                }
+                // Context menu (iPad hover + long-press)
+                .contextMenu {
+                    if c.unreadCount > 0 {
+                        Button {
+                            Task { await vm.markRead(phone: c.convPhone) }
+                        } label: {
+                            Label("Mark Read", systemImage: "envelope.open")
+                        }
+                    }
+                    Button {
+                        Task { await vm.toggleFlag(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isFlagged ? "Remove Flag" : "Flag",
+                              systemImage: c.isFlagged ? "flag.slash" : "flag")
+                    }
+                    Button {
+                        Task { await vm.togglePin(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isPinned ? "Unpin" : "Pin to Top",
+                              systemImage: c.isPinned ? "pin.slash" : "pin")
+                    }
+                    Button {
+                        Task { await vm.toggleArchive(phone: c.convPhone) }
+                    } label: {
+                        Label(c.isArchived ? "Unarchive" : "Archive",
+                              systemImage: c.isArchived ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    Divider()
+                    Button {
+                        path.append(c.convPhone)
+                    } label: {
+                        Label("Open", systemImage: "arrow.right")
+                    }
+                }
+                #if !os(macOS)
+                .hoverEffect(.highlight)
+                #endif
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
 }
+
+// MARK: - ConversationRow
 
 private struct ConversationRow: View {
     let conversation: SmsConversation
@@ -126,6 +262,12 @@ private struct ConversationRow: View {
                         Image(systemName: "flag.fill")
                             .font(.caption)
                             .foregroundStyle(.bizarreError)
+                            .accessibilityHidden(true)
+                    }
+                    if conversation.isArchived {
+                        Image(systemName: "archivebox.fill")
+                            .font(.caption)
+                            .foregroundStyle(.bizarreMagenta)
                             .accessibilityHidden(true)
                     }
                 }
@@ -164,9 +306,54 @@ private struct ConversationRow: View {
         var parts: [String] = [c.displayName]
         if c.isPinned { parts.append("Pinned") }
         if c.isFlagged { parts.append("Flagged") }
+        if c.isArchived { parts.append("Archived") }
         if let msg = c.lastMessage, !msg.isEmpty { parts.append(msg) }
         if let ts = c.lastMessageAt?.prefix(10), !ts.isEmpty { parts.append(String(ts)) }
         if c.unreadCount > 0 { parts.append("\(c.unreadCount) unread") }
         return parts.joined(separator: ". ")
+    }
+}
+
+// MARK: - ActionErrorBanner modifier
+
+private struct ActionErrorBannerModifier: ViewModifier {
+    let isVisible: Bool
+    let message: String
+    let onDismiss: () -> Void
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            if isVisible {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.white)
+                        .accessibilityHidden(true)
+                    Text(message)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityLabel("Dismiss error")
+                }
+                .padding(BrandSpacing.md)
+                .background(Color.bizarreError, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.top, BrandSpacing.sm)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: isVisible)
+            }
+        }
+    }
+}
+
+private extension View {
+    func actionErrorBanner(isVisible: Bool, message: String, onDismiss: @escaping () -> Void) -> some View {
+        modifier(ActionErrorBannerModifier(isVisible: isVisible, message: message, onDismiss: onDismiss))
     }
 }

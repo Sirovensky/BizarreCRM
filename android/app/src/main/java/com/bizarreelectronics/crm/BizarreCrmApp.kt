@@ -4,17 +4,22 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import coil3.SingletonImageLoader
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
+import com.bizarreelectronics.crm.util.RedactorTree
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import dagger.hilt.android.HiltAndroidApp
+import timber.log.Timber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,6 +50,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     @Inject
     lateinit var crashReporter: com.bizarreelectronics.crm.util.CrashReporter
 
+    @Inject
+    lateinit var sessionTimeout: SessionTimeout
+
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
     // logic (no UI writes) — any UI-touching work must dispatch explicitly
@@ -59,6 +67,17 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     override fun onCreate() {
         System.loadLibrary("sqlcipher")
         super.onCreate()
+        // §1 L228 / §28 L64 — plant Timber with a RedactorTree so all
+        // Timber calls are sanitised before reaching Logcat or the delegate
+        // tree. RedactorTree strips sensitive key-value pairs and then
+        // delegates PII sweeps (tokens, email, phone, IMEI) to LogRedactor.
+        // Must be planted BEFORE crashReporter.install() so that any
+        // Timber usage during crash-reporter wiring is also covered.
+        val baseTree: Timber.Tree = if (BuildConfig.DEBUG) Timber.DebugTree()
+        else Timber.DebugTree() // TODO: replace with CrashReporterTree once a
+        // dedicated Timber-based release tree exists (currently CrashReporter
+        // operates as an UncaughtExceptionHandler, not a Timber.Tree).
+        Timber.plant(RedactorTree(baseTree))
         // §32.3 — wire the uncaught-exception handler before anything else
         // so init-path crashes are still captured.
         crashReporter.install()
@@ -74,6 +93,17 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         // the user comes back to the app from another task; we use it to
         // re-validate the session + kick a delta sync so screens never linger
         // on stale data after a long background pause.
+        //
+        // OEM task-killer invariant (plan §1.6 line 240):
+        // Application termination is rarely predictable on Android — OEM
+        // "killers" (Samsung, Xiaomi, Huawei RAM managers) can destroy the
+        // process at any point without calling onDestroy. DO NOT rely on
+        // a terminate/destroy callback to flush state. Instead, persist
+        // every meaningful field change immediately to Room/DataStore at the
+        // call-site of the change. Lifecycle observer onStop is the last
+        // reliable signal before the user can no longer see the app; use it
+        // to schedule background work and seal security-sensitive surfaces,
+        // but never as the sole persistence gate.
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
@@ -84,14 +114,76 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                             webSocketService.connect()
                         }
                     }
+                    // §2.16 — resume the session-timeout ticker on foreground.
+                    sessionTimeout.onAppForeground()
                 }
 
                 override fun onStop(owner: LifecycleOwner) {
-                    // No-op for now. Future: persist drafts, schedule
-                    // delta-sync periodic worker (§1.6 background hooks).
+                    // §1.6 line 239 — app moved to background.
+
+                    // Delta-sync: ensure the periodic WorkManager job is
+                    // registered (KEEP policy means an existing enqueue is
+                    // left untouched, so this is idempotent with the onCreate
+                    // call above — it re-registers only if the system cleared
+                    // the schedule, e.g. after a force-stop recovery).
+                    SyncWorker.schedule(this@BizarreCrmApp)
+
+                    // §1.6 L239 — Clipboard seal: clear the clipboard if it
+                    // holds a value placed by ClipboardUtil.copySensitive().
+                    // Detection is marker-based (ClipDescription label / extras)
+                    // — never content-based — so user-copied text is never
+                    // touched. No-op when no sensitive clip is active.
+                    com.bizarreelectronics.crm.util.ClipboardUtil
+                        .clearSensitiveIfPresent(this@BizarreCrmApp)
+
+                    // Draft persistence: no draft system exists yet.
+                    // TODO: flush unsaved form drafts to DataStore here once
+                    //   the draft subsystem ships (plan §1.6 lines 260–266).
+
+                    // FLAG_SECURE: window flags must be set at the Activity
+                    // level, not here. An Application observer has no window
+                    // reference. TODO: integrate via MainActivity once the
+                    //   screen-capture privacy setting is wired (plan §1.6).
+
+                    // §2.16 — background time counts toward inactivity window.
+                    sessionTimeout.onAppBackground()
                 }
             },
         )
+    }
+
+    /**
+     * §1.6 line 241 — Memory-pressure callback invoked by the OS when it needs
+     * the app to release non-critical memory. Only caches are evicted; active
+     * session data and Room entities are never freed here.
+     *
+     * Level thresholds (ascending severity):
+     *   TRIM_MEMORY_UI_HIDDEN (20)     — UI no longer visible; moderate trim.
+     *   TRIM_MEMORY_RUNNING_LOW (10)   — system running low; shed caches now.
+     *   TRIM_MEMORY_RUNNING_CRITICAL (12) — critical; every byte counts.
+     *   TRIM_MEMORY_BACKGROUND (40)    — process in LRU list; free aggressively.
+     *   TRIM_MEMORY_MODERATE (60)      — middle of LRU; free more.
+     *   TRIM_MEMORY_COMPLETE (80)      — about to be killed; free everything.
+     *
+     * We act on RUNNING_LOW (10) or any more-severe level. At RUNNING_CRITICAL
+     * and above the Coil memory cache is also pruned to its minimum.
+     *
+     * INVARIANT: never free active data (Room cursor results, in-flight network
+     * payloads, authenticated session tokens). Only discard reconstructible
+     * caches — image bitmaps already decoded from the server.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            // Clear the Coil in-memory bitmap cache. Coil 3 uses
+            // SingletonImageLoader as the global accessor. The disk cache is
+            // left intact — network traffic is more expensive than disk reads.
+            val memCache = SingletonImageLoader.get(this).memoryCache
+            if (memCache != null) {
+                memCache.clear()
+                Log.d(TAG, "onTrimMemory(level=$level): Coil memory cache cleared")
+            }
+        }
     }
 
     /** Connect WebSocket for real-time SMS and ticket updates. */
@@ -210,6 +302,14 @@ class BizarreCrmApp : Application(), Configuration.Provider {
     }
 
     companion object {
+        private const val TAG = "BizarreCrmApp"
+
+        // ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW = 10. Declared here as a
+        // named constant so the onTrimMemory body reads without a magic number.
+        // Using the ComponentCallbacks2 interface constant would require
+        // implementing the interface explicitly; the named alias is cleaner.
+        private const val TRIM_MEMORY_RUNNING_LOW = 10
+
         const val CH_SMS_INBOUND = "sms_inbound"
         const val CH_APPOINTMENT_REMINDER = "appointment_reminder"
         const val CH_SLA_BREACH = "sla_breach"

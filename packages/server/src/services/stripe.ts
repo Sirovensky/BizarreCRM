@@ -710,7 +710,18 @@ export function handleWebhookEvent(event: Stripe.Event): void {
 
   // BL1: event-age check. `event.created` is in seconds since epoch.
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const ageSeconds = nowSeconds - (event.created ?? 0);
+  const eventCreated = event.created ?? 0;
+  if (eventCreated > nowSeconds + 300) {
+    // 5-minute clock-skew tolerance; anything beyond is a tampering attempt
+    logger.error('Rejecting Stripe webhook with future-dated event.created', {
+      eventId: event.id,
+      eventType: event.type,
+      eventCreated,
+      nowSeconds,
+    });
+    return;
+  }
+  const ageSeconds = nowSeconds - eventCreated;
   if (ageSeconds > WEBHOOK_MAX_AGE_SECONDS) {
     logger.error('Rejecting stale Stripe webhook (replay protection)', {
       eventId: event.id,

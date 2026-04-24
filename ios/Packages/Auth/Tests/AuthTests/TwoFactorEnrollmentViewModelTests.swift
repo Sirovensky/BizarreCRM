@@ -454,7 +454,7 @@ private final class StubTwoFactorRepository: TwoFactorRepository, @unchecked Sen
     var enrollResult: Result<TwoFactorEnrollResponse, Error> = .failure(AppError.network(underlying: nil))
     var verifyResult: Result<TwoFactorVerifyResponse, Error> = .failure(AppError.network(underlying: nil))
     var challengeResult: Result<TwoFactorChallengeResponse, Error> = .failure(AppError.network(underlying: nil))
-    var disableResult: Result<TwoFactorDisableResponse, Error> = .failure(AppError.network(underlying: nil))
+    // disableResult removed 2026-04-23 — TwoFactorRepository.disable() deleted per security policy.
     var regenerateResult: Result<TwoFactorRegenerateCodesResponse, Error> = .failure(AppError.network(underlying: nil))
     var verifyRecoveryResult: Result<TwoFactorVerifyRecoveryResponse, Error> = .failure(AppError.network(underlying: nil))
     var statusResult: Result<TwoFactorStatusResponse, Error> = .success(TwoFactorStatusResponse(enabled: false, codesRemaining: nil))
@@ -471,9 +471,7 @@ private final class StubTwoFactorRepository: TwoFactorRepository, @unchecked Sen
         challengeCallCount += 1
         return try challengeResult.get()
     }
-    func disable(currentPassword: String, totpCode: String) async throws -> TwoFactorDisableResponse {
-        try disableResult.get()
-    }
+    // disable(currentPassword:, totpCode:) removed 2026-04-23 per security policy.
     func regenerateCodes(totpCode: String) async throws -> TwoFactorRegenerateCodesResponse {
         try regenerateResult.get()
     }

@@ -26,11 +26,53 @@ import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+// ---------------------------------------------------------------------------
+// Domain type for lead undo entries (§1 L232)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sealed payload type covering all reversible lead mutations wired to
+ * [UndoStack] in [LeadDetailViewModel]. Immutable data classes only.
+ */
+sealed class LeadEdit {
+    /** A generic scalar field update (e.g. notes, referredBy, source). */
+    data class FieldEdit(
+        val fieldName: String,
+        val oldValue: String?,
+        val newValue: String?,
+    ) : LeadEdit()
+
+    /** Stage change — leads use string-key stages (new, contacted, scheduled…). */
+    data class StageChange(
+        val oldStage: String?,
+        val newStage: String,
+    ) : LeadEdit()
+
+    /** Status change — alias for stage in the lead domain (status == stage). */
+    data class StatusChange(
+        val oldStatus: String?,
+        val newStatus: String,
+    ) : LeadEdit()
+
+    /**
+     * A note that was persisted (noteId = leadId since notes are a scalar field
+     * on the lead record, not a separate entity). Wired for future note-list
+     * support when a dedicated lead-notes endpoint is added.
+     */
+    data class NoteAdded(
+        val noteId: Long,
+        val body: String,
+    ) : LeadEdit()
+}
 
 data class LeadDetailUiState(
     val lead: LeadEntity? = null,
@@ -82,8 +124,44 @@ class LeadDetailViewModel @Inject constructor(
 
     val isOnline get() = serverMonitor.isEffectivelyOnline
 
+    // -----------------------------------------------------------------------
+    // Undo / redo (§1 L232 — lead field edit, stage change, status change, note add)
+    // -----------------------------------------------------------------------
+
+    /** Undo stack scoped to this ViewModel instance; cleared on nav dismiss. */
+    val undoStack = UndoStack<LeadEdit>()
+
+    /**
+     * Convenience alias so the screen can gate an Undo Snackbar action without
+     * importing [UndoStack] — delegates directly to [undoStack.canUndo].
+     */
+    val canUndo: StateFlow<Boolean> = undoStack.canUndo
+
     init {
         collectLead()
+        observeUndoEvents()
+    }
+
+    /**
+     * Collects [UndoStack.events] and forwards [UndoStack.UndoEvent.Undone] /
+     * [UndoStack.UndoEvent.Redone] / [UndoStack.UndoEvent.Failed] audit descriptions
+     * to Timber tag "LeadUndo". The screen handles Pushed/Failed UI Snackbar events
+     * directly via its own LaunchedEffect so no snackbar logic lives here.
+     */
+    private fun observeUndoEvents() {
+        viewModelScope.launch {
+            undoStack.events.collect { event ->
+                when (event) {
+                    is UndoStack.UndoEvent.Undone ->
+                        Timber.tag("LeadUndo").i("Undone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Redone ->
+                        Timber.tag("LeadUndo").i("Redone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Failed ->
+                        Timber.tag("LeadUndo").w("Undo failed: ${event.reason}")
+                    is UndoStack.UndoEvent.Pushed -> { /* handled by screen */ }
+                }
+            }
+        }
     }
 
     private fun collectLead() {
@@ -101,6 +179,9 @@ class LeadDetailViewModel @Inject constructor(
     fun updateStatus(newStatus: String) {
         val lead = _state.value.lead ?: return
         if (lead.status.equals(newStatus, ignoreCase = true)) return
+
+        val oldStatus = lead.status
+
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
@@ -108,14 +189,250 @@ class LeadDetailViewModel @Inject constructor(
                     leadId,
                     UpdateLeadRequest(status = newStatus),
                 )
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Status updated to ${newStatus.replaceFirstChar { it.uppercase() }}",
+                // Note: no separate "Status updated" actionMessage — the UndoStack.Pushed
+                // event shows "Edit saved / Undo" Snackbar immediately after push(),
+                // which serves as the confirmation. Avoiding double-snackbar.
+                _state.value = _state.value.copy(isActionInProgress = false)
+
+                // Push undo entry: StatusChange covers the lead status/stage concept.
+                val payload = LeadEdit.StatusChange(
+                    oldStatus = oldStatus,
+                    newStatus = newStatus,
+                )
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(
+                                    leadId,
+                                    UpdateLeadRequest(status = newStatus),
+                                )
+                            }
+                        },
+                        reverse = {
+                            if (oldStatus != null) {
+                                viewModelScope.launch {
+                                    leadRepository.updateLead(
+                                        leadId,
+                                        UpdateLeadRequest(status = oldStatus),
+                                    )
+                                }
+                            }
+                        },
+                        auditDescription = "Status changed: ${oldStatus ?: "(none)"} → $newStatus",
+                        compensatingSync = {
+                            if (oldStatus == null) {
+                                // Cannot revert to unknown prior status
+                                false
+                            } else {
+                                try {
+                                    leadRepository.updateLead(
+                                        leadId,
+                                        UpdateLeadRequest(status = oldStatus),
+                                    )
+                                    true
+                                } catch (e: Exception) {
+                                    Timber.tag("LeadUndo").e(e, "compensatingSync: status revert failed")
+                                    false
+                                }
+                            }
+                        },
+                    )
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = "Failed to update status: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Updates a scalar text field on the lead (e.g. notes, source, referredBy).
+     * Pushes a [LeadEdit.FieldEdit] undo entry after a successful API call.
+     */
+    fun updateField(fieldName: String, oldValue: String?, newValue: String?) {
+        if (oldValue == newValue) return
+        val request = buildSingleFieldRequest(fieldName, newValue)
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                leadRepository.updateLead(leadId, request)
+                _state.value = _state.value.copy(isActionInProgress = false)
+
+                val payload = LeadEdit.FieldEdit(
+                    fieldName = fieldName,
+                    oldValue = oldValue,
+                    newValue = newValue,
+                )
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(leadId, buildSingleFieldRequest(fieldName, newValue))
+                            }
+                        },
+                        reverse = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(leadId, buildSingleFieldRequest(fieldName, oldValue))
+                            }
+                        },
+                        auditDescription = "Edited $fieldName from ${oldValue ?: "(empty)"} to ${newValue ?: "(empty)"}",
+                        compensatingSync = {
+                            try {
+                                leadRepository.updateLead(leadId, buildSingleFieldRequest(fieldName, oldValue))
+                                true
+                            } catch (e: Exception) {
+                                Timber.tag("LeadUndo").e(e, "compensatingSync: $fieldName revert failed")
+                                false
+                            }
+                        },
+                    )
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to update $fieldName: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Updates the lead stage (an alias for status in the lead domain).
+     * Pushes a [LeadEdit.StageChange] undo entry after a successful API call.
+     */
+    fun updateStage(newStage: String) {
+        val lead = _state.value.lead ?: return
+        if (lead.status.equals(newStage, ignoreCase = true)) return
+
+        val oldStage = lead.status
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                leadRepository.updateLead(
+                    leadId,
+                    UpdateLeadRequest(status = newStage),
+                )
+                _state.value = _state.value.copy(isActionInProgress = false)
+
+                val payload = LeadEdit.StageChange(
+                    oldStage = oldStage,
+                    newStage = newStage,
+                )
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(
+                                    leadId,
+                                    UpdateLeadRequest(status = newStage),
+                                )
+                            }
+                        },
+                        reverse = {
+                            if (oldStage != null) {
+                                viewModelScope.launch {
+                                    leadRepository.updateLead(
+                                        leadId,
+                                        UpdateLeadRequest(status = oldStage),
+                                    )
+                                }
+                            }
+                        },
+                        auditDescription = "Stage changed: ${oldStage ?: "(none)"} → $newStage",
+                        compensatingSync = {
+                            if (oldStage == null) {
+                                false
+                            } else {
+                                try {
+                                    leadRepository.updateLead(
+                                        leadId,
+                                        UpdateLeadRequest(status = oldStage),
+                                    )
+                                    true
+                                } catch (e: Exception) {
+                                    Timber.tag("LeadUndo").e(e, "compensatingSync: stage revert failed")
+                                    false
+                                }
+                            }
+                        },
+                    )
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to update stage: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Persists a note for this lead by updating the scalar [notes] field on the
+     * lead record. Pushes a [LeadEdit.NoteAdded] undo entry after success.
+     *
+     * compensatingSync returns false because [LeadApi.deleteNote] does not exist —
+     * notes are a scalar field (not a note-list endpoint). Same B19 pattern as
+     * CustomerDetail until a dedicated lead-notes endpoint is added.
+     *
+     * TODO: wire real DELETE /leads/:id/notes/:noteId when the lead-notes endpoint
+     * is added in a follow-up wave.
+     */
+    fun postNote(body: String) {
+        val trimmed = body.trim()
+        if (trimmed.isBlank()) return
+        val lead = _state.value.lead ?: return
+        val oldNotes = lead.notes
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                leadRepository.updateLead(
+                    leadId,
+                    UpdateLeadRequest(notes = trimmed),
+                )
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Note saved",
+                )
+
+                // noteId == leadId because notes are scalar on the lead record.
+                val payload = LeadEdit.NoteAdded(noteId = leadId, body = trimmed)
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(leadId, UpdateLeadRequest(notes = trimmed))
+                            }
+                        },
+                        reverse = {
+                            viewModelScope.launch {
+                                leadRepository.updateLead(leadId, UpdateLeadRequest(notes = oldNotes))
+                            }
+                        },
+                        auditDescription = "Note added: \"${trimmed.take(60)}${if (trimmed.length > 60) "…" else ""}\"",
+                        compensatingSync = {
+                            // LeadApi.deleteNote does not exist — notes are a scalar field.
+                            // Signal failure so UndoStack emits UndoEvent.Failed and the UI
+                            // shows "Can't undo — action already processed".
+                            Timber.tag("LeadUndo").w(
+                                "compensatingSync: LeadApi.deleteNote not available (scalar notes field); leadId=$leadId"
+                            )
+                            false
+                        },
+                    )
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to save note: ${e.message}",
                 )
             }
         }
@@ -173,6 +490,26 @@ class LeadDetailViewModel @Inject constructor(
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
+
+    /**
+     * Build a minimal [UpdateLeadRequest] carrying only [fieldName] = [value].
+     * All other fields are null so the server performs a partial update without
+     * overwriting unrelated columns.
+     */
+    private fun buildSingleFieldRequest(fieldName: String, value: String?): UpdateLeadRequest =
+        when (fieldName) {
+            "firstName"  -> UpdateLeadRequest(firstName = value)
+            "lastName"   -> UpdateLeadRequest(lastName = value)
+            "email"      -> UpdateLeadRequest(email = value)
+            "phone"      -> UpdateLeadRequest(phone = value)
+            "address"    -> UpdateLeadRequest(address = value)
+            "zipCode"    -> UpdateLeadRequest(zipCode = value)
+            "source"     -> UpdateLeadRequest(source = value)
+            "referredBy" -> UpdateLeadRequest(referredBy = value)
+            "notes"      -> UpdateLeadRequest(notes = value)
+            "lostReason" -> UpdateLeadRequest(lostReason = value)
+            else         -> UpdateLeadRequest()
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -196,6 +533,7 @@ fun LeadDetailScreen(
     var showDeleteConfirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Navigate when conversion succeeds
     LaunchedEffect(convertedTicketId) {
@@ -210,6 +548,39 @@ fun LeadDetailScreen(
             snackbarHostState.showSnackbar(message)
             viewModel.clearActionMessage()
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Undo stack UI (§1 L232)
+    // -----------------------------------------------------------------------
+
+    // Collect UndoStack events: show "Edit saved / Undo" Snackbar on Pushed,
+    // plain toast on Failed. Undone/Redone are audit-only (logged in ViewModel).
+    LaunchedEffect(viewModel.undoStack) {
+        viewModel.undoStack.events.collect { event ->
+            when (event) {
+                is UndoStack.UndoEvent.Pushed -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Edit saved",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        scope.launch { viewModel.undoStack.undo() }
+                    }
+                }
+                is UndoStack.UndoEvent.Failed ->
+                    snackbarHostState.showSnackbar(event.reason)
+                is UndoStack.UndoEvent.Undone -> { /* audit handled in ViewModel */ }
+                is UndoStack.UndoEvent.Redone -> { /* audit handled in ViewModel */ }
+            }
+        }
+    }
+
+    // Clear undo history when the screen leaves composition so stale entries
+    // don't survive a back-stack pop and re-push.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.undoStack.clear() }
     }
 
     // Delete confirmation dialog — migrated to ConfirmDialog(isDestructive = true)

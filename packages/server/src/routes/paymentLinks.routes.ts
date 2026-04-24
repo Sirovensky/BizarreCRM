@@ -60,9 +60,19 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+// SCAN-785: null-safe expiry check. null/undefined means "never expires".
+function isLinkExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) return false;
+  return ts < Date.now();
+}
+
 function dollarsToCents(amount: unknown): number {
   const dollars = validatePositiveAmount(amount);
-  return Math.round(dollars * 100);
+  // SCAN-893: toFixed(2) eliminates binary-FP drift (e.g. 1.005*100 = 100.499...)
+  // before scaling, so Math.round always gets a value within 0.5 of the true cent.
+  return Math.round(Number(dollars.toFixed(2)) * 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,8 +102,9 @@ authedRouter.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: rows });
 }));
 
-/** GET /:id — one link with full details. */
+/** GET /:id — one link with full details (admin/manager only). */
 authedRouter.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  requireManagerOrAdmin(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
   const row = await req.asyncDb.get<Row>('SELECT * FROM payment_links WHERE id = ?', id);
@@ -171,14 +182,15 @@ authedRouter.delete('/:id', asyncHandler(async (req: Request, res: Response) => 
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
-  const existing = await req.asyncDb.get<Row>('SELECT status FROM payment_links WHERE id = ?', id);
-  if (!existing) throw new AppError('Payment link not found', 404);
-  if (existing.status === 'paid') throw new AppError('Cannot cancel a paid link', 409);
-
-  await req.asyncDb.run(
-    `UPDATE payment_links SET status = 'cancelled' WHERE id = ?`,
+  const result = await req.asyncDb.run(
+    `UPDATE payment_links SET status = 'cancelled' WHERE id = ? AND status NOT IN ('paid','cancelled')`,
     id,
   );
+  if (result.changes === 0) {
+    const existing = await req.asyncDb.get<Row>('SELECT status FROM payment_links WHERE id = ?', id);
+    if (!existing) throw new AppError('Payment link not found', 404);
+    throw new AppError(`cannot cancel link in ${existing.status} status`, 409);
+  }
 
   audit(req.db, 'payment_link.cancel', req.user?.id ?? null, req.ip ?? '', { id });
 
@@ -247,7 +259,7 @@ publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => 
   if (!row) throw new AppError('Payment link not found', 404);
 
   // Expire automatically if the expires_at has passed.
-  if (row.status === 'active' && row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (row.status === 'active' && isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     row.status = 'expired';
   }
@@ -276,7 +288,7 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
   // SEC-M60: hard-fail a click on an active-but-expired row and flip the
   // status to 'expired' so subsequent requests are cheap-404d at the
   // status = 'active' filter above.
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
   }
@@ -330,7 +342,7 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   // status. 410 Gone signals a permanently unavailable resource so portal
   // UI can render a "contact shop for a new link" state instead of looking
   // like a transient failure.
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
   }

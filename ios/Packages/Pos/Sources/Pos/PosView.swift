@@ -49,6 +49,10 @@ public struct PosView: View {
     @State private var showingNoSalePin: Bool = false
     /// §16.11 — Audit log viewer.
     @State private var showingAuditLog: Bool = false
+    /// §16.5 — Tender select + cash tender flow.
+    @State private var showingTenderSelect: Bool = false
+    @State private var cashTenderVM: CashTenderViewModel?
+    @State private var tenderErrorMessage: String?
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -174,6 +178,43 @@ public struct PosView: View {
         }
         .sheet(item: $postSale) { vm in
             PosPostSaleView(vm: vm)
+        }
+        .sheet(isPresented: $showingTenderSelect) {
+            PosTenderSelectSheet(totalCents: cart.totalCents) {
+                showingTenderSelect = false
+                openCashTender()
+            }
+        }
+        .sheet(item: $cashTenderVM) { vm in
+            PosCashTenderSheet(
+                vm: vm,
+                onCompleted: { result in
+                    cashTenderVM = nil
+                    postSale = buildPostSaleViewModel(
+                        methodLabel: result.methodLabel,
+                        methodAmountCents: result.receivedCents,
+                        invoiceId: result.invoiceId
+                    )
+                },
+                onBack: {
+                    cashTenderVM = nil
+                    showingTenderSelect = true
+                }
+            )
+        }
+        .overlay(alignment: .bottom) {
+            if let err = tenderErrorMessage {
+                Text(err)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.vertical, BrandSpacing.sm)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, BrandSpacing.xxl)
+                    .transition(.opacity)
+                    .onTapGesture { tenderErrorMessage = nil }
+                    .accessibilityIdentifier("pos.tenderErrorToast")
+            }
         }
         .sheet(isPresented: $showingReturns) {
             PosReturnsView(api: api)
@@ -555,30 +596,43 @@ public struct PosView: View {
                 await cartVM.saveSnapshot(cart: cart, cashSessionId: registerSession?.id)
                 return
             }
-            // Online path — proceed with the normal post-sale sheet.
-            postSale = buildPostSaleViewModel()
+            // Online path — if cart is already fully tendered (gift cards /
+            // store credit), skip tender selection and go straight to post-sale.
+            // Otherwise open the tender select sheet.
+            if cart.isFullyTendered {
+                postSale = buildPostSaleViewModel()
+            } else {
+                showingTenderSelect = true
+            }
         }
     }
 
     /// Assemble the post-sale view model from the current cart. Snapshots
     /// the render output so the sheet is immune to subsequent cart edits
     /// (e.g. the Next-sale clear).
-    private func buildPostSaleViewModel() -> PosPostSaleViewModel {
-        let snapshot = PosReceiptPayloadBuilder.build(cart: cart)
+    ///
+    /// - Parameters:
+    ///   - methodLabel: Override the tender method label (e.g. "Cash" after a
+    ///     cash transaction). When nil the label is derived from applied tenders.
+    ///   - invoiceId: Server-assigned invoice ID from a completed transaction.
+    private func buildPostSaleViewModel(
+        methodLabel overrideLabel: String? = nil,
+        methodAmountCents: Int? = nil,
+        invoiceId: Int64 = -1,
+        orderNumber: String? = nil
+    ) -> PosPostSaleViewModel {
+        let snapshot = PosReceiptPayloadBuilder.build(
+            cart: cart,
+            methodLabel: overrideLabel,
+            methodAmountCents: methodAmountCents,
+            orderNumber: orderNumber
+        )
         let text = PosReceiptRenderer.text(snapshot)
         let html = PosReceiptRenderer.html(snapshot)
-        // §16.7 — derive the payment method label from the cart's applied
-        // tenders. Once the BlockChyp terminal flow (§17.3) lands, replace
-        // with TerminalTransaction.cardBrand + " •••• " + cardLast4.
-        let methodLabel: String = {
+        let methodLabel: String = overrideLabel ?? {
             if cart.isFullyTendered {
-                // All tenders covered the total — show first tender's label
-                // (e.g. "Gift card ••••4C7A"). Multiple tenders: use first.
                 return cart.appliedTenders.first?.label ?? "Store credit"
             }
-            // Not fully tendered by gift cards / store credit — a card charge
-            // via BlockChyp (§17.3) is implied. "Card" is correct until the
-            // terminal flow populates cardBrand + cardLast4.
             return "Card"
         }()
         return PosPostSaleViewModel(
@@ -586,11 +640,41 @@ public struct PosView: View {
             methodLabel: methodLabel,
             receiptText: text,
             receiptHtml: html,
+            receiptPayload: snapshot,
+            invoiceId: invoiceId,
             defaultEmail: cart.customer?.email,
             defaultPhone: cart.customer?.phone,
             api: api,
             nextSale: { [weak cart] in cart?.clear() }
         )
+    }
+
+    /// Build a `CashTenderViewModel` from the current cart and open the sheet.
+    /// Throws if any cart item lacks an inventory_item_id; shows a toast instead.
+    private func openCashTender() {
+        guard let api else {
+            // No API client — fall back to the old direct post-sale path.
+            postSale = buildPostSaleViewModel(methodLabel: "Cash")
+            return
+        }
+        do {
+            let idempKey = UUID().uuidString
+            let request = try PosTransactionMapper.request(
+                from: cart,
+                paymentMethod: TenderKind.cash.apiValue,
+                paymentAmountCents: cart.totalCents,
+                idempotencyKey: idempKey
+            )
+            cashTenderVM = CashTenderViewModel(
+                totalCents: cart.totalCents,
+                transactionRequest: request,
+                api: api
+            )
+        } catch PosTransactionMapper.MapperError.customLineNotSupported(let msg) {
+            tenderErrorMessage = msg
+        } catch {
+            tenderErrorMessage = error.localizedDescription
+        }
     }
 
     private func openDrawer() {

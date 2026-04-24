@@ -60,3 +60,58 @@ data class UserDto(
 )
 
 // RegisterDeviceRequest removed — /auth/register-device does not exist on server
+
+// §2.8 — Password reset + backup-code recovery DTOs
+
+data class ForgotPasswordRequest(
+    val email: String,
+)
+
+data class ResetPasswordRequest(
+    val token: String,
+    val password: String,
+)
+
+/** §2.8 backup-code recovery — server takes email + backupCode + newPassword */
+data class BackupCodeRecoveryRequest(
+    val email: String,
+    @SerializedName("backupCode")
+    val backupCode: String,
+    @SerializedName("newPassword")
+    val newPassword: String,
+)
+
+/** Generic server message wrapper used by forgot-password, reset-password, and recovery */
+data class MessageResponse(
+    val message: String?,
+)
+
+// §2.5 — Switch user (shared device) DTOs.
+// Endpoint: POST /auth/switch-user
+// Request body: { pin }  — SECURITY: pin is NEVER logged.
+// Response data: { accessToken, user }
+
+data class SwitchUserRequest(
+    @SerializedName("pin") val pin: String,
+)
+
+data class SwitchUserResponse(
+    @SerializedName("accessToken") val accessToken: String,
+    @SerializedName("user") val user: UserDto,
+)
+
+/**
+ * §2.1 — Response from GET /auth/setup-status.
+ *
+ * Server returns exactly two fields:
+ *   - needsSetup:    true when no active users exist (first-run wizard required)
+ *   - isMultiTenant: true when the server is running in SaaS/multi-tenant mode
+ *
+ * Verified against packages/server/src/routes/auth.routes.ts line 435-445.
+ */
+data class SetupStatusResponse(
+    @SerializedName("needsSetup")
+    val needsSetup: Boolean,
+    @SerializedName("isMultiTenant")
+    val isMultiTenant: Boolean? = null,
+)

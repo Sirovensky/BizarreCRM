@@ -16,6 +16,13 @@ public extension Notification.Name {
     /// Posted by the Inventory repository when an inventory item changes.
     /// `userInfo["inventoryItem"]` may carry the updated `InventoryItem`.
     static let inventoryChanged = Notification.Name("bizarrecrm.inventoryChanged")
+
+    /// Posted by the Invoices repository when an invoice is created/updated/voided.
+    /// `userInfo["invoiceId"]` carries the `Int64` invoice ID.
+    /// `userInfo["displayId"]` carries the display order ID string (e.g. "INV-0042").
+    /// `userInfo["customerName"]` carries the customer display name.
+    /// `userInfo["updatedAt"]` carries the `Date` of the mutation.
+    static let invoiceChanged = Notification.Name("bizarrecrm.invoiceChanged")
 }
 
 // MARK: - SpotlightCoordinator

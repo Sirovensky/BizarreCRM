@@ -120,11 +120,12 @@ public final class SetupWizardViewModel {
         case .taxSetup:        return wizardPayload.taxRatePayload()
         case .paymentMethods:  return wizardPayload.paymentMethodsPayload()
         case .firstLocation:   return wizardPayload.firstLocationPayload()
-        case .teammates:       return wizardPayload.inviteesPayload()
+        case .firstEmployee:   return wizardPayload.firstEmployeePayload()
         case .smsSetup:        return wizardPayload.smsPayload()
         case .deviceTemplates: return wizardPayload.deviceFamiliesPayload()
         case .dataImport:      return wizardPayload.importPayload()
         case .theme:           return wizardPayload.themePayload()
+        case .sampleData:      return wizardPayload.sampleDataPayload()
         default:               return pendingPayload
         }
     }

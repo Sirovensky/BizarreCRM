@@ -153,13 +153,15 @@ private struct ReceivingLineRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: BrandSpacing.base) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(line.productName ?? line.sku)
+                Text(line.productName ?? line.sku ?? "Item \(line.id)")
                     .font(.brandBodyLarge())
                     .foregroundStyle(.bizarreOnSurface)
-                Text("SKU: \(line.sku)")
-                    .font(.brandMono(size: 12))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .textSelection(.enabled)
+                if let sku = line.sku {
+                    Text("SKU: \(sku)")
+                        .font(.brandMono(size: 12))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textSelection(.enabled)
+                }
                 Text("Ordered: \(line.orderedQty)")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -172,7 +174,7 @@ private struct ReceivingLineRow: View {
                     .font(.brandTitleMedium())
                     .foregroundStyle(isOver ? .bizarreError : .bizarreOnSurface)
                     .frame(width: 72)
-                    .accessibilityLabel("Received quantity for \(line.productName ?? line.sku)")
+                    .accessibilityLabel("Received quantity for \(line.productName ?? line.sku ?? "item")")
                 if isOver {
                     Text("Over!")
                         .font(.brandLabelSmall())

@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.Migrations
 import com.bizarreelectronics.crm.data.local.db.PlaintextToEncryptedMigrator
 import com.bizarreelectronics.crm.data.local.db.dao.*
+import com.bizarreelectronics.crm.data.local.draft.DraftDao
 import com.bizarreelectronics.crm.data.local.prefs.DatabasePassphrase
 import dagger.Module
 import dagger.Provides
@@ -110,4 +111,5 @@ object DatabaseModule {
     @Provides fun provideLeadDao(db: BizarreDatabase): LeadDao = db.leadDao()
     @Provides fun provideEstimateDao(db: BizarreDatabase): EstimateDao = db.estimateDao()
     @Provides fun provideExpenseDao(db: BizarreDatabase): ExpenseDao = db.expenseDao()
+    @Provides fun provideDraftDao(db: BizarreDatabase): DraftDao = db.draftDao()
 }

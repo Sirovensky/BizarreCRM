@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { broadcast } from '../ws/server.js';
 import { escapeXml } from '../utils/xml.js';
 import { getConfigValue } from '../utils/configEncryption.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
@@ -81,6 +82,13 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 
   if (!to) throw new AppError('Recipient phone number is required', 400);
 
+  // SCAN-719: prevent credit-depletion + provider-DoS via bulk call triggers
+  const userId = req.user!.id;
+  if (!checkWindowRate(req.db, 'voice_call', String(userId), 10, 60_000)) {
+    throw new AppError('Too many call attempts — try again later', 429);
+  }
+  recordWindowAttempt(req.db, 'voice_call', String(userId), 60_000);
+
   // PROD104: Emergency kill-switch. When DISABLE_OUTBOUND_VOICE=true, suppress
   // all outbound call origination immediately without a code deployment. Return
   // a synthesised success-shape with { suppressed: true, reason: 'kill-switch' }
@@ -114,11 +122,14 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
     pushTo = user.mobile_number;
   }
 
-  // Determine callback base URL
+  // Determine callback base URL.
+  // SCAN-715: always HTTPS — call metadata (transcripts, recordings, caller IDs)
+  // is PII + sensitive business data. Dev can use self-signed cert; the provider
+  // must accept it. Never plaintext HTTP even in dev.
   const lanIp = getLanIp();
   const callbackBaseUrl = config.nodeEnv === 'production'
     ? `https://${req.get('host')}`
-    : `http://${lanIp}:${config.port}`;
+    : `https://${lanIp}:${config.port}`;
 
   const convPhone = to.replace(/\D/g, '').replace(/^1/, '');
 
@@ -255,6 +266,13 @@ router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Respon
   }
 
   if (call.recording_url) {
+    // SCAN-721: revalidate URL against provider allowlist before redirecting —
+    // a malicious webhook could store an attacker-controlled URL in recording_url.
+    try {
+      validateRecordingUrl(call.recording_url);
+    } catch (err) {
+      throw new AppError('Recording URL not trusted', 403);
+    }
     res.redirect(call.recording_url);
     return;
   }

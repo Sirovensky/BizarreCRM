@@ -5,8 +5,17 @@ import DesignSystem
 import Networking
 
 // §5.5 Customer merge view.
-// iPhone: sheet with step-by-step layout.
-// iPad: NavigationSplitView — primary column | field diff | secondary info.
+//
+// Server contract: POST /api/v1/customers/merge { keep_id, merge_id }
+//   • keep_id  — primary: survives with its own field values intact.
+//   • merge_id — secondary: all tickets/invoices/SMS/contacts migrate to keep_id,
+//                then the record is soft-deleted.
+//   • Field preferences (name/phone/email/address/notes) shown in this UI are
+//     informational — the server does NOT accept them. The diff preview lets staff
+//     see which values will be lost so they can decide to edit the primary first.
+//
+// iPhone: bottom-sheet, step-by-step (pick candidate → review diff → confirm).
+// iPad:   three-column HStack (primary | field diff | secondary) with same confirm flow.
 
 public struct CustomerMergeView: View {
     @Environment(\.dismiss) private var dismiss
@@ -31,15 +40,23 @@ public struct CustomerMergeView: View {
             }
             .navigationTitle("Merge customer")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityLabel("Cancel merge")
                 }
                 if vm.selectedCandidate != nil {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Merge…") { showingConfirm = true }
-                            .disabled(vm.isMerging)
-                            .tint(.bizarreError)
+                        if vm.isMerging {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Merging…")
+                        } else {
+                            Button("Merge…") { showingConfirm = true }
+                                .tint(.bizarreError)
+                                .accessibilityLabel("Confirm merge — irreversible")
+                        }
                     }
                 }
             }
@@ -70,12 +87,19 @@ public struct CustomerMergeView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The secondary record will be archived and all its tickets, invoices and contacts will move to \(vm.primary.displayName). This cannot be undone.")
+                Text(confirmMessage)
             }
             .onChange(of: vm.candidateQuery) { _, _ in
                 Task { await vm.searchCandidates() }
             }
         }
+    }
+
+    // MARK: - Confirmation message
+
+    private var confirmMessage: String {
+        let secondary = vm.selectedCandidate?.displayName ?? "the secondary customer"
+        return "\(secondary)'s record will be archived. All tickets, invoices and contacts move to \(vm.primary.displayName). \(vm.primary.displayName)'s field values (name, phone, email, address) are preserved. This cannot be undone."
     }
 
     // MARK: - iPhone layout
@@ -84,6 +108,8 @@ public struct CustomerMergeView: View {
         ScrollView {
             VStack(spacing: BrandSpacing.lg) {
                 primaryHeader
+
+                serverBehaviorNote
 
                 if let err = vm.conflictMessage {
                     conflictBanner(err)
@@ -106,7 +132,7 @@ public struct CustomerMergeView: View {
 
     private var iPadLayout: some View {
         HStack(spacing: 0) {
-            // Column 1: Primary customer (keep)
+            // Column 1 — Primary customer (keep)
             ScrollView {
                 VStack(alignment: .leading, spacing: BrandSpacing.md) {
                     Text("Keep (primary)")
@@ -114,6 +140,7 @@ public struct CustomerMergeView: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .padding(.top, BrandSpacing.sm)
                     primaryHeader
+                    serverBehaviorNote
                     if let err = vm.conflictMessage { conflictBanner(err) }
                     if let err = vm.errorMessage { errorBanner(err) }
                 }
@@ -124,17 +151,22 @@ public struct CustomerMergeView: View {
 
             Divider()
 
-            // Column 2: Field diff
+            // Column 2 — Field diff (informational)
             ScrollView {
                 VStack(spacing: BrandSpacing.sm) {
-                    Text("Field preferences")
+                    Text("Field diff (preview only)")
                         .font(.brandTitleMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, BrandSpacing.sm)
 
+                    Text("The primary's values survive after merge. This preview shows what changes.")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                     if vm.fieldRows.isEmpty {
-                        Text("Select a customer to merge in →")
+                        Text("Select a customer to see the diff →")
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -153,7 +185,7 @@ public struct CustomerMergeView: View {
 
             Divider()
 
-            // Column 3: Secondary candidate (merge in)
+            // Column 3 — Secondary candidate (merge in)
             ScrollView {
                 VStack(alignment: .leading, spacing: BrandSpacing.md) {
                     Text("Merge in (secondary)")
@@ -177,15 +209,35 @@ public struct CustomerMergeView: View {
             Text(vm.primary.displayName)
                 .font(.brandHeadlineMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .accessibilityLabel("Primary customer: \(vm.primary.displayName)")
             if let email = vm.primary.email, !email.isEmpty {
                 Text(email)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .textSelection(.enabled)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+    }
+
+    /// Inline note explaining what the server actually does so staff understand
+    /// the field-diff preview is informational, not a control.
+    private var serverBehaviorNote: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.bizarreTeal)
+                .font(.system(size: 15))
+                .accessibilityHidden(true)
+            Text("After merge, **\(vm.primary.displayName)**'s name, phone, email and address are kept. All of the secondary's tickets, invoices and contacts move here.")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .padding(BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+        .accessibilityElement(children: .combine)
     }
 
     private var candidateSection: some View {
@@ -196,6 +248,7 @@ public struct CustomerMergeView: View {
                     Text(candidate.displayName)
                         .font(.brandHeadlineMedium())
                         .foregroundStyle(.bizarreOnSurface)
+                        .accessibilityLabel("Secondary customer: \(candidate.displayName)")
                     if let contact = candidate.contactLine {
                         Text(contact)
                             .font(.brandBodyMedium())
@@ -204,14 +257,11 @@ public struct CustomerMergeView: View {
                     Button("Change") { showingPicker = true }
                         .font(.brandLabelLarge())
                         .tint(.bizarreTeal)
+                        .accessibilityLabel("Change secondary customer selection")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(BrandSpacing.md)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-
-                if Platform.isCompact, !vm.fieldRows.isEmpty {
-                    // Field diff on iPhone is shown below in fieldDiffSection
-                }
             } else {
                 Button {
                     showingPicker = true
@@ -243,11 +293,11 @@ public struct CustomerMergeView: View {
 
     private var fieldDiffSection: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Field preferences")
+            Text("Field diff (preview)")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Tap a side to choose which value wins after the merge.")
-                .font(.brandBodyMedium())
+            Text("Highlighted in orange = the value that survives. The primary's values are always kept by the server.")
+                .font(.brandLabelLarge())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
 
             ForEach(vm.fieldRows) { row in
@@ -267,6 +317,7 @@ public struct CustomerMergeView: View {
         }
         .frame(width: 60, height: 60)
         .accessibilityLabel("Avatar for \(name)")
+        .accessibilityHidden(true)
     }
 
     private func conflictBanner(_ msg: String) -> some View {

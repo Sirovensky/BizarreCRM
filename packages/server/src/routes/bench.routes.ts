@@ -218,7 +218,13 @@ function computeElapsedSeconds(row: BenchTimerRow): number {
   }
 
   const active = end - start - paused;
-  return Math.max(0, Math.round(active / 1000));
+  const seconds = Math.max(0, Math.round(active / 1000));
+  const MAX_SECONDS_PER_SESSION = 24 * 3600;
+  if (seconds > MAX_SECONDS_PER_SESSION) {
+    logger.warn('bench timer session exceeds 24h — capping', { start, end, seconds });
+    return MAX_SECONDS_PER_SESSION;
+  }
+  return seconds;
 }
 
 function isCurrentlyPaused(row: BenchTimerRow): boolean {
@@ -484,12 +490,13 @@ router.post(
 
     // If the timer is still paused, close the pause segment first so the
     // subtracted paused-time matches reality.
+    let pauseLogJson = row.pause_log_json;
     if (isCurrentlyPaused(row)) {
       const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
       const last = pauses[pauses.length - 1];
       if (last) last.resume_at = new Date().toISOString();
-      await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
-      row.pause_log_json = JSON.stringify(pauses);
+      pauseLogJson = JSON.stringify(pauses);
+      row.pause_log_json = pauseLogJson;
     }
 
     const elapsed = computeElapsedSeconds(row);
@@ -500,15 +507,15 @@ router.post(
         ? validateTextLength(req.body.notes, 500, 'notes')
         : row.notes;
 
-    await adb.run(
-      `UPDATE bench_timers SET ended_at = datetime('now'),
-        total_seconds = ?, labor_cost_cents = ?, notes = ?
+    // Wrap pause_log update + timer stop in one atomic transaction (SCAN-809).
+    await adb.transaction([
+      {
+        sql: `UPDATE bench_timers SET ended_at = datetime('now'),
+        total_seconds = ?, labor_cost_cents = ?, notes = ?, pause_log_json = ?
        WHERE id = ?`,
-      elapsed,
-      cost,
-      notes,
-      id,
-    );
+        params: [elapsed, cost, notes, pauseLogJson, id],
+      },
+    ]);
 
     audit(req.db, 'bench_timer_stopped', req.user?.id ?? null, req.ip ?? 'unknown', {
       timer_id: id,
@@ -538,10 +545,19 @@ router.get(
     const ticketId = Number(req.params.ticketId);
     if (!Number.isFinite(ticketId)) throw new AppError('Invalid ticket id', 400);
 
-    const rows = (await adb.all(
-      'SELECT * FROM bench_timers WHERE ticket_id = ? ORDER BY started_at DESC',
-      ticketId,
-    )) as BenchTimerRow[];
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+
+    const rows = isPrivileged
+      ? ((await adb.all(
+          'SELECT * FROM bench_timers WHERE ticket_id = ? ORDER BY started_at DESC',
+          ticketId,
+        )) as BenchTimerRow[])
+      : ((await adb.all(
+          'SELECT * FROM bench_timers WHERE ticket_id = ? AND user_id = ? ORDER BY started_at DESC',
+          ticketId,
+          req.user?.id,
+        )) as BenchTimerRow[]);
 
     const totalSeconds = rows
       .filter((r) => r.total_seconds != null)
@@ -702,20 +718,28 @@ router.get(
 
     const qcRequired = (await getStoreFlag(adb, 'qc_required', 'false')) === 'true';
 
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+
+    const signOffData = signOff
+      ? {
+          ...signOff,
+          checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
+            signOff.checklist_results_json,
+            [],
+          ),
+          // Strip file paths for non-admin/non-manager callers
+          tech_signature_path: isPrivileged ? signOff.tech_signature_path : undefined,
+          working_photo_path: isPrivileged ? signOff.working_photo_path : undefined,
+        }
+      : null;
+
     res.json({
       success: true,
       data: {
         qc_required: qcRequired,
         signed: !!signOff,
-        sign_off: signOff
-          ? {
-              ...signOff,
-              checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
-                signOff.checklist_results_json,
-                [],
-              ),
-            }
-          : null,
+        sign_off: signOffData,
       },
     });
   }),
@@ -1085,10 +1109,14 @@ router.get(
   }),
 );
 
-// GET /bench/defects/by-item/:id — recent reports for a single part
+// GET /bench/defects/by-item/:id — recent reports for a single part (admin/manager only)
 router.get(
   '/defects/by-item/:id',
   asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager role required', 403);
+    }
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);

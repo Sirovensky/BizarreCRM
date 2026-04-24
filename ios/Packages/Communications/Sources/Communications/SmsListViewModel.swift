@@ -14,6 +14,8 @@ public final class SmsListViewModel {
     public var searchQuery: String = ""
     /// Exposed for `StalenessIndicator` chip in toolbar.
     public private(set) var lastSyncedAt: Date?
+    /// Per-row action error shown as inline banner.
+    public private(set) var actionError: String?
 
     @ObservationIgnored private let repo: SmsRepository
     @ObservationIgnored private let cachedRepo: SmsCachedRepository?
@@ -45,6 +47,119 @@ public final class SmsListViewModel {
             await fetch(force: false)
         }
     }
+
+    // MARK: - Actions
+
+    /// Marks the thread as read; updates local conversation optimistically.
+    public func markRead(phone: String) async {
+        // Optimistic: zero the unread count immediately.
+        conversations = conversations.map { c in
+            guard c.convPhone == phone else { return c }
+            return SmsConversation(
+                convPhone: c.convPhone,
+                lastMessageAt: c.lastMessageAt,
+                lastMessage: c.lastMessage,
+                lastDirection: c.lastDirection,
+                messageCount: c.messageCount,
+                unreadCount: 0,
+                isFlagged: c.isFlagged,
+                isPinned: c.isPinned,
+                isArchived: c.isArchived,
+                customer: c.customer,
+                recentTicket: c.recentTicket
+            )
+        }
+        do {
+            try await repo.markRead(phone: phone)
+        } catch {
+            AppLog.ui.error("markRead failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+            // Revert on failure.
+            await fetch(force: true)
+        }
+    }
+
+    /// Toggles flag; updates local conversation optimistically.
+    public func toggleFlag(phone: String) async {
+        do {
+            let newFlagged = try await repo.toggleFlag(phone: phone)
+            conversations = conversations.map { c in
+                guard c.convPhone == phone else { return c }
+                return SmsConversation(
+                    convPhone: c.convPhone,
+                    lastMessageAt: c.lastMessageAt,
+                    lastMessage: c.lastMessage,
+                    lastDirection: c.lastDirection,
+                    messageCount: c.messageCount,
+                    unreadCount: c.unreadCount,
+                    isFlagged: newFlagged,
+                    isPinned: c.isPinned,
+                    isArchived: c.isArchived,
+                    customer: c.customer,
+                    recentTicket: c.recentTicket
+                )
+            }
+        } catch {
+            AppLog.ui.error("toggleFlag failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// Toggles pin; updates local conversation and re-sorts so pinned rows surface first.
+    public func togglePin(phone: String) async {
+        do {
+            let newPinned = try await repo.togglePin(phone: phone)
+            conversations = conversations.map { c in
+                guard c.convPhone == phone else { return c }
+                return SmsConversation(
+                    convPhone: c.convPhone,
+                    lastMessageAt: c.lastMessageAt,
+                    lastMessage: c.lastMessage,
+                    lastDirection: c.lastDirection,
+                    messageCount: c.messageCount,
+                    unreadCount: c.unreadCount,
+                    isFlagged: c.isFlagged,
+                    isPinned: newPinned,
+                    isArchived: c.isArchived,
+                    customer: c.customer,
+                    recentTicket: c.recentTicket
+                )
+            }
+            // Re-sort: pinned threads float to top (mirrors server sort in GET /conversations).
+            conversations = conversations.sorted { a, b in
+                if a.isPinned && !b.isPinned { return true }
+                if !a.isPinned && b.isPinned { return false }
+                return false
+            }
+        } catch {
+            AppLog.ui.error("togglePin failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// Toggles archive; removes conversation from list when archiving (mirrors server filter).
+    public func toggleArchive(phone: String) async {
+        do {
+            let nowArchived = try await repo.toggleArchive(phone: phone)
+            if nowArchived {
+                // Remove from visible list — server excludes archived unless include_archived=1.
+                conversations.removeAll { $0.convPhone == phone }
+            } else {
+                // Unarchived — reload so it reappears correctly sorted.
+                await fetch(force: true)
+            }
+        } catch {
+            AppLog.ui.error("toggleArchive failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// Clears the inline action error banner.
+    public func clearActionError() {
+        actionError = nil
+    }
+
+    // MARK: - Private
 
     private func fetch(force: Bool) async {
         errorMessage = nil

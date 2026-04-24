@@ -9,11 +9,29 @@ import type { AsyncDb, TxQuery } from '../db/async-db.js';
 // @audit-fixed: payroll-period lock now enforced inside reverseCommission().
 import { reverseCommission } from '../utils/commissions.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('refunds.routes');
 
 const router = Router();
 
 const REFUND_TYPES = ['refund', 'store_credit', 'credit_note'] as const;
 type RefundType = typeof REFUND_TYPES[number];
+
+// SCAN-779: state machine matching the CHECK constraint in migration 026.
+// pending -> completed (approve), pending -> declined (decline).
+const LEGAL_REFUND_TRANSITIONS: Record<string, string[]> = {
+  pending: ['completed', 'declined'],
+  completed: [],  // terminal
+  declined: [],   // terminal
+};
+
+function assertRefundTransition(from: string, to: string): void {
+  const allowed = LEGAL_REFUND_TRANSITIONS[from] ?? [];
+  if (!allowed.includes(to)) {
+    throw new AppError(`cannot transition refund from '${from}' to '${to}'`, 400);
+  }
+}
 
 // Payment methods that represent external card processors (BlockChyp / Stripe).
 // Refunds originated against a card invoice cannot exceed the card amount received.
@@ -184,11 +202,36 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
     }
   }
 
-  const result = await adb.run(`
-    INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-  `, invoice_id || null, ticket_id || null, customer_id, amount, type, reason || null, method || null, req.user!.id, now(), now());
-
+  // SCAN-761: atomic cap re-check + insert via conditional INSERT ... SELECT.
+  // Pre-flight checks above are an optimistic fast path (good UX). The real
+  // enforcement is here: the INSERT only proceeds if the SUM of approved/
+  // completed refunds + this new amount does not exceed amount_paid.
+  // Two concurrent requests serialized by SQLite's writer lock — only one
+  // INSERT succeeds; the other sees changes=0 and gets a 409.
+  let result: { changes: number; lastInsertRowid: number };
+  if (invoice_id) {
+    result = await adb.run(`
+      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, created_by, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?
+      WHERE (
+        SELECT COALESCE(SUM(r.amount), 0)
+          FROM refunds r
+         WHERE r.invoice_id = ?
+           AND r.status IN ('approved', 'completed')
+      ) + ? <= (
+        SELECT amount_paid FROM invoices WHERE id = ?
+      )
+    `, invoice_id, ticket_id || null, customer_id, amount, type, reason || null, method || null, req.user!.id, now(), now(),
+       invoice_id, amount, invoice_id);
+    if (result.changes === 0) {
+      throw new AppError('Refund exceeds available balance (concurrent refund conflict)', 409);
+    }
+  } else {
+    result = await adb.run(`
+      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    `, null, ticket_id || null, customer_id, amount, type, reason || null, method || null, req.user!.id, now(), now());
+  }
   const refundId = Number(result.lastInsertRowid);
   audit(db, 'refund_created', req.user!.id, req.ip || 'unknown', { refund_id: refundId, amount, type, invoice_id: invoice_id || null, method: method || null });
 
@@ -217,7 +260,7 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
 
   const refund = await adb.get<RefundRow>('SELECT * FROM refunds WHERE id = ?', id);
   if (!refund) throw new AppError('Refund not found', 404);
-  if (refund.status !== 'pending') throw new AppError('Refund is not pending', 400);
+  assertRefundTransition(refund.status, 'completed');
 
   // Snapshot invoice totals up-front so we can compute the new balance in JS
   // (SEC-H28: within a transaction we cannot interleave SELECTs, so the
@@ -270,6 +313,12 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
   // Post-transaction hooks — commission reversal + store credit are best-effort
   // and intentionally outside the tx so a downstream failure does not roll back
   // the approved refund. (They still log their own audit entries.)
+  //
+  // SCAN-629: hoist these flags before the inner blocks so they are in scope
+  // for the final res.json() call regardless of which branch executes.
+  let commissionReversalSkipped = false;
+  let commissionReversalError: string | undefined;
+
   if (refund.invoice_id) {
     const inv = await adb.get<InvoiceRow>(
       'SELECT id, total, amount_paid FROM invoices WHERE id = ?',
@@ -284,19 +333,45 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
       const refundFraction = totalInvoice > 0
         ? Math.min(1, refund.amount / totalInvoice)
         : 1;
-      const reversedCount = await reverseCommission(adb, {
-        sourceType: 'invoice',
-        sourceId: refund.invoice_id,
-        fraction: refundFraction,
-        at: now(),
-      });
-      if (reversedCount > 0) {
-        audit(db, 'commissions_reversed', req.user!.id, req.ip || 'unknown', {
-          refund_id: id,
-          invoice_id: refund.invoice_id,
-          reversal_fraction: refundFraction,
-          commission_rows_reversed: reversedCount,
+      // SCAN-629: reverseCommission runs outside the tx (intentionally, so a
+      // downstream failure does not roll back an already-committed refund).
+      // Catch AppError 403 (locked payroll period) as a non-fatal warning and
+      // surface it to the caller via a response field rather than propagating
+      // as an unhandled 500.
+      try {
+        const reversedCount = await reverseCommission(adb, {
+          sourceType: 'invoice',
+          sourceId: refund.invoice_id,
+          fraction: refundFraction,
+          at: now(),
         });
+        if (reversedCount > 0) {
+          audit(db, 'commissions_reversed', req.user!.id, req.ip || 'unknown', {
+            refund_id: id,
+            invoice_id: refund.invoice_id,
+            reversal_fraction: refundFraction,
+            commission_rows_reversed: reversedCount,
+          });
+        }
+      } catch (err: unknown) {
+        if (err instanceof AppError && err.statusCode === 403) {
+          // Payroll period is locked — commission reversal is intentionally
+          // deferred. The refund itself is already committed; warn and continue.
+          logger.warn('commission_reversal_skipped_locked_period', {
+            refund_id: id,
+            invoice_id: refund.invoice_id,
+            reason: err.message,
+          });
+          commissionReversalSkipped = true;
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('commission_reversal_error', {
+            refund_id: id,
+            invoice_id: refund.invoice_id,
+            error: msg,
+          });
+          commissionReversalError = msg;
+        }
       }
     }
   }
@@ -326,7 +401,14 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
     type: refund.type,
     invoice_id: refund.invoice_id,
   });
-  res.json({ success: true, data: { id } });
+  res.json({
+    success: true,
+    data: {
+      id,
+      ...(commissionReversalSkipped && { commission_reversal_skipped: true }),
+      ...(commissionReversalError !== undefined && { commission_reversal_error: commissionReversalError }),
+    },
+  });
 }));
 
 // PATCH /:id/decline — Decline refund
@@ -340,6 +422,9 @@ router.patch('/:id/decline', requirePermission('refunds.approve'), asyncHandler(
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
 
+  const declineRefund = await adb.get<{ status: string }>('SELECT status FROM refunds WHERE id = ?', id);
+  if (!declineRefund) throw new AppError('Refund not found', 404);
+  assertRefundTransition(declineRefund.status, 'declined');
   const result = await adb.run(
     "UPDATE refunds SET status = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
     'declined', now(), id,

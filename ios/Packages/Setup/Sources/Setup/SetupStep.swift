@@ -1,8 +1,9 @@
 import Foundation
 
 // MARK: - SetupStep enum
-// §36: 14-step first-run onboarding wizard (12a = Theme is a full step).
-// Steps 1–8 are fully implemented; 9–14 implemented in §36.2 phase 2 PR.
+// §36: 15-step first-run onboarding wizard.
+// Steps 1–8 fully implemented in §36.2 Phase 1.
+// Steps 9–15 implemented in §36 Phase 2 (this PR).
 
 public enum SetupStep: Int, CaseIterable, Sendable {
     case welcome           = 1
@@ -13,12 +14,13 @@ public enum SetupStep: Int, CaseIterable, Sendable {
     case taxSetup          = 6   // §36.2 Step 6 — Tax setup
     case paymentMethods    = 7   // §36.2 Step 7 — Payment methods
     case firstLocation     = 8   // §36.2 Step 8 — First location
-    case teammates         = 9   // §36.2 Step 9 — Invite teammates
+    case firstEmployee     = 9   // §36 Step 9 — First employee (POST /settings/users)
     case smsSetup          = 10  // §36.2 Step 10 — SMS setup
     case deviceTemplates   = 11  // §36.2 Step 11 — Device templates
     case dataImport        = 12  // §36.2 Step 12 — Import data
     case theme             = 13  // §36.2 Step 12a — Theme (12a = step 13 in sequence)
-    case complete          = 14  // §36.2 Step 13 — Done
+    case sampleData        = 14  // §36 Step 14 — Sample data opt-in (POST /onboarding/sample-data)
+    case complete          = 15  // §36.2 Step 15 — Done
 
     public var title: String {
         switch self {
@@ -30,11 +32,12 @@ public enum SetupStep: Int, CaseIterable, Sendable {
         case .taxSetup:          return "Tax Setup"
         case .paymentMethods:    return "Payment Methods"
         case .firstLocation:     return "First Location"
-        case .teammates:         return "Teammates"
+        case .firstEmployee:     return "First Employee"
         case .smsSetup:          return "SMS Setup"
         case .deviceTemplates:   return "Device Templates"
         case .dataImport:        return "Data Import"
         case .theme:             return "Theme"
+        case .sampleData:        return "Sample Data"
         case .complete:          return "Complete"
         }
     }

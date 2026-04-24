@@ -27,12 +27,14 @@ public struct ReportsView: View {
     @State private var emailRecipient = ""
     @State private var showEmailSheet  = false
 
+    private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
 
     public init(repository: ReportsRepository,
                 onTapSaleRecord: @escaping (Int64) -> Void = { _ in }) {
         _vm = State(wrappedValue: ReportsViewModel(repository: repository))
         self.exportService = ReportExportService(repository: repository)
+        self.csvService = ReportCSVService()
         self.onTapSaleRecord = onTapSaleRecord
     }
 
@@ -165,6 +167,13 @@ public struct ReportsView: View {
                 .accessibilityLabel("Export PDF report")
 
                 Button {
+                    Task { await exportCSV() }
+                } label: {
+                    Label("Export CSV", systemImage: "doc.plaintext")
+                }
+                .accessibilityLabel("Export CSV report")
+
+                Button {
                     showEmailSheet = true
                 } label: {
                     Label("Email Report", systemImage: "envelope")
@@ -185,19 +194,36 @@ public struct ReportsView: View {
         }
     }
 
-    // MARK: - Date Range Picker
+    // MARK: - Date Range Picker + Granularity Toggle
 
     private var dateRangePicker: some View {
-        Picker("Date Range", selection: $vm.selectedPreset) {
-            ForEach(DateRangePreset.allCases) { preset in
-                Text(preset.displayLabel).tag(preset)
+        VStack(spacing: BrandSpacing.sm) {
+            Picker("Date Range", selection: $vm.selectedPreset) {
+                ForEach(DateRangePreset.allCases) { preset in
+                    Text(preset.displayLabel).tag(preset)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: vm.selectedPreset) { _, _ in
+                Task { await vm.loadAll() }
+            }
+            .accessibilityLabel("Select date range preset")
+
+            granularityToggle
+        }
+    }
+
+    private var granularityToggle: some View {
+        Picker("Granularity", selection: $vm.granularity) {
+            ForEach(ReportGranularity.allCases) { g in
+                Text(g.displayLabel).tag(g)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: vm.selectedPreset) { _, _ in
+        .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }
-        .accessibilityLabel("Select date range")
+        .accessibilityLabel("Select chart granularity: day, week, or month")
     }
 
     // MARK: - Hero Tile (Liquid Glass on chrome)
@@ -283,18 +309,30 @@ public struct ReportsView: View {
 
     @ViewBuilder
     private var cardItems: some View {
-        RevenueChartCard(points: vm.revenue) { pt in
+        // §15.2 Revenue chart — line + bar via /reports/sales
+        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
             drillContext = .revenue(date: pt.date)
         }
 
+        // §15.9 Expenses chart — bar via /reports/dashboard-kpis
+        ExpensesChartCard(report: vm.expensesReport)
+
+        // §15.5 Inventory movement chart — bar via /reports/inventory
+        InventoryMovementCard(report: vm.inventoryReport)
+
+        // §15.3 Tickets by status
         TicketsByStatusCard(points: vm.ticketsByStatus)
 
+        // §15.2 Avg ticket value KPI
         AvgTicketValueCard(value: vm.avgTicketValue)
 
+        // §15.4 Employee performance
         TopEmployeesCard(employees: vm.employeePerf)
 
+        // §15.5 Inventory turnover (category table)
         InventoryTurnoverCard(rows: vm.inventoryTurnover)
 
+        // §15.7 CSAT + NPS
         CSATScoreCard(score: vm.csatScore) {
             showCSATDetail = true
         }
@@ -320,6 +358,26 @@ public struct ReportsView: View {
         )
         do {
             exportURL = try await exportService.generatePDF(report: snapshot)
+            showExportShare = true
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    private func exportCSV() async {
+        let snapshot = ReportSnapshot(
+            title: "BizarreCRM Report",
+            period: "\(vm.fromDateString) – \(vm.toDateString)",
+            revenue: vm.revenue,
+            ticketsByStatus: vm.ticketsByStatus,
+            avgTicketValue: vm.avgTicketValue,
+            topEmployees: Array(vm.employeePerf.prefix(5)),
+            inventoryTurnover: vm.inventoryTurnover,
+            csatScore: vm.csatScore,
+            npsScore: vm.npsScore
+        )
+        do {
+            exportURL = try await csvService.generateSnapshotCSV(report: snapshot)
             showExportShare = true
         } catch {
             exportError = error.localizedDescription

@@ -2,16 +2,22 @@
 import SwiftUI
 import DesignSystem
 import Networking
+import Core
 
 /// §42.5 — Voicemail list screen.
 ///
 /// Server endpoint is DEFERRED (no `voicemail.routes.ts` exists). This view
 /// renders a "Coming soon" banner when the API returns 404. When the endpoint
 /// ships, the view will automatically start populating.
+///
+/// Layout:
+/// - iPhone: single `NavigationStack` with inline player sheet.
+/// - iPad: `NavigationSplitView` — list column | player/detail column.
 public struct VoicemailListView: View {
 
     @State private var viewModel: VoicemailViewModel
     @State private var playerEntry: VoicemailEntry?
+    @State private var selectedId: Int64?
 
     private let api: APIClient
 
@@ -21,28 +27,78 @@ public struct VoicemailListView: View {
     }
 
     public var body: some View {
+        Group {
+            if Platform.isIPad {
+                ipadLayout
+            } else {
+                iphoneLayout
+            }
+        }
+        .task { await viewModel.load() }
+    }
+
+    // MARK: - iPhone layout
+
+    private var iphoneLayout: some View {
         NavigationStack {
             contentBody
                 .navigationTitle("Voicemail")
                 .toolbarBackground(.visible, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            Task { await viewModel.load() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .accessibilityLabel("Refresh voicemails")
-                    }
-                }
+                .toolbar { refreshToolbarItem }
         }
         .sheet(item: $playerEntry) { entry in
             VoicemailPlayerView(entry: entry) {
-                // On dismiss, mark as heard
                 Task { await viewModel.markHeard(entry: entry) }
             }
         }
-        .task { await viewModel.load() }
+    }
+
+    // MARK: - iPad layout (list | player/detail)
+
+    private var ipadLayout: some View {
+        NavigationSplitView {
+            contentBody
+                .navigationTitle("Voicemail")
+                .toolbar { refreshToolbarItem }
+        } detail: {
+            ipadDetailColumn
+        }
+    }
+
+    @ViewBuilder
+    private var ipadDetailColumn: some View {
+        if let id = selectedId,
+           case .loaded(let items) = viewModel.state,
+           let entry = items.first(where: { $0.id == id }) {
+            VoicemailPlayerView(entry: entry) {
+                Task { await viewModel.markHeard(entry: entry) }
+            }
+        } else {
+            VStack(spacing: DesignTokens.Spacing.lg) {
+                Image(systemName: "voicemail")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("Select a voicemail")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityLabel("No voicemail selected")
+        }
+    }
+
+    // MARK: - Toolbar item
+
+    private var refreshToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                Task { await viewModel.load() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .accessibilityLabel("Refresh voicemails")
+        }
     }
 
     // MARK: - Content
@@ -87,10 +143,15 @@ public struct VoicemailListView: View {
     // MARK: - List
 
     private func voicemailList(_ items: [VoicemailEntry]) -> some View {
-        List(items) { entry in
+        List(items, selection: $selectedId) { entry in
             VoicemailRow(entry: entry) {
-                playerEntry = entry
+                if Platform.isIPad {
+                    selectedId = entry.id
+                } else {
+                    playerEntry = entry
+                }
             }
+            .tag(entry.id)
             .swipeActions(edge: .trailing) {
                 Button {
                     Task { await viewModel.markHeard(entry: entry) }
@@ -98,6 +159,19 @@ public struct VoicemailListView: View {
                     Label("Mark heard", systemImage: "checkmark.circle")
                 }
                 .tint(.blue)
+            }
+            .hoverEffect(.highlight)
+            .contextMenu {
+                Button {
+                    Task { await viewModel.markHeard(entry: entry) }
+                } label: {
+                    Label("Mark as Heard", systemImage: "checkmark.circle")
+                }
+                Button {
+                    CallQuickAction.placeCall(to: entry.phoneNumber)
+                } label: {
+                    Label("Call Back", systemImage: "phone.fill")
+                }
             }
         }
         .listStyle(.plain)

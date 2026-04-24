@@ -25,12 +25,23 @@ import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.
 import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { computeSlaForTicket } from '../services/slaAssignment.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { logActivity } from '../utils/activityLog.js';
 
 const logger = createLogger('tickets.routes');
+
+// Preserve last-4 digits for correlation; strips carrier prefix (customer PII).
+// "+15551234567" -> "XXX-XXX-4567" | "abc" -> "XXX-XXX-XXXX"
+function redactPhone(phone: unknown): string {
+  if (typeof phone !== 'string') return 'XXX-XXX-XXXX';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return 'XXX-XXX-XXXX';
+  return `XXX-XXX-${digits.slice(-4)}`;
+}
 
 const router = Router();
 
@@ -494,6 +505,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const fromDate = req.query.from_date as string || null;
   const toDate = req.query.to_date as string || null;
   const dateFilter = req.query.date_filter as string || 'all';
+  // SCAN-462 / migration 136: optional location filter (backwards-compat — omitting it returns all)
+  const locationIdParam = req.query.location_id as string || '';
+  const locationIdFilter = /^\d+$/.test(locationIdParam) ? parseInt(locationIdParam, 10) : null;
   const sortBy = (req.query.sort_by as string) || 'created_at';
   const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
@@ -573,6 +587,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   if (toDate) {
     conditions.push('t.created_at <= ?');
     params.push(toDate + ' 23:59:59');
+  }
+
+  // SCAN-462 / migration 136: location filter — no forced scoping, purely additive
+  if (locationIdFilter !== null) {
+    conditions.push('t.location_id = ?');
+    params.push(locationIdFilter);
   }
 
   // Keyword search: order_id, customer name, device names, notes content, history description
@@ -735,7 +755,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       }
     } catch (e) {
       // SMS lookup is non-critical — silently skip if table/schema issue
-      console.error('SMS lookup for ticket list failed:', (e as Error).message);
+      logger.error('tickets_sms_lookup_failed', { error: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -844,10 +864,14 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   const userId = req.user!.id;
   const body = req.body;
 
-  // F18: Require customer if setting enabled (default: required)
+  // F18: Require customer if setting enabled (default: required).
+  // CROSS12-fix: walk-in tickets (is_walk_in=true) are exempt -- the server
+  // resolves or creates a customer row below, so no customer_id is needed
+  // from the client.
   const requireCustomer = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_customer'");
   const customerRequired = !requireCustomer || requireCustomer.value !== '0';
-  if (!body.customer_id && customerRequired) {
+  const isWalkIn = body.is_walk_in === true;
+  if (!body.customer_id && customerRequired && !isWalkIn) {
     throw new AppError('customer_id is required', 400);
   }
   if (!body.devices || !Array.isArray(body.devices) || body.devices.length === 0) {
@@ -865,8 +889,42 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     dev.additional_notes = maxLen(dev.additional_notes, 2000);
   }
 
-  // Verify customer exists (if provided)
-  if (body.customer_id) {
+  // CROSS12-fix: resolve the effective customer_id.
+  //   - Normal ticket:  use body.customer_id as-is (verified below).
+  //   - Walk-in with identity (name/phone provided): create a unique customer
+  //     row so this ticket has an editable, per-ticket customer record.
+  //   - Truly anonymous walk-in (no identity fields): fall back to the shared
+  //     WALK-IN sentinel -- that row must NOT be renamed (CROSS12 guard on
+  //     CustomerDetailScreen keeps the Edit button hidden for it).
+  let resolvedCustomerId: number | null = body.customer_id ?? null;
+
+  if (isWalkIn) {
+    const walkInFirst = ((body.walk_in_first_name as string | undefined) ?? '').trim();
+    const walkInLast  = ((body.walk_in_last_name  as string | undefined) ?? '').trim();
+    const walkInPhone = ((body.walk_in_phone       as string | undefined) ?? '').trim();
+    const walkInEmail = ((body.walk_in_email       as string | undefined) ?? '').trim();
+
+    if (walkInFirst || walkInLast || walkInPhone) {
+      // Create a unique, fully-editable customer row for this walk-in.
+      const insertResult = await adb.run(
+        `INSERT INTO customers
+           (first_name, last_name, mobile, email, type, source, is_deleted, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'individual', 'Walk-in', 0, datetime('now'), datetime('now'))`,
+        walkInFirst || 'Walk-in',
+        walkInLast  || '',
+        walkInPhone || null,
+        walkInEmail || null,
+      );
+      resolvedCustomerId = Number(insertResult.lastInsertRowid);
+    } else {
+      // Truly anonymous walk-in -- use the shared sentinel.
+      const sentinel = await adb.get<{ id: number }>(
+        "SELECT id FROM customers WHERE code = 'WALK-IN' LIMIT 1",
+      );
+      resolvedCustomerId = sentinel?.id ?? null;
+    }
+  } else if (body.customer_id) {
+    // Verify non-walk-in customer exists.
     const customer = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', body.customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
   }
@@ -979,15 +1037,38 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   // Generate tracking token for public ticket lookup
   const trackingToken = crypto.randomBytes(16).toString('hex'); // 32-char hex (128-bit)
 
-  // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires)
+  // Validate priority enum (migration 135)
+  const PRIORITY_VALUES = ['low', 'normal', 'high', 'critical'] as const;
+  const priority: string = PRIORITY_VALUES.includes(body.priority as typeof PRIORITY_VALUES[number])
+    ? (body.priority as string)
+    : 'normal';
+
+  // SCAN-462 / migration 136: resolve location_id — default to 1 (Main Store) when not provided.
+  // Validate that the supplied id references an existing, active location.
+  let ticketLocationId: number = 1;
+  if (body.location_id !== undefined && body.location_id !== null) {
+    if (!Number.isInteger(body.location_id) || (body.location_id as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const loc = await adb.get<AnyRow>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      body.location_id,
+    );
+    if (!loc) throw new AppError('location_id references an unknown or inactive location', 400);
+    ticketLocationId = body.location_id as number;
+  }
+
+  // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires; migration 136: location_id)
+  // CROSS12-fix: use resolvedCustomerId so walk-in tickets point to their
+  // unique customer row (or the sentinel for truly anonymous walk-ins).
   const ticketResult = await adb.run(`
     INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                          source, referral_source, labels, due_on, created_by, tracking_token,
-                         is_layaway, layaway_expires, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         is_layaway, layaway_expires, priority, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
-    body.customer_id,
+    resolvedCustomerId,
     statusId,
     assignedTo,
     body.discount ?? 0,
@@ -1000,11 +1081,29 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     trackingToken,
     body.is_layaway ? 1 : 0,
     body.layaway_expires ?? null,
+    priority,
+    ticketLocationId,
     now(),
     now(),
   );
 
   const ticketId = Number(ticketResult.lastInsertRowid);
+  const ticketCreatedAt = now();
+
+  // SCAN-464: Assign SLA policy based on priority level (migration 135: priority column).
+  // Fail-open: SLA assignment failure must never abort ticket creation.
+  try {
+    await computeSlaForTicket(adb, {
+      ticket_id: ticketId,
+      priority_level: priority,
+      created_at: ticketCreatedAt,
+    });
+  } catch (slaErr) {
+    logger.warn('sla assignment failed on ticket create (non-fatal)', {
+      ticket_id: ticketId,
+      error: slaErr instanceof Error ? slaErr.message : String(slaErr),
+    });
+  }
 
   // F15: Pre-fetch default warranty settings once (used per device if warranty_days not provided)
   const [wVal, wUnit] = await Promise.all([
@@ -1157,7 +1256,8 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: orderId });
 
   // Fire automations (async, non-blocking)
-  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', body.customer_id);
+  // CROSS12-fix: use resolvedCustomerId (handles walk-in rows correctly).
+  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', resolvedCustomerId);
   runAutomations(db, 'ticket_created', { ticket, customer: cust ?? {} });
 
   // M10 fix: attach a tax_warning field when any device referenced a deleted/missing tax class
@@ -1168,6 +1268,19 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
       ? taxWarnings[0]
       : `${taxWarnings.length} tax class lookups defaulted to 0 (${taxWarnings.join('; ')})`;
   }
+
+  // SCAN-522: fire-and-forget activity log
+  logActivity(adb, {
+    actor_user_id: userId,
+    entity_kind: 'ticket',
+    entity_id: ticketId,
+    action: 'created',
+  }).catch((err: unknown) => {
+    logger.warn('tickets: activity-log dispatch failed', {
+      err: err instanceof Error ? err.message : String(err),
+      ticket_id: ticketId,
+    });
+  });
 
   res.status(201).json({ success: true, data: createPayload });
 }));
@@ -1248,7 +1361,14 @@ router.get('/kanban', asyncHandler(async (req: Request, res: Response) => {
 // ===================================================================
 router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  let days = parseInt(req.query.days as string) || 0;
+  const daysRaw = req.query.days;
+  let days = 0;
+  if (daysRaw !== undefined && daysRaw !== '') {
+    const n = Number(daysRaw);
+    if (Number.isFinite(n) && n >= 1 && n <= 365) {
+      days = Math.floor(n);
+    }
+  }
   if (!days) {
     const cfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'stall_alert_days'");
     days = cfg ? parseInt(cfg.value) || 3 : 3;
@@ -1530,6 +1650,21 @@ router.get('/export', asyncHandler(async (req: Request, res: Response) => {
     params.push(assignedTo);
   }
 
+  // SCAN-526: mirror the ticket_all_employees_view_all guard from the list handler.
+  // Technicians (non-admin/non-manager) may only export their own tickets when the
+  // setting is disabled, preventing enumeration of other techs' work via CSV export.
+  const exportRole = req.user?.role;
+  const exportIsAdminOrManager = exportRole === 'admin' || exportRole === 'manager';
+  if (!assignedTo && !exportIsAdminOrManager) {
+    const allViewCfg = await req.asyncDb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'"
+    );
+    if (allViewCfg?.value === '0') {
+      conditions.push('t.assigned_to = ?');
+      params.push(req.user!.id);
+    }
+  }
+
   // Date filtering
   if (dateFilter !== 'all') {
     let daysBack = 0;
@@ -1769,10 +1904,30 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
     (req.body as Record<string, unknown>).customer_id = customerId;
   }
 
+  const PATCH_PRIORITY_VALUES = ['low', 'normal', 'high', 'critical'] as const;
+  if (req.body.priority !== undefined &&
+      !PATCH_PRIORITY_VALUES.includes(req.body.priority as typeof PATCH_PRIORITY_VALUES[number])) {
+    throw new AppError('priority must be one of: low, normal, high, critical', 400);
+  }
+
+  // SCAN-462 / migration 136: validate location_id before entering the update loop
+  if (req.body.location_id !== undefined && req.body.location_id !== null) {
+    if (!Number.isInteger(req.body.location_id) || (req.body.location_id as number) <= 0) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    const patchLoc = await adb.get<AnyRow>(
+      'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+      req.body.location_id,
+    );
+    if (!patchLoc) throw new AppError('location_id references an unknown or inactive location', 400);
+  }
+
   const allowedFields = [
     'customer_id', 'assigned_to', 'discount', 'discount_reason',
     'source', 'referral_source', 'labels', 'due_on', 'signature',
     'is_layaway', 'layaway_expires', // ENR-POS1
+    'priority', // migration 135
+    'location_id', // migration 136 (SCAN-462)
   ];
   const updates: string[] = [];
   const params: any[] = [];
@@ -1802,6 +1957,24 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
   // Recalculate if discount changed
   if (req.body.discount !== undefined) {
     await recalcTicketTotalsAsync(adb, ticketId);
+  }
+
+  // SCAN-464 (migration 135): Re-assign SLA when priority changes.
+  // priority is now persisted in the DB; read it back from body or fall back to existing row.
+  if (req.body.priority !== undefined) {
+    const effectivePriority: string = (req.body.priority as string) || (existing.priority as string) || 'normal';
+    try {
+      await computeSlaForTicket(adb, {
+        ticket_id: ticketId,
+        priority_level: effectivePriority,
+        created_at: existing.created_at as string,
+      });
+    } catch (slaErr) {
+      logger.warn('sla assignment failed on ticket update (non-fatal)', {
+        ticket_id: ticketId,
+        error: slaErr instanceof Error ? slaErr.message : String(slaErr),
+      });
+    }
   }
 
   await insertHistoryAsync(adb, ticketId, userId, 'updated', 'Ticket updated');
@@ -1941,13 +2114,27 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
 
   // SEC-H122: all guards + UPDATE + audit + broadcast + webhook + automations
   // are handled by the shared helper so the automation path runs the same logic.
-  const { ticket } = await applyTicketStatusChange(
+  const { ticket, oldStatusId, newStatusId: resolvedNewStatusId } = await applyTicketStatusChange(
     db,
     ticketId,
     statusIdInt,
     userId,
     req.tenantSlug || null,
   );
+
+  // SCAN-522: fire-and-forget activity log for status change
+  logActivity(adb, {
+    actor_user_id: userId,
+    entity_kind: 'ticket',
+    entity_id: ticketId,
+    action: 'status_changed',
+    metadata: { from: oldStatusId, to: resolvedNewStatusId },
+  }).catch((err: unknown) => {
+    logger.warn('tickets: status-change activity-log dispatch failed', {
+      err: err instanceof Error ? err.message : String(err),
+      ticket_id: ticketId,
+    });
+  });
 
   // Notification (HTTP-only: needs tenantSlug from req, and retry-queue fallback
   // that uses the sync db handle directly).
@@ -1959,7 +2146,7 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
   if (newStatus?.notify_customer) {
     import('../services/notifications.js').then(({ sendTicketStatusNotification }) => {
       sendTicketStatusNotification(db, { ticketId, statusName: newStatus.name, tenantSlug: req.tenantSlug || null });
-    }).catch(err => console.error('[Notification] Import error:', err));
+    }).catch(err => logger.error('notification_import_failed', { err: err instanceof Error ? err.message : String(err) }));
   }
 
   // SW-D14: Schedule feedback SMS after ticket close (HTTP-only side-effect)
@@ -1998,9 +2185,9 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
               INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, entity_type, entity_id, created_at, updated_at)
               VALUES ('', ?, ?, ?, 'sent', 'outbound', 'auto-feedback', 'ticket', ?, datetime('now'), datetime('now'))
             `, feedbackPhone, feedbackPhone.replace(/\D/g, '').replace(/^1/, ''), smsBody, ticketId);
-            console.log(`[Feedback] Sent feedback SMS to ${feedbackPhone} for ticket ${ticket!.order_id}`);
+            logger.info('feedback sms sent', { toRedacted: redactPhone(feedbackPhone), orderId: ticket!.order_id });
           } catch (err) {
-            console.error('[Feedback] Failed to send feedback SMS:', err);
+            logger.error('feedback_sms_failed', { err: err instanceof Error ? err.message : String(err) });
           }
         }, delayMs);
       }
@@ -2357,7 +2544,14 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
   // Try to delete the file — account for tenant slug in multi-tenant setups.
   // Capture file size BEFORE delete so we can refund storage quota.
   const tenantSlug = (req as any).tenantSlug || '';
-  const filePath = path.join(config.uploadsPath, tenantSlug, photo.file_path);
+  const tenantUploadsRoot = path.resolve(config.uploadsPath, tenantSlug);
+  const filePath = path.resolve(tenantUploadsRoot, photo.file_path);
+  if (!filePath.startsWith(tenantUploadsRoot + path.sep) && filePath !== tenantUploadsRoot) {
+    logger.error('ticket photo path traversal attempt', {
+      ticket_id: photo.ticket_id, file_path: photo.file_path, resolved: filePath,
+    });
+    throw new AppError('invalid photo path', 400);
+  }
   let deletedBytes = 0;
   try {
     const stat = fs.statSync(filePath);
@@ -2850,10 +3044,17 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
 
   // Delete photos from disk (tenant-scoped path)
   const tenantSlug = (req as any).tenantSlug || '';
-  const uploadsBase = tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath;
+  const uploadsBase = path.resolve(tenantSlug ? path.join(config.uploadsPath, tenantSlug) : config.uploadsPath);
   const photos = await adb.all<AnyRow>('SELECT file_path FROM ticket_photos WHERE ticket_device_id = ?', deviceId);
   for (const photo of photos) {
-    try { fs.unlinkSync(path.join(uploadsBase, photo.file_path)); } catch { /* ignore */ }
+    const photoPath = path.resolve(uploadsBase, photo.file_path);
+    if (!photoPath.startsWith(uploadsBase + path.sep) && photoPath !== uploadsBase) {
+      logger.error('ticket device photo path traversal attempt', {
+        device_id: deviceId, file_path: photo.file_path, resolved: photoPath,
+      });
+      continue;
+    }
+    try { fs.unlinkSync(photoPath); } catch { /* ignore */ }
   }
 
   // Delete the device first (CASCADE removes ticket_device_parts, ticket_photos,
@@ -3304,7 +3505,7 @@ router.post('/:id/otp', requirePermission('tickets.edit'), asyncHandler(async (r
     await sendSms(phone, `Your verification code for ticket T-${ticketId} is: ${code}. It expires in 15 minutes.`);
   } catch (err) {
     // Log failure but do not expose to client — OTP is stored, staff can resend
-    console.error(`[OTP] Failed to send SMS to ${phone}:`, err);
+    logger.error('[OTP] Failed to send SMS', { toRedacted: redactPhone(phone), error: (err as Error).message });
   }
 
   // Never return the OTP code in the response — it should only be sent via SMS
@@ -3537,9 +3738,19 @@ router.post('/:id/feedback', asyncHandler(async (req: Request, res: Response) =>
 router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const ticketId = validateId(req.params.id, 'ticket id');
-  const { start_time, end_time, note } = req.body;
+  const { start_time, end_time, note, location_id: rawLocationId } = req.body;
 
   if (!start_time) throw new AppError('start_time is required', 400);
+
+  // Validate and resolve location_id; default to 1.
+  let resolvedLocationId = 1;
+  if (rawLocationId !== undefined && rawLocationId !== null) {
+    const parsed = Number(rawLocationId);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new AppError('location_id must be a positive integer', 400);
+    }
+    resolvedLocationId = parsed;
+  }
 
   const ticket = await adb.get<AnyRow>('SELECT id, customer_id, order_id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
@@ -3547,8 +3758,8 @@ router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(
   const title = `Ticket #${ticket.order_id} appointment`;
 
   const result = await adb.run(`
-    INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes)
-    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
+    INSERT INTO appointments (ticket_id, customer_id, title, start_time, end_time, assigned_to, status, notes, location_id)
+    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)
   `,
     ticketId,
     ticket.customer_id,
@@ -3557,6 +3768,7 @@ router.post('/:id/appointment', requirePermission('tickets.edit'), asyncHandler(
     end_time || null,
     req.user!.id,
     note || null,
+    resolvedLocationId,
   );
 
   const [appointment] = await Promise.all([
@@ -3767,7 +3979,7 @@ router.get('/:id/links', asyncHandler(async (req: Request, res: Response) => {
 // SEC-H25: removing a ticket link modifies both tickets — gate behind tickets.edit.
 router.delete('/links/:linkId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const linkId = parseInt(req.params.linkId as string);
+  const linkId = validateId(req.params.linkId, 'linkId');
 
   const link = await adb.get<AnyRow>('SELECT * FROM ticket_links WHERE id = ?', linkId);
   if (!link) throw new AppError('Link not found', 404);
@@ -3785,7 +3997,7 @@ router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHan
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter and dynamic-import hooks below
   const userId = req.user!.id;
-  const sourceId = parseInt(req.params.id as string);
+  const sourceId = validateId(req.params.id, 'id');
 
   const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
   if (!source) throw new AppError('Source ticket not found', 404);
@@ -3842,11 +4054,13 @@ router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHan
   const trackingToken = crypto.randomBytes(16).toString('hex');
 
   // Insert new ticket as warranty case
+  // SCAN-529: include location_id so the warranty clone is associated with the same
+  // location as the source ticket (fallback 1 = Main Store for legacy rows with no location).
   const result = await adb.run(`
     INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                          source, referral_source, labels, due_on, is_warranty, created_by,
-                         tracking_token, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 0, NULL, ?, NULL, '[]', NULL, 1, ?, ?, ?, ?)
+                         tracking_token, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 0, NULL, ?, NULL, '[]', NULL, 1, ?, ?, ?, ?, ?)
   `,
     orderId,
     source.customer_id,
@@ -3855,6 +4069,7 @@ router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHan
     'warranty',
     userId,
     trackingToken,
+    source.location_id ?? 1,
     now(),
     now(),
   );

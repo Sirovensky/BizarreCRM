@@ -29,6 +29,10 @@ public struct ImportProgressView: View {
                 if job?.status == .failed {
                     failedBanner
                 }
+
+                if job?.canRollback == true {
+                    rollbackBanner
+                }
             }
             .padding(.top, DesignTokens.Spacing.xxl)
         }
@@ -50,16 +54,23 @@ public struct ImportProgressView: View {
     }
 
     private var headerTitle: String {
+        let entity = vm.selectedEntity.displayName
         switch job?.status {
-        case .completed: return "Import Complete"
-        case .failed:    return "Import Failed"
-        default:         return "Importing…"
+        case .completed: return "\(entity) Import Complete"
+        case .failed:    return "\(entity) Import Failed"
+        default:         return "Importing \(entity)…"
         }
     }
 
     private var headerSubtitle: String {
-        if let eta = Optional(vm.etaString), !eta.isEmpty {
-            return "Estimated time remaining: \(eta)"
+        if let cp = vm.checkpoint {
+            let chunk = cp.nextChunkIndex
+            let total = cp.totalChunks
+            let etaPart = vm.etaString.isEmpty ? "" : " · \(vm.etaString) remaining"
+            return "Chunk \(chunk) / \(total)\(etaPart)"
+        }
+        if !vm.etaString.isEmpty {
+            return "Estimated time remaining: \(vm.etaString)"
         }
         return "Processing your data"
     }
@@ -150,5 +161,15 @@ public struct ImportProgressView: View {
             .foregroundStyle(.bizarreError)
             .padding(.horizontal, DesignTokens.Spacing.lg)
             .accessibilityLabel("Import failed. Tap View Errors to see what went wrong.")
+    }
+
+    private var rollbackBanner: some View {
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            Label("Undo available within 24 hours", systemImage: "arrow.uturn.backward.circle")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .padding(.horizontal, DesignTokens.Spacing.lg)
+        .accessibilityLabel("Rollback is available. You can undo this import within 24 hours.")
     }
 }

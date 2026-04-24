@@ -5,8 +5,12 @@ import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.*
 import com.bizarreelectronics.crm.data.remote.interceptors.AuthInterceptor
+import com.bizarreelectronics.crm.data.remote.interceptors.ClockDriftInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.OriginHeaderInterceptor
+import com.bizarreelectronics.crm.data.remote.interceptors.RateLimitInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.ReachabilityReportingInterceptor
+import com.bizarreelectronics.crm.util.ClockDrift
+import com.bizarreelectronics.crm.util.RateLimiter
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.Module
@@ -425,17 +429,39 @@ object RetrofitClient {
 
     @Provides
     @Singleton
+    fun provideClockDrift(): ClockDrift = ClockDrift()
+
+    @Provides
+    @Singleton
+    fun provideClockDriftInterceptor(clockDrift: ClockDrift): ClockDriftInterceptor =
+        ClockDriftInterceptor(clockDrift)
+
+    @Provides
+    @Singleton
+    fun provideRateLimiter(): RateLimiter = RateLimiter()
+
+    @Provides
+    @Singleton
+    fun provideRateLimitInterceptor(rateLimiter: RateLimiter): RateLimitInterceptor =
+        RateLimitInterceptor(rateLimiter)
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
         originHeaderInterceptor: OriginHeaderInterceptor,
+        rateLimitInterceptor: RateLimitInterceptor,
+        clockDriftInterceptor: ClockDriftInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
         reachabilityInterceptor = reachabilityInterceptor,
         originHeaderInterceptor = originHeaderInterceptor,
+        rateLimitInterceptor = rateLimitInterceptor,
+        clockDriftInterceptor = clockDriftInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
@@ -445,6 +471,11 @@ object RetrofitClient {
     /**
      * OkHttpClient reserved for large paginated sync pulls on slow cellular.
      * Same interceptors, longer read/write timeouts.
+     *
+     * Note: sync-queue flush calls are tagged "sync-flush" and are exempt from
+     * client-side rate limiting (ActionPlan L259). The RateLimitInterceptor is
+     * still registered here; it will skip those requests automatically via
+     * [com.bizarreelectronics.crm.util.RateLimiterCore.isExempt].
      */
     @Provides
     @Singleton
@@ -454,12 +485,16 @@ object RetrofitClient {
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
         originHeaderInterceptor: OriginHeaderInterceptor,
+        rateLimitInterceptor: RateLimitInterceptor,
+        clockDriftInterceptor: ClockDriftInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
         reachabilityInterceptor = reachabilityInterceptor,
         originHeaderInterceptor = originHeaderInterceptor,
+        rateLimitInterceptor = rateLimitInterceptor,
+        clockDriftInterceptor = clockDriftInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = SYNC_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = SYNC_WRITE_TIMEOUT_SECONDS,
@@ -471,6 +506,8 @@ object RetrofitClient {
         authInterceptor: AuthInterceptor,
         reachabilityInterceptor: ReachabilityReportingInterceptor,
         originHeaderInterceptor: OriginHeaderInterceptor,
+        rateLimitInterceptor: RateLimitInterceptor,
+        clockDriftInterceptor: ClockDriftInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
@@ -481,6 +518,13 @@ object RetrofitClient {
             .addInterceptor(originHeaderInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(reachabilityInterceptor)
+            // RateLimitInterceptor runs before ClockDriftInterceptor: it decides
+            // whether the call proceeds at all. ClockDriftInterceptor only reads
+            // response headers from calls that reached the server.
+            .addInterceptor(rateLimitInterceptor)
+            // ClockDriftInterceptor must run AFTER auth/reachability interceptors so it
+            // only records the Date header from responses that actually reached the server.
+            .addInterceptor(clockDriftInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
@@ -584,4 +628,6 @@ object RetrofitClient {
     @Provides @Singleton fun provideLeadApi(retrofit: Retrofit): LeadApi = retrofit.create(LeadApi::class.java)
     @Provides @Singleton fun provideEstimateApi(retrofit: Retrofit): EstimateApi = retrofit.create(EstimateApi::class.java)
     @Provides @Singleton fun provideExpenseApi(retrofit: Retrofit): ExpenseApi = retrofit.create(ExpenseApi::class.java)
+    // §2.12 L355 — tenant support-contact (server endpoint pending; client degrades gracefully)
+    @Provides @Singleton fun provideTenantsApi(retrofit: Retrofit): TenantsApi = retrofit.create(TenantsApi::class.java)
 }

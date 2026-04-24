@@ -5,23 +5,28 @@ import DesignSystem
 // MARK: - KioskGateView
 
 /// §55.1 / §55.2 Wraps app content and filters based on active kiosk mode.
-/// Exit requires Manager PIN when kiosk is active.
+/// Exit requires Manager PIN when kiosk is active. On first activation with no
+/// PIN enrolled, presents `KioskPINEnrollView` so the manager sets one up.
 public struct KioskGateView<POSContent: View, ClockContent: View, FullContent: View>: View {
     @Bindable var kioskManager: KioskModeManager
     @Bindable var idleMonitor: KioskIdleMonitor
     @Bindable var trainingManager: TrainingModeManager
 
+    let pinStorage: any KioskPINStorage
     let posContent: () -> POSContent
     let clockContent: () -> ClockContent
     let fullContent: () -> FullContent
 
     @State private var showPinSheet = false
+    @State private var showEnrollSheet = false
+    @State private var pendingMode: KioskMode?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
         kioskManager: KioskModeManager,
         idleMonitor: KioskIdleMonitor,
         trainingManager: TrainingModeManager,
+        pinStorage: any KioskPINStorage,
         @ViewBuilder posContent: @escaping () -> POSContent,
         @ViewBuilder clockContent: @escaping () -> ClockContent,
         @ViewBuilder fullContent: @escaping () -> FullContent
@@ -29,6 +34,7 @@ public struct KioskGateView<POSContent: View, ClockContent: View, FullContent: V
         self.kioskManager = kioskManager
         self.idleMonitor = idleMonitor
         self.trainingManager = trainingManager
+        self.pinStorage = pinStorage
         self.posContent = posContent
         self.clockContent = clockContent
         self.fullContent = fullContent
@@ -64,14 +70,33 @@ public struct KioskGateView<POSContent: View, ClockContent: View, FullContent: V
                 idleMonitor.start()
             }
         }
+        // PIN unlock sheet — exit kiosk
         .sheet(isPresented: $showPinSheet) {
             ManagerPinSheet(
+                pinStorage: pinStorage,
                 onSuccess: {
                     showPinSheet = false
                     kioskManager.setMode(.off)
                 },
                 onCancel: {
                     showPinSheet = false
+                }
+            )
+        }
+        // PIN enrollment sheet — first-time kiosk activation
+        .sheet(isPresented: $showEnrollSheet) {
+            KioskPINEnrollView(
+                pinStorage: pinStorage,
+                onEnrolled: {
+                    showEnrollSheet = false
+                    if let mode = pendingMode {
+                        kioskManager.setMode(mode)
+                        pendingMode = nil
+                    }
+                },
+                onCancel: {
+                    showEnrollSheet = false
+                    pendingMode = nil
                 }
             )
         }
@@ -171,5 +196,43 @@ public struct KioskGateView<POSContent: View, ClockContent: View, FullContent: V
         .accessibilityLabel("Screen is sleeping — tap to resume")
         .accessibilityAddTraits(.isButton)
         .onTapGesture { idleMonitor.recordActivity() }
+    }
+}
+
+// MARK: - KioskModeManager + PIN-gated activation
+
+public extension KioskModeManager {
+    /// Activate `mode` with PIN gate enforcement.
+    /// - If a PIN is already enrolled, activates immediately.
+    /// - If no PIN is enrolled, returns `needsEnrollment = true` so the
+    ///   caller can present `KioskPINEnrollView` first.
+    func requestActivation(
+        mode: KioskMode,
+        pinStorage: any KioskPINStorage
+    ) -> KioskActivationResult {
+        guard mode != .off else {
+            setMode(.off)
+            return .activated
+        }
+        if pinStorage.isEnrolled {
+            setMode(mode)
+            return .activated
+        }
+        return .needsEnrollment(mode)
+    }
+}
+
+// MARK: - KioskActivationResult
+
+public enum KioskActivationResult: Equatable {
+    case activated
+    case needsEnrollment(KioskMode)
+
+    public static func == (lhs: KioskActivationResult, rhs: KioskActivationResult) -> Bool {
+        switch (lhs, rhs) {
+        case (.activated, .activated): return true
+        case (.needsEnrollment(let a), .needsEnrollment(let b)): return a == b
+        default: return false
+        }
     }
 }

@@ -33,13 +33,30 @@ import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryGroupPrice
 import com.bizarreelectronics.crm.data.remote.dto.StockMovement
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+/** Reversible edits made from the inventory-detail screen. */
+sealed class InventoryEdit {
+    data class QuantityAdjust(
+        val oldQty: Int,
+        val newQty: Int,
+        val reason: String?,
+    ) : InventoryEdit()
+
+    data class FieldEdit(
+        val fieldName: String,
+        val oldValue: String?,
+        val newValue: String?,
+    ) : InventoryEdit()
+}
 
 data class InventoryDetailUiState(
     val item: InventoryItemEntity? = null,
@@ -53,6 +70,10 @@ data class InventoryDetailUiState(
     // U2 fix: success counter mirrors InvoiceDetailUiState so the UI can close
     // the adjust-stock dialog strictly after a successful mutation — not mid-click.
     val adjustSuccessCounter: Int = 0,
+    /** Non-null while an undo snackbar is pending display. */
+    val undoMessage: String? = null,
+    /** True when the undo stack has at least one undoable action. */
+    val canUndo: Boolean = false,
 )
 
 @HiltViewModel
@@ -67,8 +88,35 @@ class InventoryDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(InventoryDetailUiState())
     val state = _state.asStateFlow()
 
+    /** Undo/redo history for optimistic writes made on this screen. */
+    val undoStack = UndoStack<InventoryEdit>()
+
     init {
         loadItem()
+        observeUndoEvents()
+    }
+
+    /** Forward Undone/Redone events to Timber (audit trail). */
+    private fun observeUndoEvents() {
+        viewModelScope.launch {
+            undoStack.events.collect { event ->
+                when (event) {
+                    is UndoStack.UndoEvent.Undone ->
+                        Timber.tag("InventoryUndo").i("Undone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Redone ->
+                        Timber.tag("InventoryUndo").i("Redone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Failed ->
+                        Timber.tag("InventoryUndo").w("Failed: ${event.reason} — ${event.entry.auditDescription}")
+                    else -> Unit
+                }
+            }
+        }
+        // Keep canUndo in sync with the stack so the UI can gate the Undo action.
+        viewModelScope.launch {
+            undoStack.canUndo.collect { can ->
+                _state.value = _state.value.copy(canUndo = can)
+            }
+        }
     }
 
     fun loadItem() {
@@ -120,15 +168,63 @@ class InventoryDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
+                val oldQty = _state.value.item?.inStock ?: 0
+                val newQty = oldQty + quantity
                 val request = AdjustStockRequest(
                     quantity = quantity,
                     type = type,
                     reason = reason?.takeIf { it.isNotBlank() },
                 )
                 inventoryRepository.adjustStock(itemId, request)
+
+                val adjustLabel = if (quantity > 0) "+$quantity" else "$quantity"
+                val auditDesc = "Adjusted quantity from $oldQty to $newQty (delta $adjustLabel, type=$type)"
+
+                // Push undo entry. The server uses a delta-based endpoint
+                // (POST /inventory/{id}/adjust-stock with quantity), so the
+                // compensating sync is the negative delta with reason "undo".
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = InventoryEdit.QuantityAdjust(
+                            oldQty = oldQty,
+                            newQty = newQty,
+                            reason = reason?.takeIf { it.isNotBlank() },
+                        ),
+                        apply = {
+                            // Re-do: optimistically restore newQty in the local entity.
+                            val current = _state.value.item ?: return@Entry
+                            _state.value = _state.value.copy(
+                                item = current.copy(inStock = newQty),
+                            )
+                        },
+                        reverse = {
+                            // Undo: optimistically restore oldQty in the local entity.
+                            val current = _state.value.item ?: return@Entry
+                            _state.value = _state.value.copy(
+                                item = current.copy(inStock = oldQty),
+                            )
+                        },
+                        auditDescription = auditDesc,
+                        compensatingSync = {
+                            try {
+                                // Negative delta undoes the original adjust.
+                                val undoRequest = AdjustStockRequest(
+                                    quantity = -quantity,
+                                    type = "correction",
+                                    reason = "undo",
+                                )
+                                inventoryRepository.adjustStock(itemId, undoRequest)
+                                true
+                            } catch (_: Exception) {
+                                false
+                            }
+                        },
+                    ),
+                )
+
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
-                    actionMessage = "Stock adjusted by ${if (quantity > 0) "+$quantity" else "$quantity"}",
+                    undoMessage = "Stock adjusted by $adjustLabel",
                     adjustSuccessCounter = _state.value.adjustSuccessCounter + 1,
                 )
                 loadOnlineDetails()
@@ -141,8 +237,24 @@ class InventoryDetailViewModel @Inject constructor(
         }
     }
 
+    /** Undo the most recent reversible action. */
+    fun performUndo() {
+        viewModelScope.launch {
+            val ok = undoStack.undo()
+            if (!ok) {
+                _state.value = _state.value.copy(
+                    actionMessage = "Nothing to undo",
+                )
+            }
+        }
+    }
+
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
+    }
+
+    fun clearUndoMessage() {
+        _state.value = _state.value.copy(undoMessage = null)
     }
 }
 
@@ -168,6 +280,11 @@ fun InventoryDetailScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Clear the undo stack when the screen leaves composition (nav back / replace).
+    DisposableEffect(Unit) {
+        onDispose { viewModel.undoStack.clear() }
+    }
+
     // U2 fix: close the adjust-stock dialog strictly after a successful mutation.
     LaunchedEffect(state.adjustSuccessCounter) {
         if (state.adjustSuccessCounter > 0) {
@@ -189,10 +306,26 @@ fun InventoryDetailScreen(
         "correction" to "Correction",
     )
 
+    // Generic error/info snackbar (no Undo action).
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
             viewModel.clearActionMessage()
+        }
+    }
+
+    // Undo snackbar: shown after a successful adjust-stock with an Undo action.
+    LaunchedEffect(state.undoMessage) {
+        state.undoMessage?.let { message ->
+            viewModel.clearUndoMessage()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.performUndo()
+            }
         }
     }
 

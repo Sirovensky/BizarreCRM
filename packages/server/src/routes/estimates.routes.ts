@@ -12,12 +12,12 @@ import {
   validateArrayBounds,
   validateJsonPayload,
   validateIntegerQuantity,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
-import { ERROR_CODES } from '../utils/errorCodes.js';
 
 /**
  * S20-E1: Constant-time comparison for approval tokens. Previously we used
@@ -29,12 +29,14 @@ import { ERROR_CODES } from '../utils/errorCodes.js';
  * Returns false on any length mismatch (without calling timingSafeEqual,
  * which would throw) so the caller sees a single boolean result.
  */
-function constantTimeEquals(a: string, b: string): boolean {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+function constantTimeEquals(token: string, storedHash: string): boolean {
+  // Both sides must be same-length hex digests for crypto.timingSafeEqual.
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  if (tokenHash.length !== storedHash.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(tokenHash, 'utf8'),
+    Buffer.from(storedHash, 'utf8'),
+  );
 }
 
 const router = Router();
@@ -43,6 +45,10 @@ const logger = createLogger('estimates');
 // SEC-H10: Rate limit constants for estimate approval (10 attempts per minute per IP)
 const APPROVAL_RATE_LIMIT = 10;
 const APPROVAL_RATE_WINDOW = 60_000; // 1 minute
+
+// SCAN-723: Rate limit constants for estimate conversion (5 per minute per user)
+const CONVERT_RATE_LIMIT = 5;
+const CONVERT_RATE_WINDOW = 60_000; // 1 minute
 
 // SC4: Approval token lifetime (24 hours from send)
 const APPROVAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -306,8 +312,8 @@ router.post(
 // ---------------------------------------------------------------------------
 router.post(
   '/bulk-convert',
+  requirePermission('estimates.create'),
   asyncHandler(async (req, res) => {
-    if (req.user!.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
 
     const adb = req.asyncDb;
     const { estimate_ids } = req.body;
@@ -442,23 +448,23 @@ router.post(
     // Refund the unused portion to tenant_usage here. Only runs when
     // the reservation actually committed.
     if (tierReservationCommitted && failCount > 0 && config.multiTenant && tierReservationTenantId) {
+      const refundMonth = new Date().toISOString().slice(0, 7);
       try {
         const { getMasterDb } = await import('../db/master-connection.js');
         const masterDb = getMasterDb();
         if (masterDb) {
-          const month = new Date().toISOString().slice(0, 7);
           masterDb.prepare(`
             UPDATE tenant_usage
                SET tickets_created = MAX(0, tickets_created - ?)
              WHERE tenant_id = ? AND month = ?
-          `).run(failCount, tierReservationTenantId, month);
+          `).run(failCount, tierReservationTenantId, refundMonth);
         }
       } catch (err) {
         // Refund is best-effort: if master DB is down we'd rather
         // over-charge the quota by failCount than throw a 500 at the
         // user who already has a mixed-result response ready. Logged
         // so ops can reconcile.
-        console.error('[estimate.bulk-convert] SEC-M54 quota refund failed', err);
+        logger.error('SEC-M54 quota refund failed', { err, tenantId: tierReservationTenantId, month: refundMonth });
       }
     }
 
@@ -482,7 +488,7 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const estimate = await adb.get<any>(`
       SELECT e.*,
@@ -521,7 +527,7 @@ router.put(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
@@ -548,6 +554,18 @@ router.put(
       ...existing,
       line_items: currentLineItems,
     };
+    // SCAN-735: reject snapshot if top-level is not a plain object (guards against
+    // corrupt DB rows or future refactors that accidentally pass a primitive/array).
+    if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) {
+      throw new AppError('estimate snapshot must be an object', 400);
+    }
+    const _snap = snapshot as Record<string, unknown>;
+    if (_snap.subtotal !== undefined && typeof _snap.subtotal !== 'number') {
+      throw new AppError('estimate snapshot.subtotal must be number', 400);
+    }
+    if (_snap.total !== undefined && typeof _snap.total !== 'number') {
+      throw new AppError('estimate snapshot.total must be number', 400);
+    }
     // V13: circular-ref + size guarded JSON serialization (replaces raw JSON.stringify).
     const snapshotJson = validateJsonPayload(snapshot, 'snapshot', 262_144); // 256 KB cap
     await adb.run(`
@@ -646,7 +664,7 @@ router.get(
   '/:id/versions',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<{ id: number }>('SELECT id FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
@@ -666,8 +684,8 @@ router.get(
   '/:id/versions/:versionId',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
-    const versionId = Number(req.params.versionId);
+    const id = validateId(req.params.id, 'id');
+    const versionId = validateId(req.params.versionId, 'versionId');
 
     const version = await adb.get<any>(
       'SELECT * FROM estimate_versions WHERE id = ? AND estimate_id = ?',
@@ -675,8 +693,10 @@ router.get(
     );
     if (!version) throw new AppError('Version not found', 404);
 
-    const data = JSON.parse(version.data);
-    res.json({ success: true, data: { ...version, data } });
+    let versionData: unknown;
+    try { versionData = JSON.parse(version.data); }
+    catch { throw new AppError('Corrupted estimate version data', 422); }
+    res.json({ success: true, data: { ...version, data: versionData } });
   }),
 );
 
@@ -688,7 +708,7 @@ router.post(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     // SEC-H51: atomic status guard. Two concurrent convert clicks can both
     // read status != 'converted' / != 'cancelled' and each create a ticket
     // — eating two tier slots and producing two tickets from one estimate.
@@ -706,22 +726,20 @@ router.post(
     if (originalStatusRow.status === 'converted') throw new AppError('Estimate already converted', 400);
     if (originalStatusRow.status === 'cancelled') throw new AppError('Estimate was cancelled', 400);
 
-    const lockResult = await adb.run(
-      "UPDATE estimates SET status = 'converting', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('converted', 'cancelled', 'converting')",
-      id,
-    );
-    if (lockResult.changes !== 1) {
-      // Either another converter just grabbed it, or the status was already
-      // in a terminal state between our read and the UPDATE. Surface the
-      // race explicitly rather than silently continuing.
-      throw new AppError('Estimate is already being converted. Try again in a moment.', 409);
+    // SCAN-723: Rate-limit BEFORE tier-quota check so concurrent requests are
+    // throttled at the gate rather than both passing the tier read+reserve
+    // before either is blocked. Keyed per user so staff can't flood the counter
+    // from shared IPs.
+    const convertRateKey = `user:${req.user!.id}`;
+    if (!checkWindowRate(req.db, 'estimate_convert', convertRateKey, CONVERT_RATE_LIMIT, CONVERT_RATE_WINDOW)) {
+      throw new AppError('Too many conversion requests. Please try again later.', 429);
     }
+    recordWindowFailure(req.db, 'estimate_convert', convertRateKey, CONVERT_RATE_WINDOW);
 
-    const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
-    if (!estimate) throw new AppError('Estimate not found', 404);
-    // status was flipped to 'converting' above — double-check for safety.
-    if (estimate.status !== 'converting') throw new AppError('Estimate state conflict', 500);
-
+    // SCAN-590 (Option A): Tier limit check moved BEFORE the status lock so a
+    // 403 rejection never leaves the estimate stuck in 'converting'. The check
+    // is a pure read + atomic counter increment that does not depend on the
+    // estimate being in 'converting' state.
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
     let tierReservationCommitted = false;
@@ -765,61 +783,92 @@ router.post(
     }
     void tierReservationCommitted;
 
-    // Get default (open) status
-    const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
-    const statusId = defaultStatus?.id ?? 1;
+    const priorStatus = originalStatusRow.status;
 
-    // Create ticket
-    const ticketResult = await adb.run(`
-      INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
-        source, created_by)
-      VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
-    `,
-      estimate.customer_id, statusId, id,
-      estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
-      req.user!.id,
+    const lockResult = await adb.run(
+      "UPDATE estimates SET status = 'converting', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('converted', 'cancelled', 'converting')",
+      id,
     );
+    if (lockResult.changes !== 1) {
+      // Either another converter just grabbed it, or the status was already
+      // in a terminal state between our read and the UPDATE. Surface the
+      // race explicitly rather than silently continuing.
+      throw new AppError('Estimate is already being converted. Try again in a moment.', 409);
+    }
 
-    const ticketId = ticketResult.lastInsertRowid;
-    const ticketOrderId = generateOrderId('T', ticketId);
-    await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
+    // SCAN-724: try/finally so any throw after the 'converting' lock reverts the
+    // estimate back to its prior status instead of leaving it stranded.
+    try {
+      const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
+      if (!estimate) throw new AppError('Estimate not found', 404);
+      // status was flipped to 'converting' above — double-check for safety.
+      if (estimate.status !== 'converting') throw new AppError('Estimate state conflict', 500);
 
-    // Copy line items as ticket devices
-    const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
-    for (const item of lineItems) {
-      await adb.run(`
-        INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+      // Get default (open) status
+      const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+      const statusId = defaultStatus?.id ?? 1;
+
+      // Create ticket
+      const ticketResult = await adb.run(`
+        INSERT INTO tickets (order_id, customer_id, status_id, estimate_id, subtotal, discount, total_tax, total,
+          source, created_by)
+        VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, 'estimate', ?)
       `,
-        ticketId,
-        item.description || 'From Estimate',
-        item.inventory_item_id,
-        item.unit_price * item.quantity,
-        item.tax_amount,
-        item.total,
-        null,
+        estimate.customer_id, statusId, id,
+        estimate.subtotal, estimate.discount, estimate.total_tax, estimate.total,
+        req.user!.id,
       );
-    }
 
-    // Carry estimate notes over as the first ticket note so they aren't lost.
-    if (estimate.notes) {
+      const ticketId = ticketResult.lastInsertRowid;
+      const ticketOrderId = generateOrderId('T', ticketId);
+      await adb.run('UPDATE tickets SET order_id = ? WHERE id = ?', ticketOrderId, ticketId);
+
+      // Copy line items as ticket devices
+      const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
+      for (const item of lineItems) {
+        await adb.run(`
+          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+          ticketId,
+          item.description || 'From Estimate',
+          item.inventory_item_id,
+          item.unit_price * item.quantity,
+          item.tax_amount,
+          item.total,
+          null,
+        );
+      }
+
+      // Carry estimate notes over as the first ticket note so they aren't lost.
+      if (estimate.notes) {
+        await adb.run(
+          `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
+           VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+          ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+        );
+      }
+
+      // Update estimate status (success path — advances to 'converted')
+      await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
+        ticketId, id);
+
+      const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
+
+      res.status(201).json({
+        success: true,
+        data: { ticket, message: 'Estimate converted to ticket' },
+      });
+    } catch (err) {
+      // SCAN-724: Restore prior status so the estimate is not stranded in
+      // 'converting'. Only revert if still in 'converting' — if it somehow
+      // advanced (race win by another process) leave it alone.
       await adb.run(
-        `INSERT INTO ticket_notes (ticket_id, user_id, note, created_at, updated_at)
-         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
-        ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+        "UPDATE estimates SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'converting'",
+        priorStatus, id,
       );
+      throw err;
     }
-
-    // Update estimate status
-    await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
-      ticketId, id);
-
-    const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
-
-    res.status(201).json({
-      success: true,
-      data: { ticket, message: 'Estimate converted to ticket' },
-    });
   }),
 );
 
@@ -833,7 +882,7 @@ router.delete(
   requirePermission('estimates.edit'),
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
@@ -862,7 +911,7 @@ router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const estimate = await adb.get<any>(`
       SELECT e.*, c.first_name, c.last_name, c.phone, c.mobile, c.email
       FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ? AND e.is_deleted = 0
@@ -917,9 +966,10 @@ router.post(
     if (method === 'sms' && phone) {
       smsAttempted = true;
       try {
-        const { sendSms } = await import('../providers/sms/index.js');
+        const { sendSmsTenant } = await import('../services/smsProvider.js');
+        const tenantSlug = (req as any).tenantSlug ?? null;
         const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
-        await sendSms(phone, msg);
+        await sendSmsTenant(req.db, tenantSlug, phone, msg);
         smsSent = true;
       } catch (err: unknown) {
         smsError = err instanceof Error ? err.message : String(err);
@@ -964,7 +1014,7 @@ router.post(
     }
     recordWindowFailure(db, 'estimate_approval', ip, APPROVAL_RATE_WINDOW);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { token } = req.body;
     const estimate = await adb.get<any>(
       'SELECT id, approval_token, approval_token_hash, approval_token_expires_at, approval_token_used_at, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
@@ -989,12 +1039,17 @@ router.post(
       const inboundHash = hashEstimateApprovalToken(token);
       const hashMatch =
         !!estimate.approval_token_hash &&
-        constantTimeEquals(estimate.approval_token_hash, inboundHash);
+        constantTimeEquals(token, estimate.approval_token_hash);
       if (!hashMatch) {
         // Legacy path: row predates migration 107, still carries plaintext.
         // Accept once + hash-migrate so the consume-UPDATE below finds the
         // freshly written hash via `WHERE approval_token_hash = ?`.
-        if (estimate.approval_token && constantTimeEquals(estimate.approval_token, token)) {
+        if (estimate.approval_token && (() => {
+          // Legacy plaintext-to-plaintext compare; both sides are raw tokens of equal length.
+          const bufA = Buffer.from(estimate.approval_token, 'utf8');
+          const bufB = Buffer.from(token, 'utf8');
+          return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+        })()) {
           await adb.run(
             'UPDATE estimates SET approval_token_hash = ?, approval_token = NULL WHERE id = ? AND approval_token_hash IS NULL',
             inboundHash,

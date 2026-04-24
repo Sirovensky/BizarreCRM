@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 
@@ -71,14 +72,19 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get<any>('SELECT * FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 
     const { shortcode, title, content, category } = req.body;
 
-    // Length validation
-    if (shortcode !== undefined && shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    // Length and format validation
+    if (shortcode !== undefined) {
+      if (typeof shortcode !== 'string' || !/^[a-zA-Z0-9_\-]+$/.test(shortcode)) {
+        throw new AppError('shortcode must match [a-zA-Z0-9_-]+', 400);
+      }
+      if (shortcode.length > 50) throw new AppError('shortcode must be 50 characters or less', 400);
+    }
     if (title !== undefined && title.length > 200) throw new AppError('title must be 200 characters or less', 400);
     if (content !== undefined && content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
 
@@ -114,7 +120,7 @@ router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT id FROM snippets WHERE id = ?', id);
     if (!existing) throw new AppError('Snippet not found', 404);
 

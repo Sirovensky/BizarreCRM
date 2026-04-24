@@ -690,3 +690,11 @@ Verified working. Not TODOs.
 
 - [ ] **STOCKTAKE-ANDROID-PARITY-001. Android stocktake missing.**
   Surfaced from `ios/ActionPlan.md §60` / §89. Server has `/api/v1/stocktake` (`stocktake.routes.ts`) and web has `pages/inventory/StocktakePage.tsx`. Android only references stocktake in a dashboard widget placeholder. Full Android parity: sessions list, per-session count UI, barcode-scan loop, variance resolution, adjust on commit. Follows same cursor-based pagination contract the other list surfaces use.
+
+### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
+- [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
+- [ ] SCAN-942. **POS checkout line-item types use `unknown[]` — no compile-time guarantee the shape the server expects matches what the UI sends.**
+  <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
+
+### Wave-49 scan-loop findings (2026-04-23) — web/components

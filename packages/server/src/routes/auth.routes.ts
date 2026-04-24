@@ -11,13 +11,30 @@ import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
-import { validateEmail } from '../utils/validate.js';
+import { validateEmail, validateId } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const logger = createLogger('auth');
+
+// SCAN-646: Safe JSON parse for user.permissions — returns null on any parse/shape error.
+function safeParsePermissions(raw: string | null | undefined): Record<string, boolean> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // Validate values are boolean (per SCAN-184 policy):
+    const safe: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'boolean') safe[k] = v;
+    }
+    return safe;
+  } catch { return null; }
+}
 
 // SEC (A7): Max concurrent refresh-token sessions per user.
 // On login, if user has more than this many active sessions, the oldest
@@ -33,7 +50,17 @@ const PASSWORD_HISTORY_DEPTH = 5;
 
 // SECURITY: Derived key for device trust cookies — separate from JWT signing key
 // Prevents a JWT token from being reused as a device trust cookie or vice versa
-const deviceTrustKey = crypto.createHmac('sha256', config.jwtSecret).update('device-trust-v1').digest('hex');
+//
+// SCAN-904: Prefer a dedicated DEVICE_TRUST_SECRET env var so the device-trust
+// key can be rotated independently of JWT secrets (SEC-H103).
+// If unset, falls back to jwtSecret (existing behaviour — no cookie breakage).
+// WARNING: changing DEVICE_TRUST_SECRET invalidates all existing device-trust
+// cookies; users will need to re-confirm trusted devices on next 2FA login.
+const _deviceTrustBase = process.env.DEVICE_TRUST_SECRET || config.jwtSecret;
+if (!process.env.DEVICE_TRUST_SECRET) {
+  logger.warn('DEVICE_TRUST_SECRET not set; device-trust cookies share key material with JWT — set DEVICE_TRUST_SECRET to a dedicated 64-byte hex for independent rotation (SEC-H103)');
+}
+const deviceTrustKey = crypto.createHmac('sha256', _deviceTrustBase).update('device-trust-v1').digest('hex');
 
 // AES-256-GCM encryption for TOTP secrets (versioned keys for future rotation)
 //
@@ -147,9 +174,13 @@ const MAX_CHALLENGES = 10000;
 
 function createChallenge(userId: number, tenantSlug?: string | null): string {
   // Evict oldest if over limit (DoS protection)
+  // SCAN-861: Map preserves insertion order; first key is oldest — O(1) vs O(n log n) sort.
   if (challenges.size >= MAX_CHALLENGES) {
-    const oldest = Array.from(challenges.entries()).sort((a, b) => a[1].expires - b[1].expires);
-    for (let i = 0; i < Math.min(100, oldest.length); i++) challenges.delete(oldest[i][0]);
+    const oldest = challenges.keys().next().value;
+    if (oldest !== undefined) {
+      challenges.delete(oldest);
+      logger.warn('challenges Map over cap; evicted oldest', { evicted_key_preview: String(oldest).slice(0, 8) });
+    }
   }
   const token = crypto.randomBytes(32).toString('hex');
   challenges.set(token, { userId, tenantSlug: tenantSlug || null, expires: Date.now() + CHALLENGE_TTL });
@@ -162,6 +193,19 @@ function validateChallenge(token: string): number | null {
   return entry.userId;
 }
 
+// SCAN-881: TTL reaper — purges expired challenge entries on a 5-min interval
+// so memory is not held indefinitely between cap-based evictions.
+const CHALLENGE_REAPER_INTERVAL_MS = 5 * 60 * 1000;
+
+export function startChallengeReaper(): void {
+  trackInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of challenges) {
+      if (record.expires <= now) challenges.delete(key);
+    }
+  }, CHALLENGE_REAPER_INTERVAL_MS);
+}
+
 function consumeChallenge(token: string): number | null {
   const userId = validateChallenge(token);
   if (userId) challenges.delete(token);
@@ -169,7 +213,7 @@ function consumeChallenge(token: string): number | null {
 }
 
 // Clean expired challenges every minute
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
@@ -343,8 +387,10 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // SEC-L34: `jti` uniquely identifies each issued token so future revocation lists
   // (see sessions table) can target a specific token rather than an entire session.
   // SEC-H103: sign with the dedicated per-purpose secret, not the shared JWT_SECRET.
+  // SEC (SCAN-613): Explicit type:'access' so the auth middleware strict check
+  // can reject any token without the field (refresh, scoped, super-admin, etc.).
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
@@ -358,12 +404,15 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // would allow cross-site top-level navigations to carry the cookie, giving
   // attackers a window for CSRF on sensitive cookie-bound flows. Strict has
   // no functional downside here because the SPA and API share an origin.
-  // PROD33: Secure flag gated on production so dev (which also runs HTTPS with
-  // a self-signed cert, but some test tooling talks plain HTTP) doesn't silently
-  // drop the cookie. In prod the browser MUST see Secure or refuse the cookie.
+  // SCAN-905: Use req.secure (which honours trust-proxy / X-Forwarded-Proto)
+  // OR fall back to nodeEnv === 'production'. This ensures staging environments
+  // running HTTPS with nodeEnv != 'production' still set the Secure flag.
+  // NOTE: for req.secure to reflect HTTPS behind a reverse proxy, ensure
+  // `app.set('trust proxy', 'loopback')` (or similar) is enabled in index.ts.
+  const isSecureConnection = req.secure || config.nodeEnv === 'production';
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
     path: '/',
@@ -381,7 +430,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   const csrfToken = crypto.randomBytes(24).toString('base64url');
   res.cookie('csrf_token', csrfToken, {
     httpOnly: false,                               // must be readable by JS
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,    // lifetime matches refreshToken
     path: '/',
@@ -396,7 +445,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     last_name: user.last_name,
     role: user.role,
     avatar_url: user.avatar_url || null,
-    permissions: user.permissions ? JSON.parse(user.permissions) : null,
+    permissions: safeParsePermissions(user.permissions),
   };
   return { accessToken, refreshToken, user: safeUser };
 }
@@ -432,7 +481,7 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
 // Also reports whether the server is running in multi-tenant mode so the web
 // frontend can decide whether the bare hostname should show the SaaS landing
 // page or go straight to the single-tenant first-run wizard.
-router.get('/setup-status', async (req: Request, res: Response) => {
+router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
   res.json({
@@ -442,7 +491,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       isMultiTenant: config.multiTenant === true,
     },
   });
-});
+}));
 
 // POST /setup — First-time shop setup: create the initial admin account.
 //
@@ -463,7 +512,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
 //   - Username ≥ 3 chars, password 8-128 chars.
 //   - A valid email (the single-tenant path mandates it; the multi-tenant
 //     path falls back to `${username}@shop.local` for legacy signups).
-router.post('/setup', async (req: Request, res: Response) => {
+router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
   // Setup rate limiting (3 attempts per hour per IP) — SQLite-backed
@@ -602,9 +651,9 @@ router.post('/setup', async (req: Request, res: Response) => {
   audit(db, 'setup_completed', null, ip, { username: trimmedUsername, mode: isSingleTenant ? 'single' : 'multi' });
 
   res.json({ success: true, data: { message: 'Admin account created. You can now log in.' } });
-});
+}));
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   // SEC (A5): Anchor min response time at the start of the handler.
   const startNs = process.hrtime.bigint();
   const adb = req.asyncDb;
@@ -785,10 +834,10 @@ router.post('/login', async (req: Request, res: Response) => {
       requiresPasswordSetup: false,
     },
   });
-});
+}));
 
 // POST /login/set-password — First-time password setup
-router.post('/login/set-password', async (req: Request, res: Response) => {
+router.post('/login/set-password', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const { challengeToken, password } = req.body;
@@ -827,10 +876,10 @@ router.post('/login/set-password', async (req: Request, res: Response) => {
   audit(db, 'password_set', userId, req.ip || 'unknown', { first_login: true });
   logTenantAuthEvent('password_set', req, userId, null, { first_login: true });
   res.json({ success: true, data: { challengeToken: newChallenge, message: 'Password set. Now set up 2FA.' } });
-});
+}));
 
 // POST /login/2fa-setup — Get QR code for first-time setup
-router.post('/login/2fa-setup', async (req: Request, res: Response) => {
+router.post('/login/2fa-setup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const { challengeToken } = req.body;
   const pendingSecret = challenges.get(challengeToken)?.pendingTotpSecret;
@@ -861,10 +910,10 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
     if (recoveryEntry) recoveryEntry.pendingTotpSecret = secret;
     res.status(500).json({ success: false, message: 'Failed to generate QR code. Please try again.', data: { challengeToken: recoveryChallenge } });
   }
-});
+}));
 
 // POST /login/2fa-verify — Verify TOTP code and complete login
-router.post('/login/2fa-verify', async (req: Request, res: Response) => {
+router.post('/login/2fa-verify', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   // IP-based rate limit (reuse login rate limiter)
@@ -985,10 +1034,11 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: '90d' }
     );
     // SEC-H17: SameSite=Strict to match refreshToken — device trust is first-party only.
-    // PROD33: Secure flag gated on production (see issueTokens() for rationale).
+    // SCAN-905: req.secure honours trust-proxy / X-Forwarded-Proto; production fallback
+    // ensures the flag is set even if req.secure is somehow false in prod.
     res.cookie('deviceTrust', deviceToken, {
       httpOnly: true,
-      secure: config.nodeEnv === 'production',
+      secure: req.secure || config.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 90 * 24 * 60 * 60 * 1000,
       path: '/',
@@ -997,10 +1047,10 @@ router.post('/login/2fa-verify', async (req: Request, res: Response) => {
 
   const tokens = await issueTokens(adb, user, req, res, { trustDevice: !!trustDevice });
   res.json({ success: true, data: { ...tokens, backupCodes } });
-});
+}));
 
 // POST /login/2fa-backup — Use a backup code instead of TOTP
-router.post('/login/2fa-backup', async (req: Request, res: Response) => {
+router.post('/login/2fa-backup', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   // SEC-H5: IP-keyed rate limit BEFORE the user-keyed TOTP limiter. Without this,
@@ -1046,7 +1096,17 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
   let currentBackupCodes: string = user.backup_codes;
 
   for (let attempt = 0; attempt < MAX_CONSUME_ATTEMPTS; attempt++) {
-    const hashedCodes: string[] = JSON.parse(currentBackupCodes);
+    // SCAN-645: Guard against malformed backup_codes in the DB.
+    let hashedCodes: string[];
+    try {
+      const parsed = JSON.parse(currentBackupCodes);
+      if (!Array.isArray(parsed)) {
+        res.json({ valid: false }); return;
+      }
+      hashedCodes = parsed as string[];
+    } catch {
+      res.json({ valid: false }); return;
+    }
     const matchIdx = hashedCodes.findIndex(h => bcrypt.compareSync(code, h));
 
     if (matchIdx === -1) {
@@ -1099,10 +1159,10 @@ router.post('/login/2fa-backup', async (req: Request, res: Response) => {
 
   const tokens = await issueTokens(adb, user, req, res);
   res.json({ success: true, data: { ...tokens, remainingBackupCodes: remainingAfterConsume } });
-});
+}));
 
 // POST /refresh — accepts token from httpOnly cookie or body (backwards compat)
-router.post('/refresh', async (req: Request, res: Response) => {
+router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -1235,8 +1295,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
     // SEC-L34: fresh `jti` on every rotation so refreshed tokens are distinguishable
     // from their predecessors.
     // SEC-H103: sign with dedicated per-purpose secret.
+    // SEC (SCAN-613): Explicit type:'access' on every rotated access token.
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+      { userId: user.id, sessionId: payload.sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
       config.accessJwtSecret,
       { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
     );
@@ -1259,10 +1320,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
       { ...JWT_SIGN_OPTIONS, expiresIn: originalWindowSec }
     );
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
-    // PROD33: Secure flag gated on production to match the issue-time cookie.
+    // SCAN-905: use req.secure so staging/dev HTTPS also sets the Secure flag.
+    const isSecureConnection = req.secure || config.nodeEnv === 'production';
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: config.nodeEnv === 'production',
+      secure: isSecureConnection,
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
       path: '/',
@@ -1271,7 +1333,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const newCsrfToken = crypto.randomBytes(24).toString('base64url');
     res.cookie('csrf_token', newCsrfToken, {
       httpOnly: false,
-      secure: config.nodeEnv === 'production',
+      secure: isSecureConnection,
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
       path: '/',
@@ -1281,7 +1343,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       id: user.id, username: user.username, email: user.email,
       first_name: user.first_name, last_name: user.last_name,
       role: user.role, avatar_url: user.avatar_url || null,
-      permissions: user.permissions ? JSON.parse(user.permissions) : null,
+      permissions: safeParsePermissions(user.permissions),
     };
 
     // SEC-M10: Audit successful rotation so the full refresh lifecycle shows up
@@ -1304,7 +1366,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     });
     res.status(401).json({ success: false, message: 'Invalid refresh token' });
   }
-});
+}));
 
 // POST /logout
 router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
@@ -1425,8 +1487,9 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   // SEC (A6/A10): Explicit HS256 + iss + aud.
   // SEC-L34: unique `jti` per token issuance.
   // SEC-H103: sign with dedicated per-purpose secret.
+  // SEC (SCAN-613): Explicit type:'access' on PIN-switch access tokens.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' }
   );
@@ -1436,14 +1499,16 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
-  user.permissions = user.permissions ? JSON.parse(user.permissions) : null;
+  // SCAN-646: Parse permissions without mutating user — use a response-only copy.
+  const userForResponse = { ...user, permissions: safeParsePermissions(user.permissions) };
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
-  // PROD33: Secure flag gated on production.
+  // SCAN-905: req.secure honours trust-proxy; production fallback as safety net.
+  const isSecureConnection = req.secure || config.nodeEnv === 'production';
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
     path: '/',
@@ -1456,7 +1521,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
   const switchCsrfToken = crypto.randomBytes(24).toString('base64url');
   res.cookie('csrf_token', switchCsrfToken, {
     httpOnly: false,
-    secure: config.nodeEnv === 'production',
+    secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000,
     path: '/',
@@ -1464,7 +1529,7 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
 
   res.json({
     success: true,
-    data: { accessToken, user },
+    data: { accessToken, user: userForResponse },
   });
 });
 
@@ -1523,7 +1588,7 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
 const FORGOT_PASSWORD_MIN_DURATION_MS = 500;
 // $2b$12$ dummy hash; 12 rounds to match real cost (same constant as login).
 const FORGOT_PASSWORD_DUMMY_HASH = '$2b$12$LJ3m4ys3Lhmd0tSwUaGgmeoS89CINnom5eSvnfmEFYKaSwVKbHlrS';
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', asyncHandler(async (req: Request, res: Response) => {
   const startNs = process.hrtime.bigint();
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const db = req.db;
@@ -1593,7 +1658,10 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     tokenHash, expiresAt, user.id
   );
 
-  audit(dbSync, 'password_reset_requested', user.id, ip, { email: email.trim() });
+  // SCAN-883: audit the reset attempt without persisting the raw email (SEC-L43).
+  audit(dbSync, 'password_reset_requested', user.id, ip, {
+    email_hash: crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 16),
+  });
 
   // Build the reset URL.
   // SEC-H7: Use config.baseDomain rather than req.headers.host so an attacker
@@ -1637,7 +1705,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
   await enforceMinDuration(startNs, FORGOT_PASSWORD_MIN_DURATION_MS);
   res.json({ success: true, data: { message: genericMsg } });
-});
+}));
 
 // ENR-UX19: POST /reset-password — Consume a reset token and set a new password
 // SEC (P2FA1): The column is `password_hash`, NOT `password`. The previous code
@@ -1645,7 +1713,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 // SEC (P2FA2): On successful reset we also delete all existing sessions so a
 //              previously-compromised token can't keep a live session alive.
 // SEC (P2FA8): Reject the new password if it matches any of the last 5 hashes.
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', asyncHandler(async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || typeof token !== 'string' || token.length !== 64) {
     res.status(400).json({ success: false, message: 'Invalid reset token' });
@@ -1733,7 +1801,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   logTenantAuthEvent('password_reset_completed', req, user.id, null, { sessions_revoked: true });
 
   res.json({ success: true, data: { message: 'Password has been reset. You can now log in.' } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // P2FA3: POST /account/2fa/disable
@@ -1843,11 +1911,7 @@ router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, r
     res.status(403).json({ success: false, message: 'Admin role required' });
     return;
   }
-  const targetId = parseInt(String(req.params.userId || ''), 10);
-  if (!Number.isInteger(targetId) || targetId <= 0) {
-    res.status(400).json({ success: false, message: 'Invalid user id' });
-    return;
-  }
+  const targetId = validateId(req.params.userId, 'userId');
   if (targetId === actor.id) {
     res.status(400).json({ success: false, message: 'Use /account/2fa/disable for your own account' });
     return;
@@ -1899,7 +1963,7 @@ router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, r
 //   - the new password is written to password_hash and recorded in history,
 //   - all existing sessions are revoked,
 //   - 2FA is disabled (user must re-enroll on next login).
-router.post('/recover-with-backup-code', async (req: Request, res: Response) => {
+router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -2036,7 +2100,7 @@ router.post('/recover-with-backup-code', async (req: Request, res: Response) => 
       message: 'Password reset and 2FA disabled. Please log in and re-enroll 2FA.',
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /auth/change-password — Authenticated user changes their own password

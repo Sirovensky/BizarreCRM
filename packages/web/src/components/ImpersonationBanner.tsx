@@ -7,6 +7,8 @@ export const IMPERSONATION_KEY = 'impersonation_session';
 
 export interface ImpersonationSession {
   tenant_slug: string;
+  tenant_name?: string;
+  started_at?: string;
 }
 
 const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
@@ -24,7 +26,17 @@ export function clearImpersonationSession(): void {
 export function getImpersonationSession(): ImpersonationSession | null {
   try {
     const raw = localStorage.getItem(IMPERSONATION_KEY);
-    return raw ? (JSON.parse(raw) as ImpersonationSession) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.tenant_slug !== 'string' || obj.tenant_slug.length === 0) return null;
+    if (!/^[a-z0-9-]{1,64}$/.test(obj.tenant_slug)) return null;
+    return {
+      tenant_slug: obj.tenant_slug,
+      tenant_name: typeof obj.tenant_name === 'string' ? obj.tenant_name : undefined,
+      started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined,
+    };
   } catch {
     return null;
   }
@@ -67,17 +79,18 @@ export function ImpersonationBanner() {
   }
 
   return (
-    <div
-      className="flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white cursor-pointer hover:bg-amber-600 transition-colors"
+    <button
+      type="button"
+      className="flex w-full items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500"
       onClick={handleExit}
-      role="button"
       title="Click to exit impersonation and return to super-admin"
+      aria-label={`Exit impersonation of tenant ${session.tenant_slug}`}
     >
-      <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+      <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>
         Impersonating <strong>{session.tenant_slug}</strong>. Click to exit.
       </span>
-      <X className="h-3.5 w-3.5 shrink-0 ml-1" />
-    </div>
+      <X className="h-3.5 w-3.5 shrink-0 ml-1" aria-hidden="true" />
+    </button>
   );
 }

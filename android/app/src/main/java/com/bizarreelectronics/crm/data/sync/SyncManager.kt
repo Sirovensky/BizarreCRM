@@ -643,10 +643,19 @@ class SyncManager @Inject constructor(
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     private suspend fun dispatchEmployeeEntry(entry: SyncQueueEntity) {
+        // Extract pin from the payload stamped by ClockInOutViewModel.submitOffline().
+        // If the payload is missing or malformed we fall back to an empty string so the
+        // server returns 401 (which surfaced the bug) rather than crashing the sync loop.
+        val payloadPin: String = try {
+            val map = gson.fromJson(entry.payload, Map::class.java) as Map<String, Any>
+            map["pin"] as? String ?: ""
+        } catch (_: Exception) { "" }
+
         when (entry.operation) {
-            "clock_in" -> settingsApi.clockIn(entry.entityId)
-            "clock_out" -> settingsApi.clockOut(entry.entityId)
+            "clock_in" -> settingsApi.clockIn(entry.entityId, mapOf("pin" to payloadPin))
+            "clock_out" -> settingsApi.clockOut(entry.entityId, mapOf("pin" to payloadPin))
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for employee #${entry.entityId}")
         }
     }

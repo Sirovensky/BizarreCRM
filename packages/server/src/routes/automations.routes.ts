@@ -6,6 +6,8 @@ import type { AsyncDb } from '../db/async-db.js';
 import { config } from '../config.js';
 import { isFeatureAllowed } from '@bizarre-crm/shared';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { validateId } from '../utils/validate.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 
 const router = Router();
 
@@ -16,6 +18,15 @@ const router = Router();
 function requireAdmin(req: Request): void {
   if (req.user?.role !== 'admin') {
     throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
+}
+
+// SCAN-725: dry-run reads customer PII — restrict to manager+ so plain techs
+// cannot enumerate the customer directory via repeated dry-run calls.
+function requireManagerOrAdmin(req: Request): void {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
   }
 }
 
@@ -36,9 +47,13 @@ function requireAutomationsFeature(req: Request): void {
 // ---------------------------------------------------------------------------
 // GET / – List all automation rules
 // ---------------------------------------------------------------------------
+// SCAN-584: action_config may contain SMS/email template bodies. Gate this
+// behind requireAdmin so technician-role users cannot enumerate automation
+// rules or harvest template content.
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
+    requireAdmin(_req);
     const adb = _req.asyncDb;
     const automations = await adb.all(`
       SELECT * FROM automations ORDER BY sort_order ASC, created_at DESC
@@ -105,7 +120,7 @@ router.put(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -149,7 +164,7 @@ router.delete(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT id FROM automations WHERE id = ?', id);
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -168,7 +183,7 @@ router.patch(
     requireAutomationsFeature(req);
     requireAdmin(req);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
@@ -200,9 +215,15 @@ router.post(
   '/:id/dry-run',
   asyncHandler(async (req, res) => {
     requireAutomationsFeature(req);
-    requireAdmin(req);
+    requireManagerOrAdmin(req);
+    // SCAN-727: rate-limit dry-run to prevent rule-config enumeration
+    const userId = req.user!.id;
+    if (!checkWindowRate(req.db, 'automation_dry_run', String(userId), 20, 60_000)) {
+      throw new AppError('Too many dry-run attempts', 429);
+    }
+    recordWindowAttempt(req.db, 'automation_dry_run', String(userId), 60_000);
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const automation = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!automation) throw new AppError('Automation not found', 404);
 
@@ -218,18 +239,28 @@ router.post(
 
     const context: Record<string, unknown> = {};
 
-    if (ticket_id) {
-      const ticket = await adb.get('SELECT * FROM tickets WHERE id = ?', Number(ticket_id)) as any;
+    const ticketId = ticket_id !== undefined && ticket_id !== null && ticket_id !== ('' as unknown)
+      ? validateId(ticket_id, 'ticket_id')
+      : null;
+    const invoiceId = invoice_id !== undefined && invoice_id !== null && invoice_id !== ('' as unknown)
+      ? validateId(invoice_id, 'invoice_id')
+      : null;
+    const customerId = customer_id !== undefined && customer_id !== null && customer_id !== ('' as unknown)
+      ? validateId(customer_id, 'customer_id')
+      : null;
+
+    if (ticketId !== null) {
+      const ticket = await adb.get('SELECT * FROM tickets WHERE id = ?', ticketId) as any;
       if (ticket) context.ticket = ticket;
     }
 
-    if (invoice_id) {
-      const invoice = await adb.get('SELECT * FROM invoices WHERE id = ?', Number(invoice_id)) as any;
+    if (invoiceId !== null) {
+      const invoice = await adb.get('SELECT * FROM invoices WHERE id = ?', invoiceId) as any;
       if (invoice) context.invoice = invoice;
     }
 
-    if (customer_id) {
-      const customer = await adb.get('SELECT id, first_name, last_name, email, phone, mobile FROM customers WHERE id = ?', Number(customer_id)) as any;
+    if (customerId !== null) {
+      const customer = await adb.get('SELECT id, first_name, last_name, email, phone, mobile FROM customers WHERE id = ?', customerId) as any;
       if (customer) context.customer = customer;
     }
 

@@ -3,7 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
-import { validatePaginationOffset } from '../utils/validate.js';
+import { validatePaginationOffset, validateId } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -49,7 +49,8 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 // GET /:id — Single loaner device with history
 router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const device = await adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', req.params.id);
+  const id = validateId(req.params.id, 'id');
+  const device = await adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', id);
   if (!device) throw new AppError('Loaner device not found', 404);
   const history = await adb.all(`
     SELECT lh.*, c.first_name, c.last_name, t.order_id AS ticket_order_id
@@ -58,13 +59,13 @@ router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
     LEFT JOIN ticket_devices td ON td.id = lh.ticket_device_id
     LEFT JOIN tickets t ON t.id = td.ticket_id
     WHERE lh.loaner_device_id = ? ORDER BY lh.loaned_at DESC
-  `, req.params.id);
+  `, id);
   const safe = redactLoanerForRole(device as any, req.user?.role);
   res.json({ success: true, data: { ...safe, history } });
 }));
 
 // POST / — Create loaner device
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { name, serial, imei, condition = 'good', notes } = req.body;
   if (!name) throw new AppError('Name required', 400);
@@ -77,9 +78,10 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // PUT /:id — Update loaner device details (API-3)
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const existing = await adb.get('SELECT id FROM loaner_devices WHERE id = ? AND is_deleted = 0', req.params.id);
+  const id = validateId(req.params.id, 'id');
+  const existing = await adb.get('SELECT id FROM loaner_devices WHERE id = ? AND is_deleted = 0', id);
   if (!existing) throw new AppError('Loaner device not found', 404);
 
   const { name, serial, imei, condition, notes } = req.body;
@@ -94,16 +96,17 @@ router.put('/:id', asyncHandler(async (req, res) => {
       notes = COALESCE(?, notes),
       updated_at = ?
     WHERE id = ?
-  `, name ?? null, serial ?? null, imei ?? null, condition ?? null, notes ?? null, now(), req.params.id);
-  audit(req.db, 'loaner_device_updated', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id) });
+  `, name ?? null, serial ?? null, imei ?? null, condition ?? null, notes ?? null, now(), id);
+  audit(req.db, 'loaner_device_updated', req.user!.id, req.ip || 'unknown', { loaner_id: id });
 
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+  res.json({ success: true, data: { id } });
 }));
 
 // POST /:id/loan — Loan out to customer
-router.post('/:id/loan', asyncHandler(async (req, res) => {
+router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
   const { customer_id, ticket_device_id, notes } = req.body;
   if (!customer_id) throw new AppError('customer_id required', 400);
   // @audit-fixed: §37 — loaner_history.ticket_device_id is NOT NULL in
@@ -116,7 +119,7 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   // V6: Verify FK existence before INSERT
   const [customer, device, ticketDevice] = await Promise.all([
     adb.get('SELECT id FROM customers WHERE id = ?', customer_id),
-    adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', req.params.id),
+    adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', id),
     adb.get('SELECT id FROM ticket_devices WHERE id = ?', ticket_device_id),
   ]);
   if (!customer) throw new AppError('Customer not found', 404);
@@ -125,32 +128,33 @@ router.post('/:id/loan', asyncHandler(async (req, res) => {
   if (!device) throw new AppError('Loaner device not found', 404);
   if ((device as any).status !== 'available') throw new AppError('Device is not available', 400);
 
-  await adb.run('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?', 'loaned', now(), req.params.id);
+  await adb.run('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?', 'loaned', now(), id);
   const loanResult = await adb.run(
     'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)',
-    req.params.id, ticket_device_id, customer_id, now(), (device as any).condition, notes || null
+    id, ticket_device_id, customer_id, now(), (device as any).condition, notes || null
   );
   const historyId = loanResult.lastInsertRowid;
-  audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), customer_id, history_id: historyId });
+  audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: id, customer_id, history_id: historyId });
   res.json({ success: true, data: { history_id: historyId } });
 }));
 
 // POST /:id/return — Return loaner
-router.post('/:id/return', asyncHandler(async (req, res) => {
+router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
   const { condition_in, notes } = req.body;
   const active = await adb.get<{ id: number }>(
     'SELECT id FROM loaner_history WHERE loaner_device_id = ? AND returned_at IS NULL ORDER BY loaned_at DESC LIMIT 1',
-    req.params.id
+    id
   );
   if (!active) throw new AppError('Device is not currently loaned out', 400);
 
   await adb.run('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?',
     now(), condition_in || 'good', notes || null, active.id);
   await adb.run('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?',
-    'available', condition_in || null, now(), req.params.id);
-  audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', { loaner_id: Number(req.params.id), history_id: active.id, condition_in: condition_in || 'good' });
+    'available', condition_in || null, now(), id);
+  audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', { loaner_id: id, history_id: active.id, condition_in: condition_in || 'good' });
   res.json({ success: true, data: { returned: true } });
 }));
 
@@ -159,11 +163,12 @@ router.post('/:id/return', asyncHandler(async (req, res) => {
 // preserve audit trail. The device row is marked is_deleted = 1 so it
 // disappears from all normal list/detail queries. loaner_history rows are
 // intentionally kept intact — they form the per-device loan audit trail.
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
   const device = await adb.get(
     'SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0',
-    req.params.id,
+    id,
   ) as any;
   if (!device) throw new AppError('Loaner device not found', 404);
   if (device.status === 'loaned') {
@@ -174,13 +179,13 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     `UPDATE loaner_devices
         SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_user_id = ?
       WHERE id = ? AND is_deleted = 0`,
-    req.user!.id, req.params.id,
+    req.user!.id, id,
   );
   audit(req.db, 'loaner_device_soft_deleted', req.user!.id, req.ip || 'unknown', {
-    loaner_id: Number(req.params.id),
+    loaner_id: id,
     name: device.name,
   });
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+  res.json({ success: true, data: { id } });
 }));
 
 export default router;

@@ -232,3 +232,69 @@ public extension ButtonStyle where Self == BrandGlassProminentButtonStyle {
 public extension ButtonStyle where Self == BrandGlassButtonStyle {
     static var brandGlass: BrandGlassButtonStyle { BrandGlassButtonStyle() }
 }
+
+// MARK: - BrandGlassClearButtonStyle (§30 — low-prominence ghost action)
+
+/// Ghost-clear glass button. Minimum visual footprint — use for secondary /
+/// tertiary actions where `.brandGlass` would compete with the primary CTA.
+/// Pre-iOS 26: `.ultraThinMaterial` at reduced opacity.
+public struct BrandGlassClearButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            AnyView(
+                configuration.label
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .brandGlass(.clear, in: Capsule(), interactive: true)
+                    .opacity(configuration.isPressed ? 0.70 : 1.0)
+                    .animation(.spring(response: 0.20, dampingFraction: 0.85), value: configuration.isPressed)
+            )
+        } else {
+            AnyView(
+                configuration.label
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial.opacity(0.6), in: Capsule())
+                    .opacity(configuration.isPressed ? 0.65 : 1.0)
+            )
+        }
+    }
+}
+
+public extension ButtonStyle where Self == BrandGlassClearButtonStyle {
+    static var brandGlassClear: BrandGlassClearButtonStyle { BrandGlassClearButtonStyle() }
+}
+
+// MARK: - BrandGlassBadge — capsule badge with glass backing (§30)
+
+/// Capsule badge backed by glass. Use for counts, labels, status chips that
+/// live on the navigation chrome or over imagery.
+///
+/// - `variant`: `.regular` (default), `.clear`, or `.identity` (brand tint).
+/// - Pre-iOS 26: coloured fill fallback via `BrandGlassVariant.fallbackMaterial`.
+public struct BrandGlassBadge: View {
+    private let label: String
+    private let variant: BrandGlassVariant
+    private let tint: Color?
+
+    public init(
+        _ label: String,
+        variant: BrandGlassVariant = .regular,
+        tint: Color? = nil
+    ) {
+        self.label = label
+        self.variant = variant
+        self.tint = tint
+    }
+
+    public var body: some View {
+        Text(label)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.xxs)
+            .brandGlass(variant, in: Capsule(), tint: tint)
+            .accessibilityLabel(label)
+    }
+}

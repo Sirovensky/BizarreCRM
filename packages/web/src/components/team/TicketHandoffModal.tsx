@@ -62,7 +62,13 @@ export function TicketHandoffModal({
       onHandedOff?.();
       onClose();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Handoff failed'),
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
+          : null;
+      toast.error(msg || 'Handoff failed');
+    },
   });
 
   const canSubmit = !!toUserId && reason.trim().length > 0 && !handoffMut.isPending;

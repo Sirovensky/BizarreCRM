@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.leads
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,6 +13,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +50,13 @@ data class LeadListUiState(
     val searchQuery: String = "",
     val selectedStatus: String = "All",
 )
+
+/**
+ * View mode toggle for the Leads screen (ActionPlan §9).
+ *
+ * [LIST] renders the existing flat list; [KANBAN] renders the pipeline board.
+ */
+enum class ViewMode { LIST, KANBAN }
 
 /**
  * Status label lookup. Keys match the server's lowercase status strings.
@@ -152,6 +167,15 @@ fun LeadListScreen(
     )
     val listState = rememberLazyListState()
 
+    // §9: view-mode toggle — List (default) or Kanban pipeline board.
+    var viewMode by remember { mutableStateOf(ViewMode.LIST) }
+
+    // Derived grouping for Kanban — computed only when leads change and the
+    // kanban view is active. Immutable: groupBy returns a new map each time.
+    val leadsByStage by remember(state.leads) {
+        derivedStateOf { state.leads.groupBy { it.status ?: "new" } }
+    }
+
     Scaffold(
         topBar = {
             // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
@@ -163,10 +187,53 @@ fun LeadListScreen(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
                     actions = {
+                        // §9: List / Kanban toggle pair.
+                        // a11y: Role.Button + "selected/not selected" so TalkBack
+                        // announces the current mode when the user navigates to the icon.
+                        IconButton(
+                            onClick = { viewMode = ViewMode.LIST },
+                            modifier = Modifier.semantics {
+                                role = Role.Button
+                                contentDescription = if (viewMode == ViewMode.LIST)
+                                    "List view, selected"
+                                else
+                                    "List view, not selected"
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.ViewList,
+                                contentDescription = null,
+                                tint = if (viewMode == ViewMode.LIST)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // a11y: same pattern for Kanban toggle
+                        IconButton(
+                            onClick = { viewMode = ViewMode.KANBAN },
+                            modifier = Modifier.semantics {
+                                role = Role.Button
+                                contentDescription = if (viewMode == ViewMode.KANBAN)
+                                    "Kanban view, selected"
+                                else
+                                    "Kanban view, not selected"
+                            },
+                        ) {
+                            Icon(
+                                Icons.Default.ViewKanban,
+                                contentDescription = null,
+                                tint = if (viewMode == ViewMode.KANBAN)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // a11y: "Refresh leads" is more specific than generic "Refresh"
                         IconButton(onClick = { viewModel.loadLeads() }) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Refresh",
+                                contentDescription = "Refresh leads",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -180,7 +247,8 @@ fun LeadListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Lead")
+                // a11y: spec §26 — "Create new lead" (imperative, lowercase "new")
+                Icon(Icons.Default.Add, contentDescription = "Create new lead")
             }
         },
     ) { padding ->
@@ -198,25 +266,56 @@ fun LeadListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
+            // a11y: "Status filter" heading so TalkBack can navigate directly to
+            // this section via heading swipe without traversing each filter chip.
+            Text(
+                "Status filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
+
             // Status filter chips
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(filters, key = { it }) { filter ->
+                    val isSelected = state.selectedStatus == filter
                     FilterChip(
-                        selected = state.selectedStatus == filter,
+                        selected = isSelected,
                         onClick = { viewModel.onStatusChanged(filter) },
                         label = { Text(filter) },
+                        // a11y: Role.Tab + selection state so TalkBack announces
+                        // "<stage> filter, selected/not selected" on each chip.
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$filter filter, selected"
+                            } else {
+                                "$filter filter, not selected"
+                            }
+                        },
                     )
                 }
             }
 
             // Lead count — demoted to muted labelSmall
             if (!state.isLoading && state.leads.isNotEmpty()) {
+                val leadCount = state.leads.size
+                val countLabel = "$leadCount ${if (leadCount == 1) "lead" else "leads"}"
+                // a11y: liveRegion=Polite so TalkBack announces the updated count
+                // after a filter or search change, without interrupting mid-sentence.
                 Text(
-                    "${state.leads.size} ${if (state.leads.size == 1) "lead" else "leads"}",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    countLabel,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = countLabel
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -226,22 +325,63 @@ fun LeadListScreen(
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 6,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack
+                    // announces "Loading leads" on a single focus stop rather than
+                    // reading each shimmer box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading leads"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 6,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    ErrorState(
-                        message = state.error ?: "Error loading leads",
-                        onRetry = { viewModel.loadLeads() },
-                    )
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so
+                    // the user is not left wondering why the list is empty on failure.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics {
+                                liveRegion = LiveRegionMode.Assertive
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Error loading leads",
+                            onRetry = { viewModel.loadLeads() },
+                        )
+                    }
                 }
                 state.leads.isEmpty() -> {
-                    EmptyState(
-                        icon = Icons.Default.PersonSearch,
-                        title = "No leads found",
-                        subtitle = "Add a lead with the + button below",
+                    // a11y: mergeDescendants collapses decorative icon + title +
+                    // subtitle into one TalkBack node for a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.PersonSearch,
+                            title = "No leads found",
+                            subtitle = "Add a lead with the + button below",
+                        )
+                    }
+                }
+                viewMode == ViewMode.KANBAN -> {
+                    // §9: Kanban pipeline board — horizontally scrollable columns
+                    // grouped by status. Stage-change callback is a no-op here;
+                    // wiring a dropdown/dialog is deferred (drag-drop wave).
+                    LeadKanbanBoard(
+                        leadsByStage = leadsByStage,
+                        stageOrder = DEFAULT_STAGE_ORDER,
+                        onLeadClick = onLeadClick,
+                        onStageChangeRequest = { _, _ -> /* deferred */ },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
                 else -> {
@@ -279,9 +419,34 @@ private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
     // D5-3: use Card(onClick = ...) overload so the M3 ripple renders from the
     // first tap. Chaining .clickable on a Card without onClick broke tactile
     // feedback because the Card surface drew OVER the ripple indication.
+
+    // a11y: build the full announcement string once so it can be used in semantics.
+    // Card(onClick) carries Material 3 Card Role.Button; we add contentDescription
+    // via mergeDescendants so TalkBack announces a single coherent sentence rather
+    // than reading each child Text node individually.
+    val fullName = listOfNotNull(lead.firstName, lead.lastName)
+        .joinToString(" ")
+        .ifBlank { "Unknown" }
+    val stageLabel = statusLabelFor(lead.status).ifBlank { lead.status ?: "Unknown" }
+    val a11yDesc = buildString {
+        append("Lead $fullName")
+        lead.phone?.takeIf { it.isNotBlank() }?.let {
+            append(", phone ${PhoneFormatter.format(it)}")
+        }
+        append(", stage $stageLabel")
+        append(", score ${lead.leadScore}")
+        lead.source?.takeIf { it.isNotBlank() }?.let { append(", source $it") }
+        append(". Tap to open.")
+    }
+
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        // a11y: contentDescription overrides merged child-text reading; 48dp floor
+        // ensures the row meets the Material 3 minimum touch target.
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics(mergeDescendants = true) { contentDescription = a11yDesc },
     ) {
         Row(
             modifier = Modifier
@@ -299,9 +464,6 @@ private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                val fullName = listOfNotNull(lead.firstName, lead.lastName)
-                    .joinToString(" ")
-                    .ifBlank { "Unknown" }
                 Text(
                     fullName,
                     style = MaterialTheme.typography.titleSmall,

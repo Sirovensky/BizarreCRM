@@ -7,6 +7,9 @@ import { Piscina } from 'piscina';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('worker-pool');
 
 // SEC-M48: Per-task timeout. 30 s is long enough for any realistic SQLite
 // query (even large imports). Tasks that legitimately run longer should use
@@ -103,11 +106,14 @@ function runWithTimeout(task: unknown): Promise<unknown> {
     .catch((err: unknown) => {
       clearTimeout(timer);
       // Piscina throws "queue is full" when maxQueue is exceeded.
-      if (
-        err instanceof Error &&
-        err.message.toLowerCase().includes('queue is full')
-      ) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+      if (msg.includes('queue is full') || isTimeout) {
         throw new WorkerPoolQueueFullError();
+      }
+      // Log unexpected Piscina-internal errors separately without swallowing them.
+      if (msg.includes('piscina')) {
+        logger.warn('[worker-pool] unexpected Piscina error', { message: msg });
       }
       throw err;
     });

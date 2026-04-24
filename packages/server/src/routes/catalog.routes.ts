@@ -21,6 +21,7 @@ import {
   validatePrice,
   validateRequiredString,
   validateTextLength,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
@@ -28,6 +29,13 @@ import { parsePageSize, MAX_PAGE_SIZE } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const logger = createLogger('catalog-routes');
+
+function parseLimit(raw: unknown, defaultVal = 100, maxVal = 200): number {
+  if (raw === undefined || raw === null || raw === '') return defaultVal;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return defaultVal;
+  return Math.min(Math.floor(n), maxVal);
+}
 
 const router = Router();
 
@@ -63,7 +71,7 @@ router.get('/devices', asyncHandler(async (req, res) => {
   // than MAX_PAGE_SIZE rows (203+ phone models + 67 TVs per manufacturer).
   // Cap kept at 200 rather than MAX_PAGE_SIZE=100 to avoid breaking the UI.
   const DEVICE_MODEL_MAX = 200;
-  const limit = Math.min(DEVICE_MODEL_MAX, Number(req.query.limit) || 100);
+  const limit = parseLimit(req.query.limit, 100, DEVICE_MODEL_MAX);
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -105,7 +113,7 @@ router.get('/devices', asyncHandler(async (req, res) => {
 // Single device model detail + compatible catalog items
 router.get('/devices/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const id = Number(req.params.id);
+  const id = validateId(req.params.id, 'id');
   const dm = await adb.get(`
     SELECT dm.*, m.name AS manufacturer_name
     FROM device_models dm
@@ -276,7 +284,7 @@ router.get('/jobs', asyncHandler(async (req, res) => {
 
 router.get('/jobs/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const job = await adb.get('SELECT * FROM scrape_jobs WHERE id = ?', Number(req.params.id));
+  const job = await adb.get('SELECT * FROM scrape_jobs WHERE id = ?', validateId(req.params.id, 'id'));
   if (!job) throw new AppError('Job not found', 404);
   res.json({ success: true, data: job });
 }));
@@ -577,7 +585,9 @@ router.get('/parts-search', asyncHandler(async (req, res) => {
 // Results are cached in supplier_catalog for future searches.
 // POST body: { source: 'mobilesentrix'|'phonelcdparts', q: string }
 router.post('/live-search', asyncHandler(async (req, res) => {
-  const { source, q } = req.body as { source: CatalogSource; q: string };
+  const { source, q } = req.body as { source: CatalogSource; q: unknown };
+  // SCAN-650: Guard string type before calling .trim().
+  if (typeof q !== 'string') throw new AppError('q must be a string', 400);
   if (!VALID_SOURCES.includes(source)) throw new AppError(`source must be one of: ${VALID_SOURCES.join(', ')}`);
   if (!q || q.trim().length < 2) throw new AppError('q must be at least 2 characters');
 
@@ -716,7 +726,7 @@ router.get('/order-queue/summary', asyncHandler(async (req, res) => {
 // PATCH /catalog/order-queue/:id — update status (mark ordered, received, cancelled)
 router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const id = Number(req.params.id);
+  const id = validateId(req.params.id, 'id');
   const { status, notes } = req.body;
   const allowed = ['pending', 'ordered', 'received', 'cancelled'];
   if (status && !allowed.includes(status)) throw new AppError(`status must be one of: ${allowed.join(', ')}`);

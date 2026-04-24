@@ -14,6 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -120,7 +124,8 @@ fun CustomerListScreen(
                     IconButton(onClick = { viewModel.loadCustomers() }) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "Refresh",
+                            // a11y: more specific than generic "Refresh" — matches Tickets pattern
+                            contentDescription = "Refresh customers",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -132,7 +137,8 @@ fun CustomerListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.PersonAdd, contentDescription = "Add customer")
+                // a11y: imperative verb phrase matches §26 spec; "new" lower-case matches Tickets FAB pattern
+                Icon(Icons.Default.PersonAdd, contentDescription = "Create new customer")
             }
         },
     ) { padding ->
@@ -152,9 +158,17 @@ fun CustomerListScreen(
 
             // Customer count — demoted to muted labelSmall chip
             if (!state.isLoading && state.customers.isNotEmpty()) {
+                val customerCountLabel = "${state.customers.size} ${if (state.customers.size == 1) "customer" else "customers"}"
                 Text(
-                    "${state.customers.size} ${if (state.customers.size == 1) "customer" else "customers"}",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    customerCountLabel,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        // a11y: liveRegion=Polite so TalkBack announces the updated count
+                        // when a search query changes the result set, without interrupting.
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = customerCountLabel
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -162,15 +176,31 @@ fun CustomerListScreen(
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 6,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 8.dp),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading customers" on a single focus stop rather than reading
+                    // each shimmer box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading customers"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 6,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 8.dp),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
+                    // user is not left wondering why the list is empty after a network failure.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Error",
                             onRetry = { viewModel.loadCustomers() },
@@ -182,14 +212,18 @@ fun CustomerListScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.TopCenter,
                     ) {
-                        EmptyState(
-                            icon = Icons.Default.People,
-                            title = "No customers",
-                            subtitle = if (state.searchQuery.isNotBlank())
-                                "No results for \"${state.searchQuery}\""
-                            else
-                                "Add your first customer with the + button",
-                        )
+                        // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                        // into one TalkBack node so the empty state reads as a single announcement.
+                        Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                            EmptyState(
+                                icon = Icons.Default.People,
+                                title = "No customers",
+                                subtitle = if (state.searchQuery.isNotBlank())
+                                    "No results for \"${state.searchQuery}\""
+                                else
+                                    "Add your first customer with the + button",
+                            )
+                        }
                     }
                 }
                 else -> {
@@ -228,7 +262,32 @@ private fun CustomerListRow(customer: CustomerEntity, onClick: () -> Unit) {
         .joinToString(" ")
         .ifBlank { "Unknown" }
 
+    // a11y: build the full announcement string once so it can be used in semantics.
+    // BrandListItem already applies mergeDescendants=true + Role.Button on its outer Row;
+    // we add contentDescription here so TalkBack announces a single coherent sentence
+    // instead of reading each child Text node individually.
+    // CROSS8: route phone through shared formatPhoneDisplay so list rows
+    // render the canonical `+1 (XXX)-XXX-XXXX` like the detail view.
+    val phone = (customer.mobile ?: customer.phone)
+        ?.let { formatPhoneDisplay(it) }
+        ?.takeIf { it.isNotBlank() }
+    val meta = listOfNotNull(
+        phone,
+        customer.email?.takeIf { it.isNotBlank() },
+        customer.organization?.takeIf { it.isNotBlank() },
+    ).firstOrNull()
+    val a11yDesc = buildString {
+        append("Customer $fullName")
+        meta?.let { append(", $it") }
+        append(". Tap to open.")
+    }
+
     BrandListItem(
+        // a11y: contentDescription overrides the merged child-text reading; 48dp floor
+        // ensures the row meets the Material 3 minimum touch target.
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { contentDescription = a11yDesc },
         leading = { CustomerAvatar(name = fullName) },
         headline = {
             Text(
@@ -238,14 +297,6 @@ private fun CustomerListRow(customer: CustomerEntity, onClick: () -> Unit) {
             )
         },
         support = {
-            // CROSS8: route phone through shared formatPhoneDisplay so list rows
-            // render the canonical `+1 (XXX)-XXX-XXXX` like the detail view.
-            val phone = (customer.mobile ?: customer.phone)?.let { formatPhoneDisplay(it) }?.takeIf { it.isNotBlank() }
-            val meta = listOfNotNull(
-                phone,
-                customer.email?.takeIf { it.isNotBlank() },
-                customer.organization?.takeIf { it.isNotBlank() },
-            ).firstOrNull()
             if (meta != null) {
                 Text(
                     meta,

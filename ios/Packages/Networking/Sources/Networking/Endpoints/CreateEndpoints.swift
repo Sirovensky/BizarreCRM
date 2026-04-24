@@ -90,22 +90,6 @@ public struct UpdateCustomerRequest: Codable, Sendable {
     }
 }
 
-// MARK: - Expense create
-
-public struct CreateExpenseRequest: Encodable, Sendable {
-    public let category: String
-    public let amount: Double
-    public let description: String?
-    public let date: String?    // YYYY-MM-DD; server defaults to today if nil
-
-    public init(category: String, amount: Double, description: String? = nil, date: String? = nil) {
-        self.category = category
-        self.amount = amount
-        self.description = description
-        self.date = date
-    }
-}
-
 // MARK: - Appointment create
 
 public struct CreateAppointmentRequest: Encodable, Sendable {
@@ -263,9 +247,8 @@ public extension APIClient {
         try await put("/api/v1/customers/\(id)", body: req, as: CreatedResource.self)
     }
 
-    func createExpense(_ req: CreateExpenseRequest) async throws -> CreatedResource {
-        try await post("/api/v1/expenses", body: req, as: CreatedResource.self)
-    }
+    // Expense create wrapper lives in ExpensesEndpoints.swift
+    // (canonical version supports vendor/tax/paymentMethod/notes/isReimbursable)
 
     func createAppointment(_ req: CreateAppointmentRequest) async throws -> CreatedResource {
         try await post("/api/v1/leads/appointments", body: req, as: CreatedResource.self)
@@ -325,25 +308,75 @@ public struct CreateInvoiceRequest: Encodable, Sendable {
 
 // MARK: — Estimate create
 
-/// `POST /api/v1/estimates` — minimal required fields.
+/// A single line item in a `CreateEstimateRequest`.
+/// Maps to the `line_items` array accepted by `POST /api/v1/estimates`.
+public struct EstimateLineItemRequest: Encodable, Sendable, Hashable {
+    /// Optional link to an existing inventory item.
+    public let inventoryItemId: Int64?
+    /// Free-form description shown on the estimate PDF.
+    public let description: String
+    /// Must be a positive integer (server validates `integerQuantity`).
+    public let quantity: Int
+    /// Per-unit price before tax (validated ≥ 0, ≤ 999 999.99).
+    public let unitPrice: Double
+    /// Tax per-row (validated ≥ 0). Defaults to 0 when not supplied.
+    public let taxAmount: Double
+
+    public init(
+        inventoryItemId: Int64? = nil,
+        description: String,
+        quantity: Int = 1,
+        unitPrice: Double,
+        taxAmount: Double = 0
+    ) {
+        self.inventoryItemId = inventoryItemId
+        self.description = description
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.taxAmount = taxAmount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case description, quantity
+        case inventoryItemId = "inventory_item_id"
+        case unitPrice = "unit_price"
+        case taxAmount = "tax_amount"
+    }
+}
+
+/// `POST /api/v1/estimates` — full set of fields accepted by the server.
 /// Server: packages/server/src/routes/estimates.routes.ts.
 public struct CreateEstimateRequest: Encodable, Sendable {
     public let customerId: Int64
+    /// `subject` is not a server field — kept for local UI use (maps to `notes` if no
+    /// `notes` is supplied, otherwise ignored; the server ignores unknown keys).
     public let subject: String?
     public let notes: String?
     public let validUntil: String?   // YYYY-MM-DD
+    public let discount: Double?
+    /// Line items to attach.  Server caps at 500 (`MAX_ESTIMATE_LINE_ITEMS`).
+    public let lineItems: [EstimateLineItemRequest]?
 
-    public init(customerId: Int64, subject: String? = nil,
-                notes: String? = nil, validUntil: String? = nil) {
+    public init(
+        customerId: Int64,
+        subject: String? = nil,
+        notes: String? = nil,
+        validUntil: String? = nil,
+        discount: Double? = nil,
+        lineItems: [EstimateLineItemRequest]? = nil
+    ) {
         self.customerId = customerId
         self.subject = subject
         self.notes = notes
         self.validUntil = validUntil
+        self.discount = discount
+        self.lineItems = lineItems
     }
 
     enum CodingKeys: String, CodingKey {
-        case subject, notes
-        case customerId  = "customer_id"
-        case validUntil  = "valid_until"
+        case subject, notes, discount
+        case customerId = "customer_id"
+        case validUntil = "valid_until"
+        case lineItems  = "line_items"
     }
 }

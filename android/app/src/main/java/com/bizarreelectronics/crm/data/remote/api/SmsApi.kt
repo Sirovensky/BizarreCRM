@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationListData
+import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateListData
 import com.bizarreelectronics.crm.data.remote.dto.SmsThreadData
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -37,5 +38,5 @@ interface SmsApi {
     suspend fun markRead(@Path("phone") phone: String): ApiResponse<Unit>
 
     @GET("sms/templates")
-    suspend fun getTemplates(): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+    suspend fun getTemplates(): ApiResponse<SmsTemplateListData>
 }

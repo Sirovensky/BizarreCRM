@@ -1,12 +1,15 @@
 package com.bizarreelectronics.crm
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,9 +24,13 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
+import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -71,6 +78,15 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var jankReporter: com.bizarreelectronics.crm.util.JankReporter
 
+    @Inject
+    lateinit var sessionTimeout: SessionTimeout
+
+    @Inject
+    lateinit var clockDrift: ClockDrift
+
+    @Inject
+    lateinit var rateLimiter: RateLimiter
+
     /**
      * Hilt-scoped handoff bus for routes extracted from launch /
      * onNewIntent intents. Shared by two entry points that both need to
@@ -91,6 +107,28 @@ class MainActivity : FragmentActivity() {
 
     /** True until biometric unlock has either succeeded or been skipped. */
     private var isLocked: Boolean = false
+
+    /**
+     * §27 — pre-Android-13 locale persistence.
+     *
+     * On API 33+ [android.app.LocaleManager] keeps the locale durable across
+     * cold starts and the system-provided context already carries the right
+     * configuration; [LanguageManager.wrapContext] is a no-op in that case.
+     *
+     * On API 26-32 the OS has no knowledge of the per-app preference, so we
+     * must wrap the base context with a [android.content.res.Configuration]
+     * that sets the user-selected locale before any view inflation occurs.
+     * This override fires early enough in the lifecycle that even the first
+     * call to [resources.getString] during [onCreate] picks up the override.
+     *
+     * The read is performed without Hilt injection because this hook fires
+     * before the activity Hilt component is created. [LanguageManager.wrapContext]
+     * reads the shared preferences file directly and falls back to the
+     * unmodified context if the file or key is absent.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LanguageManager.wrapContext(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -146,18 +184,18 @@ class MainActivity : FragmentActivity() {
         isLocked = shouldLock
 
         setContent {
-            // AUDIT-AND-003: resolve dark-mode preference and pass it into the
-            // theme so the stored setting ("dark" | "light" | "system") is
-            // actually honoured. Previously BizarreCrmTheme received no
-            // darkTheme argument and always defaulted to true (dark-only).
-            val darkMode = appPreferences.darkMode
+            // AUDIT-AND-003 / Wave-3: observe darkModeFlow and dynamicColorFlow
+            // as Compose State so the theme re-renders immediately when the user
+            // changes the setting on ThemeScreen — no activity recreate needed.
+            val darkMode by appPreferences.darkModeFlow.collectAsState()
+            val dynamicColor by appPreferences.dynamicColorFlow.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (darkMode) {
                 "dark"  -> true
                 "light" -> false
                 else    -> systemDark   // "system" follows OS setting
             }
-            BizarreCrmTheme(darkTheme = darkTheme) {
+            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
                 var locked by remember { mutableStateOf(isLocked) }
                 // AUDIT §2.5: PIN gate. Shown after biometric (or on devices
                 // without biometric) whenever the user has set a PIN and
@@ -198,6 +236,9 @@ class MainActivity : FragmentActivity() {
                         syncManager = syncManager,
                         deepLinkBus = deepLinkBus,
                         breadcrumbs = breadcrumbs,
+                        clockDrift = clockDrift,
+                        rateLimiter = rateLimiter,
+                        sessionTimeout = sessionTimeout,
                     )
                 }
             }
@@ -216,6 +257,22 @@ class MainActivity : FragmentActivity() {
         // for the ordering rationale.
         pendingDeepLink = resolveDeepLink(intent) ?: resolveFcmRoute(intent)
         deepLinkBus.publish(pendingDeepLink)
+    }
+
+    /**
+     * §2.16 activity signal — every touch ACTION_DOWN resets the inactivity
+     * timer via [SessionTimeout.onActivity]. Scroll and text-entry events
+     * surface as a series of touch events through this same path, so no
+     * additional wiring is needed for those signals.
+     *
+     * Background push handlers and sync workers must NOT call
+     * [SessionTimeout.onActivity] — only user-originated events count (line 398).
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) {
+            sessionTimeout.onActivity()
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     /**

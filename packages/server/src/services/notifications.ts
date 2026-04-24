@@ -320,22 +320,34 @@ interface NotifyContext {
 const AUTO_SMS_COOLDOWN_HOURS = 4;
 
 /**
- * Check if a customer (by phone) has received an auto-SMS recently.
- * Returns true if sending is allowed (no recent auto-SMS), false if rate-limited.
+ * Atomically claim an auto-SMS slot for a phone number.
+ * Inserts a placeholder row (provider='auto-claim') only if no auto SMS was sent
+ * in the last 4 hours, using INSERT...SELECT WHERE NOT EXISTS so the check and
+ * claim happen in a single serialized write — eliminating the TOCTOU race where
+ * two concurrent calls could both pass a read-only check and both fire.
+ *
+ * Returns true if the slot was claimed (sending is allowed), false if rate-limited.
+ * The placeholder row is intentionally left in place on send failure: it acts as a
+ * conservative cooldown guard so a failed attempt doesn't open a retry flood.
+ * Callers that successfully send will insert a second row with provider='auto' and
+ * status='sent' via their normal path — that row is what future checks will see.
  */
 export function isAutoSmsAllowed(db: any, phone: string): boolean {
   if (!phone) return false;
   const convPhone = phone.replace(/\D/g, '').replace(/^1/, '');
-  const recent = db.prepare(`
-    SELECT id FROM sms_messages
-    WHERE conv_phone = ?
-      AND provider = 'auto'
-      AND direction = 'outbound'
-      AND created_at > datetime('now', ? || ' hours')
-    LIMIT 1
-  `).get(convPhone, `-${AUTO_SMS_COOLDOWN_HOURS}`) as any;
+  const result = db.prepare(`
+    INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider, created_at, updated_at)
+    SELECT '', ?, ?, '', 'rate-limit-claim', 'outbound', 'auto-claim', datetime('now'), datetime('now')
+    WHERE NOT EXISTS (
+      SELECT 1 FROM sms_messages
+      WHERE conv_phone = ?
+        AND provider IN ('auto', 'auto-claim')
+        AND direction = 'outbound'
+        AND created_at > datetime('now', ? || ' hours')
+    )
+  `).run(phone, convPhone, convPhone, `-${AUTO_SMS_COOLDOWN_HOURS}`);
 
-  return !recent;
+  return (result.changes as number) > 0;
 }
 
 /**

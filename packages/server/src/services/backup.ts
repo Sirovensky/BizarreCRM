@@ -604,8 +604,11 @@ export async function runBackup(
     // same second don't collide. ISO format with ms: 2025-01-01T00-00-00-000Z
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const rand = crypto.randomBytes(3).toString('hex'); // 6 hex chars
+    // SCAN-574: defence-in-depth — validate slug even though it's regex-checked upstream.
+    const rawSlug = opts?.tenantSlug;
+    const safeSlug = rawSlug && /^[a-z0-9-]+$/.test(rawSlug) ? rawSlug : 'tenant';
     const prefix = opts?.tenantSlug
-      ? `${opts.tenantSlug}-t${opts.tenantId ?? 0}`
+      ? `${safeSlug}-t${opts.tenantId ?? 0}`
       : 'bizarre-crm';
     const dbDest = path.join(backupDir, `${prefix}-${ts}-${rand}.db`);
     const uploadsDest = path.join(backupDir, `uploads-${ts}-${rand}`);
@@ -1006,6 +1009,7 @@ let multiTenantBackupCron: cron.ScheduledTask | null = null;
 export function scheduleMultiTenantBackups(
   getMasterDb: () => any,
   getTenantDb: (slug: string) => any,
+  releaseTenantDb: (slug: string) => void,
 ): void {
   if (multiTenantBackupCron) { multiTenantBackupCron.stop(); multiTenantBackupCron = null; }
 
@@ -1027,8 +1031,9 @@ export function scheduleMultiTenantBackups(
       logger.info('Running per-tenant backups', { module: 'backup', count: tenants.length });
 
       for (const t of tenants) {
+        let tenantDb: any;
         try {
-          const tenantDb = getTenantDb(t.slug);
+          tenantDb = await getTenantDb(t.slug);
           if (!tenantDb) continue;
           const result = await runBackup(tenantDb, { tenantSlug: t.slug, tenantId: t.id });
           if (result.success) {
@@ -1042,6 +1047,8 @@ export function scheduleMultiTenantBackups(
             tenant: t.slug,
             error: err instanceof Error ? err.message : String(err),
           });
+        } finally {
+          if (tenantDb !== undefined) releaseTenantDb(t.slug);
         }
       }
     } catch (err) {

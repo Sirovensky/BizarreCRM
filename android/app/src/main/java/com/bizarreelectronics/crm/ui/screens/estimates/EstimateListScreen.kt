@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.estimates
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,6 +13,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -138,9 +146,10 @@ fun EstimateListScreen(
                     title = "Estimates",
                     actions = {
                         IconButton(onClick = { viewModel.loadEstimates() }) {
+                            // a11y: "Refresh estimates" is more specific than generic "Refresh"
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Refresh",
+                                contentDescription = "Refresh estimates",
                             )
                         }
                     },
@@ -162,23 +171,54 @@ fun EstimateListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
+            // a11y: "Status filter" heading so TalkBack can navigate directly to this section
+            Text(
+                "Status filter",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { heading() },
+            )
+
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(statuses, key = { it }) { status ->
+                    val isSelected = state.selectedStatus == status
                     FilterChip(
-                        selected = state.selectedStatus == status,
+                        selected = isSelected,
                         onClick = { viewModel.onStatusChanged(status) },
                         label = { Text(status) },
+                        // a11y: Role.Tab + selection state announcement; the chip's
+                        // selected param already flips the chip visually; the
+                        // semantics here make TalkBack say "<status> filter, selected/not selected"
+                        modifier = Modifier.semantics {
+                            role = Role.Tab
+                            contentDescription = if (isSelected) {
+                                "$status filter, selected"
+                            } else {
+                                "$status filter, not selected"
+                            }
+                        },
                     )
                 }
             }
 
             if (!state.isLoading && state.estimates.isNotEmpty()) {
+                val estimateCount = state.estimates.size
+                val countLabel = "$estimateCount ${if (estimateCount == 1) "estimate" else "estimates"}"
+                // a11y: liveRegion=Polite so TalkBack announces when the count changes
+                // after a filter switch, without interrupting the user mid-sentence.
                 Text(
-                    "${state.estimates.size} ${if (state.estimates.size == 1) "estimate" else "estimates"}",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    countLabel,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = countLabel
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -188,13 +228,31 @@ fun EstimateListScreen(
 
             when {
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 6,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading estimates" on a single focus stop rather than reading
+                    // each shimmer box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading estimates"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 6,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so the
+                    // user is not left wondering why the list is empty after a network failure.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics {
+                                liveRegion = LiveRegionMode.Assertive
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ErrorState(
                             message = state.error ?: "Error",
                             onRetry = { viewModel.loadEstimates() },
@@ -202,7 +260,14 @@ fun EstimateListScreen(
                     }
                 }
                 state.estimates.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the empty state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.Center,
+                    ) {
                         EmptyState(
                             icon = Icons.Default.Description,
                             title = "No estimates found",
@@ -251,8 +316,31 @@ fun EstimateListScreen(
 
 @Composable
 private fun EstimateCard(estimate: EstimateEntity, onClick: () -> Unit) {
+    // a11y: build the full announcement string once so it can be used in semantics.
+    // BrandCard(onClick) carries Material 3 Card Role.Button; we add contentDescription
+    // on the BrandCard modifier so TalkBack announces a single coherent sentence
+    // instead of reading each child Text node individually.
+    val estimateNumber = estimate.orderId.ifBlank { "EST-${estimate.id}" }
+    val a11yDesc = buildString {
+        append("Estimate #$estimateNumber")
+        estimate.customerName?.takeIf { it.isNotBlank() }?.let { append(" for $it") }
+        append(", ${estimate.total.formatAsMoney()}")
+        val statusLabel = estimate.status.replaceFirstChar { it.uppercase() }
+        append(", $statusLabel")
+        val dateStr = estimate.validUntil?.take(10)?.takeIf { it.isNotBlank() }
+        if (dateStr != null) {
+            append(", dated $dateStr")
+        }
+        append(". Tap to open.")
+    }
+
     BrandCard(
-        modifier = Modifier.fillMaxWidth(),
+        // a11y: contentDescription overrides merged child-text reading; 48dp floor
+        // ensures the row meets the Material 3 minimum touch target.
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { contentDescription = a11yDesc },
         onClick = onClick,
     ) {
         Row(

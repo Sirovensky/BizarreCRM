@@ -6,7 +6,7 @@ import { normalizePhone } from '../utils/phone.js';
 import { sendSms, sendSmsTenant } from '../services/smsProvider.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
+import { checkWindowRate, recordWindowFailure, consumeWindowRate, clearRateLimit } from '../utils/rateLimiter.js';
 import {
   generateCsrfToken,
   issueCsrfCookie,
@@ -70,9 +70,9 @@ function NORMALIZED_DIGITS_EXPR(column: string): string {
 }
 
 /**
- * Wrap checkWindowRate + recordWindowFailure into a single call that both
- * gates the attempt AND records it on success. Returns true if the attempt
- * is allowed (in which case the caller should proceed), false if not.
+ * Atomic check-and-record helper. Delegates to consumeWindowRate so the
+ * check and increment happen inside a single SQLite transaction — fixes
+ * SCAN-630 non-atomic race that allowed maxAttempts+1 requests through.
  */
 function consumeRate(
   req: Request,
@@ -81,11 +81,7 @@ function consumeRate(
   maxAttempts: number,
   windowMs: number,
 ): boolean {
-  if (!checkWindowRate(req.db, category, key, maxAttempts, windowMs)) {
-    return false;
-  }
-  recordWindowFailure(req.db, category, key, windowMs);
-  return true;
+  return consumeWindowRate(req.db, category, key, maxAttempts, windowMs).allowed;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,21 +125,29 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   // SEC-M45: reject idle sessions. IDLE_LIMIT_MS = 4 h. last_used_at
   // is updated on every request below, so active users are never
   // kicked. Null last_used_at (shouldn't happen — column is set on
-  // insert) is treated as 'never used' and passes through.
+  // insert) is treated as expired (fail-safe).
   const IDLE_LIMIT_MS = 4 * 60 * 60 * 1000;
-  if (session.last_used_at) {
-    const lastUsedMs = Date.parse(String(session.last_used_at).replace(' ', 'T') + 'Z');
-    if (Number.isFinite(lastUsedMs) && Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
-      // Evict the stale session so reuse of the token still fails on
-      // the next request even if the expiry hasn't hit.
-      await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
-      res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
-      return;
-    }
+  // SCAN-720: robust parse — handles "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM:SS",
+  // with or without 'Z'. All DB values are assumed UTC. Parse failure → null → expire.
+  function parseLastUsed(raw: string | null): number | null {
+    if (!raw) return null;
+    let iso = raw.includes('T') ? raw : raw.replace(' ', 'T');
+    if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) iso += 'Z';
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return null;
+    return ts;
+  }
+  const lastUsedMs = parseLastUsed(session.last_used_at as string | null);
+  if (lastUsedMs === null || Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
+    // Evict the stale session so reuse of the token still fails on
+    // the next request even if the expiry hasn't hit.
+    await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
+    res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
+    return;
   }
 
   // Update last_used_at
-  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now','utc') WHERE token = ?", token);
 
   req.portalCustomerId = session.customer_id;
   req.portalScope = session.scope as 'ticket' | 'full';
@@ -224,7 +228,7 @@ async function getStoreConfig(adb: AsyncDb): Promise<Record<string, string>> {
   return config;
 }
 
-async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<string, any> | null> {
+async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'ticket' | 'full' = 'ticket'): Promise<Record<string, any> | null> {
   const ticket = await adb.get<AnyRow>(`
     SELECT t.id, t.order_id, t.created_at, t.updated_at, t.due_on,
            t.subtotal, t.discount, t.total_tax, t.total, t.invoice_id,
@@ -325,10 +329,20 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<s
   // Find invoice
   let invoice: AnyRow | undefined;
   if (ticket.invoice_id) {
-    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE id = ?', ticket.invoice_id);
+    invoice = await adb.get<AnyRow>(
+      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+              amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
+         FROM invoices WHERE id = ?`,
+      ticket.invoice_id,
+    );
   }
   if (!invoice) {
-    invoice = await adb.get<AnyRow>('SELECT * FROM invoices WHERE ticket_id = ? LIMIT 1', ticket.id);
+    invoice = await adb.get<AnyRow>(
+      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+              amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
+         FROM invoices WHERE ticket_id = ? LIMIT 1`,
+      ticket.id,
+    );
   }
 
   let invoiceData = null;
@@ -369,8 +383,14 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number): Promise<Record<s
       name: d.device_name,
       type: d.device_type,
       service: d.service_name,
-      imei: d.imei,
-      serial: d.serial,
+      // SEC-SCAN-547: full IMEI/serial only for staff (full-scope) sessions;
+      // ticket-scoped (last-4-phone) sessions receive masked suffixes only.
+      ...(portalScope === 'full'
+        ? { imei: d.imei, serial: d.serial }
+        : {
+            imei_last_4: d.imei ? String(d.imei).slice(-4) : null,
+            serial_last_4: d.serial ? String(d.serial).slice(-4) : null,
+          }),
       status: d.status_name,
       price: d.price,
       total: d.total,
@@ -464,11 +484,20 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
     customerPhones.push(normalizePhone(p.phone));
   }
 
-  const phoneMatch = customerPhones.some(p => p.length >= 4 && p.slice(-4) === digits);
+  // SCAN-773: count matching phones to detect last-4 collision across multiple
+  // stored numbers. If more than one distinct phone ends in the same 4 digits
+  // we can't determine which is authoritative — reject rather than silently
+  // accept an ambiguous match.
+  const matchingPhones = customerPhones.filter(p => p.length >= 4 && p.slice(-4) === digits);
 
-  if (!phoneMatch) {
+  if (matchingPhones.length === 0) {
     audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'phone_mismatch' });
     res.status(404).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'No matching repair found. Please check your ticket ID and phone number.' });
+    return;
+  }
+  if (matchingPhones.length > 1) {
+    audit(db, 'quick_track_failed', null, ip, { order_id: normId, reason: 'phone_last4_collision' });
+    res.status(409).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Multiple phone numbers match — please provide your full phone number or contact the shop.' });
     return;
   }
 
@@ -484,8 +513,8 @@ router.post('/quick-track', asyncHandler(async (req: PortalRequest, res: Respons
   const csrfToken = generateCsrfToken();
   issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
 
-  // Return token + ticket summary
-  const detail = await getTicketDetail(adb, ticket.id);
+  // Return token + ticket summary (ticket-scoped session — mask hardware IDs)
+  const detail = await getTicketDetail(adb, ticket.id, 'ticket');
 
   res.json({ success: true, data: { token, csrf_token: csrfToken, ticket: detail } });
 }));
@@ -512,6 +541,26 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
   const normalized = normalizePhone(phone);
   if (normalized.length < 10) {
     res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Please enter a valid phone number' });
+    return;
+  }
+
+  // SCAN-758: rate-limit BEFORE customer lookup, keyed by IP + last-4 of the
+  // submitted phone hash so the key never reveals whether the phone is in our
+  // DB. Previously the per-customer-id bucket ran after lookup, leaking a
+  // timing delta: "customer not found" returned fast (no bcrypt), "wrong PIN"
+  // returned slow (bcrypt). Now the flow is:
+  //   1. Rate-limit on IP+hash(last4) — happens before any DB read.
+  //   2. Customer lookup.
+  //   3. bcrypt always runs (dummy hash when customer not found) so timing
+  //      is identical regardless of whether the phone exists.
+  const PIN_VERIFY_MAX = 5;
+  const PIN_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+  const last4 = normalized.slice(-4);
+  const rateKey = crypto.createHash('sha256').update(`${ip}:${last4}`).digest('hex').slice(0, 16);
+  const pinRlResult = consumeWindowRate(req.db, RL.PIN_VERIFY, rateKey, PIN_VERIFY_MAX, PIN_VERIFY_WINDOW_MS);
+  if (!pinRlResult.allowed) {
+    res.setHeader('Retry-After', String(pinRlResult.retryAfterSeconds));
+    res.status(429).json({ success: false, message: 'Too many login attempts. Please try again later.' });
     return;
   }
 
@@ -550,30 +599,31 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
     }
   }
 
-  if (!foundCustomer || !foundCustomer.portal_pin) {
-    // Generic error — don't reveal whether account exists
+  // SCAN-758: always run bcrypt to equalise timing whether or not the customer
+  // exists. A dummy hash (cost-10) is used when the customer is not found so
+  // the response time is indistinguishable from a real wrong-PIN attempt.
+  const DUMMY_HASH = '$2b$10$invalidhashpadding000000000000000000000000000000000000000';
+  const hashToVerify = (foundCustomer?.portal_pin as string | undefined) ?? DUMMY_HASH;
+  const pinValid = await bcrypt.compare(pin, hashToVerify);
+
+  if (!foundCustomer || !foundCustomer.portal_pin || !pinValid) {
+    // Generic error — don't reveal whether the account exists or the PIN was wrong.
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
     return;
   }
 
-  // SEC-H87: per-customer_id rate limit (5 / 10min). Must run after customer
-  // lookup so we have the stable customer_id (not just IP). Uses consumeWindowRate
-  // for atomic check-and-record. On the Nth attempt that hits the cap we also
-  // send a lockout SMS to the customer's primary phone so they know to wait.
-  const PIN_VERIFY_MAX = 5;
-  const PIN_VERIFY_WINDOW_MS = 10 * 60 * 1000;
-  const pinRlResult = consumeWindowRate(
+  // SEC-H87: per-customer lockout SMS on rate-limit hit. This bucket is now
+  // secondary (the IP+hash bucket above fires first), but we keep the
+  // customer-id bucket for the lockout-SMS notification path so legitimate
+  // customers are alerted when someone is brute-forcing their account.
+  const customerRlResult = consumeWindowRate(
     req.db,
-    RL.PIN_VERIFY,
+    'portal_pin_notify_check',
     `${foundCustomer.id}`,
     PIN_VERIFY_MAX,
     PIN_VERIFY_WINDOW_MS,
   );
-  if (!pinRlResult.allowed) {
-    // SEC-H87: Fire lockout SMS exactly once per lockout window. Use a
-    // one-shot "notified" marker (category=portal_pin_notify, max=1 per
-    // same window) so repeated 429s within the same 10-min window don't
-    // spam the customer's phone. consumeWindowRate atomically marks it.
+  if (!customerRlResult.allowed) {
     const notifyResult = consumeWindowRate(
       req.db,
       'portal_pin_notify',
@@ -582,7 +632,6 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
       PIN_VERIFY_WINDOW_MS,
     );
     if (notifyResult.allowed) {
-      // First time hitting lockout in this window — send the SMS.
       try {
         const custRow = await adb.get<AnyRow>(
           'SELECT phone, mobile FROM customers WHERE id = ?',
@@ -602,16 +651,12 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
         logger.warn('portal PIN lockout SMS failed', { customer_id: foundCustomer.id, error: smsErr });
       }
     }
-    res.setHeader('Retry-After', String(pinRlResult.retryAfterSeconds));
-    res.status(429).json({ success: false, message: 'Too many PIN attempts for this customer' });
-    return;
   }
 
-  const pinValid = await bcrypt.compare(pin, foundCustomer.portal_pin);
-  if (!pinValid) {
-    res.status(401).json({ success: false, code: ERROR_CODES.ERR_PORTAL_AUTH_FAILED, message: 'Invalid phone number or PIN' });
-    return;
-  }
+  // SCAN-631: clear PIN_VERIFY bucket on success so the customer can log in
+  // again within the same window without being blocked by their own attempts.
+  // Key must match the rateKey used above (IP+hash(last4)).
+  clearRateLimit(req.db, RL.PIN_VERIFY, rateKey);
 
   // Create full-scope session
   const token = generateToken();
@@ -901,7 +946,7 @@ async function verifySessionHandler(req: PortalRequest, res: Response, token: st
     return;
   }
 
-  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now') WHERE token = ?", token);
+  await adb.run("UPDATE portal_sessions SET last_used_at = datetime('now','utc') WHERE token = ?", token);
 
   const csrfToken = generateCsrfToken();
   issueCsrfCookie(res, csrfToken, SESSION_LIFETIME_MS);
@@ -1095,7 +1140,7 @@ router.get('/tickets/:id', portalAuth, requireTicketScopeMatches, asyncHandler(a
     return;
   }
 
-  const detail = await getTicketDetail(adb, ticketId);
+  const detail = await getTicketDetail(adb, ticketId, req.portalScope ?? 'ticket');
   res.json({ success: true, data: detail });
 }));
 
@@ -1468,7 +1513,7 @@ router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) =>
   const adb = _req.asyncDb;
   const ip = _req.ip || _req.socket?.remoteAddress || 'unknown';
 
-  const { consumeWindowRate } = await import('../utils/rateLimiter.js');
+  // SCAN-639: use static import (already at top of file) — no dynamic import needed.
   const result = consumeWindowRate(db, RL.EMBED_CONFIG, ip, 60, 5 * 60 * 1000);
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
@@ -1498,8 +1543,15 @@ router.get('/embed/config', asyncHandler(async (_req: Request, res: Response) =>
 // GET /widget.js — Embeddable widget JavaScript
 // ---------------------------------------------------------------------------
 router.get('/widget.js', (_req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('Cache-Control', 'public, max-age=3600');
+  // SCAN-780: explicit security headers for the embeddable widget script.
+  // X-Content-Type-Options prevents MIME sniffing. CSP restricts what the
+  // script itself can load (none beyond inline execution needed for the
+  // widget's own code). Cache-Control reduced to 5 min so security patches
+  // roll out quickly to customer-site embeds.
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src *; style-src 'unsafe-inline'; img-src data: https:");
+  res.setHeader('Cache-Control', 'public, max-age=300');
   res.send(getWidgetScript());
 });
 
@@ -1513,6 +1565,7 @@ function getWidgetScript(): string {
 
   if (!server) { console.error('[BizarrePortal] data-server attribute is required'); return; }
   server = server.replace(/\\/$/, '');
+  if (!/^https?:\\/\\//.test(server)) { server = 'https://' + server; }
 
   // SEC-L27: validate the data-server attribute against a canonical CNAME
   // pattern (\`https://<sub>.<domain>.<tld>[/path]\` OR \`http://localhost...\`
@@ -1576,7 +1629,9 @@ function getWidgetScript(): string {
 
       // Auto-resize iframe based on content height
       window.addEventListener('message', function(e) {
-        if (e.origin !== server) return;
+        var expectedOrigin;
+        try { expectedOrigin = new URL(server).origin; } catch(ex) { return; }
+        if (e.origin !== expectedOrigin) return;
         if (e.data && e.data.type === 'bizarre-portal-resize') {
           iframe.style.height = e.data.height + 'px';
         }

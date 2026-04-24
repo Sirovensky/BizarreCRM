@@ -128,6 +128,10 @@ function getTransporter(db: any): { transporter: nodemailer.Transporter; from: s
   return { transporter: t, from: cfg.from };
 }
 
+function sanitizeSubject(s: string): string {
+  return s.replace(/[\r\n]+/g, ' ').slice(0, 998);
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
@@ -151,14 +155,23 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
     return false;
   }
 
+  const safeSubject = sanitizeSubject(opts.subject || '');
+  // Regex is best-effort for non-adversarial HTML; proper parser library preferable if ever processing untrusted HTML.
+  const plainText = opts.text || opts.html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   try {
     await smtpBreaker.run(() =>
       result.transporter.sendMail({
         from: result.from,
         to: opts.to,
-        subject: opts.subject,
+        subject: safeSubject,
         html: opts.html,
-        text: opts.text || opts.html.replace(/<[^>]+>/g, ''),
+        text: plainText,
       }),
     );
     // Log only the domain of the recipient, not the full address, for privacy.

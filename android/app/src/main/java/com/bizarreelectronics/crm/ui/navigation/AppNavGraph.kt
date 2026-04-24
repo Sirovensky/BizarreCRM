@@ -30,13 +30,18 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.screens.auth.BackupCodeRecoveryScreen
+import com.bizarreelectronics.crm.ui.screens.auth.ForgotPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.auth.LoginScreen
+import com.bizarreelectronics.crm.ui.screens.auth.SetupStatusGateScreen
+import com.bizarreelectronics.crm.ui.screens.auth.ResetPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.dashboard.DashboardScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDetailScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerListScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerDetailScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryListScreen
+import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
@@ -52,17 +57,28 @@ import com.bizarreelectronics.crm.ui.screens.employees.ClockInOutScreen
 import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
+import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
+import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
+import com.bizarreelectronics.crm.ui.screens.settings.ThemeScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
+import com.bizarreelectronics.crm.ui.components.ClockDriftBanner
+import com.bizarreelectronics.crm.ui.components.RateLimitBanner
+import com.bizarreelectronics.crm.ui.components.SessionTimeoutOverlay
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
+import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import com.bizarreelectronics.crm.util.SessionTimeout
 import java.util.Locale
 import javax.inject.Inject
 
@@ -93,8 +109,12 @@ sealed class Screen(val route: String) {
     // detail, so technicians could not attach new repair photos even though
     // the API endpoint and viewmodel were wired. This route + an
     // `onAddPhotos` callback from TicketDetailScreen close that gap.
-    data object TicketPhotos : Screen("tickets/{ticketId}/photos") {
-        fun createRoute(ticketId: Long) = "tickets/$ticketId/photos"
+    //
+    // bug:gallery-400 fix: route now carries `deviceId` because the server's
+    // POST /:id/photos endpoint requires ticket_device_id in the body. The
+    // caller (TicketDetailScreen) passes the first device's id when navigating.
+    data object TicketPhotos : Screen("tickets/{ticketId}/photos/{deviceId}") {
+        fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/photos/$deviceId"
     }
     data object Customers : Screen("customers")
     data object CustomerDetail : Screen("customers/{id}") {
@@ -109,6 +129,7 @@ sealed class Screen(val route: String) {
     data object InvoiceDetail : Screen("invoices/{id}") {
         fun createRoute(id: Long) = "invoices/$id"
     }
+    data object InvoiceCreate : Screen("invoice-create")
     data object Pos : Screen("pos")
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
@@ -168,6 +189,9 @@ sealed class Screen(val route: String) {
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
 
+    // §2.6 — Security sub-screen (biometric unlock + Change PIN + Change Password + Lock now).
+    data object Security : Screen("settings/security")
+
     // CROSS38b-notif: Settings > Notifications preferences sub-page. Distinct
     // from `Notifications` (the notifications inbox list) per CROSS54.
     data object NotificationSettings : Screen("settings/notifications")
@@ -196,6 +220,30 @@ sealed class Screen(val route: String) {
 
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
+
+    // §2.1 — Setup-status gate: probes GET /auth/setup-status before showing
+    // the login form. Shown when a serverUrl is saved but no session exists.
+    data object SetupStatusGate : Screen("auth/setup-gate")
+
+    // §2.9 — Change-password screen (authenticated; reachable from Security sub-screen).
+    data object ChangePassword : Screen("settings/security/change-password")
+
+    // §2.5 — Switch User (shared device): PIN entry to switch active identity.
+    // Entry point: Settings > "Switch user" row (and TODO: long-press avatar in top bar).
+    data object SwitchUser : Screen("settings/switch-user")
+
+    // §27 — Per-app language picker (ActionPlan §27).
+    data object Language : Screen("settings/language")
+
+    // §1.4/§19/§30 — Theme picker: system/light/dark + Material You dynamic color.
+    data object Theme : Screen("settings/theme")
+
+    // §2.8 — Password reset + backup-code recovery screens (pre-auth)
+    data object ForgotPassword : Screen("auth/forgot-password")
+    data object ResetPassword : Screen("auth/reset-password/{token}") {
+        fun createRoute(token: String) = "auth/reset-password/$token"
+    }
+    data object BackupCodeRecovery : Screen("auth/backup-recovery")
 }
 
 data class BottomNavItem(
@@ -240,6 +288,9 @@ fun AppNavGraph(
     syncManager: SyncManager? = null,
     deepLinkBus: DeepLinkBus? = null,
     breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs? = null,
+    clockDrift: ClockDrift? = null,
+    rateLimiter: RateLimiter? = null,
+    sessionTimeout: SessionTimeout? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -347,6 +398,7 @@ fun AppNavGraph(
             !currentRoute.startsWith("customers/") &&
             currentRoute != Screen.CustomerCreate.route &&
             !currentRoute.startsWith("invoices/") &&
+            currentRoute != Screen.InvoiceCreate.route &&
             !currentRoute.startsWith("inventory/") &&
             !currentRoute.startsWith("inventory-edit/") &&
             currentRoute != Screen.InventoryCreate.route &&
@@ -363,7 +415,13 @@ fun AppNavGraph(
             // AUD-20260414-M5: Sync Issues is a modal-ish diagnostic screen
             // reached from Settings, so hide the bottom bar like other
             // non-root detail routes.
-            currentRoute != Screen.SyncIssues.route
+            currentRoute != Screen.SyncIssues.route &&
+            // §2.8 — pre-auth password-reset screens hide the bottom bar
+            currentRoute != Screen.ForgotPassword.route &&
+            !currentRoute.startsWith("auth/reset-password/") &&
+            currentRoute != Screen.BackupCodeRecovery.route &&
+            // §2.1 — setup-status gate is a pre-auth transient screen
+            currentRoute != Screen.SetupStatusGate.route
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -466,6 +524,16 @@ fun AppNavGraph(
                 isSyncing = isSyncing,
             )
 
+            // §1 L251 — clock-drift warning; only meaningful when logged in.
+            if (authPreferences?.isLoggedIn == true && clockDrift != null) {
+                ClockDriftBanner(clockDrift = clockDrift)
+            }
+
+            // §1 L257 — rate-limit slow-down banner; only meaningful when logged in.
+            if (authPreferences?.isLoggedIn == true && rateLimiter != null) {
+                RateLimitBanner(rateLimiter = rateLimiter)
+            }
+
             // §17.10 — global hardware-keyboard shortcuts. Wraps the NavHost
             // so the same key chord works on every screen. Only fires when a
             // physical keyboard is attached + the focusable Box claims focus
@@ -541,10 +609,19 @@ fun AppNavGraph(
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                     )
                 }
+            // §2.1 — start-destination logic:
+            //   isLoggedIn + serverUrl   → Dashboard (already authenticated)
+            //   !isLoggedIn + serverUrl  → SetupStatusGate (probe then login)
+            //   no serverUrl             → Login (user enters server URL first)
+            val hasServerUrl = !authPreferences?.serverUrl.isNullOrBlank()
+            val startDest = when {
+                authPreferences?.isLoggedIn == true && hasServerUrl -> Screen.Dashboard.route
+                hasServerUrl && authPreferences?.isLoggedIn != true -> Screen.SetupStatusGate.route
+                else -> Screen.Login.route
+            }
             NavHost(
                 navController = navController,
-                startDestination = if (authPreferences?.isLoggedIn == true && !authPreferences.serverUrl.isNullOrBlank())
-                    Screen.Dashboard.route else Screen.Login.route,
+                startDestination = startDest,
                 modifier = Modifier.weight(1f),
                 enterTransition = { fadeIn(animationSpec = tween(200)) },
                 exitTransition = { fadeOut(animationSpec = tween(200)) },
@@ -566,6 +643,81 @@ fun AppNavGraph(
                     sessionRevokedReason = sessionRevokedReason,
                     onSessionBannerDismissed = {
                         entry.savedStateHandle["session_revoked_reason"] = null
+                    },
+                    // §2.8 — show on credentials step; routes to forgot-password flow
+                    onForgotPassword = {
+                        navController.navigate(Screen.ForgotPassword.route)
+                    },
+                )
+            }
+            // §2.1 — Setup-status gate: probes the server before rendering login.
+            // Routing decisions:
+            //   needsSetup=true    → Login (shows "contact admin" banner; §2.10 flow TBD)
+            //   isMultiTenant=true → Login (tenant picker TBD in §2.10)
+            //   normal             → Login (credentials step)
+            // The gate always resolves to the Login screen in this release since the
+            // InitialSetupFlow (§2.10) and TenantPicker don't exist yet.  The login
+            // screen's own probe (CredentialsStep LaunchedEffect) then re-shows the
+            // needs-setup banner if appropriate.
+            composable(Screen.SetupStatusGate.route) {
+                SetupStatusGateScreen(
+                    onNeedsSetup = {
+                        // §2.10 not yet implemented — fall through to login which
+                        // will display the "contact admin" banner via its own probe.
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                    onMultiTenant = {
+                        // TODO(§2.10): tenant picker doesn't exist yet — go to login.
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                    onLogin = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.SetupStatusGate.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §2.8 — Forgot password: user enters their email to receive a reset link.
+            composable(Screen.ForgotPassword.route) {
+                ForgotPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §2.8 — Reset password: token arrives via nav arg (App Link or manual entry).
+            // On 410/expired the screen shows a CTA that routes back to ForgotPasswordScreen.
+            composable(
+                route = Screen.ResetPassword.route,
+                arguments = listOf(
+                    navArgument("token") { type = NavType.StringType },
+                ),
+            ) {
+                ResetPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onSuccess = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onExpired = {
+                        navController.navigate(Screen.ForgotPassword.route) {
+                            popUpTo(Screen.ForgotPassword.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §2.8 — Backup-code recovery: email + backup code + new password.
+            // On success navigate back to Login so the user can sign in fresh.
+            composable(Screen.BackupCodeRecovery.route) {
+                BackupCodeRecoveryScreen(
+                    onBack = { navController.popBackStack() },
+                    onSuccess = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     },
                 )
             }
@@ -612,11 +764,11 @@ fun AppNavGraph(
                         navController.navigate(Screen.TicketDeviceEdit.createRoute(ticketId, deviceId))
                     },
                     // AND-20260414-M1: navigate to the photo gallery / capture
-                    // screen bound to this ticket id. Keeps the upload contract
-                    // identical to PhotoCaptureScreen's existing VM which reads
-                    // `ticketId` and posts to `uploadTicketPhotos`.
-                    onAddPhotos = { id ->
-                        navController.navigate(Screen.TicketPhotos.createRoute(id))
+                    // screen bound to this ticket + device id. bug:gallery-400 fix:
+                    // the server's POST /:id/photos route requires ticket_device_id
+                    // in the body, so we thread deviceId through the route.
+                    onAddPhotos = { id, deviceId ->
+                        navController.navigate(Screen.TicketPhotos.createRoute(id, deviceId))
                     },
                     // AND-20260414-H4: wire the payment screen so the top-bar
                     // Checkout action can reach it. The detail screen pulls
@@ -644,12 +796,16 @@ fun AppNavGraph(
                 )
             }
             // AND-20260414-M1: photo upload / gallery picker for a ticket.
-            // Reads `ticketId` from the route path; the VM owns the upload
-            // state, so we only need to pass the id + a back callback.
+            // Reads `ticketId` and `deviceId` from the route path; the VM owns
+            // the upload state, so we only need to pass the ids + a back callback.
+            // bug:gallery-400 fix: deviceId is now part of the route so the VM
+            // can include it in the multipart body as ticket_device_id.
             composable(Screen.TicketPhotos.route) { backStackEntry ->
                 val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
+                val deviceId = backStackEntry.arguments?.getString("deviceId")?.toLongOrNull() ?: return@composable
                 PhotoCaptureScreen(
                     ticketId = ticketId,
+                    deviceId = deviceId,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -814,6 +970,7 @@ fun AppNavGraph(
             composable(Screen.Invoices.route) {
                 InvoiceListScreen(
                     onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.InvoiceCreate.route) },
                 )
             }
             composable(Screen.InvoiceDetail.route) { backStackEntry ->
@@ -822,6 +979,16 @@ fun AppNavGraph(
                     invoiceId = invoiceId,
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                )
+            }
+            composable(Screen.InvoiceCreate.route) {
+                InvoiceCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.InvoiceDetail.createRoute(id)) {
+                            popUpTo(Screen.Invoices.route)
+                        }
+                    },
                 )
             }
             composable(Screen.InventoryDetail.route) { backStackEntry ->
@@ -955,6 +1122,12 @@ fun AppNavGraph(
                     },
                     onEditProfile = { navController.navigate(Screen.Profile.route) },
                     onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                    // §27 — Language picker sub-screen.
+                    onLanguage = { navController.navigate(Screen.Language.route) },
+                    // §1.4/§19/§30 — Theme picker sub-screen.
+                    onTheme = { navController.navigate(Screen.Theme.route) },
+                    // §2.6 — Security sub-screen (biometric + PIN + password + lock now).
+                    onSecurity = { navController.navigate(Screen.Security.route) },
                     // AUD-20260414-M5: entry into the Sync Issues diagnostic
                     // screen. The SettingsScreen gates the tile on
                     // count > 0 so this callback only fires when there is
@@ -963,6 +1136,8 @@ fun AppNavGraph(
                     onPinSetup = { navController.navigate(Screen.PinSetup.route) },
                     onCrashReports = { navController.navigate(Screen.CrashReports.route) },
                     onAbout = { navController.navigate(Screen.About.route) },
+                    // §2.5 — Switch user (shared device): navigate to PIN entry.
+                    onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
                 )
             }
             composable(Screen.CrashReports.route) {
@@ -991,6 +1166,56 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+            // §2.6 — Security sub-screen: biometric unlock toggle + Change PIN
+            // + Change Password + Lock Now.
+            // PinPreferences is injected into SecurityViewModel via Hilt.
+            composable(Screen.Security.route) {
+                SecurityScreen(
+                    onBack = { navController.popBackStack() },
+                    onChangePin = { navController.navigate(Screen.PinSetup.route) },
+                    // §2.9: Change-password screen wired (ActionPlan L340).
+                    onChangePassword = { navController.navigate(Screen.ChangePassword.route) },
+                )
+            }
+            // §2.9 — Change-password screen (authenticated, under Security).
+            composable(Screen.ChangePassword.route) {
+                ChangePasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onPasswordChanged = { navController.popBackStack() },
+                )
+            }
+            // §2.5 — Switch User (shared device): PIN entry, reachable from
+            // Settings > "Switch user" row. On success the new identity is
+            // persisted and the user is sent to Dashboard with the back-stack
+            // cleared to Dashboard (no stale Settings entry for old identity).
+            composable(Screen.SwitchUser.route) {
+                SwitchUserScreen(
+                    onBack = { navController.popBackStack() },
+                    onSwitched = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Dashboard.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §27 — Language picker: per-app language selection.
+            // On API 33+ the OS recreates the activity after setApplicationLocales;
+            // on older APIs LanguageScreen triggers recreate() explicitly.
+            composable(Screen.Language.route) {
+                LanguageScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // §1.4/§19/§30 — Theme picker: system/light/dark + Material You.
+            // Changes are applied immediately via AppPreferences StateFlows;
+            // no activity recreate is needed.
+            composable(Screen.Theme.route) {
+                ThemeScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             // AUD-20260414-M5: Sync Issues screen — lists dead-letter
             // sync_queue entries with per-row Retry. Entry point is a badged
             // tile on the Settings screen when count > 0.
@@ -1165,6 +1390,21 @@ fun AppNavGraph(
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
+        }
+
+        // §2.16 L399-L400 — session-timeout warning overlay. Renders as a Dialog
+        // (modal layer above all content) when the idle countdown enters the
+        // 60-second warning window. Placed outside the Column so it floats above
+        // banners + NavHost without affecting the layout flow. Only active when
+        // logged in; null-safe guard handles preview / test hosts that omit the dep.
+        if (authPreferences?.isLoggedIn == true && sessionTimeout != null) {
+            SessionTimeoutOverlay(
+                sessionTimeout = sessionTimeout,
+                onSignOut = {
+                    authPreferences.clear()
+                    // authCleared flow (above) will navigate to Screen.Login.
+                },
+            )
         }
     }
 }

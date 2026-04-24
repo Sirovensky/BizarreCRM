@@ -147,24 +147,29 @@ final class PosHoldCartViewModel {
         }
         status = .saving
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let items: [PosHoldItem] = cart.items.map { item in
-            PosHoldItem(
-                sku: item.sku,
-                name: item.name,
-                quantity: item.quantity,
-                unitPriceCents: CartMath.toCents(item.unitPrice),
-                lineTotalCents: item.lineSubtotalCents
-            )
+
+        // Serialise the CartSnapshot to JSON for the server's cart_json field.
+        let snapshot = CartSnapshot.from(cart: cart)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let cartJsonString: String
+        do {
+            let data = try encoder.encode(snapshot)
+            cartJsonString = String(decoding: data, as: UTF8.self)
+        } catch {
+            status = .failed("Could not serialise cart: \(error.localizedDescription)")
+            return
         }
-        let request = CreatePosHoldRequest(
-            items: items,
-            tenderNotes: nil,
+
+        let request = CreateHeldCartRequest(
+            cartJson: cartJsonString,
+            label: trimmedNote.isEmpty ? nil : trimmedNote,
             customerId: cart.customer?.id,
-            note: trimmedNote.isEmpty ? nil : trimmedNote
+            totalCents: cart.totalCents
         )
         do {
-            let hold = try await api.holdCart(request)
-            status = .saved(hold.id)
+            let row = try await api.createHeldCart(request)
+            status = .saved(row.id)
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {
             status = .unavailable("Coming soon — server endpoint pending.")
         } catch {

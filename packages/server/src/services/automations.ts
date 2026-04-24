@@ -19,7 +19,7 @@
  *     including success, failure, skipped (conditions not met), and loop_rejected.
  */
 
-import { sendSms } from './smsProvider.js';
+import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeHtml, stripSmsControlChars } from '../utils/escape.js';
@@ -103,6 +103,21 @@ function interpolate(
     if (mode === 'sms') return stripSmsControlChars(str);
     return str;
   });
+}
+
+/** Returns a copy of vars with phone and email fields redacted — use only in log paths. */
+function maskedVarsForLogging(vars: Record<string, unknown>): Record<string, unknown> {
+  const masked = { ...vars };
+  if (typeof masked.customer_phone === 'string' && masked.customer_phone) {
+    masked.customer_phone = '***' + masked.customer_phone.slice(-4);
+  }
+  if (typeof masked.customer_email === 'string' && masked.customer_email) {
+    const atIdx = masked.customer_email.indexOf('@');
+    const local = atIdx > 0 ? masked.customer_email.slice(0, atIdx) : masked.customer_email;
+    const domain = atIdx > 0 ? masked.customer_email.slice(atIdx) : '';
+    masked.customer_email = local.slice(0, 2) + '***' + domain;
+  }
+  return masked;
 }
 
 /** Build a flat variable map from the trigger context for template interpolation. */
@@ -224,9 +239,32 @@ interface ActionResult {
   error?: string;
 }
 
+/**
+ * Automation trigger-type → SMS consent category mapping (SCAN-585 / TCPA).
+ *
+ * Marketing triggers: birthday, review_request, promo, loyalty, win_back.
+ *   → require sms_consent_marketing = 1
+ *
+ * Transactional triggers: ticket_status_changed, ready_for_pickup, invoice_due,
+ *   appointment_reminder, and everything else.
+ *   → require sms_consent_transactional = 1 OR sms_opt_in = 1
+ *
+ * NULL column values (legacy rows pre-migration) are treated as opted-in so
+ * existing customers are not silently suppressed after deploy.
+ */
+const MARKETING_TRIGGERS = new Set([
+  'birthday',
+  'review_request',
+  'promo',
+  'loyalty',
+  'win_back',
+]);
+
 async function executeSendSms(
+  db: any,
   config: ActionConfig,
   vars: Record<string, unknown>,
+  triggerType: string,
 ): Promise<ActionResult> {
   const to = config.to
     ? interpolate(String(config.to), vars, 'sms')
@@ -236,13 +274,60 @@ async function executeSendSms(
     logger.info('send_sms skipped — missing to or template', { to: !!to, body: !!body });
     return { success: false, error: 'missing to or template' };
   }
+
+  // SCAN-585: check customer consent before sending any automation SMS.
   try {
-    // AU5: await the send + propagate the error to the caller so it can be logged.
-    await sendSms(to, body);
+    const row = db.prepare(
+      'SELECT sms_opt_in, sms_consent_marketing, sms_consent_transactional FROM customers WHERE phone = ? OR mobile = ? LIMIT 1',
+    ).get(to, to) as {
+      sms_opt_in: number | null;
+      sms_consent_marketing: number | null;
+      sms_consent_transactional: number | null;
+    } | undefined;
+
+    if (row) {
+      const isMarketing = MARKETING_TRIGGERS.has(triggerType);
+      let allowed: boolean;
+      if (isMarketing) {
+        // Marketing: explicit marketing consent required.
+        allowed = row.sms_consent_marketing !== 0 && row.sms_opt_in !== 0;
+      } else {
+        // Transactional: either global opt-in or transactional consent.
+        allowed = row.sms_opt_in !== 0 && row.sms_consent_transactional !== 0;
+      }
+      if (!allowed) {
+        logger.info('send_sms skipped — customer opted out', {
+          to: to.slice(-4),
+          triggerType,
+          isMarketing,
+          sms_opt_in: row.sms_opt_in,
+          sms_consent_marketing: row.sms_consent_marketing,
+          sms_consent_transactional: row.sms_consent_transactional,
+        });
+        return { success: true }; // skipped but not a failure — don't surface as error
+      }
+    }
+    // No customer row found for this phone — allow send (could be an explicit
+    // `to` override in config that isn't tied to a customer record).
+  } catch (consentErr) {
+    // Consent check must not block the send if the DB query fails (e.g. column
+    // absent on an old tenant DB without the consent migration). Log and proceed.
+    logger.warn('send_sms consent check failed — proceeding without check', {
+      to: to.slice(-4),
+      triggerType,
+      error: consentErr instanceof Error ? consentErr.message : String(consentErr),
+    });
+  }
+
+  try {
+    // SCAN-585 / AU5: use sendSmsTenant so the per-tenant provider + TCPA quiet-hours
+    // guard are applied. tenantSlug flows through buildVars from the trigger context.
+    const tenantSlug = typeof vars.tenantSlug === 'string' ? vars.tenantSlug : null;
+    await sendSmsTenant(db, tenantSlug, to, body);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('send_sms failed', { to, error: message });
+    logger.error('send_sms failed', { toRedacted: to.slice(-4), error: message });
     return { success: false, error: message };
   }
 }
@@ -381,6 +466,29 @@ function executeCreateNotification(
 }
 
 // ---------------------------------------------------------------------------
+// Safe JSON config parsing (SCAN-890)
+// ---------------------------------------------------------------------------
+
+function safeParseConfig(raw: string | null, field: string, ruleId: number): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      logger.warn('automation config not an object', { rule_id: ruleId, field });
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    logger.warn('automation config JSON.parse failed', {
+      rule_id: ruleId,
+      field,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -426,39 +534,6 @@ export function runAutomations(
         depth: ctx.depth,
       });
 
-      // AU-LOOP (rerun §24): count how many automation runs this ticket has
-      // accumulated in the last hour BEFORE we fire any rules. If the ticket is
-      // already over the cap, record a loop_rejected entry per rule and bail.
-      // Using the existing automation_run_log table (migration 081) as the source
-      // of truth — no extra migration needed.
-      const preTarget = extractTarget(context);
-      let ticketHourlyOver = false;
-      if (preTarget.type === 'ticket' && preTarget.id !== null) {
-        try {
-          const row = db
-            .prepare(
-              "SELECT COUNT(*) AS c FROM automation_run_log " +
-                "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
-                "AND created_at > datetime('now','-1 hour')",
-            )
-            .get(preTarget.id) as { c?: number } | undefined;
-          if ((row?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
-            ticketHourlyOver = true;
-            logger.warn('Automation per-ticket hourly cap exceeded — aborting chain', {
-              trigger,
-              ticketId: preTarget.id,
-              runsLastHour: row?.c,
-              cap: MAX_RUNS_PER_TICKET_PER_HOUR,
-            });
-          }
-        } catch (err) {
-          // Missing table (old tenant DB without 081) — fall back to depth guard only.
-          logger.warn('automation_run_log count failed, skipping hourly cap', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-
       for (const rule of rules) {
         const target = extractTarget(context);
         const baseLogEntry = {
@@ -471,19 +546,9 @@ export function runAutomations(
           depth: ctx.depth,
         };
 
-        // AU-LOOP: Enforce the per-ticket per-hour cap uniformly across rules.
-        if (ticketHourlyOver) {
-          logAutomationRun(db, {
-            ...baseLogEntry,
-            status: 'loop_rejected',
-            error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded`,
-          });
-          continue;
-        }
-
         try {
-          const triggerConfig: TriggerConfig = rule.trigger_config ? JSON.parse(rule.trigger_config) : {};
-          const actionConfig: ActionConfig = rule.action_config ? JSON.parse(rule.action_config) : {};
+          const triggerConfig = safeParseConfig(rule.trigger_config, 'trigger_config', rule.id) as TriggerConfig;
+          const actionConfig = safeParseConfig(rule.action_config, 'action_config', rule.id) as ActionConfig;
 
           if (!matchesTrigger(triggerConfig, context)) {
             logAutomationRun(db, { ...baseLogEntry, status: 'skipped', error_message: 'trigger filter not matched' });
@@ -531,7 +596,7 @@ export function runAutomations(
           let result: ActionResult;
           switch (rule.action_type) {
             case 'send_sms':
-              result = await executeSendSms(actionConfig, vars);
+              result = await executeSendSms(db, actionConfig, vars, trigger);
               break;
             case 'send_email':
               result = await executeSendEmail(db, actionConfig, vars);
@@ -576,11 +641,44 @@ export function runAutomations(
               result = { success: false, error: `unknown action_type: ${rule.action_type}` };
           }
 
-          logAutomationRun(db, {
-            ...baseLogEntry,
-            status: result.success ? 'success' : 'failure',
-            error_message: result.error ?? null,
-          });
+          // AU-LOOP (SCAN-894): count-check + log insert in a single synchronous
+          // transaction so no concurrent evaluation can bypass the hourly cap.
+          // The action has already run above; the tx decides whether to record it
+          // as success/failure or override with loop_rejected.
+          const finalLogEntry = { ...baseLogEntry, status: result.success ? ('success' as RunStatus) : ('failure' as RunStatus), error_message: result.error ?? null };
+          try {
+            db.transaction(() => {
+              if (target.type === 'ticket' && target.id !== null) {
+                const capRow = db
+                  .prepare(
+                    "SELECT COUNT(*) AS c FROM automation_run_log " +
+                      "WHERE target_entity_type = 'ticket' AND target_entity_id = ? " +
+                      "AND created_at > datetime('now','-1 hour')",
+                  )
+                  .get(target.id) as { c?: number } | undefined;
+                if ((capRow?.c ?? 0) >= MAX_RUNS_PER_TICKET_PER_HOUR) {
+                  logger.warn('Automation per-ticket hourly cap exceeded — rejecting run', {
+                    trigger,
+                    ticketId: target.id,
+                    runsLastHour: capRow?.c,
+                    cap: MAX_RUNS_PER_TICKET_PER_HOUR,
+                  });
+                  logAutomationRun(db, {
+                    ...baseLogEntry,
+                    status: 'loop_rejected',
+                    error_message: `per-ticket hourly cap ${MAX_RUNS_PER_TICKET_PER_HOUR} exceeded`,
+                  });
+                  return;
+                }
+              }
+              logAutomationRun(db, finalLogEntry);
+            })();
+          } catch (txErr) {
+            // automation_run_log table absent (old tenant DB) — log and continue.
+            logger.warn('automation_run_log tx failed, skipping hourly cap check', {
+              error: txErr instanceof Error ? txErr.message : String(txErr),
+            });
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error('Rule failed', { ruleId: rule.id, ruleName: rule.name, error: message });

@@ -14,6 +14,7 @@ import { sendEmail } from '../services/email.js';
 import { logSecurityAlert } from '../utils/masterAudit.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { JWT_SIGN_OPTIONS } from '../middleware/auth.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('signup');
@@ -39,7 +40,7 @@ const signupEmailCounters = new Map<string, EmailRateEntry>();
 
 // Sweep expired counter entries every 5 min so the map cannot grow
 // unbounded in long-lived processes.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [email, entry] of signupEmailCounters) {
     if (now - entry.firstAt > SIGNUP_EMAIL_WINDOW_MS) {
@@ -75,6 +76,15 @@ function consumeEmailSignupQuota(rawEmail: string): boolean {
 // response body itself does not become an enumeration oracle.
 const SLUG_CHECK_MIN_INTERVAL_MS = 10 * 1000;
 
+// ─── Reserved slugs ───────────────────────────────────────────────
+// SCAN-747: slugs that conflict with route prefixes or admin paths.
+const RESERVED_SLUGS = new Set([
+  'admin', 'api', 'www', 'app', 'master', 'root', 'super',
+  'system', 'auth', 'login', 'logout', 'signup', 'register',
+  'billing', 'public', 'static', 'assets', 'dev', 'staging',
+  'test', 'localhost', 'internal', 'support', 'help',
+]);
+
 // ─── Pending signup store (in-memory with TTL) ─────────────────────
 // R5: Signup no longer immediately provisions a tenant. Instead we stash the
 // proposed tenant info keyed by a random verification token and email the
@@ -85,6 +95,12 @@ const SLUG_CHECK_MIN_INTERVAL_MS = 10 * 1000;
 //     cheap to re-try.
 //   - Single-process server (see CLAUDE.md).
 //   - We don't want to persist unverified email addresses longer than needed.
+//
+// SCAN-743 (by-design tradeoff): A process restart clears all pending signups.
+// The user must re-submit the signup form. No data is lost — the tenant was
+// never provisioned. logger.info at creation (below) gives operators the
+// token+email in logs so they can recover if SMTP delivered but the process
+// restarted before the user clicked.
 const PENDING_SIGNUP_TTL_MS = 60 * 60 * 1000; // 1 hour
 const pendingSignups = new Map<string, {
   slug: string;
@@ -98,7 +114,7 @@ const pendingSignups = new Map<string, {
 }>();
 
 // Sweep expired entries so the map does not grow without bound.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [token, entry] of pendingSignups) {
     if (now - entry.createdAt > PENDING_SIGNUP_TTL_MS) {
@@ -149,7 +165,7 @@ const slugCheckCounters = new Map<string, SlugCheckCounter>();
 
 // Sweep expired counter entries so the map doesn't grow without bound. Runs
 // every 5 min on the same cadence as the pending-signup sweeper above.
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of slugCheckCounters) {
     if (now - entry.firstAt > SLUG_CHECK_COUNTER_WINDOW_MS) {
@@ -369,8 +385,9 @@ async function issueSignupTokens(
   // SEC (A6/A10): Explicit HS256 + iss + aud, matching auth.routes.ts exactly.
   // SEC-L34: jti uniquely identifies the token for future per-token revocation.
   // SEC-H103: sign with dedicated per-purpose secret.
+  // SEC (SCAN-613): Explicit type:'access' so the auth middleware strict check applies.
   const accessToken = jwt.sign(
-    { userId: user.id, sessionId, role: user.role, tenantSlug, jti: crypto.randomUUID() },
+    { userId: user.id, sessionId, role: user.role, tenantSlug, type: 'access', jti: crypto.randomUUID() },
     config.accessJwtSecret,
     { ...JWT_SIGN_OPTIONS, expiresIn: '1h' },
   );
@@ -524,6 +541,12 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
     return;
   }
+  // SCAN-747: reject reserved slugs that conflict with route prefixes / admin paths.
+  if (RESERVED_SLUGS.has(normalizedSlug)) {
+    logger.warn('signup rejected: reserved slug', { slug: normalizedSlug });
+    res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
+    return;
+  }
   if (!isSlugAvailable(normalizedSlug)) {
     logger.warn('signup rejected: slug taken', { slug: normalizedSlug });
     res.status(400).json({ success: false, message: GENERIC_SIGNUP_FAILURE });
@@ -536,10 +559,12 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // by simply POSTing to /signup (even if captcha passes, the subdomain does
   // not exist until the email owner confirms).
   //
-  // Dev bypass: in non-production environments we skip the email step entirely
-  // and provision immediately so local testing does not require working SMTP.
-  if (config.nodeEnv !== 'production') {
-    logger.warn('[DEV] Email-verification bypass active — provisioning tenant immediately', { slug: normalizedSlug, email: normalizedEmail });
+  // Dev bypass: ONLY when SKIP_EMAIL_VERIFICATION=1 is explicitly set AND
+  // nodeEnv is not 'production'. Both conditions must hold to prevent accidental
+  // bypass if nodeEnv is misconfigured in production.
+  const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
+  if (skipEmailVerification) {
+    logger.warn('signup: skipping email verification (SKIP_EMAIL_VERIFICATION=1 in non-production)', { slug: normalizedSlug, email: normalizedEmail });
     const result = await provisionTenant({
       slug: normalizedSlug,
       name: String(shop_name).trim(),
@@ -590,6 +615,9 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     createdAt: Date.now(),
     ipAddress: ip,
   });
+  // SCAN-743: log token prefix so operators can re-send the email if the process
+  // restarts between here and the user clicking the verification link.
+  logger.info('pending signup created', { slug: normalizedSlug, email: normalizedEmail, tokenPrefix: verifyToken.slice(0, 8) });
 
   const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
   if (!emailSent) {

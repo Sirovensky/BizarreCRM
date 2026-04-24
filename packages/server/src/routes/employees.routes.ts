@@ -6,6 +6,8 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { trackInterval } from '../utils/trackInterval.js';
+import { validateId } from '../utils/validate.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -174,7 +176,8 @@ router.get(
     const adb = req.asyncDb;
     const employees = await adb.all(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, created_at, updated_at
+             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
+             created_at, updated_at
       FROM users
       WHERE is_active = 1
       ORDER BY first_name, last_name
@@ -222,11 +225,12 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
 
     const employee = await adb.get<any>(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, created_at, updated_at
+             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
+             created_at, updated_at
       FROM users WHERE id = ?
     `, id);
 
@@ -278,15 +282,15 @@ router.post(
   '/:id/clock-in',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
-    const { pin } = req.body;
+    const id = validateId(req.params.id, 'id');
+    const { pin, location_id: rawLocationId } = req.body;
 
     // Only allow clocking in yourself unless admin
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
       throw new AppError('Can only clock yourself in', 403);
     }
 
-    const user = await adb.get<any>('SELECT id, pin FROM users WHERE id = ? AND is_active = 1', id);
+    const user = await adb.get<any>('SELECT id, pin, home_location_id FROM users WHERE id = ? AND is_active = 1', id);
     if (!user) throw new AppError('Employee not found', 404);
 
     // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
@@ -341,8 +345,20 @@ router.post(
       throw new AppError('Payroll period is locked', 403);
     }
 
+    // Resolve location_id: validate if provided, else fall back to user's home_location_id, then 1.
+    let resolvedLocationId: number = user.home_location_id ?? 1;
+    if (rawLocationId !== undefined && rawLocationId !== null) {
+      const parsed = Number(rawLocationId);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new AppError('location_id must be a positive integer', 400);
+      }
+      const loc = await adb.get<{ id: number }>('SELECT id FROM locations WHERE id = ? AND is_active = 1', parsed);
+      if (!loc) throw new AppError('Location not found or inactive', 400);
+      resolvedLocationId = parsed;
+    }
+
     const result = await adb.run(
-      'INSERT INTO clock_entries (user_id, clock_in) VALUES (?, ?)', id, now
+      'INSERT INTO clock_entries (user_id, clock_in, location_id) VALUES (?, ?, ?)', id, now, resolvedLocationId
     );
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', result.lastInsertRowid);
@@ -359,7 +375,7 @@ router.post(
   '/:id/clock-out',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const { pin, notes } = req.body;
 
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
@@ -430,7 +446,7 @@ router.get(
   '/:id/hours',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 
@@ -483,7 +499,7 @@ router.get(
   '/:id/commissions',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 
@@ -536,7 +552,7 @@ router.get(
   '/:id/performance',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const id = Number(req.params.id);
+    const id = validateId(req.params.id, 'id');
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
 
@@ -622,7 +638,7 @@ function startAutoClockoutSweep(): void {
   // files are first imported. A 5-minute delay is plenty.
   const firstTickDelay = 5 * 60 * 1000;
   setTimeout(() => {
-    autoClockoutSweepTimer = setInterval(async () => {
+    autoClockoutSweepTimer = trackInterval(async () => {
       // SEC-H19: prior version only read config.dbPath which in
       // multi-tenant mode points at the master DB, not any tenant.
       // Every tenant's employee_clock_entries therefore stayed open
@@ -634,15 +650,16 @@ function startAutoClockoutSweep(): void {
         const { createAsyncDb } = await import('../db/async-db.js');
         if (config.multiTenant) {
           const { getMasterDb } = await import('../db/master-connection.js');
-          const { getTenantDb } = await import('../db/tenant-pool.js');
+          const { getTenantDb, releaseTenantDb } = await import('../db/tenant-pool.js');
           const masterDb = getMasterDb();
           if (!masterDb) return;
           const tenants = masterDb
             .prepare("SELECT slug FROM tenants WHERE status = 'active'")
             .all() as { slug: string }[];
           for (const t of tenants) {
+            let pooled: import('better-sqlite3').Database | undefined;
             try {
-              const pooled = getTenantDb(t.slug);
+              pooled = await getTenantDb(t.slug);
               const tenantAdb = createAsyncDb(pooled.name);
               const closed = await autoClockOutStaleSessions(tenantAdb, pooled);
               if (closed > 0) {
@@ -653,6 +670,8 @@ function startAutoClockoutSweep(): void {
                 tenant: t.slug,
                 error: err instanceof Error ? err.message : 'unknown',
               });
+            } finally {
+              if (pooled !== undefined) releaseTenantDb(t.slug);
             }
           }
         } else {
@@ -669,9 +688,6 @@ function startAutoClockoutSweep(): void {
         });
       }
     }, AUTO_CLOCKOUT_SWEEP_INTERVAL_MS);
-    if (typeof autoClockoutSweepTimer?.unref === 'function') {
-      autoClockoutSweepTimer.unref();
-    }
   }, firstTickDelay);
 }
 

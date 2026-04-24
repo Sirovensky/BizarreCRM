@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+// Hard cap to stop a pathologically long draft from blowing the localStorage
+// quota (typically 5–10 MB total, shared across the whole app). 100 KB is
+// ~50 pages of text — well above any realistic hand-typed form value.
+const DRAFT_MAX_BYTES = 100_000;
+
 /**
  * Hook for localStorage-based draft saving with debounce.
  * Returns [value, setValue, clearDraft, hasDraft] where hasDraft indicates
@@ -31,16 +36,33 @@ export function useDraft(
 
   // Debounced save to localStorage
   useEffect(() => {
+    // Capture key at schedule time so a key change between schedule and fire
+    // doesn't write the old value under the new key (SCAN-601).
+    const currentKey = keyRef.current;
     clearTimeout(timerRef.current);
     if (!value) {
       // If empty, remove the draft
-      localStorage.removeItem(keyRef.current);
+      localStorage.removeItem(currentKey);
       setHasDraft(false);
       return;
     }
     timerRef.current = setTimeout(() => {
-      localStorage.setItem(keyRef.current, value);
-      setHasDraft(true);
+      // Skip persist if the draft exceeds the quota cap. The in-memory value
+      // stays live for the active editing session; we just don't survive a
+      // reload if the user typed >100 KB of text into one field.
+      if (value.length > DRAFT_MAX_BYTES) {
+        localStorage.removeItem(currentKey);
+        setHasDraft(false);
+        return;
+      }
+      try {
+        localStorage.setItem(currentKey, value);
+        setHasDraft(true);
+      } catch (err) {
+        // QuotaExceededError or storage disabled — best-effort fallback.
+        console.warn('[useDraft] failed to persist draft', err);
+        setHasDraft(false);
+      }
     }, debounceMs);
     return () => clearTimeout(timerRef.current);
   }, [value, debounceMs]);

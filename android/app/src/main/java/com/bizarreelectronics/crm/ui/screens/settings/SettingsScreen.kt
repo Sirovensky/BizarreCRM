@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,6 +56,8 @@ class SettingsViewModel @Inject constructor(
     private val webSocketEventHandler: WebSocketEventHandler,
     syncQueueDao: SyncQueueDao,
     private val pinPreferences: com.bizarreelectronics.crm.data.local.prefs.PinPreferences,
+    // §27 — exposes current language display name for the Language row subtitle.
+    val languageManager: LanguageManager,
 ) : ViewModel() {
 
     /** §2.5 — drives the PIN row label ("Set up PIN" vs "Change PIN"). */
@@ -218,10 +222,19 @@ fun SettingsScreen(
     // Nullable so previews and any callers that don't want the row can omit
     // the wiring. Rendered as a top-level SettingsRow under SETTINGS.
     onNotificationSettings: (() -> Unit)? = null,
+    // §27 — opens the Language picker sub-screen.
+    // Nullable so previews and callers that don't wire it can omit it.
+    onLanguage: (() -> Unit)? = null,
+    // §1.4/§19/§30 — opens the Theme picker (system/light/dark + dynamic color).
+    // Nullable so previews and callers that don't wire it can omit it.
+    onTheme: (() -> Unit)? = null,
     // AUD-20260414-M5: navigate to the Sync Issues diagnostic screen. Tile
     // is gated on deadLetterCount > 0 so callers never see it unless there
     // is actually something to retry.
     onSyncIssues: (() -> Unit)? = null,
+    // §2.6 — opens the dedicated Security sub-screen (biometric + PIN + password).
+    // Nullable so previews and any callers that don't need the row can omit it.
+    onSecurity: (() -> Unit)? = null,
     // §2.5 PIN — opens the PinSetupScreen. Row label flips between
     // "Set up PIN" / "Change PIN" based on PinPreferences.isPinSet.
     onPinSetup: (() -> Unit)? = null,
@@ -229,6 +242,9 @@ fun SettingsScreen(
     onCrashReports: (() -> Unit)? = null,
     // §28 — opens About + diagnostics screen (copy-bundle for support).
     onAbout: (() -> Unit)? = null,
+    // §2.5 — opens the Switch User PIN screen (shared device flow).
+    // Nullable so previews and any callers that don't need the row can omit it.
+    onSwitchUser: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -264,6 +280,21 @@ fun SettingsScreen(
                 )
             }
 
+            // §2.5 — Switch user: shared-device flow. Placed immediately after
+            // Edit Profile so identity-related actions are grouped together.
+            // Subtitle shows the currently signed-in username so the operator
+            // can confirm who is active before switching. Hidden when no
+            // callback is provided (e.g. previews).
+            if (onSwitchUser != null) {
+                val currentUsername = viewModel.authPreferences.username ?: "Unknown"
+                SettingsRowWithSubtitle(
+                    icon = Icons.Outlined.GroupAdd,
+                    title = "Switch user",
+                    subtitle = "Signed in as $currentUsername",
+                    onClick = onSwitchUser,
+                )
+            }
+
             // CROSS38b-notif: Notifications preferences sub-page. Distinct
             // from the Notifications inbox listed under More > SETTINGS per
             // CROSS54 — this configures which events should fire, the inbox
@@ -274,6 +305,50 @@ fun SettingsScreen(
                     icon = Icons.Default.Notifications,
                     title = "Notifications",
                     onClick = onNotificationSettings,
+                )
+            }
+
+            // §27 — Language picker. Subtitle shows the currently active language
+            // display name so the user can see the selection without opening the screen.
+            // Nullable so previews and callers that don't wire navigation can omit it.
+            if (onLanguage != null) {
+                val currentLanguageTag by viewModel.languageManager.currentLanguage.collectAsState()
+                val currentLanguageDisplay = viewModel.languageManager.displayNameForTag(currentLanguageTag)
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.Language,
+                    title = "Language",
+                    subtitle = currentLanguageDisplay,
+                    onClick = onLanguage,
+                )
+            }
+
+            // §1.4/§19/§30 — Theme picker: system/light/dark + dynamic color.
+            // Subtitle shows the currently active mode so the user can see the
+            // selection without opening the screen.
+            if (onTheme != null) {
+                val currentDarkMode = viewModel.appPreferences.darkMode
+                val themeSubtitle = when (currentDarkMode) {
+                    "dark"  -> "Dark"
+                    "light" -> "Light"
+                    else    -> "System default"
+                }
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.DarkMode,
+                    title = "Theme",
+                    subtitle = themeSubtitle,
+                    onClick = onTheme,
+                )
+            }
+
+            // §2.6 — Security sub-screen: biometric toggle + Change PIN + Change
+            // Password + Lock Now. Placed after Notifications so all
+            // security-adjacent settings are grouped at the top. Nullable so
+            // previews and callers that don't want the row can omit the wiring.
+            if (onSecurity != null) {
+                SettingsRow(
+                    icon = Icons.Default.Security,
+                    title = "Security",
+                    onClick = onSecurity,
                 )
             }
 
@@ -406,8 +481,9 @@ fun SettingsScreen(
                 }
             }
 
-            // Device preferences: biometric, haptic, dark mode.
-            // All three write straight through to SharedPreferences — no server round-trip.
+            // Device preferences: biometric, haptic, reduce motion.
+            // All write straight through to SharedPreferences — no server round-trip.
+            // Dark mode / dynamic color moved to Settings > Theme (ThemeScreen).
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -445,21 +521,6 @@ fun SettingsScreen(
                         subtitle = "Short vibration on save, scan, and errors",
                         checked = hapticEnabled,
                         onCheckedChange = { viewModel.setHapticEnabled(it) },
-                    )
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        thickness = 1.dp,
-                    )
-
-                    val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
-                    PreferenceRow(
-                        icon = Icons.Default.DarkMode,
-                        iconDescription = "Dark mode",
-                        title = "Dark mode",
-                        subtitle = "Use dark theme (default on)",
-                        checked = darkModeEnabled,
-                        onCheckedChange = { viewModel.setDarkModeEnabled(it) },
                     )
 
                     HorizontalDivider(
@@ -640,6 +701,55 @@ private fun SyncIssuesTileRow(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
+        }
+    }
+}
+
+/**
+ * §2.5 — Variant of [SettingsRow] that includes a one-line subtitle below the
+ * main label. Used for "Switch user" where the subtitle shows the currently
+ * active username so the operator can confirm identity before switching.
+ */
+@Composable
+private fun SettingsRowWithSubtitle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

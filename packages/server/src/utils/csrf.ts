@@ -32,13 +32,17 @@ export function generateCsrfToken(): string {
 export function issueCsrfCookie(res: Response, token: string, maxAgeMs: number): void {
   // PROD33: Secure flag only in production. httpOnly is intentionally false —
   // the portal JS needs to read this cookie and echo it in the X-CSRF-Token
-  // header (double-submit pattern). sameSite=lax allows the token to ride
-  // on same-site navigations (portal link clicks from email), which is the
-  // intended UX.
+  // header (double-submit pattern).
+  // SCAN-777: sameSite='strict' so the CSRF token cookie is never sent on
+  // cross-site navigations (e.g. portal link clicks from email will arrive
+  // without the cookie, which is acceptable — the portal JS re-reads it after
+  // the page loads). 'strict' is stronger than 'lax' and removes the residual
+  // risk of a CSRF attack via top-level cross-site GET that triggers a state
+  // change before the CSRF check runs.
   res.cookie(CSRF_COOKIE_NAME, token, {
     httpOnly: false, // must be readable by JS so frontend can echo it
     secure: config.nodeEnv === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: maxAgeMs,
     path: '/',
   });

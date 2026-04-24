@@ -3,6 +3,7 @@ import axiosLib from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import type Database from 'better-sqlite3';
 import { config } from '../config.js';
 import { getConfigValue } from '../utils/configEncryption.js';
 import { allocateCounter } from '../utils/counters.js';
@@ -59,7 +60,7 @@ interface BlockChypConfig {
   autoCloseTicket: boolean;
 }
 
-export function getBlockChypConfig(db: any): BlockChypConfig {
+export function getBlockChypConfig(db: Database.Database): BlockChypConfig {
   return {
     enabled: getConfigValue(db, 'blockchyp_enabled') === 'true',
     apiKey: getConfigValue(db, 'blockchyp_api_key') || '',
@@ -78,7 +79,7 @@ export function getBlockChypConfig(db: any): BlockChypConfig {
   };
 }
 
-export function isBlockChypEnabled(db: any): boolean {
+export function isBlockChypEnabled(db: Database.Database): boolean {
   const cfg = getBlockChypConfig(db);
   return cfg.enabled && !!cfg.apiKey && !!cfg.bearerToken && !!cfg.signingKey;
 }
@@ -102,7 +103,7 @@ function credentialsHash(cfg: BlockChypConfig): string {
  * route a live charge to sandbox (or vice versa). Callers without a
  * snapshot (one-off calls) can still pass nothing and we'll fetch fresh.
  */
-export function getClient(db: any, cfgSnapshot?: BlockChypConfig): BlockChypClientInstance {
+export function getClient(db: Database.Database, cfgSnapshot?: BlockChypConfig): BlockChypClientInstance {
   const cfg = cfgSnapshot ?? getBlockChypConfig(db);
   if (!cfg.apiKey || !cfg.bearerToken || !cfg.signingKey) {
     throw new Error('BlockChyp credentials not configured. Set API Key, Bearer Token, and Signing Key in Settings.');
@@ -264,7 +265,7 @@ export interface TestConnectionResult {
   error?: string;
 }
 
-export async function testConnection(db: any, terminalNameOverride?: string): Promise<TestConnectionResult> {
+export async function testConnection(db: Database.Database, terminalNameOverride?: string): Promise<TestConnectionResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
   const terminalName = terminalNameOverride || cfg.terminalName;
@@ -297,7 +298,7 @@ export interface CaptureSignatureResult {
   error?: string;
 }
 
-export async function capturePreTicketSignature(db: any): Promise<CaptureSignatureResult> {
+export async function capturePreTicketSignature(db: Database.Database): Promise<CaptureSignatureResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
 
@@ -342,7 +343,7 @@ export async function capturePreTicketSignature(db: any): Promise<CaptureSignatu
   }
 }
 
-export async function captureCheckInSignature(db: any, ticketOrderId: string): Promise<CaptureSignatureResult> {
+export async function captureCheckInSignature(db: Database.Database, ticketOrderId: string): Promise<CaptureSignatureResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
 
@@ -417,14 +418,14 @@ export interface ProcessPaymentResult {
  * the ref monotonic across concurrent requests; the random bytes harden it
  * against counter-table corruption or clock skew between nodes.
  */
-function buildUniqueTransactionRef(db: any, prefix: string): string {
+function buildUniqueTransactionRef(db: Database.Database, prefix: string): string {
   const seq = allocateCounter(db, 'blockchyp_transaction_ref');
   const rand = crypto.randomBytes(8).toString('hex');
   return `${prefix}-${seq}-${rand}`;
 }
 
 export async function processPayment(
-  db: any,
+  db: Database.Database,
   amount: number,
   ticketOrderId: string,
   tip?: number,
@@ -615,7 +616,7 @@ export interface AdjustTipResult {
 }
 
 export async function adjustTip(
-  _db: any,
+  _db: Database.Database,
   transactionId: string,
   newTip: number,
 ): Promise<AdjustTipResult> {
@@ -655,7 +656,7 @@ export interface EnrollResult {
  * Enroll a card on the terminal for recurring billing.
  * Presents the card capture screen, tokenizes the card, returns a token for future charges.
  */
-export async function enrollCard(db: any): Promise<EnrollResult> {
+export async function enrollCard(db: Database.Database): Promise<EnrollResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
 
@@ -702,7 +703,7 @@ export interface TokenChargeResult {
  * Charge a previously tokenized card (for monthly membership renewal).
  * No terminal interaction — runs server-side via BlockChyp gateway.
  */
-export async function chargeToken(db: any, token: string, amount: string, description: string): Promise<TokenChargeResult> {
+export async function chargeToken(db: Database.Database, token: string, amount: string, description: string): Promise<TokenChargeResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
 
@@ -749,7 +750,7 @@ export interface PaymentLinkResult {
  * Create a BlockChyp payment link for remote membership signup.
  * Customer receives a link (via SMS/email/QR code) to enter card details.
  */
-export async function createPaymentLink(db: any, amount: string, description: string, callbackUrl?: string): Promise<PaymentLinkResult> {
+export async function createPaymentLink(db: Database.Database, amount: string, description: string, callbackUrl?: string): Promise<PaymentLinkResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
 
@@ -810,8 +811,9 @@ const STUCK_PENDING_THRESHOLD_MINUTES = 5;
  * and errors are swallowed with a log line because the janitor must never
  * crash the cron loop.
  */
-export function sweepStuckPaymentIdempotency(db: any): number {
+export function sweepStuckPaymentIdempotency(db: Database.Database): number {
   try {
+    const modifier = `-${STUCK_PENDING_THRESHOLD_MINUTES} minutes`;
     const result = db
       .prepare(
         `UPDATE payment_idempotency
@@ -819,9 +821,9 @@ export function sweepStuckPaymentIdempotency(db: any): number {
                 error_message = COALESCE(error_message, 'Janitor: stuck pending > ${STUCK_PENDING_THRESHOLD_MINUTES} min'),
                 updated_at = datetime('now')
           WHERE status = 'pending'
-            AND created_at < datetime('now', '-${STUCK_PENDING_THRESHOLD_MINUTES} minutes')`,
+            AND created_at < datetime('now', ?)`,
       )
-      .run();
+      .run(modifier);
     const changes = Number(result?.changes ?? 0);
     if (changes > 0) {
       logger.warn('Flipped stuck payment_idempotency rows to failed', { changes });

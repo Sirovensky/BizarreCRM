@@ -18,6 +18,7 @@ import {
   validatePositiveAmount,
   validateTextLength,
   validateIntegerQuantity,
+  validateId,
 } from '../utils/validate.js';
 
 // Post-enrichment audit §9: per-user cap on deposit collection. Every POST
@@ -54,8 +55,18 @@ function nowIso(): string {
 // GET / — list deposits, filterable by customer_id / ticket_id / applied status
 // ---------------------------------------------------------------------------
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  const customerId = req.query.customer_id ? parseInt(req.query.customer_id as string, 10) : null;
-  const ticketId = req.query.ticket_id ? parseInt(req.query.ticket_id as string, 10) : null;
+  const customerIdRaw = req.query.customer_id;
+  const ticketIdRaw = req.query.ticket_id;
+
+  let customerId: number | null = null;
+  let ticketId: number | null = null;
+
+  if (customerIdRaw !== undefined && customerIdRaw !== '') {
+    customerId = validateId(customerIdRaw, 'customer_id');
+  }
+  if (ticketIdRaw !== undefined && ticketIdRaw !== '') {
+    ticketId = validateId(ticketIdRaw, 'ticket_id');
+  }
   const applied = req.query.applied as string | undefined;
 
   const where: string[] = [];
@@ -139,16 +150,18 @@ router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: 
     'notes',
   );
 
-  const result = await req.asyncDb.run(
-    `INSERT INTO deposits (customer_id, ticket_id, amount_cents, collected_at, notes)
-     VALUES (?, ?, ?, ?, ?)`,
-    customerId,
-    ticketId,
-    amountCents,
-    nowIso(),
-    notes || null,
-  );
+  const collectedAt = nowIso();
+  const txResults = await req.asyncDb.transaction([
+    {
+      sql: `INSERT INTO deposits (customer_id, ticket_id, amount_cents, collected_at, notes)
+            VALUES (?, ?, ?, ?, ?)`,
+      params: [customerId, ticketId, amountCents, collectedAt, notes || null],
+    },
+  ]);
+  const result = txResults[0];
 
+  // Audit fire-and-forget after tx commits — audit failure must not roll back
+  // a successfully collected deposit.
   audit(req.db, 'deposit.collect', req.user?.id ?? null, req.ip ?? '', {
     id: result.lastInsertRowid,
     customer_id: customerId,

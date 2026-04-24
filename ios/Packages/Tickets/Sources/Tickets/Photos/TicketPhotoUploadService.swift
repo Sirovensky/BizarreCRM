@@ -7,11 +7,18 @@ public struct PhotoUploadItem: Identifiable, Sendable {
     public let id: UUID
     public let localURL: URL
     public let ticketId: Int64
+    /// The device this photo belongs to. The server requires `ticket_device_id`
+    /// in the multipart body (tickets.routes.ts:2421).
+    public let ticketDeviceId: Int64
+    /// "pre" or "post" tag for before/after classification.
+    public let photoType: String
 
-    public init(localURL: URL, ticketId: Int64) {
+    public init(localURL: URL, ticketId: Int64, ticketDeviceId: Int64, photoType: String = "pre") {
         self.id = UUID()
         self.localURL = localURL
         self.ticketId = ticketId
+        self.ticketDeviceId = ticketDeviceId
+        self.photoType = photoType
     }
 }
 

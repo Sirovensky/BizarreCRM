@@ -521,11 +521,48 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 5 → 6: add `drafts` table for autosave storage (Plan §1 L260-L266).**
+     *
+     * Creates the `drafts` table with:
+     *  - Auto-increment primary key.
+     *  - `user_id` + `draft_type` unique index (one draft per type per user, plan line 263).
+     *  - `payload_json` TEXT for the serialised form-field snapshot.
+     *  - `saved_at` INTEGER (epoch ms) for pruning (line 266) and age display (line 262).
+     *  - `entity_id` TEXT NULL for edit-mode drafts that reference an existing server entity.
+     *
+     * SQLCipher encryption covers this table automatically (plan line 264).
+     * No columns for password/PIN/TOTP — those must never be stored here.
+     *
+     * `CREATE INDEX IF NOT EXISTS` is idempotent; a retried migration is safe.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS drafts (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    draft_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    saved_at INTEGER NOT NULL,
+                    entity_id TEXT
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS index_drafts_user_id_draft_type " +
+                    "ON drafts(user_id, draft_type)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
         MIGRATION_3_4,
         MIGRATION_4_5,
+        MIGRATION_5_6,
     )
 }

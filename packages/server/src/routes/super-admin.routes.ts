@@ -40,7 +40,9 @@ import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
 import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
 import { repairTenant } from '../services/tenant-repair.js';
-import { getTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
+import { getTenantDb, releaseTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
+import { createAsyncDb } from '../db/async-db.js';
+import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
@@ -50,6 +52,7 @@ import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { requireStepUpTotpSuperAdmin } from '../middleware/stepUpTotp.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const router = Router();
 const logger = createLogger('super-admin');
@@ -140,7 +143,7 @@ function auditLog(action: string, adminId: number | null, ip: string, details?: 
     masterDb.prepare(
       'INSERT INTO master_audit_log (super_admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)'
     ).run(adminId, action, details ? JSON.stringify(details) : null, ip);
-  } catch (err) { console.error('[SuperAdmin Audit]', err); }
+  } catch (err) { logger.error('super_admin_audit_write_failed', { error: err instanceof Error ? err.message : String(err) }); }
 }
 
 // ─── Challenge Tokens (in-memory, short-lived) ──────────────────────
@@ -152,15 +155,31 @@ interface Challenge {
 }
 
 const challenges = new Map<string, Challenge>();
+const CHALLENGES_CAP = 1000;
 
-setInterval(() => {
+// SCAN-564: evict oldest entry (insertion-order) when the Map would exceed cap,
+// preventing unbounded heap growth under sustained unauthenticated challenge creation.
+function addWithCap<K, V>(map: Map<K, V>, key: K, value: V, cap: number): void {
+  if (map.size >= cap && !map.has(key)) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) {
+      // SCAN-744: warn operators when Map is at capacity so evictions are visible.
+      logger.warn('super-admin challenge Map at capacity; evicting oldest entry', { evicted: firstKey });
+      map.delete(firstKey);
+    }
+  }
+  map.delete(key); // re-insert to bump to most-recent
+  map.set(key, value);
+}
+
+trackInterval(() => {
   const now = Date.now();
   for (const [k, v] of challenges) { if (v.expires < now) challenges.delete(k); }
 }, 60_000);
 
 function createChallenge(adminId: number, pendingTotpSecret?: string): string {
   const token = crypto.randomBytes(32).toString('hex');
-  challenges.set(token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret });
+  addWithCap(challenges, token, { adminId, expires: Date.now() + 5 * 60 * 1000, pendingTotpSecret }, CHALLENGES_CAP);
   return token;
 }
 
@@ -178,7 +197,10 @@ function createSession(masterDb: any, adminId: number, ip: string, userAgent: st
   // SEC-H20: session TTL aligned to JWT TTL (30m). Previously 4h, which
   // allowed session lookups to succeed long after the JWT had expired —
   // defeating the short-lived-token guarantee added by SEC-H20.
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+  // SCAN-750: use SQLite-compatible "YYYY-MM-DD HH:MM:SS" format so that
+  // datetime('now') comparisons work correctly (ISO-8601 "T" separator breaks
+  // SQLite string comparison because "T" > " ").
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
   masterDb.prepare(
     'INSERT INTO super_admin_sessions (id, super_admin_id, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, adminId, ip, userAgent?.substring(0, 200) || '', expiresAt);
@@ -271,8 +293,17 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   }
 
-  // Check account lock
-  if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
+  // Check account lock — SCAN-740: use timestamp math to avoid fragile Date constructor
+  function isLockedOut(lockedUntil: string | null): boolean {
+    if (!lockedUntil) return false;
+    const ts = Date.parse(lockedUntil);
+    if (Number.isNaN(ts)) {
+      logger.warn('admin.locked_until unparseable', { raw: lockedUntil });
+      return false; // fail-open on malformed (don't lock out legitimate admin)
+    }
+    return ts > Date.now();
+  }
+  if (isLockedOut(admin.locked_until ?? null)) {
     auditLog('super_admin_login_locked', admin.id, ip);
     return res.status(423).json({ success: false, message: 'Account temporarily locked. Contact another super admin.' });
   }
@@ -280,18 +311,30 @@ router.post('/login', async (req: Request, res: Response) => {
   const valid = await bcrypt.compare(password, admin.password_hash);
   if (!valid) {
     recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
+    // SCAN-756: single atomic UPDATE avoids count > 7 with locked_until NULL on crash between two statements.
+    masterDb.prepare(
+      `UPDATE super_admins
+       SET failed_login_count = failed_login_count + 1,
+           locked_until = CASE WHEN failed_login_count + 1 >= 7
+                          THEN datetime('now', '+30 minutes')
+                          ELSE locked_until
+                          END
+       WHERE id = ?`
+    ).run(admin.id);
     const fails = (admin.failed_login_count || 0) + 1;
-    const updates: any[] = [fails];
-    let lockUntil: string | null = null;
-    if (fails >= 7) {
-      lockUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // Lock 30 minutes
-      updates.push(lockUntil);
-      masterDb.prepare('UPDATE super_admins SET failed_login_count = ?, locked_until = ? WHERE id = ?').run(fails, lockUntil, admin.id);
-    } else {
-      masterDb.prepare('UPDATE super_admins SET failed_login_count = ? WHERE id = ?').run(fails, admin.id);
-    }
-    auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: !!lockUntil });
+    auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: fails >= 7 });
     return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+  }
+
+  // SCAN-564: per-IP cap on challenge creation (10/15min) to limit how fast an
+  // attacker with a valid password can flood the challenges Map via this
+  // unauthenticated endpoint (adminId 0 is never a real record, so auth state
+  // of the caller is irrelevant — the cap must be IP-based).
+  const CHALLENGE_CREATE_MAX = 10;
+  const CHALLENGE_CREATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  if (!checkWindowRate(masterDb, 'super_admin_challenge', ip, CHALLENGE_CREATE_MAX, CHALLENGE_CREATE_WINDOW_MS)) {
+    auditLog('super_admin_challenge_rate_limited', admin.id, ip);
+    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
   }
 
   // Password OK — check if password setup needed
@@ -676,18 +719,21 @@ router.post('/tenants', async (req, res) => {
   res.status(201).json({ success: true, data: { tenant_id: result.tenantId, slug: result.slug, url: baseUrl, setup_url: setupUrl } });
 });
 
-router.get('/tenants/:slug', (req, res) => {
+router.get('/tenants/:slug', async (req, res) => {
   const masterDb = getMasterDb()!;
   const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
   if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
 
   let userCount = 0, ticketCount = 0, customerCount = 0;
+  let _tdbStats: import('better-sqlite3').Database | undefined;
   try {
-    const tdb = getTenantDb(tenant.slug);
-    userCount = (tdb.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
-    ticketCount = (tdb.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
-    customerCount = (tdb.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
-  } catch {}
+    _tdbStats = await getTenantDb(tenant.slug);
+    userCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
+    ticketCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
+    customerCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
+  } catch {} finally {
+    if (_tdbStats !== undefined) releaseTenantDb(tenant.slug);
+  }
 
   let dbSizeMb = 0;
   try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, tenant.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
@@ -1128,7 +1174,7 @@ router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_
 //   - Everything is written to master_audit_log with before/after fields,
 //     including the tenant slug, target user id + username, and the super
 //     admin actor — a full paper trail for post-incident review.
-router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), (req, res) => {
+router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), async (req, res) => {
   const masterDb = getMasterDb();
   if (!masterDb) {
     return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
@@ -1156,9 +1202,9 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
     });
   }
 
-  let tdb;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
     logger.error('Failed to open tenant DB for 2FA force-disable', {
       slug,
@@ -1167,55 +1213,59 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
     return res.status(500).json({ success: false, message: 'Failed to open tenant database' });
   }
 
-  const target = tdb
-    .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
-    .get(targetId) as AnyRow | undefined;
-  if (!target) {
-    return res.status(404).json({ success: false, message: 'User not found in tenant' });
-  }
-
-  const wasEnabled = Boolean(target.totp_enabled);
-
-  // Atomic: clear 2FA AND revoke every session for this user in one transaction.
-  // If either statement fails we want neither to land.
-  const tx = tdb.transaction(() => {
-    tdb
-      .prepare(
-        "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
-      )
-      .run(targetId);
-    tdb.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
-  });
   try {
-    tx();
-  } catch (err) {
-    logger.error('Force-disable 2FA transaction failed', {
-      slug,
-      targetId,
-      error: err instanceof Error ? err.message : String(err),
+    const target = tdb
+      .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
+      .get(targetId) as AnyRow | undefined;
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User not found in tenant' });
+    }
+
+    const wasEnabled = Boolean(target.totp_enabled);
+
+    // Atomic: clear 2FA AND revoke every session for this user in one transaction.
+    // If either statement fails we want neither to land.
+    const tx = tdb.transaction(() => {
+      tdb!
+        .prepare(
+          "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
+        )
+        .run(targetId);
+      tdb!.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
     });
-    return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
-  }
+    try {
+      tx();
+    } catch (err) {
+      logger.error('Force-disable 2FA transaction failed', {
+        slug,
+        targetId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
+    }
 
-  auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
-    tenant_slug: slug,
-    tenant_id: tenant.id,
-    target_user_id: target.id,
-    target_username: target.username,
-    target_email: target.email,
-    was_2fa_enabled: wasEnabled,
-    sessions_revoked: true,
-  });
-
-  res.json({
-    success: true,
-    data: {
-      message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+    auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
       tenant_slug: slug,
-      user_id: target.id,
+      tenant_id: tenant.id,
+      target_user_id: target.id,
+      target_username: target.username,
+      target_email: target.email,
       was_2fa_enabled: wasEnabled,
-    },
-  });
+      sessions_revoked: true,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+        tenant_slug: slug,
+        user_id: target.id,
+        was_2fa_enabled: wasEnabled,
+      },
+    });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // ─── Backup Management ──────────────────────────────────────────────
@@ -1614,7 +1664,7 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
 // queued. Useful for triaging "the customer didn't get the SMS"
 // reports without SSHing into the tenant DB.
 
-router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
+router.get('/tenants/:slug/notifications', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1623,54 +1673,62 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+    logger.error('super-admin: tenant notification-queue DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 
-  // Pre-flight: notification_queue is created by migration 060; on a fresh
-  // template DB without it, return empty rather than 500.
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_queue'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, pending: 0, sent: 0, failed: 0, cancelled: 0 } } });
+  try {
+    // Pre-flight: notification_queue is created by migration 060; on a fresh
+    // template DB without it, return empty rather than 500.
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_queue'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, pending: 0, sent: 0, failed: 0, cancelled: 0 } } });
+    }
+
+    const status = req.query.status ? String(req.query.status) : '';
+    const type = req.query.type ? String(req.query.type) : '';
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status && /^(pending|sent|failed|cancelled)$/.test(status)) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (type && /^(sms|email|push)$/.test(type)) {
+      conditions.push('type = ?');
+      params.push(type);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const rows = tdb
+      .prepare(`SELECT id, type, recipient, subject, status, error, retry_count, scheduled_at, sent_at, created_at FROM notification_queue ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+
+    // Always return the unfiltered status counts so the UI badges stay accurate
+    // when the operator is filtering down to one status.
+    const summaryRow = tdb.prepare(
+      "SELECT COUNT(*) AS total, " +
+      "SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending, " +
+      "SUM(CASE WHEN status='sent'      THEN 1 ELSE 0 END) AS sent, " +
+      "SUM(CASE WHEN status='failed'    THEN 1 ELSE 0 END) AS failed, " +
+      "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled " +
+      "FROM notification_queue"
+    ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
+
+    res.json({ success: true, data: { rows, summary: summaryRow } });
+  } finally {
+    releaseTenantDb(slug);
   }
-
-  const status = req.query.status ? String(req.query.status) : '';
-  const type = req.query.type ? String(req.query.type) : '';
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (status && /^(pending|sent|failed|cancelled)$/.test(status)) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  if (type && /^(sms|email|push)$/.test(type)) {
-    conditions.push('type = ?');
-    params.push(type);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const rows = tdb
-    .prepare(`SELECT id, type, recipient, subject, status, error, retry_count, scheduled_at, sent_at, created_at FROM notification_queue ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-
-  // Always return the unfiltered status counts so the UI badges stay accurate
-  // when the operator is filtering down to one status.
-  const summaryRow = tdb.prepare(
-    "SELECT COUNT(*) AS total, " +
-    "SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending, " +
-    "SUM(CASE WHEN status='sent'      THEN 1 ELSE 0 END) AS sent, " +
-    "SUM(CASE WHEN status='failed'    THEN 1 ELSE 0 END) AS failed, " +
-    "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled " +
-    "FROM notification_queue"
-  ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
-
-  res.json({ success: true, data: { rows, summary: summaryRow } });
 });
 
 // ─── Webhook Delivery Failures (per-tenant dead-letter queue) ──────
@@ -1680,7 +1738,7 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
 // were exhausted, so this list shows permanent failures the operator
 // probably needs to investigate on the downstream side.
 
-router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
+router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1689,46 +1747,55 @@ router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
-  }
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, byEvent: [] } } });
+    logger.error('super-admin: tenant webhook-failures DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 
-  const event = req.query.event ? String(req.query.event) : '';
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (event && /^[a-z_]+$/.test(event) && event.length <= 64) {
-    conditions.push('event = ?');
-    params.push(event);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = tdb
-    .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-  const byEventRaw = tdb
-    .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
-    .all() as Array<{ event: string; c: number }>;
-  const totalRaw = tdb.prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures').get() as { c: number };
+  try {
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, byEvent: [] } } });
+    }
 
-  res.json({
-    success: true,
-    data: {
-      rows,
-      summary: {
-        total: totalRaw.c,
-        byEvent: byEventRaw.map((r) => ({ event: r.event, count: r.c })),
+    const event = req.query.event ? String(req.query.event) : '';
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (event && /^[a-z_]+$/.test(event) && event.length <= 64) {
+      conditions.push('event = ?');
+      params.push(event);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = tdb
+      .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+    const byEventRaw = tdb
+      .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
+      .all() as Array<{ event: string; c: number }>;
+    const totalRaw = tdb.prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures').get() as { c: number };
+
+    res.json({
+      success: true,
+      data: {
+        rows,
+        summary: {
+          total: totalRaw.c,
+          byEvent: byEventRaw.map((r) => ({ event: r.event, count: r.c })),
+        },
       },
-    },
-  });
+    });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // POST retry on a single dead-lettered webhook delivery. Deletes the row on
@@ -1751,27 +1818,35 @@ router.post(
     const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
     if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-    let tdb: import('better-sqlite3').Database;
-    try { tdb = getTenantDb(slug); }
+    let tdb: import('better-sqlite3').Database | undefined;
+    try { tdb = await getTenantDb(slug); }
     catch (err) {
-      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+      logger.error('super-admin: tenant webhook-failure retry DB open failed', {
+        err: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, error: 'internal server error — operation failed' });
     }
-    const { retryDeliveryFailure } = await import('../services/webhooks.js');
-    const result = await retryDeliveryFailure(tdb, failureId);
-    auditLog('webhook_retry', req.superAdmin!.superAdminId, req.ip || 'unknown', {
-      tenant_slug: slug,
-      failure_id: failureId,
-      ok: result.ok,
-      status: result.status,
-      ...(result.ok ? {} : { attempts: result.attempts, error: result.error }),
-    });
-    res.json({ success: true, data: result });
+    try {
+      const { retryDeliveryFailure } = await import('../services/webhooks.js');
+      const result = await retryDeliveryFailure(tdb, failureId);
+      auditLog('webhook_retry', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+        tenant_slug: slug,
+        failure_id: failureId,
+        ok: result.ok,
+        status: result.status,
+        ...(result.ok ? {} : { attempts: result.attempts, error: result.error }),
+      });
+      res.json({ success: true, data: result });
+    } finally {
+      releaseTenantDb(slug);
+    }
   }
 );
 
 // ─── Automation Run Log (per-tenant automation execution history) ─
 
-router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
+router.get('/tenants/:slug/automation-runs', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'invalid tenant slug' });
@@ -1780,46 +1855,55 @@ router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
   const exists = masterDb.prepare('SELECT 1 FROM tenants WHERE slug = ?').get(slug);
   if (!exists) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
 
-  let tdb: import('better-sqlite3').Database;
+  let tdb: import('better-sqlite3').Database | undefined;
   try {
-    tdb = getTenantDb(slug);
+    tdb = await getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
-  }
-  const tableExists = tdb.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"
-  ).get();
-  if (!tableExists) {
-    return res.json({ success: true, data: { rows: [], summary: { total: 0, success: 0, failure: 0, skipped: 0 } } });
+    logger.error('super-admin: tenant automation-runs DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 
-  const status = req.query.status ? String(req.query.status) : '';
-  const automationId = req.query.automationId ? parseInt(String(req.query.automationId), 10) : 0;
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-  if (status && /^(success|failure|skipped|loop_rejected)$/.test(status)) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  if (automationId && !isNaN(automationId)) {
-    conditions.push('automation_id = ?');
-    params.push(automationId);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = tdb
-    .prepare(`SELECT id, automation_id, automation_name, trigger_event, action_type, target_entity_type, target_entity_id, status, error_message, depth, created_at FROM automation_run_log ${where} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params, limit);
-  const summary = tdb.prepare(
-    "SELECT COUNT(*) AS total, " +
-    "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success, " +
-    "SUM(CASE WHEN status='failure' THEN 1 ELSE 0 END) AS failure, " +
-    "SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) AS skipped, " +
-    "SUM(CASE WHEN status='loop_rejected' THEN 1 ELSE 0 END) AS loop_rejected " +
-    "FROM automation_run_log"
-  ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+  try {
+    const tableExists = tdb.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"
+    ).get();
+    if (!tableExists) {
+      return res.json({ success: true, data: { rows: [], summary: { total: 0, success: 0, failure: 0, skipped: 0 } } });
+    }
 
-  res.json({ success: true, data: { rows, summary } });
+    const status = req.query.status ? String(req.query.status) : '';
+    const automationId = req.query.automationId ? parseInt(String(req.query.automationId), 10) : 0;
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status && /^(success|failure|skipped|loop_rejected)$/.test(status)) {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (automationId && !isNaN(automationId)) {
+      conditions.push('automation_id = ?');
+      params.push(automationId);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = tdb
+      .prepare(`SELECT id, automation_id, automation_name, trigger_event, action_type, target_entity_type, target_entity_id, status, error_message, depth, created_at FROM automation_run_log ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+    const summary = tdb.prepare(
+      "SELECT COUNT(*) AS total, " +
+      "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success, " +
+      "SUM(CASE WHEN status='failure' THEN 1 ELSE 0 END) AS failure, " +
+      "SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) AS skipped, " +
+      "SUM(CASE WHEN status='loop_rejected' THEN 1 ELSE 0 END) AS loop_rejected " +
+      "FROM automation_run_log"
+    ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
+
+    res.json({ success: true, data: { rows, summary } });
+  } finally {
+    releaseTenantDb(slug);
+  }
 });
 
 // ─── Admin Tools ─────────────────────────────────────────────────────
@@ -1872,7 +1956,7 @@ function clearRateLimitsOnDb(
 // Read-only inspector — shows currently throttled or recently locked rate
 // limit entries across master + every tenant DB. Operator can decide whether
 // to nuke them with the reset tool or wait for the cool-down to expire.
-router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
+router.get('/admin-tools/rate-limits', async (req: Request, res: Response) => {
   const lockedOnly = req.query.lockedOnly === 'true';
   const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '200'), 10) || 200));
   const masterDb = getMasterDb()!;
@@ -1909,10 +1993,13 @@ router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
   readDb(masterDb, 'master');
   const tenants = masterDb.prepare('SELECT slug FROM tenants WHERE status = ?').all('active') as Array<{ slug: string }>;
   for (const t of tenants) {
+    let tdb: import('better-sqlite3').Database | undefined;
     try {
-      const tdb = getTenantDb(t.slug);
+      tdb = await getTenantDb(t.slug);
       readDb(tdb, `tenant:${t.slug}`);
-    } catch { /* ignore unavailable tenant DB */ }
+    } catch { /* ignore unavailable tenant DB */ } finally {
+      if (tdb !== undefined) releaseTenantDb(t.slug);
+    }
   }
 
   // Sort across all DBs by locked-until then count desc so the most-blocked
@@ -1936,7 +2023,7 @@ router.get('/admin-tools/rate-limits', (req: Request, res: Response) => {
 router.post(
   '/admin-tools/reset-rate-limits',
   requireStepUpTotpSuperAdmin('super_admin_reset_rate_limits'),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
     const all = req.body?.all === true;
     if (tenantSlug && !/^[a-z0-9-]{1,64}$/.test(tenantSlug)) {
@@ -1952,8 +2039,9 @@ router.post(
       if (!tenant?.slug) {
         return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'tenant not found' });
       }
+      let tdb: import('better-sqlite3').Database | undefined;
       try {
-        const tdb = getTenantDb(tenant.slug);
+        tdb = await getTenantDb(tenant.slug);
         results.push(clearRateLimitsOnDb(tdb, `tenant:${tenant.slug}`, categories));
       } catch (err) {
         results.push({
@@ -1962,14 +2050,17 @@ router.post(
           skipped: false,
           error: err instanceof Error ? err.message : String(err),
         });
+      } finally {
+        if (tdb !== undefined) releaseTenantDb(tenant.slug);
       }
     } else {
       // Wide scope — master DB + every tenant DB known to the master table.
       results.push(clearRateLimitsOnDb(masterDb, 'master', categories));
       const tenants = masterDb.prepare('SELECT slug FROM tenants').all() as Array<{ slug: string }>;
       for (const t of tenants) {
+        let tdb: import('better-sqlite3').Database | undefined;
         try {
-          const tdb = getTenantDb(t.slug);
+          tdb = await getTenantDb(t.slug);
           results.push(clearRateLimitsOnDb(tdb, `tenant:${t.slug}`, categories));
         } catch (err) {
           results.push({
@@ -1978,6 +2069,8 @@ router.post(
             skipped: false,
             error: err instanceof Error ? err.message : String(err),
           });
+        } finally {
+          if (tdb !== undefined) releaseTenantDb(t.slug);
         }
       }
     }
@@ -2071,7 +2164,15 @@ router.post(
 //  - TTL is 15min, non-renewable (no refresh token issued).
 //  - Full audit row in master_audit_log.
 
-router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
+// IMPERSONATION_TTL_MS: duration for the ephemeral tenant sessions row.
+// The JWT itself carries a 15-min expiresIn so the two are aligned.
+// NOTE: If the super-admin calls the /end endpoint the session row is deleted
+// immediately, which causes authMiddleware to reject the JWT even though the
+// JWT's own expiry hasn't passed yet (JWT TTL = 15 min, session TTL = 15 min).
+// This is intentional: the session row is the revocation mechanism.
+const IMPERSONATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, message: 'invalid tenant slug' });
@@ -2090,15 +2191,18 @@ router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
   }
 
   let targetUser: { id: number; username: string; role: string } | undefined;
+  let _tdbImpersonate: import('better-sqlite3').Database | undefined;
   try {
-    const tdb = getTenantDb(slug);
+    _tdbImpersonate = await getTenantDb(slug);
     // Prefer an admin user; fall back to any active user.
     targetUser =
-      (tdb.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??
-      (tdb.prepare("SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined);
+      (_tdbImpersonate.prepare("SELECT id, username, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined) ??
+      (_tdbImpersonate.prepare("SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").get() as typeof targetUser | undefined);
   } catch (err) {
     logger.error('impersonate: failed to open tenant DB', { slug, error: err instanceof Error ? err.message : String(err) });
     return res.status(500).json({ success: false, message: 'Could not open tenant database' });
+  } finally {
+    if (_tdbImpersonate !== undefined) releaseTenantDb(slug);
   }
 
   if (!targetUser) {
@@ -2108,44 +2212,186 @@ router.post('/tenants/:slug/impersonate', (req: Request, res: Response) => {
   const superAdminId = req.superAdmin!.superAdminId;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
 
+  // Stable, derivable session id — ties the JWT's jti back to the sessions row
+  // so the /end endpoint can look it up without a secondary lookup table.
+  const jti = crypto.randomUUID();
+  const sessionId = `impersonate-${jti}`;
+  const expiresAt = new Date(Date.now() + IMPERSONATION_TTL_MS).toISOString();
+
+  // Write an ephemeral session row to the tenant DB so authMiddleware's
+  // session-exists check can revoke the token immediately on /end (SCAN-571 fix 1).
+  // device_info carries super-admin attribution for tenant-side audit trails.
+  const tenantDbPath = path.join(config.tenantDataDir, `${slug}.db`);
+  const tenantAsyncDb = createAsyncDb(tenantDbPath);
+  try {
+    await tenantAsyncDb.run(
+      "INSERT INTO sessions (id, user_id, device_info, expires_at, created_at, last_active) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
+      sessionId,
+      targetUser.id,
+      JSON.stringify({ super_admin_id: superAdminId, impersonated_by: 'super_admin' }),
+      expiresAt,
+    );
+  } catch (err) {
+    logger.error('impersonate: failed to write tenant session row', { slug, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not create impersonation session' });
+  }
+
   // Issue a short-lived access token in the same shape as regular tenant tokens.
   // No refresh token — session expires in 15 min and must be re-impersonated.
+  // SEC (SCAN-613): Explicit type:'access' so the authMiddleware strict check accepts it.
   const token = jwt.sign(
     {
       userId: targetUser.id,
-      sessionId: `impersonate-${crypto.randomBytes(8).toString('hex')}`,
+      sessionId,
       role: targetUser.role,
       tenantSlug: slug,
+      type: 'access',
       impersonated: true,
       superAdminId,
-      jti: crypto.randomUUID(),
+      jti,
     },
     config.accessJwtSecret,
     { ...TENANT_JWT_SIGN_OPTIONS, expiresIn: '15m' },
   );
 
+  // SCAN-571 fix 2: master-level audit (existing) + tenant-level audit (new).
   auditLog('super_admin.impersonate_started', superAdminId, ip, {
     tenant_slug: slug,
     super_admin_user_id: superAdminId,
     target_user_id: targetUser.id,
     target_username: targetUser.username,
+    session_id: sessionId,
+  });
+
+  // Tenant-side audit: write to the tenant's own audit_logs so the tenant can
+  // see super-admin access in their own audit history (SCAN-571 fix 2).
+  getTenantDb(slug).then((tdbAudit) => {
+    try {
+      audit(tdbAudit, 'super_admin.impersonate_started', targetUser!.id, ip, {
+        super_admin_id: superAdminId,
+        session_id: sessionId,
+      });
+    } finally {
+      releaseTenantDb(slug);
+    }
+  }).catch((err) => {
+    logger.error('impersonate: tenant audit write failed', { slug, error: err instanceof Error ? err.message : String(err) });
   });
 
   logger.info('super-admin impersonation token issued', {
     superAdminId,
     slug,
     targetUserId: targetUser.id,
+    sessionId,
   });
 
   res.json({
     success: true,
     data: {
       token,
+      jti,
       tenant_slug: slug,
       expires_in_seconds: 15 * 60,
       target_user: { id: targetUser.id, username: targetUser.username, role: targetUser.role },
     },
   });
+});
+
+// ─── POST /tenants/:slug/impersonate/:jti/end ────────────────────────────────
+// Revoke a live impersonation session by deleting the tenant sessions row.
+// Once deleted, authMiddleware's session-exists check will return 401 on the
+// next request that uses the impersonation JWT — even if the JWT's own expiry
+// (15 min) hasn't passed yet.  This is the only revocation path short of
+// rotating the tenant's JWT secret (SCAN-571).
+//
+// Security constraints:
+//  - Requires super-admin session (superAdminAuth, applied above).
+//  - jti validated as UUID to prevent injection via path parameter.
+//  - Deletes only the row whose id = `impersonate-<jti>`, so a super-admin
+//    cannot accidentally revoke a real user's session.
+//  - Full audit in both master_audit_log and tenant audit_logs.
+router.post('/tenants/:slug/impersonate/:jti/end', async (req: Request, res: Response) => {
+  const slug = String(req.params.slug);
+  const jti = String(req.params.jti);
+
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    return res.status(400).json({ success: false, message: 'invalid tenant slug' });
+  }
+  // Validate UUID format to prevent any injection via the path parameter.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(jti)) {
+    return res.status(400).json({ success: false, message: 'invalid jti format' });
+  }
+
+  const masterDb = getMasterDb()!;
+  const tenant = masterDb
+    .prepare("SELECT id, slug FROM tenants WHERE slug = ?")
+    .get(slug) as { id: number; slug: string } | undefined;
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+  }
+
+  const superAdminId = req.superAdmin!.superAdminId;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sessionId = `impersonate-${jti}`;
+
+  // Look up and delete the session row on the tenant DB.
+  const tenantDbPath = path.join(config.tenantDataDir, `${slug}.db`);
+  const tenantAsyncDb = createAsyncDb(tenantDbPath);
+
+  let sessionExists: { id: string; user_id: number } | undefined;
+  try {
+    sessionExists = await tenantAsyncDb.get<{ id: string; user_id: number }>(
+      'SELECT id, user_id FROM sessions WHERE id = ?',
+      sessionId,
+    );
+  } catch (err) {
+    logger.error('impersonate/end: failed to query tenant session', { slug, sessionId, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not access tenant database' });
+  }
+
+  if (!sessionExists) {
+    // Already expired or never existed — treat as idempotent success.
+    return res.json({ success: true, data: { revoked: false, reason: 'session_not_found' } });
+  }
+
+  try {
+    await tenantAsyncDb.run('DELETE FROM sessions WHERE id = ?', sessionId);
+  } catch (err) {
+    logger.error('impersonate/end: failed to delete tenant session', { slug, sessionId, error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ success: false, message: 'Could not revoke impersonation session' });
+  }
+
+  // Master-level audit.
+  auditLog('super_admin.impersonate_ended', superAdminId, ip, {
+    tenant_slug: slug,
+    super_admin_user_id: superAdminId,
+    target_user_id: sessionExists.user_id,
+    session_id: sessionId,
+  });
+
+  // Tenant-level audit.
+  getTenantDb(slug).then((tdbAudit) => {
+    try {
+      audit(tdbAudit, 'super_admin.impersonate_ended', sessionExists!.user_id, ip, {
+        super_admin_id: superAdminId,
+        session_id: sessionId,
+      });
+    } finally {
+      releaseTenantDb(slug);
+    }
+  }).catch((err) => {
+    logger.error('impersonate/end: tenant audit write failed', { slug, error: err instanceof Error ? err.message : String(err) });
+  });
+
+  logger.info('super-admin impersonation session ended', {
+    superAdminId,
+    slug,
+    sessionId,
+    targetUserId: sessionExists.user_id,
+  });
+
+  res.json({ success: true, data: { revoked: true, session_id: sessionId } });
 });
 
 export default router;

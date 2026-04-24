@@ -68,6 +68,17 @@ function decryptTotpSecret(ciphertext: string): string {
   return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
 }
 
+// SCAN-648: Guard that all values in a request body map are strings.
+// Rejects non-string values at the boundary instead of silently coercing them.
+function isStringMap(obj: unknown): obj is Record<string, string> {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    !Array.isArray(obj) &&
+    Object.values(obj as Record<string, unknown>).every(v => typeof v === 'string')
+  );
+}
+
 const router = Router();
 
 // Multer for logo upload
@@ -224,6 +235,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // for offline access and cross-device sync (localStorage wins for the current session)
   'wizard_completed',
   'theme',
+  // SCAN-469: Shared-device mode (PIN-based session swap + auto-logoff policy)
+  'shared_device_mode_enabled',
+  'shared_device_auto_logoff_minutes',
+  'shared_device_require_pin_on_switch',
 ]);
 
 // ==================== Generic Config (key-value) ====================
@@ -414,6 +429,11 @@ router.put('/config', adminOnly, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
   }
 
+  // SCAN-648: Reject if any value is not a string — indicates a client bug.
+  if (!isStringMap(req.body)) {
+    return res.status(400).json({ success: false, message: 'All config values must be strings' });
+  }
+
   // ENR-S2: Read old values for audit trail before updating
   const oldRows = await adb.all<any>('SELECT key, value FROM store_config');
   const oldConfig: Record<string, string> = {};
@@ -421,10 +441,10 @@ router.put('/config', adminOnly, async (req, res) => {
     oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
   }
 
-  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+  for (const [key, value] of Object.entries(req.body)) {
     if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
     if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue;
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
 
@@ -479,10 +499,15 @@ router.get('/store', async (req, res) => {
 router.put('/store', adminOnly, async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
+  // SCAN-648: Reject if any value is not a string.
+  if (!isStringMap(req.body)) {
+    logger.warn('PUT /store: non-string value in request body — potential client bug');
+    return res.status(400).json({ success: false, message: 'All store values must be strings' });
+  }
   const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
-  for (const [key, value] of Object.entries(req.body as Record<string, string>)) {
+  for (const [key, value] of Object.entries(req.body)) {
     if (!allowed.includes(key)) continue;
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
   }
@@ -895,11 +920,29 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   const db = req.db;
   const targetUserId = Number(req.params.id);
   // bcrypt imported at top level
-  const { email, first_name, last_name, role, pin, password, is_active, admin_confirm_password, admin_totp_code } = req.body;
+  const { email, first_name, last_name, role, pin, password, is_active, home_location_id, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
   // SEC: Reject any role value that is not in the shared allowlist.
   if (role !== undefined && role !== null && !VALID_ROLES.has(role)) {
     throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
+  }
+  // Validate home_location_id: must be a positive integer pointing at an active location.
+  let validatedHomeLocationId: number | null | undefined;
+  if (home_location_id !== undefined) {
+    if (home_location_id === null) {
+      validatedHomeLocationId = null;
+    } else {
+      const hlid = parseInt(String(home_location_id), 10);
+      if (!Number.isInteger(hlid) || hlid <= 0) {
+        throw new AppError('home_location_id must be a positive integer', 400);
+      }
+      const locRow = await adb.get<{ id: number }>(
+        'SELECT id FROM locations WHERE id = ? AND is_active = 1',
+        hlid,
+      );
+      if (!locRow) throw new AppError('home_location_id references an unknown or inactive location', 400);
+      validatedHomeLocationId = hlid;
+    }
   }
 
   // Fetch the target user's current state — needed for A3 admin guard and
@@ -1042,15 +1085,21 @@ router.put('/users/:id', adminOnly, async (req, res) => {
 
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
+  // home_location_id: use explicit sentinel to distinguish "not supplied"
+  // (undefined → skip via COALESCE) from "explicitly cleared" (null → write NULL).
+  const homeLocSql = validatedHomeLocationId !== undefined
+    ? ', home_location_id = ?'
+    : '';
+  const homeLocParam = validatedHomeLocationId !== undefined ? [validatedHomeLocationId] : [];
   await adb.run(`
     UPDATE users SET
       email = COALESCE(?, email), first_name = COALESCE(?, first_name),
       last_name = COALESCE(?, last_name), role = COALESCE(?, role),
       pin = COALESCE(?, pin), is_active = COALESCE(?, is_active),
-      password_hash = COALESCE(?, password_hash),
+      password_hash = COALESCE(?, password_hash)${homeLocSql},
       updated_at = datetime('now')
     WHERE id = ?
-  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, req.params.id);
+  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id);
 
   // SEC-L13: If password was changed, invalidate all sessions except the current admin's
   if (password) {
@@ -1082,7 +1131,10 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     await adb.run('DELETE FROM sessions WHERE user_id = ?', req.params.id);
   }
 
-  const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', req.params.id);
+  const user = await adb.get<any>(
+    'SELECT id, username, email, first_name, last_name, role, is_active, home_location_id FROM users WHERE id = ?',
+    req.params.id,
+  );
   res.json({ success: true, data: user });
 });
 
@@ -1796,11 +1848,16 @@ router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.jso
 // POST /settings/import — Import settings from JSON, validate keys
 router.post('/import', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
-  const data = req.body as Record<string, string>;
 
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     throw new AppError('Request body must be a JSON object', 400);
   }
+  // SCAN-648: Reject non-string values — settings are all string-valued.
+  if (!isStringMap(req.body)) {
+    logger.warn('POST /import: non-string value in settings import payload — potential client bug');
+    return res.status(400).json({ success: false, message: 'All settings values must be strings' });
+  }
+  const data = req.body;
 
   let imported = 0;
   let skipped = 0;
@@ -1811,7 +1868,7 @@ router.post('/import', adminOnly, async (req, res) => {
       skipped++;
       continue;
     }
-    const strVal = String(value);
+    const strVal = value;
     const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
     queries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: [key, storedVal] });
     imported++;

@@ -1,41 +1,47 @@
 import Foundation
 import Networking
 
-/// Network helpers for the `/audit-logs` server endpoint.
+/// Network helpers for the `/activity` server endpoint.
 ///
-/// Server route: `GET /audit-logs?actor=&action=&entity=&since=&until=&cursor=&q=`
-/// Confirmed in `packages/server/src/routes/audit.routes.ts`.
+/// Route confirmed in `packages/server/src/routes/activity.routes.ts` (SCAN-488).
+/// Method: GET /activity
+/// Auth:   authMiddleware applied at parent mount — standard Bearer token.
+/// Authz:  admin / manager / superadmin may filter by any actor_user_id.
+///         Non-manager roles are forced to their own events by the server.
+///
+/// Query params (all optional):
+///   entity_kind    – e.g. "ticket", "customer", "invoice"
+///   actor_user_id  – numeric user ID (admin / manager only on server side)
+///   cursor         – cursor pagination (numeric last ID)
+///   limit          – page size (server default 25, max 100)
 public extension APIClient {
 
-    /// Fetch a page of audit log entries.
+    /// Fetch a page of activity/audit log entries.
     ///
     /// - Parameters:
-    ///   - actor:   Filter by actor ID string.
-    ///   - action:  Filter by action string (e.g. "ticket.update").
-    ///   - entity:  Filter by entity type (e.g. "ticket").
-    ///   - since:   ISO-8601 start of date range.
-    ///   - until:   ISO-8601 end of date range.
-    ///   - cursor:  Opaque pagination cursor from a previous page response.
-    ///   - q:       Free-text server-side search term.
+    ///   - actor:       Filter by actor user ID (admin/manager only on server).
+    ///   - entityKind:  Filter by entity kind e.g. "ticket", "customer".
+    ///   - since:       Start of date range — client-side post-filter only;
+    ///                  the server does not accept date params on this endpoint.
+    ///   - until:       End of date range — client-side post-filter only.
+    ///   - cursor:      Cursor from a previous page's `next_cursor` value.
+    ///   - limit:       Page size (1-100; server clamps to 100).
     func fetchAuditLogs(
         actor: String? = nil,
-        action: String? = nil,
-        entity: String? = nil,
+        entityKind: String? = nil,
         since: Date? = nil,
         until: Date? = nil,
         cursor: String? = nil,
-        q: String? = nil
+        limit: Int? = nil
     ) async throws -> AuditLogPage {
-        let iso = ISO8601DateFormatter()
         var items: [URLQueryItem] = []
-        if let actor  { items.append(.init(name: "actor",  value: actor)) }
-        if let action { items.append(.init(name: "action", value: action)) }
-        if let entity { items.append(.init(name: "entity", value: entity)) }
-        if let since  { items.append(.init(name: "since",  value: iso.string(from: since))) }
-        if let until  { items.append(.init(name: "until",  value: iso.string(from: until))) }
-        if let cursor { items.append(.init(name: "cursor", value: cursor)) }
-        if let q, !q.isEmpty { items.append(.init(name: "q", value: q)) }
+        if let actor      { items.append(.init(name: "actor_user_id", value: actor)) }
+        if let entityKind { items.append(.init(name: "entity_kind",   value: entityKind)) }
+        if let cursor     { items.append(.init(name: "cursor",        value: cursor)) }
+        if let limit      { items.append(.init(name: "limit",         value: String(limit))) }
+        // Note: `since` / `until` are not server-supported query params on this
+        // endpoint — the repository applies them as client-side filters after fetch.
 
-        return try await get("/audit-logs", query: items.isEmpty ? nil : items, as: AuditLogPage.self)
+        return try await get("/activity", query: items.isEmpty ? nil : items, as: AuditLogPage.self)
     }
 }

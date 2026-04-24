@@ -12,6 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -245,7 +249,10 @@ fun ProfileScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator()
+                // a11y: announce loading state to screen readers
+                CircularProgressIndicator(
+                    modifier = Modifier.semantics { contentDescription = "Loading profile" },
+                )
             }
         } else {
             Column(
@@ -258,17 +265,20 @@ fun ProfileScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Avatar placeholder
+                val initials = buildString {
+                    state.firstName.firstOrNull()?.let { append(it.uppercase()) }
+                    state.lastName.firstOrNull()?.let { append(it.uppercase()) }
+                }.ifBlank { state.username.take(2).uppercase() }
+
+                // a11y: avatar circle — non-interactive; describes profile image with initials
                 Surface(
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(80.dp),
+                    modifier = Modifier
+                        .size(80.dp)
+                        .semantics { contentDescription = "Profile avatar: $initials" },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        val initials = buildString {
-                            state.firstName.firstOrNull()?.let { append(it.uppercase()) }
-                            state.lastName.firstOrNull()?.let { append(it.uppercase()) }
-                        }.ifBlank { state.username.take(2).uppercase() }
-
                         Text(
                             initials,
                             style = MaterialTheme.typography.headlineMedium,
@@ -288,10 +298,13 @@ fun ProfileScreen(
                 }
 
                 if (state.role.isNotBlank()) {
+                    val roleLabel = state.role.replaceFirstChar { it.uppercase() }
+                    // a11y: role badge — announces the user's assigned role
                     Text(
-                        state.role.replaceFirstChar { it.uppercase() },
+                        roleLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.semantics { contentDescription = "Your role: $roleLabel" },
                     )
                 }
 
@@ -322,29 +335,37 @@ fun ProfileScreen(
                 }
 
                 state.error?.let { errorText ->
+                    // a11y: error message — contentDescription prefixes "Error:" so TalkBack reads it distinctly
                     Text(
                         errorText,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.semantics { contentDescription = "Error: $errorText" },
                     )
                 }
 
                 // Actions
+                // a11y: explicit contentDescription so TalkBack reads the full action phrase
                 OutlinedButton(
                     onClick = { showPasswordDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Change password" },
                 ) {
-                    // decorative — OutlinedButton's "Change Password" Text supplies the accessible name
+                    // decorative — parent button semantics supplies the accessible name
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Change Password")
                 }
 
+                // a11y: explicit contentDescription so TalkBack reads the full action phrase
                 OutlinedButton(
                     onClick = { showPinDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Change PIN" },
                 ) {
-                    // decorative — OutlinedButton's "Change PIN" Text supplies the accessible name
+                    // decorative — parent button semantics supplies the accessible name
                     Icon(Icons.Default.Pin, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Change PIN")
@@ -426,11 +447,16 @@ private fun ChangePasswordDialog(
             }
         },
         confirmButton = {
+            // a11y: confirm button — contentDescription reflects current submitting state
             TextButton(
                 onClick = {
                     if (canSubmit) onSubmit(currentPassword, newPassword)
                 },
                 enabled = canSubmit,
+                modifier = Modifier.semantics {
+                    contentDescription = if (isSubmitting) "Saving password change" else "Save password change"
+                    role = Role.Button
+                },
             ) {
                 if (isSubmitting) {
                     CircularProgressIndicator(
@@ -445,7 +471,15 @@ private fun ChangePasswordDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+            // a11y: dismiss button
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSubmitting,
+                modifier = Modifier.semantics {
+                    contentDescription = "Cancel password change"
+                    role = Role.Button
+                },
+            ) {
                 Text("Cancel")
             }
         },
@@ -530,11 +564,16 @@ private fun ChangePinDialog(
             }
         },
         confirmButton = {
+            // a11y: confirm button — contentDescription reflects current submitting state
             TextButton(
                 onClick = {
                     if (canSubmit) onSubmit(currentPin, newPin)
                 },
                 enabled = canSubmit,
+                modifier = Modifier.semantics {
+                    contentDescription = if (isSubmitting) "Saving PIN change" else "Save PIN change"
+                    role = Role.Button
+                },
             ) {
                 if (isSubmitting) {
                     CircularProgressIndicator(
@@ -549,7 +588,15 @@ private fun ChangePinDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+            // a11y: dismiss button
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSubmitting,
+                modifier = Modifier.semantics {
+                    contentDescription = "Cancel PIN change"
+                    role = Role.Button
+                },
+            ) {
                 Text("Cancel")
             }
         },
@@ -562,12 +609,16 @@ private fun ProfileDetailRow(
     label: String,
     value: String,
 ) {
+    // a11y: mergeDescendants collapses icon + label + value into one node;
+    // contentDescription announces the pair as "<label>: <value>"
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = "$label: $value" },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // decorative — non-clickable label-value row; sibling label + value Text carry the announcement
+        // decorative — merged row contentDescription supplies the announcement
         Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
         Column {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

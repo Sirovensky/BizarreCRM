@@ -6,12 +6,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- CAMERA permission removed (AND-020). BarcodeScanScreen is manual-entry
-         only and PhotoCaptureScreen uses ActivityResultContracts.GetContent
-         (gallery picker) which does NOT require CAMERA. When a real CameraX
-         live-capture flow ships, re-add this permission and gate runtime
-         requests behind shouldShowRequestPermissionRationale + a rationale
-         dialog before ActivityResultContracts.RequestPermission. -->
+    <!-- CAMERA: required for the runtime permission request in PhotoCaptureScreen.
+         The screen calls ActivityResultContracts.RequestPermission(CAMERA) so the
+         user can pre-authorize the hardware before a future CameraX live-capture
+         surface ships. Without this manifest declaration Android silently denies
+         the request and never shows the system dialog, so the user sees only a
+         rationale dialog but never the actual permission prompt (bug:camera-perms).
+         The gallery-picker path (GetContent) does NOT require CAMERA at runtime;
+         this declaration only enables the permission-request dialog. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- M4 fix: CALL_PHONE was declared but never used. CustomerDetailScreen
@@ -34,6 +37,33 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
         android:maxSdkVersion="32" />
 
+    <!-- Package-visibility declarations (Android 11+ / API 30+).
+         Without these entries the OS hides matching apps from queryIntentActivities
+         and Intent.resolveActivity returns null, breaking ACTION_DIAL, ACTION_SENDTO,
+         ACTION_VIEW(geo), and ACTION_SENDTO(mailto) implicit intents. -->
+    <queries>
+        <!-- Phone dialer — used in CustomerDetailScreen / TicketDetailScreen -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <!-- SMS / MMS apps — used for customer SMS shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <!-- Maps / navigation — used for customer address shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <!-- Email client — used for customer email shortcuts -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
     <application
         android:name=".BizarreCrmApp"
         android:allowBackup="false"
@@ -42,7 +72,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.BizarreCRM"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:localeConfig="@xml/locales_config">
 
         <activity
             android:name=".MainActivity"
@@ -67,6 +98,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="bizarrecrm.app" />
+            </intent-filter>
+
+            <!-- App Links for the tenant subdomain app.bizarrecrm.com (plan §1.5 L205).
+                 Kept as a separate filter block from bizarrecrm.app above — the OS
+                 verifies each autoVerify filter independently; merging hosts into one
+                 filter causes verification to fail if either domain is unreachable.
+                 Server-side: deploy /.well-known/assetlinks.json at
+                 https://app.bizarrecrm.com — see TODO.md CROSS-PLATFORM section.
+                 Until assetlinks.json is live, links open in the browser (safe fallback). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.bizarrecrm.com" />
             </intent-filter>
 
             <!-- Custom-scheme filter for internal use (launcher shortcuts,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import { superAdminApi, type SuperAdminTenant } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { SUPER_ADMIN_TOKEN_KEY } from '@/api/client';
+import { SUPER_ADMIN_TOKEN_KEY, SUPER_ADMIN_LOGOUT_EVENT } from '@/api/client';
 import {
   setImpersonationSession,
 } from '@/components/ImpersonationBanner';
@@ -251,6 +251,16 @@ export function TenantsListPage() {
     () => Boolean(localStorage.getItem(SUPER_ADMIN_TOKEN_KEY)),
   );
   const [statusFilter, setStatusFilter] = useState('');
+
+  // When the superAdminClient response interceptor detects a 401/403 it
+  // clears the token and dispatches SUPER_ADMIN_LOGOUT_EVENT. Drop back to
+  // the login form so the page doesn't sit in an authed state calling into
+  // a dead session.
+  useEffect(() => {
+    const handleLogout = () => setIsAuthenticated(false);
+    window.addEventListener(SUPER_ADMIN_LOGOUT_EVENT, handleLogout);
+    return () => window.removeEventListener(SUPER_ADMIN_LOGOUT_EVENT, handleLogout);
+  }, []);
 
   const {
     data,

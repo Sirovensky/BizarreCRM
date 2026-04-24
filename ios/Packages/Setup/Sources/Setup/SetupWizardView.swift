@@ -3,7 +3,11 @@ import Core
 import DesignSystem
 
 // MARK: - SetupWizardView
-// §36.1 Shell: iPhone = .fullScreenCover, iPad = .sheet centered, max-width 720pt, glass card.
+// §36 Shell — adaptive layout:
+//   iPhone (width < 600pt)  : full-screen vertical flow (indicator → form → navBar)
+//   iPad   (width ≥ 900pt)  : three-pane split — sidebar | form | live preview
+//   iPad   (600–899pt)      : two-pane — sidebar | form (no preview column)
+// All chrome uses Liquid Glass via .brandGlass.
 
 public struct SetupWizardView: View {
     @State private var vm: SetupWizardViewModel
@@ -19,34 +23,149 @@ public struct SetupWizardView: View {
         GeometryReader { proxy in
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                contentCard(proxy: proxy)
+                contentLayout(proxy: proxy)
             }
         }
         .task { await vm.loadServerState() }
     }
 
-    // MARK: - Card layout
+    // MARK: - Adaptive layout dispatcher
 
     @ViewBuilder
-    private func contentCard(proxy: GeometryProxy) -> some View {
-        let isCompact = proxy.size.width < 600
-        if isCompact {
-            VStack(spacing: 0) {
-                indicatorBar
-                stepBody
-                navBar
-            }
+    private func contentLayout(proxy: GeometryProxy) -> some View {
+        let w = proxy.size.width
+        if w < 600 {
+            // iPhone — full-screen vertical
+            iPhoneLayout
+        } else if w < 900 {
+            // Small iPad — sidebar + form, no preview
+            iPadTwoPaneLayout
         } else {
+            // Full iPad — sidebar + form + live preview
+            iPadThreePaneLayout
+        }
+    }
+
+    // MARK: - iPhone layout
+
+    private var iPhoneLayout: some View {
+        VStack(spacing: 0) {
+            indicatorBar
+            stepBody
+            navBar
+        }
+    }
+
+    // MARK: - iPad two-pane (sidebar | form)
+
+    private var iPadTwoPaneLayout: some View {
+        HStack(spacing: 0) {
+            stepSidebar
+                .frame(width: 220)
+                .brandGlass(.regular, in: Rectangle())
+
+            Divider()
+
             VStack(spacing: 0) {
-                indicatorBar
                 stepBody
                 navBar
             }
-            .frame(maxWidth: 720)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(BrandSpacing.xxl)
         }
+        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(BrandSpacing.xl)
+    }
+
+    // MARK: - iPad three-pane (sidebar | form | live preview)
+
+    private var iPadThreePaneLayout: some View {
+        HStack(spacing: 0) {
+            stepSidebar
+                .frame(width: 220)
+                .brandGlass(.regular, in: Rectangle())
+
+            Divider()
+
+            VStack(spacing: 0) {
+                stepBody
+                navBar
+            }
+            .frame(minWidth: 380, maxWidth: 500)
+
+            Divider()
+
+            SetupLivePreview(payload: vm.wizardPayload, currentStep: vm.currentStep)
+                .frame(minWidth: 280)
+                .brandGlass(.thin, in: Rectangle())
+        }
+        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(BrandSpacing.xl)
+    }
+
+    // MARK: - Step sidebar (iPad only)
+
+    private var stepSidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Setup")
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(Color.bizarreOnSurface)
+                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.top, BrandSpacing.lg)
+                    .padding(.bottom, BrandSpacing.md)
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(SetupStep.allCases.filter { $0 != .complete }, id: \.rawValue) { step in
+                    sidebarRow(step)
+                }
+            }
+            .padding(.bottom, BrandSpacing.lg)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .accessibilityLabel("Setup steps")
+    }
+
+    @ViewBuilder
+    private func sidebarRow(_ step: SetupStep) -> some View {
+        let isCurrent   = step == vm.currentStep
+        let isCompleted = vm.completedSteps.contains(step.rawValue)
+
+        HStack(spacing: BrandSpacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(isCurrent  ? Color.bizarreOrange :
+                          isCompleted ? Color.bizarreTeal   : Color.bizarreOutline.opacity(0.3))
+                    .frame(width: 22, height: 22)
+                if isCompleted && !isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                } else {
+                    Text("\(step.rawValue)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(isCurrent ? .white : Color.bizarreOnSurface)
+                }
+            }
+            .accessibilityHidden(true)
+
+            Text(step.title)
+                .font(.brandLabelLarge())
+                .fontWeight(isCurrent ? .semibold : .regular)
+                .foregroundStyle(isCurrent ? Color.bizarreOrange : Color.bizarreOnSurface)
+                .lineLimit(1)
+
+            Spacer()
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(
+            isCurrent ? Color.bizarreOrange.opacity(0.10) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .padding(.horizontal, BrandSpacing.xs)
+        .contentShape(Rectangle())
+        .accessibilityLabel("\(step.title)\(isCompleted ? ", completed" : "")\(isCurrent ? ", current step" : "")")
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+        .hoverEffect(.highlight)
     }
 
     // MARK: - Step indicator chip
@@ -185,11 +304,21 @@ public struct SetupWizardView: View {
                 }
             )
 
-        case .teammates:
-            InviteTeammatesStepView(
+        case .firstEmployee:
+            FirstEmployeeStepView(
                 onValidityChanged: { valid in stepValid = valid },
-                onNext: { invitees in
-                    vm.wizardPayload.invitees = invitees
+                onNext: { payload in
+                    if let p = payload {
+                        vm.wizardPayload.firstEmployeeFirstName = p.firstName
+                        vm.wizardPayload.firstEmployeeLastName  = p.lastName
+                        vm.wizardPayload.firstEmployeeEmail     = p.email
+                        vm.wizardPayload.firstEmployeeRole      = p.role.rawValue
+                    } else {
+                        vm.wizardPayload.firstEmployeeFirstName = nil
+                        vm.wizardPayload.firstEmployeeLastName  = nil
+                        vm.wizardPayload.firstEmployeeEmail     = nil
+                        vm.wizardPayload.firstEmployeeRole      = nil
+                    }
                     Task { await vm.goNext() }
                 }
             )
@@ -233,6 +362,15 @@ public struct SetupWizardView: View {
                 onValidityChanged: { valid in stepValid = valid },
                 onNext: { themeChoice in
                     vm.wizardPayload.theme = themeChoice.rawValue
+                    Task { await vm.goNext() }
+                }
+            )
+
+        case .sampleData:
+            SampleDataOptInStepView(
+                onValidityChanged: { valid in stepValid = valid },
+                onNext: { optIn in
+                    vm.wizardPayload.sampleDataOptIn = optIn
                     Task { await vm.goNext() }
                 }
             )

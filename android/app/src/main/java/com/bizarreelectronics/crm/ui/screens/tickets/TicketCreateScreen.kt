@@ -66,6 +66,11 @@ import com.bizarreelectronics.crm.data.remote.api.*
 import com.bizarreelectronics.crm.data.remote.dto.*
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.data.local.draft.DraftStore
+import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -87,6 +92,7 @@ import javax.inject.Inject
 
 private const val DEFAULT_TAX_RATE = 0.08865
 private const val SEARCH_DEBOUNCE_MS = 300L
+private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
 
 private data class CategoryTile(val value: String, val label: String, val emoji: String)
 
@@ -383,6 +389,8 @@ class TicketCreateViewModel @Inject constructor(
     private val repairPricingApi: RepairPricingApi,
     private val settingsApi: SettingsApi,
     private val savedStateHandle: SavedStateHandle,
+    private val draftStore: DraftStore,
+    private val gson: Gson,
 ) : ViewModel() {
 
     // AUDIT-AND-037: SavedStateHandle key constants for process-death survival.
@@ -398,8 +406,12 @@ class TicketCreateViewModel @Inject constructor(
     private val _state = MutableStateFlow(TicketCreateUiState())
     val state: StateFlow<TicketCreateUiState> = _state.asStateFlow()
 
+    private val _pendingDraft = MutableStateFlow<DraftStore.Draft?>(null)
+    val pendingDraft: StateFlow<DraftStore.Draft?> = _pendingDraft.asStateFlow()
+
     private var customerSearchJob: Job? = null
     private var deviceSearchJob: Job? = null
+    private var autosaveJob: Job? = null
 
     init {
         loadDefaultTaxRate()
@@ -438,6 +450,18 @@ class TicketCreateViewModel @Inject constructor(
                 ?.takeIf { it > 0 }
                 ?.let { seedCustomerId -> setPickedCustomer(seedCustomerId) }
         }
+
+        // Load any persisted draft for the ticket-create form.
+        // Only surface the prompt when no customer has already been restored
+        // (process-death restore and draft-recovery are mutually exclusive —
+        // SavedStateHandle already covered the customer/step, so a stale draft
+        // from a previous session would be confusing noise).
+        viewModelScope.launch {
+            val draft = draftStore.load(DraftStore.DraftType.TICKET)
+            if (draft != null && _state.value.selectedCustomer == null && !_state.value.isWalkIn) {
+                _pendingDraft.value = draft
+            }
+        }
     }
 
     /** Persist the current step to SavedStateHandle so it survives process death. */
@@ -453,6 +477,95 @@ class TicketCreateViewModel @Inject constructor(
     /** Persist the walk-in flag to SavedStateHandle. */
     private fun persistIsWalkIn(walkIn: Boolean) {
         savedStateHandle[KEY_IS_WALK_IN] = walkIn
+    }
+
+    // ── Draft autosave ───────────────────────────────────────────────
+
+    /**
+     * Call this after every user-driven field change.
+     * Cancels the previous pending autosave and starts a new 2-second
+     * countdown before persisting the current form state to DraftStore.
+     */
+    fun onFieldChanged() {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(DRAFT_AUTOSAVE_DEBOUNCE_MS)
+            val json = serializeCurrentForm()
+            draftStore.save(DraftStore.DraftType.TICKET, json)
+        }
+    }
+
+    /** Serialise the form fields needed to restore the wizard. */
+    private fun serializeCurrentForm(): String {
+        val s = _state.value
+        val obj = JsonObject()
+        s.selectedCustomer?.id?.let { obj.addProperty("customerId", it) }
+        s.selectedCustomer?.firstName?.let { obj.addProperty("customerFirstName", it) }
+        s.selectedCustomer?.lastName?.let { obj.addProperty("customerLastName", it) }
+        if (s.isWalkIn) obj.addProperty("isWalkIn", true)
+        s.selectedCategory?.let { obj.addProperty("selectedCategory", it) }
+        s.selectedDevice?.id?.let { obj.addProperty("deviceModelId", it) }
+        s.selectedDevice?.name?.let { obj.addProperty("deviceName", it) }
+        if (s.customDeviceName.isNotBlank()) obj.addProperty("customDeviceName", s.customDeviceName)
+        s.selectedService?.id?.let { obj.addProperty("serviceId", it) }
+        s.selectedService?.name?.let { obj.addProperty("serviceName", it) }
+        if (s.manualPrice.isNotBlank()) obj.addProperty("manualPrice", s.manualPrice)
+        if (s.imei.isNotBlank()) obj.addProperty("imei", s.imei)
+        if (s.serial.isNotBlank()) obj.addProperty("serial", s.serial)
+        if (s.color.isNotBlank()) obj.addProperty("color", s.color)
+        if (s.network.isNotBlank()) obj.addProperty("network", s.network)
+        if (s.notes.isNotBlank()) obj.addProperty("notes", s.notes)
+        // Do NOT include securityCode — treat it like a credential field.
+        return gson.toJson(obj)
+    }
+
+    /**
+     * Restore the form state from a persisted draft.
+     * Only restores fields we can reconstruct without extra API calls —
+     * customer details are re-fetched via [setPickedCustomer] so the
+     * display name is always fresh.
+     */
+    fun resumeDraft(draft: DraftStore.Draft) {
+        _pendingDraft.value = null
+        val obj = try {
+            JsonParser.parseString(draft.payloadJson).asJsonObject
+        } catch (_: Exception) {
+            return
+        }
+        // Restore category immediately so the wizard can start from the right step.
+        val category = obj.get("selectedCategory")?.takeIf { !it.isJsonNull }?.asString
+        if (category != null) {
+            _state.update { it.copy(selectedCategory = category) }
+            loadManufacturersAndPopular(category)
+            loadServices(category)
+        }
+        // Restore lightweight text fields.
+        val customDeviceName = obj.get("customDeviceName")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val manualPrice = obj.get("manualPrice")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val imei = obj.get("imei")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val serial = obj.get("serial")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val color = obj.get("color")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val network = obj.get("network")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        val notes = obj.get("notes")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        _state.update { it.copy(customDeviceName = customDeviceName, manualPrice = manualPrice, imei = imei, serial = serial, color = color, network = network, notes = notes) }
+        // Re-fetch customer so the display name is always fresh.
+        val isWalkIn = obj.get("isWalkIn")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+        if (isWalkIn) {
+            selectWalkIn()
+        } else {
+            val customerId = obj.get("customerId")?.takeIf { !it.isJsonNull }?.asLong
+            if (customerId != null && customerId > 0) {
+                setPickedCustomer(customerId)
+            }
+        }
+    }
+
+    /** Permanently discard the pending draft and clear the recovery prompt. */
+    fun discardDraft() {
+        _pendingDraft.value = null
+        viewModelScope.launch {
+            draftStore.discard(DraftStore.DraftType.TICKET)
+        }
     }
 
     /**
@@ -611,6 +724,7 @@ class TicketCreateViewModel @Inject constructor(
         persistStep(TicketCreateStep.CATEGORY)
         persistCustomerId(customer.id)
         persistIsWalkIn(false)
+        onFieldChanged()
     }
 
     /**
@@ -634,6 +748,7 @@ class TicketCreateViewModel @Inject constructor(
         persistStep(TicketCreateStep.CATEGORY)
         persistCustomerId(null)
         persistIsWalkIn(true)
+        onFieldChanged()
     }
 
     fun clearCustomer() {
@@ -644,10 +759,10 @@ class TicketCreateViewModel @Inject constructor(
         _state.update { it.copy(showNewCustomerForm = !it.showNewCustomerForm) }
     }
 
-    fun updateNewCustFirstName(value: String) { _state.update { it.copy(newCustFirstName = value) } }
-    fun updateNewCustLastName(value: String) { _state.update { it.copy(newCustLastName = value) } }
-    fun updateNewCustPhone(value: String) { _state.update { it.copy(newCustPhone = value) } }
-    fun updateNewCustEmail(value: String) { _state.update { it.copy(newCustEmail = value) } }
+    fun updateNewCustFirstName(value: String) { _state.update { it.copy(newCustFirstName = value) }; onFieldChanged() }
+    fun updateNewCustLastName(value: String) { _state.update { it.copy(newCustLastName = value) }; onFieldChanged() }
+    fun updateNewCustPhone(value: String) { _state.update { it.copy(newCustPhone = value) }; onFieldChanged() }
+    fun updateNewCustEmail(value: String) { _state.update { it.copy(newCustEmail = value) }; onFieldChanged() }
 
     fun createAndSelectCustomer() {
         val s = _state.value
@@ -729,6 +844,7 @@ class TicketCreateViewModel @Inject constructor(
         persistStep(TicketCreateStep.DEVICE)
         loadManufacturersAndPopular(category)
         loadServices(category)
+        onFieldChanged()
     }
 
     private fun loadManufacturersAndPopular(category: String) {
@@ -815,10 +931,12 @@ class TicketCreateViewModel @Inject constructor(
                 currentStep = TicketCreateStep.SERVICE,
             )
         }
+        onFieldChanged()
     }
 
     fun updateCustomDeviceName(name: String) {
         _state.update { it.copy(customDeviceName = name) }
+        onFieldChanged()
     }
 
     fun confirmCustomDevice() {
@@ -877,10 +995,12 @@ class TicketCreateViewModel @Inject constructor(
 
     fun selectGrade(grade: RepairPriceGrade) {
         _state.update { it.copy(selectedGrade = grade) }
+        onFieldChanged()
     }
 
     fun updateManualPrice(price: String) {
         _state.update { it.copy(manualPrice = price) }
+        onFieldChanged()
     }
 
     fun confirmService() {
@@ -904,13 +1024,14 @@ class TicketCreateViewModel @Inject constructor(
         }
     }
 
-    fun updateImei(value: String) { _state.update { it.copy(imei = value) } }
-    fun updateSerial(value: String) { _state.update { it.copy(serial = value) } }
+    fun updateImei(value: String) { _state.update { it.copy(imei = value) }; onFieldChanged() }
+    fun updateSerial(value: String) { _state.update { it.copy(serial = value) }; onFieldChanged() }
+    // securityCode intentionally NOT wired to onFieldChanged — treated as a credential field, never autosaved.
     fun updateSecurityCode(value: String) { _state.update { it.copy(securityCode = value) } }
-    fun updateColor(value: String) { _state.update { it.copy(color = value) } }
-    fun updateNetwork(value: String) { _state.update { it.copy(network = value) } }
-    fun updateNotes(value: String) { _state.update { it.copy(notes = value) } }
-    fun updateWarrantyDays(value: String) { _state.update { it.copy(warrantyDays = value) } }
+    fun updateColor(value: String) { _state.update { it.copy(color = value) }; onFieldChanged() }
+    fun updateNetwork(value: String) { _state.update { it.copy(network = value) }; onFieldChanged() }
+    fun updateNotes(value: String) { _state.update { it.copy(notes = value) }; onFieldChanged() }
+    fun updateWarrantyDays(value: String) { _state.update { it.copy(warrantyDays = value) }; onFieldChanged() }
 
     fun toggleCondition(label: String) {
         _state.update { current ->
@@ -1065,13 +1186,25 @@ class TicketCreateViewModel @Inject constructor(
                         },
                     )
                 }
+                // CROSS12-fix: pass is_walk_in + optional walk-in identity.
+                // The server creates a unique editable row when first/phone are
+                // present; falls back to the shared sentinel for anonymous walk-ins.
                 val request = CreateTicketRequest(
-                    // CROSS10 / CROSS5: walk-in → customer_id = NULL.
+                    // CROSS10 / CROSS5: walk-in -> customer_id = NULL; the
+                    // server resolves the effective customer FK from is_walk_in
+                    // + optional identity fields.
                     customerId = s.selectedCustomer?.id,
+                    isWalkIn = if (s.isWalkIn) true else null,
+                    walkInFirstName = if (s.isWalkIn) s.newCustFirstName.trim().ifBlank { null } else null,
+                    walkInLastName  = if (s.isWalkIn) s.newCustLastName.trim().ifBlank  { null } else null,
+                    walkInPhone     = if (s.isWalkIn) s.newCustPhone.trim().ifBlank     { null } else null,
+                    walkInEmail     = if (s.isWalkIn) s.newCustEmail.trim().ifBlank     { null } else null,
                     devices = devices,
                 )
                 val createdId = ticketRepository.createTicket(request)
                 _state.update { it.copy(isSubmitting = false) }
+                // Ticket created successfully — draft is no longer needed.
+                discardDraft()
                 onCreated(createdId)
             } catch (e: Exception) {
                 _state.update { it.copy(isSubmitting = false, error = e.message ?: "Network error.") }
@@ -1117,6 +1250,41 @@ private val currencyFormatter: NumberFormat = NumberFormat.getCurrencyInstance(L
 
 private fun formatCurrency(amount: Double): String = currencyFormatter.format(amount)
 
+/**
+ * Build a short, human-readable preview string from a ticket draft payload JSON.
+ * Used by [DraftRecoveryPrompt] so the user can identify the draft at a glance.
+ *
+ * Example outputs:
+ *   "Customer: John Doe — Phone — iPhone 15 — Cracked screen"
+ *   "Walk-in — Laptop — Cracked screen"
+ *   "New ticket (no details)"
+ */
+private fun buildTicketDraftPreview(json: String): String {
+    return try {
+        val obj = com.google.gson.JsonParser.parseString(json).asJsonObject
+        val parts = mutableListOf<String>()
+        val isWalkIn = obj.get("isWalkIn")?.takeIf { !it.isJsonNull }?.asBoolean ?: false
+        val firstName = obj.get("customerFirstName")?.takeIf { !it.isJsonNull }?.asString
+        val lastName = obj.get("customerLastName")?.takeIf { !it.isJsonNull }?.asString
+        when {
+            isWalkIn -> parts.add("Walk-in")
+            firstName != null -> parts.add("Customer: ${listOfNotNull(firstName, lastName).joinToString(" ")}")
+        }
+        val category = obj.get("selectedCategory")?.takeIf { !it.isJsonNull }?.asString
+        if (category != null) parts.add(category.replaceFirstChar { it.uppercase() })
+        val deviceName = obj.get("deviceName")?.takeIf { !it.isJsonNull }?.asString
+            ?: obj.get("customDeviceName")?.takeIf { !it.isJsonNull }?.asString
+        if (deviceName != null) parts.add(deviceName)
+        val serviceName = obj.get("serviceName")?.takeIf { !it.isJsonNull }?.asString
+        if (serviceName != null) parts.add(serviceName)
+        val notes = obj.get("notes")?.takeIf { !it.isJsonNull }?.asString
+        if (notes != null && serviceName == null) parts.add(notes.take(60))
+        if (parts.isEmpty()) "New ticket (no details)" else parts.joinToString(" — ")
+    } catch (_: Exception) {
+        "New ticket"
+    }
+}
+
 // ===========================================================================================
 // Main Screen Composable
 // ===========================================================================================
@@ -1129,6 +1297,7 @@ fun TicketCreateScreen(
     viewModel: TicketCreateViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val pendingDraft by viewModel.pendingDraft.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // CROSS34: system back walks the wizard backward one step instead of popping
@@ -1146,6 +1315,21 @@ fun TicketCreateScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    // Draft recovery prompt — surfaces as a modal bottom sheet when a previously
+    // saved draft exists and the form is empty (user hasn't already started typing
+    // or navigated via process-death restore). Dismissed by resume or discard only.
+    val isFormEmpty = state.selectedCustomer == null && !state.isWalkIn
+    if (pendingDraft != null && isFormEmpty) {
+        DraftRecoveryPrompt(
+            draft = pendingDraft!!,
+            previewFormatter = { json ->
+                buildTicketDraftPreview(json)
+            },
+            onResume = { viewModel.resumeDraft(pendingDraft!!) },
+            onDiscard = { viewModel.discardDraft() },
+        )
     }
 
     Scaffold(

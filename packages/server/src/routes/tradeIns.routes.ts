@@ -4,9 +4,31 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { validatePaginationOffset } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import type { Request } from 'express';
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// Rate-limit constants for write paths (SCAN-556)
+// ---------------------------------------------------------------------------
+
+const TRADE_IN_WRITE_CATEGORY = 'trade_in_write';
+const TRADE_IN_WRITE_MAX = 30;
+const TRADE_IN_WRITE_WINDOW_MS = 60_000; // 30 writes per user per minute
+
+// ---------------------------------------------------------------------------
+// Role guard (SCAN-557): trade-in records contain IMEI/serial/PII — restrict
+// to manager or admin.  defence-in-depth on top of authMiddleware.
+// ---------------------------------------------------------------------------
+
+function requireManagerOrAdmin(req: Request): void {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -44,6 +66,8 @@ function validatePrice(field: string, value: unknown): void {
 
 // GET / — List trade-ins
 router.get('/', asyncHandler(async (req, res) => {
+  // SCAN-557: IMEI/serial/customer PII — restrict to manager/admin
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const status = (req.query.status as string || '').trim();
   const conditions = status ? 'WHERE ti.status = ? AND ti.is_deleted = 0' : 'WHERE ti.is_deleted = 0';
@@ -71,6 +95,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // GET /:id — Single trade-in
 router.get('/:id', asyncHandler(async (req, res) => {
+  // SCAN-557: IMEI/serial/phone/email — restrict to manager/admin
+  requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const ti = await adb.get(`
     SELECT ti.*, c.first_name, c.last_name, c.phone, c.email
@@ -84,6 +110,11 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST / — Create trade-in
 router.post('/', asyncHandler(async (req, res) => {
+  // SCAN-556: rate-limit write path — 30 creates per user per minute
+  if (!checkWindowRate(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_MAX, TRADE_IN_WRITE_WINDOW_MS)) {
+    throw new AppError('Too many trade-in submissions. Please wait before trying again.', 429);
+  }
+  recordWindowAttempt(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_WINDOW_MS);
   const adb = req.asyncDb;
   const { customer_id, device_name, device_type, imei, serial, color, condition = 'good', offered_price, notes, pre_conditions } = req.body;
   if (!device_name) throw new AppError('device_name required', 400);
@@ -121,6 +152,11 @@ router.post('/', asyncHandler(async (req, res) => {
 // hard-cap accepted_price to (0, 100_000] so a typo can't issue a $1M payout
 // and a sign-flip can't mint negative inventory value.
 router.patch('/:id', asyncHandler(async (req, res) => {
+  // SCAN-556: rate-limit write path — 30 updates per user per minute
+  if (!checkWindowRate(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_MAX, TRADE_IN_WRITE_WINDOW_MS)) {
+    throw new AppError('Too many trade-in updates. Please wait before trying again.', 429);
+  }
+  recordWindowAttempt(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_WINDOW_MS);
   const adb: AsyncDb = req.asyncDb;
   const { status, offered_price, accepted_price, notes, condition } = req.body;
   // SEC-M17: pull the prior row so we can detect the pending→accepted

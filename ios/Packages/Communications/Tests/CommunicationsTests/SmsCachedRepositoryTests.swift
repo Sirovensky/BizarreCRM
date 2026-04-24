@@ -48,7 +48,8 @@ extension SmsConversation {
             "message_count": 1,
             "unread_count": 0,
             "is_flagged": false,
-            "is_pinned": false
+            "is_pinned": false,
+            "is_archived": false
         ]
         let data = try! JSONSerialization.data(withJSONObject: dict)
         return try! JSONDecoder().decode(SmsConversation.self, from: data)

@@ -4,14 +4,20 @@ import Core
 import Networking
 
 // §7.5 Invoice Void ViewModel — POST /api/v1/invoices/:id/void
+// Server: packages/server/src/routes/invoices.routes.ts:780
+// Response: { success: true, data: { message: "Invoice voided, stock restored" } }
+// Uses InvoiceVoidRequest/InvoiceVoidResponse + voidInvoice(id:reason:) defined in
+// InvoiceDetailEndpoints.swift (Networking package).
 
-public struct VoidRequest: Encodable, Sendable {
-    public let reason: String
-}
-
-public struct VoidResult: Decodable, Sendable, Equatable {
+/// Value returned to the caller on a successful void. ID is synthetic (invoiceId) since
+/// the server response contains only a message string, not the invoice record.
+public struct VoidResult: Sendable, Equatable {
     public let id: Int64
     public let status: String?
+    public init(id: Int64, status: String? = "void") {
+        self.id = id
+        self.status = status
+    }
 }
 
 @MainActor
@@ -66,15 +72,11 @@ public final class InvoiceVoidViewModel {
         state = .submitting
         fieldErrors = [:]
 
-        let body = VoidRequest(reason: reason)
-
         do {
-            let result = try await api.post(
-                "/api/v1/invoices/\(invoiceId)/void",
-                body: body,
-                as: VoidResult.self
-            )
-            state = .success(result)
+            // voidInvoice(id:reason:) is defined in Networking/InvoiceDetailEndpoints.swift.
+            // Server response is { message } — we build VoidResult from the invoiceId.
+            _ = try await api.voidInvoice(id: invoiceId, reason: reason)
+            state = .success(VoidResult(id: invoiceId, status: "void"))
         } catch {
             AppLog.ui.error("Void failed: \(error.localizedDescription, privacy: .public)")
             handleError(AppError.from(error))

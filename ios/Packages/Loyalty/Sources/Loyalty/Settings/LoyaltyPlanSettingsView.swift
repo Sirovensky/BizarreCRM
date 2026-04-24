@@ -35,15 +35,28 @@ public final class LoyaltyPlanSettingsViewModel {
     public func load() async {
         state = .loading
         do {
-            async let plansTask = api.get("/memberships/plans", as: [MembershipPlan].self)
+            // Server routes:
+            //   GET /api/v1/membership/tiers  → active tier list
+            //   GET /api/v1/settings/loyalty/rule  → earn rule (if endpoint exists)
+            async let tiersTask = api.listMembershipTiers()
             async let ruleTask  = api.get("/settings/loyalty/rule", as: LoyaltyRule.self)
-            let (fetchedPlans, fetchedRule) = try await (plansTask, ruleTask)
-            plans = fetchedPlans
+            let (tiers, fetchedRule) = try await (tiersTask, ruleTask)
+            // Map MembershipTierDTO → MembershipPlan for the shared form
+            plans = tiers.map { tier in
+                MembershipPlan(
+                    id: String(tier.id),
+                    name: tier.name,
+                    pricePerPeriodCents: Int(tier.monthlyPrice * 100),
+                    periodDays: 30,
+                    perks: tier.discountPct > 0 ? [.percentageDiscount(tier.discountPct)] : [],
+                    signupBonusPoints: 0
+                )
+            }
             rule = fetchedRule
             state = .loaded
         } catch let t as APITransportError {
-            if case .httpStatus(let c, _) = t, c == 404 || c == 501 {
-                // Stub data for dev
+            if case .httpStatus(let c, _) = t, c == 404 || c == 402 || c == 501 {
+                // Feature not enabled or endpoint not yet live — show stubs.
                 plans = LoyaltyPlanSettingsViewModel.stubPlans
                 rule = .default
                 state = .loaded
@@ -71,7 +84,8 @@ public final class LoyaltyPlanSettingsViewModel {
         isSaving = true
         defer { isSaving = false }
         do {
-            try await api.delete("/memberships/plans/\(plan.id)")
+            // Server route: DELETE /api/v1/membership/tiers/:id (soft-delete)
+            try await api.delete("/membership/tiers/\(plan.id)")
             plans.removeAll { $0.id == plan.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -84,17 +98,35 @@ public final class LoyaltyPlanSettingsViewModel {
         defer { isSaving = false }
         do {
             if plans.contains(where: { $0.id == plan.id }) {
-                let updated = try await api.put(
-                    "/memberships/plans/\(plan.id)",
+                // Server route: PUT /api/v1/membership/tiers/:id
+                let dto = try await api.put(
+                    "/membership/tiers/\(plan.id)",
                     body: MembershipPlanRequest(plan),
-                    as: MembershipPlan.self
+                    as: MembershipTierDTO.self
+                )
+                let updated = MembershipPlan(
+                    id: String(dto.id),
+                    name: dto.name,
+                    pricePerPeriodCents: Int(dto.monthlyPrice * 100),
+                    periodDays: 30,
+                    perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
+                    signupBonusPoints: 0
                 )
                 plans = plans.map { $0.id == plan.id ? updated : $0 }
             } else {
-                let created = try await api.post(
-                    "/memberships/plans",
+                // Server route: POST /api/v1/membership/tiers
+                let dto = try await api.post(
+                    "/membership/tiers",
                     body: MembershipPlanRequest(plan),
-                    as: MembershipPlan.self
+                    as: MembershipTierDTO.self
+                )
+                let created = MembershipPlan(
+                    id: String(dto.id),
+                    name: dto.name,
+                    pricePerPeriodCents: Int(dto.monthlyPrice * 100),
+                    periodDays: 30,
+                    perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
+                    signupBonusPoints: 0
                 )
                 plans.append(created)
             }

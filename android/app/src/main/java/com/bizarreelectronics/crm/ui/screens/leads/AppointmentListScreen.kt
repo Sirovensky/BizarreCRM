@@ -10,6 +10,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -28,11 +35,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
+
+// ─── View-mode toggle ─────────────────────────────────────────────────────────
+
+/**
+ * View mode for the Appointments screen (ActionPlan §10).
+ *
+ * [DAY] shows the existing single-day picker + list.
+ * [WEEK] shows [AppointmentWeekView] — a 7-column week grid.
+ */
+enum class AppointmentViewMode { DAY, WEEK }
 
 // ─── Constants & helpers ─────────────────────────────────────────────────────
 
@@ -205,6 +224,15 @@ fun AppointmentListScreen(
     // persists the open/closed state across configuration changes.
     var showDatePicker by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
+    // §10: view-mode toggle — Day (default) or Week.
+    var viewMode by remember { mutableStateOf(AppointmentViewMode.DAY) }
+
+    // Week-start anchored to Monday (ISO 8601). Immutable: LocalDate.with() returns
+    // a new instance. rememberSaveable not needed — week navigates via buttons.
+    var weekStart by remember {
+        mutableStateOf(LocalDate.now().with(DayOfWeek.MONDAY))
+    }
+
     if (showDatePicker) {
         DatePickerModal(
             initialMillis = state.selectedDateMillis,
@@ -224,7 +252,45 @@ fun AppointmentListScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    // §10: Day / Week view-mode toggle pair (mirrors §9 List/Kanban pattern).
+                    IconButton(
+                        onClick = { viewMode = AppointmentViewMode.DAY },
+                        modifier = Modifier.semantics {
+                            contentDescription = if (viewMode == AppointmentViewMode.DAY)
+                                "Day view, selected"
+                            else
+                                "Switch to day view"
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.ViewDay,
+                            contentDescription = null,
+                            tint = if (viewMode == AppointmentViewMode.DAY)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewMode = AppointmentViewMode.WEEK },
+                        modifier = Modifier.semantics {
+                            contentDescription = if (viewMode == AppointmentViewMode.WEEK)
+                                "Week view, selected"
+                            else
+                                "Switch to week view"
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.ViewWeek,
+                            contentDescription = null,
+                            tint = if (viewMode == AppointmentViewMode.WEEK)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = { showDatePicker = true }) {
+                        // a11y: descriptive label mirrors "Pick date" intent
                         Icon(
                             Icons.Default.CalendarMonth,
                             contentDescription = "Pick date",
@@ -232,9 +298,10 @@ fun AppointmentListScreen(
                         )
                     }
                     IconButton(onClick = { viewModel.loadAppointments() }) {
+                        // a11y: screen-specific label — mirrors "Refresh tickets" / "Refresh expenses" pattern
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "Refresh",
+                            contentDescription = "Refresh appointments",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -246,18 +313,64 @@ fun AppointmentListScreen(
                 onClick = onCreateClick,
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create appointment")
+                // a11y: spec §26 — "Create new appointment" (imperative, mirrors "Create new ticket")
+                Icon(Icons.Default.Add, contentDescription = "Create new appointment")
             }
         },
     ) { padding ->
+        // §10: when Week mode is active, bypass the day-picker flow entirely and
+        // render the week composable using the full appointments list from the VM.
+        // Client-side filter to the current week avoids a new network call this wave.
+        if (viewMode == AppointmentViewMode.WEEK) {
+            val weekEnd = weekStart.plusDays(6)
+            // Filter to appointments whose start_time falls within [weekStart, weekEnd].
+            // Immutable: filter + sortedBy return new lists.
+            val weekAppointments = state.appointments
+                .filter { appt ->
+                    val d = appt.startTime?.take(10)?.let {
+                        try { LocalDate.parse(it) } catch (_: Exception) { null }
+                    } ?: return@filter false
+                    !d.isBefore(weekStart) && !d.isAfter(weekEnd)
+                }
+                .sortedBy { it.startTime ?: "" }
+
+            AppointmentWeekView(
+                appointments = weekAppointments,
+                weekStart = weekStart,
+                onWeekPrev = { weekStart = weekStart.minusWeeks(1) },
+                onWeekNext = { weekStart = weekStart.plusWeeks(1) },
+                onAppointmentClick = { /* detail nav deferred — read-only this wave */ },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            )
+            return@Scaffold
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
             // Selected date header
+            // a11y: liveRegion=Polite so TalkBack re-announces when the date or count changes
+            // after the user picks a new day. mergeDescendants collapses "Selected date",
+            // the formatted date, and the count into one coherent sentence.
+            val selectedDateLabel = formatDayHeader(state.selectedDateMillis)
+            val countLabel = if (!state.isLoading) {
+                val n = state.appointments.size
+                if (n == 1) "1 appointment" else "$n appointments"
+            } else {
+                "loading"
+            }
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        // a11y: live region so date/count changes are announced automatically
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Selected date: $selectedDateLabel, $countLabel"
+                    },
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Row(
@@ -272,7 +385,7 @@ fun AppointmentListScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            formatDayHeader(state.selectedDateMillis),
+                            selectedDateLabel,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -290,30 +403,66 @@ fun AppointmentListScreen(
 
             when {
                 state.isOffline -> {
-                    EmptyState(
-                        icon = Icons.Default.CloudOff,
-                        title = "Offline",
-                        subtitle = "Appointments require an online connection",
-                    )
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the offline state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.CloudOff,
+                            title = "Offline",
+                            subtitle = "Appointments require an online connection",
+                        )
+                    }
                 }
                 state.isLoading -> {
-                    BrandSkeleton(
-                        rows = 5,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
+                    // a11y: mergeDescendants + contentDescription so TalkBack announces
+                    // "Loading appointments" on a single focus stop rather than each shimmer
+                    // box individually.
+                    Box(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Loading appointments"
+                        },
+                    ) {
+                        BrandSkeleton(
+                            rows = 5,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
                 }
                 state.error != null -> {
-                    ErrorState(
-                        message = state.error ?: "Error",
-                        onRetry = { viewModel.loadAppointments() },
-                    )
+                    // a11y: liveRegion=Assertive so TalkBack interrupts immediately and
+                    // tells the user about the error rather than leaving them in silence.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorState(
+                            message = state.error ?: "Error",
+                            onRetry = { viewModel.loadAppointments() },
+                        )
+                    }
                 }
                 state.appointments.isEmpty() -> {
-                    EmptyState(
-                        icon = Icons.Default.EventBusy,
-                        title = "No appointments",
-                        subtitle = "Nothing scheduled for this day",
-                    )
+                    // a11y: mergeDescendants collapses the decorative icon + title + subtitle
+                    // into one TalkBack node so the empty state reads as a single announcement.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics(mergeDescendants = true) {},
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        EmptyState(
+                            icon = Icons.Default.EventBusy,
+                            title = "No appointments",
+                            subtitle = "Nothing scheduled for this day",
+                        )
+                    }
                 }
                 else -> {
                     @OptIn(ExperimentalMaterial3Api::class)
@@ -372,9 +521,12 @@ private fun DayHeader(dayKey: String) {
     } catch (_: Exception) {
         dayKey
     }
+    // a11y: heading() lets TalkBack users swipe by headings to jump between day groups
     Text(
         label,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        modifier = Modifier
+            .padding(top = 8.dp, bottom = 4.dp)
+            .semantics { heading() },
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,
@@ -384,7 +536,30 @@ private fun DayHeader(dayKey: String) {
 @Composable
 private fun AppointmentCard(appointment: AppointmentDetail) {
     val meta = appointmentStatusMeta(appointment.status)
-    Card(modifier = Modifier.fillMaxWidth()) {
+
+    // a11y: build the announcement string once. The card is visually tappable (Row with
+    // clickable), so Role.Button is appropriate. mergeDescendants collapses time label +
+    // title + customer name + status badge into one TalkBack focus stop.
+    val timeLabel = DateFormatter.formatDateTime(appointment.startTime)
+    val titleLabel = appointment.title?.takeIf { it.isNotBlank() } ?: "Untitled"
+    val customerLabel = appointment.customerName?.takeIf { it.isNotBlank() }
+    val cardA11yDesc = buildString {
+        append("Appointment at $timeLabel")
+        if (customerLabel != null) append(" with $customerLabel")
+        append(" for $titleLabel")
+        append(". ${meta.label}.")
+        append(" Tap to open.")
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                // a11y: single focus stop with full context; Role.Button signals it is activatable
+                contentDescription = cardA11yDesc
+                role = Role.Button
+            },
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

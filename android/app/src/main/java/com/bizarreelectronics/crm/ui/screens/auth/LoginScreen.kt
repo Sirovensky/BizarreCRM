@@ -39,8 +39,10 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -51,8 +53,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import com.bizarreelectronics.crm.BuildConfig
+import java.net.ConnectException
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -87,6 +91,31 @@ data class LoginUiState(
     val error: String? = null,
     val serverConnected: Boolean = false,
     val showBackupCodes: List<String>? = null,
+    // §2.1 — setup-status probe result. Null = not yet probed or probe skipped.
+    // true = server needs first-run setup; false = server is ready for login.
+    // Probe failure is non-blocking: login form still renders if null.
+    val setupNeeded: Boolean? = null,
+    // §2.1 — probe is in flight (transparent overlay)
+    val isProbing: Boolean = false,
+    // §2.1 — probe error message (inline retry on credentials step)
+    val probeError: String? = null,
+    // §2.12-L356 — true when a login attempt fails because the host was unreachable
+    // (UnknownHostException / ConnectException). Shows inline error + Retry CTA.
+    val unreachableHost: Boolean = false,
+    // §2.12-L357 — true when the server returned 429 Too Many Requests.
+    // rateLimitResetMs is the System.currentTimeMillis() at which the wait expires.
+    val rateLimited: Boolean = false,
+    val rateLimitResetMs: Long? = null,
+    // §2.12-L358 — mirrors NetworkMonitor.isOnline; true when device has no network.
+    // Auth is online-only: this banner is informational only, cannot be bypassed.
+    val networkOffline: Boolean = false,
+    // §2.13-L366 — wall-clock expiry for the challenge token issued by the server.
+    // Set to System.currentTimeMillis() + 600_000 when a challengeToken is received.
+    // Null on the CREDENTIALS step (no active challenge token yet).
+    val challengeTokenExpiresAtMs: Long? = null,
+    // §2.13-L366 — true once the LaunchedEffect ticker determines the challenge token
+    // has expired. Resets to false when the user restarts login (step → CREDENTIALS).
+    val challengeExpired: Boolean = false,
     // Registration fields
     val registerShopName: String = "",
     val registerEmail: String = "",
@@ -99,6 +128,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
     private val authApi: AuthApi,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     companion object {
@@ -193,6 +223,17 @@ class LoginViewModel @Inject constructor(
     ))
     val state = _state.asStateFlow()
 
+    init {
+        // §2.12-L358 — observe device network state and mirror it into uiState.
+        // This is purely informational: the offline banner cannot be bypassed
+        // because login always requires a real network round-trip.
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _state.value = _state.value.copy(networkOffline = !online)
+            }
+        }
+    }
+
     // AND-033: Cache the probe OkHttpClient per target host so repeated probes
     // (retry, reconnect) to the same server do not allocate a new client each
     // time. A new client is built only when the host changes.
@@ -235,8 +276,12 @@ class LoginViewModel @Inject constructor(
     fun updateRegisterShopName(value: String) { _state.value = _state.value.copy(registerShopName = value, error = null) }
     fun updateRegisterEmail(value: String) { _state.value = _state.value.copy(registerEmail = value, error = null) }
     fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
-    fun updateUsername(value: String) { _state.value = _state.value.copy(username = value, error = null) }
-    fun updatePassword(value: String) { _state.value = _state.value.copy(password = value, error = null) }
+    fun updateUsername(value: String) {
+        _state.value = _state.value.copy(username = value, error = null, unreachableHost = false, rateLimited = false)
+    }
+    fun updatePassword(value: String) {
+        _state.value = _state.value.copy(password = value, error = null, unreachableHost = false, rateLimited = false)
+    }
     fun updateNewPassword(value: String) { _state.value = _state.value.copy(newPassword = value, error = null) }
     fun updateConfirmPassword(value: String) { _state.value = _state.value.copy(confirmPassword = value, error = null) }
     fun updateTotpCode(value: String) {
@@ -393,13 +438,76 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    /**
+     * §2.1 — Setup-status probe.
+     *
+     * Called once when the CREDENTIALS step is first shown (after server connection
+     * is established). Fires the GET /auth/setup-status endpoint and updates state:
+     *
+     *   - needsSetup=true  → sets setupNeeded=true so the UI shows a "server needs
+     *                         setup" banner with a "Contact admin" message. The login
+     *                         form is NOT blocked — user can still attempt a login if
+     *                         they dismiss the banner.
+     *   - needsSetup=false → sets setupNeeded=false (normal flow, banner hidden).
+     *   - Network/parse failure → clears isProbing, sets probeError with inline retry
+     *                             copy. Login form is NOT blocked.
+     *
+     * isMultiTenant=true is noted in probeError as a TODO since the tenant-picker
+     * screen does not exist yet.
+     *
+     * SAFETY: probe failure is deliberately non-blocking. The user can always try
+     * to sign in regardless of probe result (they may be on a degraded network).
+     */
+    fun probeSetupStatus(forceRetry: Boolean = false) {
+        val s = _state.value
+        // Skip if already probed this session (unless explicitly retrying after error)
+        // or if no server URL yet.
+        if ((!forceRetry && s.setupNeeded != null) || s.serverUrl.isBlank()) return
+        // Reset prior result/error before starting a new probe so UI shows spinner.
+        _state.value = s.copy(isProbing = true, probeError = null, setupNeeded = null)
+        viewModelScope.launch {
+            try {
+                val response = authApi.getSetupStatus()
+                val data = response.data
+                if (data == null) {
+                    // Unexpected null body — treat as non-blocking probe failure
+                    _state.value = _state.value.copy(
+                        isProbing = false,
+                        probeError = null,
+                        setupNeeded = false,
+                    )
+                    return@launch
+                }
+                // TODO(§2.10): when data.isMultiTenant == true and no tenant is chosen,
+                // push the tenant-picker screen. Tenant picker doesn't exist yet.
+                _state.value = _state.value.copy(
+                    isProbing = false,
+                    setupNeeded = data.needsSetup,
+                    probeError = null,
+                )
+            } catch (e: Exception) {
+                // Non-blocking: probe failure is silent. The probe's only user-visible
+                // purpose is surfacing needsSetup=true (a different banner). A network
+                // blip or first-run miss must NOT show an error — the login form is
+                // fully functional regardless of probe result.
+                timber.log.Timber.w(e, "setup-status probe failed silently (non-blocking)")
+                _state.value = _state.value.copy(
+                    isProbing = false,
+                    probeError = null,
+                )
+            }
+        }
+    }
+
     /** Step 2: Login with credentials */
     fun login() {
         val s = _state.value
         if (s.username.isBlank()) { _state.value = s.copy(error = "Username is required"); return }
         if (s.password.isBlank()) { _state.value = s.copy(error = "Password is required"); return }
 
-        _state.value = s.copy(isLoading = true, error = null)
+        // Clear any stale probe/unreachable state from a previous attempt so
+        // a successful login never leaves a misleading error banner visible.
+        _state.value = s.copy(isLoading = true, error = null, probeError = null, unreachableHost = false)
         viewModelScope.launch {
             try {
                 // AUDIT-AND-008: commit serverUrl only when the user submits credentials,
@@ -412,30 +520,70 @@ class LoginViewModel @Inject constructor(
 
                 val challengeToken = data.challengeToken ?: throw Exception("No challenge token received")
 
+                // §2.13-L366: record expiry deadline at the moment the challenge token
+                // is received. The 10-minute window matches the server-side TTL so the
+                // client proactively resets the flow before the server returns a silent 401.
+                val expiresAt = System.currentTimeMillis() + 600_000L
                 when {
                     data.requiresPasswordSetup == true -> {
                         _state.value = _state.value.copy(
                             isLoading = false,
                             challengeToken = challengeToken,
+                            challengeTokenExpiresAtMs = expiresAt,
+                            challengeExpired = false,
                             step = SetupStep.SET_PASSWORD,
                         )
                     }
                     data.requires2faSetup == true || data.totpEnabled != true -> {
-                        // Need to set up 2FA first
-                        setup2FA(challengeToken)
+                        // Need to set up 2FA first — setup2FA will update expiresAt when
+                        // it receives its own fresh challengeToken from the server.
+                        setup2FA(challengeToken, expiresAt)
                     }
                     else -> {
                         // 2FA already set up, just need code
                         _state.value = _state.value.copy(
                             isLoading = false,
                             challengeToken = challengeToken,
+                            challengeTokenExpiresAtMs = expiresAt,
+                            challengeExpired = false,
                             step = SetupStep.TWO_FA_VERIFY,
                         )
                     }
                 }
             } catch (e: Exception) {
+                // §2.12-L357: 429 Too Many Requests → rate-limit countdown.
+                // Prefer Retry-After header if present; otherwise default to 60s.
+                // Avoid touching AuthApi.kt (Wave-7G scope) — no signature change.
+                if (e is retrofit2.HttpException && e.code() == 429) {
+                    val retryAfterSec: Long = try {
+                        e.response()?.headers()?.get("Retry-After")?.toLong() ?: 60L
+                    } catch (_: NumberFormatException) { 60L }
+                    val resetAt = System.currentTimeMillis() + retryAfterSec * 1000L
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        rateLimited = true,
+                        rateLimitResetMs = resetAt,
+                        error = null,
+                    )
+                    return@launch
+                }
+                // §2.12-L356: host unreachable (bad URL / no route to server).
+                if (e is UnknownHostException || e is ConnectException ||
+                    (e.cause is UnknownHostException) || (e.cause is ConnectException)) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        unreachableHost = true,
+                        error = null,
+                    )
+                    return@launch
+                }
                 val errorMsg = extractErrorMessage(e)
-                _state.value = _state.value.copy(isLoading = false, error = errorMsg)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    unreachableHost = false,
+                    rateLimited = false,
+                    error = errorMsg,
+                )
             }
         }
     }
@@ -452,17 +600,28 @@ class LoginViewModel @Inject constructor(
                 val response = authApi.setPassword(SetPasswordRequest(s.challengeToken, s.newPassword))
                 val data = response.data ?: throw Exception(response.message ?: "Failed to set password")
                 val newChallenge = data.challengeToken ?: throw Exception("No challenge token")
+                // §2.13-L366: password-set gives us a new challengeToken; start a fresh
+                // 10-minute window for the subsequent 2FA setup step.
+                val freshExpiresAt = System.currentTimeMillis() + 600_000L
 
                 // Password set, now set up 2FA
-                setup2FA(newChallenge)
+                setup2FA(newChallenge, freshExpiresAt)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = extractErrorMessage(e))
             }
         }
     }
 
-    /** Step 3a: Request 2FA QR code */
-    private fun setup2FA(challengeToken: String) {
+    /**
+     * Step 3a: Request 2FA QR code.
+     *
+     * [inheritedExpiresAt] is the expiry deadline inherited from the calling step.
+     * If the server returns a fresh challengeToken we keep the same window (the
+     * server still honours the original token's TTL). Pass null to use a fresh
+     * 10-minute window from now (e.g. when called from setPassword which already
+     * has an updated token).
+     */
+    private fun setup2FA(challengeToken: String, inheritedExpiresAt: Long? = null) {
         viewModelScope.launch {
             try {
                 val response = authApi.setup2FA(mapOf("challengeToken" to challengeToken))
@@ -470,10 +629,14 @@ class LoginViewModel @Inject constructor(
                 // Server returns { qr: "data:image/png;base64,...", secret: "...", challengeToken: "..." }
                 val qrCode = data.qrCode ?: data.qr ?: ""
                 val newChallenge = data.challengeToken ?: challengeToken
-
+                // §2.13-L366: preserve the expiry window started at login(), or start a
+                // fresh one if called without a prior window (e.g. from setPassword path).
+                val expiresAt = inheritedExpiresAt ?: (System.currentTimeMillis() + 600_000L)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     challengeToken = newChallenge,
+                    challengeTokenExpiresAtMs = expiresAt,
+                    challengeExpired = false,
                     qrCodeDataUrl = qrCode,
                     step = SetupStep.TWO_FA_SETUP,
                 )
@@ -530,6 +693,41 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(showBackupCodes = null)
     }
 
+    /** §2.12-L357 — called by the UI countdown LaunchedEffect when the timer reaches zero. */
+    fun clearRateLimit() {
+        _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null)
+    }
+
+    /**
+     * §2.13-L366 — called by the UI expiry LaunchedEffect when the 10-minute challenge
+     * token window has elapsed. Clears the challenge, marks challengeExpired = true, and
+     * resets the step back to CREDENTIALS so the user must restart login.
+     * Username is preserved; password is cleared for security.
+     */
+    fun onChallengeTokenExpired() {
+        _state.value = _state.value.copy(
+            challengeToken = "",
+            challengeTokenExpiresAtMs = null,
+            challengeExpired = true,
+            step = SetupStep.CREDENTIALS,
+            // Clear sensitive mid-flow fields
+            totpCode = "",
+            newPassword = "",
+            confirmPassword = "",
+            qrCodeDataUrl = "",
+            isLoading = false,
+            error = null,
+        )
+    }
+
+    /**
+     * §2.13-L366 — called by the UI when the challengeExpired snackbar/banner is
+     * acknowledged (or automatically dismissed). Clears the flag so the banner hides.
+     */
+    fun clearChallengeExpired() {
+        _state.value = _state.value.copy(challengeExpired = false)
+    }
+
     private fun extractErrorMessage(e: Exception): String {
         // Try to extract server error message from Retrofit HttpException
         if (e is retrofit2.HttpException) {
@@ -555,9 +753,40 @@ fun LoginScreen(
     // form. Pure user-logout passes null so the banner doesn't appear.
     sessionRevokedReason: String? = null,
     onSessionBannerDismissed: () -> Unit = {},
+    // §2.8 — shown on the CREDENTIALS step only; routes to ForgotPasswordScreen.
+    onForgotPassword: (() -> Unit)? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // §2.13-L366 — expiry ticker: runs only while a challenge token is active
+    // (challengeTokenExpiresAtMs != null). Ticks every second and fires
+    // onChallengeTokenExpired() when the deadline passes. Cancels automatically
+    // when challengeTokenExpiresAtMs changes (new token) or becomes null
+    // (CREDENTIALS step reset or successful verify2FA which clears the token).
+    val expiresAtMs = state.challengeTokenExpiresAtMs
+    LaunchedEffect(expiresAtMs) {
+        if (expiresAtMs == null) return@LaunchedEffect
+        while (true) {
+            delay(1_000L)
+            if (System.currentTimeMillis() >= expiresAtMs) {
+                viewModel.onChallengeTokenExpired()
+                break
+            }
+        }
+    }
+
+    // §2.13-L366 — show snackbar when challengeExpired flips to true.
+    LaunchedEffect(state.challengeExpired) {
+        if (state.challengeExpired) {
+            snackbarHostState.showSnackbar(
+                message = "Sign-in timed out. Please start over.",
+                duration = SnackbarDuration.Short,
+            )
+            viewModel.clearChallengeExpired()
+        }
+    }
 
     // Backup codes dialog — must be dismissed before proceeding to dashboard
     if (state.showBackupCodes != null) {
@@ -608,8 +837,13 @@ fun LoginScreen(
         )
     }
 
+    // §2.13-L366: Scaffold provides the snackbar host for challenge-expired notification.
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
     Box(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding(),
+        modifier = Modifier.fillMaxSize().padding(innerPadding).statusBarsPadding().imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -703,7 +937,7 @@ fun LoginScreen(
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel)
-                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel)
+                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel, onForgotPassword)
                             SetupStep.SET_PASSWORD -> SetPasswordStep(state, viewModel)
                             SetupStep.TWO_FA_SETUP -> TwoFaSetupStep(state, viewModel, onLoginSuccess)
                             SetupStep.TWO_FA_VERIFY -> TwoFaVerifyStep(state, viewModel, onLoginSuccess)
@@ -713,6 +947,7 @@ fun LoginScreen(
             }
         }
     }
+    } // end Scaffold
 }
 
 @Composable
@@ -769,6 +1004,60 @@ private fun ErrorMessage(error: String?) {
     if (error != null) {
         Spacer(Modifier.height(12.dp))
         Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/**
+ * §2.13-L366 — Countdown timer shown at the bottom of the challenge steps
+ * (SET_PASSWORD, TWO_FA_SETUP, TWO_FA_VERIFY). Updates every second.
+ * Renders in warning/error color when < 60 s remain.
+ *
+ * Only rendered when [expiresAtMs] is non-null (i.e. a challenge token is active).
+ */
+@Composable
+private fun ChallengeTokenCountdown(expiresAtMs: Long?) {
+    if (expiresAtMs == null) return
+
+    val now = System.currentTimeMillis()
+    var remainingMs by remember(expiresAtMs) {
+        mutableStateOf((expiresAtMs - now).coerceAtLeast(0L))
+    }
+
+    // Tick every second while expiresAtMs is stable.
+    LaunchedEffect(expiresAtMs) {
+        while (remainingMs > 0L) {
+            delay(1_000L)
+            remainingMs = (expiresAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        }
+    }
+
+    val totalSec = remainingMs / 1000L
+    val minutes = totalSec / 60
+    val seconds = totalSec % 60
+    val label = "%d:%02d".format(minutes, seconds)
+
+    val warningColor = MaterialTheme.colorScheme.error
+    val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = if (remainingMs < 60_000L) warningColor else normalColor
+
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Timer,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = textColor,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "Sign-in expires in $label",
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+        )
     }
 }
 
@@ -979,9 +1268,173 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel) {
 // ─── Step 2: Credentials ────────────────────────────────────────────
 
 @Composable
-private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
+private fun CredentialsStep(
+    state: LoginUiState,
+    viewModel: LoginViewModel,
+    onForgotPassword: (() -> Unit)? = null,
+) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
+
+    // §2.1 — fire the setup-status probe once on first render of this step.
+    // Non-blocking: login form renders immediately; probe result overlays or
+    // adds an informational banner when it completes.
+    LaunchedEffect(Unit) { viewModel.probeSetupStatus() }
+
+    // §2.1 — transparent probe overlay: ≤400ms loading indicator per spec.
+    // Shown while the probe is in flight. Does NOT block the form fields.
+    if (state.isProbing) {
+        Box(
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    "Connecting to your server\u2026",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    // §2.1 — needs-setup banner: server has no users yet.
+    if (state.setupNeeded == true) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        ) {
+            Row(
+                modifier = androidx.compose.ui.Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = androidx.compose.ui.Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    "This server needs first-time setup. Contact your administrator.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = androidx.compose.ui.Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    // §2.12-L358 — offline banner: device has no network.
+    // Informational only — user must restore connectivity to sign in.
+    if (state.networkOffline) {
+        Surface(
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.WifiOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    "You're offline. Connect to sign in.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    // §2.12-L356 — server unreachable banner: bad URL or no route.
+    if (state.unreachableHost) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.CloudOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    "Can't reach this server. Check the address.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = viewModel::login,
+                    contentPadding = PaddingValues(4.dp),
+                ) {
+                    Text("Retry", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+
+    // §2.12-L357 — rate-limit banner with ticking countdown.
+    // Countdown runs via LaunchedEffect; button re-enables automatically when timer expires.
+    if (state.rateLimited) {
+        // Derive remaining seconds from rateLimitResetMs, floor at 0.
+        val resetMs = state.rateLimitResetMs ?: (System.currentTimeMillis() + 60_000L)
+        var remainingSec by remember(resetMs) {
+            mutableStateOf(((resetMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L))
+        }
+        LaunchedEffect(resetMs) {
+            while (remainingSec > 0L) {
+                delay(1_000L)
+                remainingSec = ((resetMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+            }
+            // Countdown expired — clear rate-limit state so button re-enables.
+            viewModel.clearRateLimit()
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Timer,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    if (remainingSec > 0L) "Too many attempts. Try again in ${remainingSec}s."
+                    else "You can try again now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
@@ -1034,15 +1487,31 @@ private fun CredentialsStep(state: LoginUiState, viewModel: LoginViewModel) {
     // CROSS48: Sign In is the single dominant CTA on this step — route
     // through BrandPrimaryButton so every primary button in the app
     // shares the same orange filled / onPrimary text / 12dp theme shape.
+    // §2.12-L357/L358: disabled while offline or rate-limited.
     BrandPrimaryButton(
         onClick = viewModel::login,
-        enabled = state.username.isNotBlank() && state.password.isNotBlank() && !state.isLoading,
+        enabled = state.username.isNotBlank() && state.password.isNotBlank()
+                && !state.isLoading && !state.networkOffline && !state.rateLimited,
         modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (state.isLoading) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Sign In")
+        }
+    }
+
+    // §2.8 — Forgot password link, shown on username step only
+    if (onForgotPassword != null) {
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = onForgotPassword,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "Forgot password?",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }
@@ -1102,6 +1571,9 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
             Text("Set Password")
         }
     }
+
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Step 3a: 2FA Setup (QR Code) ──────────────────────────────────
@@ -1152,6 +1624,8 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
 
     Spacer(Modifier.height(16.dp))
     TotpCodeInputContent(state, viewModel, onSuccess)
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Step 3b: 2FA Verify (code only) ────────────────────────────────
@@ -1170,6 +1644,8 @@ private fun TwoFaVerifyStep(state: LoginUiState, viewModel: LoginViewModel, onSu
     Spacer(Modifier.height(24.dp))
 
     TotpCodeInputContent(state, viewModel, onSuccess)
+    // §2.13-L366: countdown shown while challenge token is live
+    ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
 // ─── Shared TOTP code input ─────────────────────────────────────────

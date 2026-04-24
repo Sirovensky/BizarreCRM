@@ -1,10 +1,17 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
+import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginResponse
+import com.bizarreelectronics.crm.data.remote.dto.MessageResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
+import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
+import com.bizarreelectronics.crm.data.remote.dto.SetupStatusResponse
+import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
+import com.bizarreelectronics.crm.data.remote.dto.SwitchUserResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
@@ -50,4 +57,29 @@ interface AuthApi {
 
     @POST("auth/change-pin")
     suspend fun changePin(@Body body: Map<String, String>): ApiResponse<Unit>
+
+    // §2.8 — Password reset + backup-code recovery
+    @POST("auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): ApiResponse<MessageResponse>
+
+    @POST("auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): ApiResponse<MessageResponse>
+
+    @POST("auth/recover-with-backup-code")
+    suspend fun recoverWithBackupCode(@Body request: BackupCodeRecoveryRequest): ApiResponse<MessageResponse>
+
+    // §2.1 — setup-status probe. Unauthenticated. Called once on first transition
+    // to the credentials step to determine whether the server needs first-run setup
+    // or multi-tenant tenant selection before showing the login form.
+    @GET("auth/setup-status")
+    suspend fun getSetupStatus(): ApiResponse<SetupStatusResponse>
+
+    // §2.5 — switch user on a shared device. Authenticated (requires existing
+    // session). Server validates pin against all active users' bcrypt hashes,
+    // issues a new 1h accessToken + 8h refreshToken for the matched user.
+    // Rate-limited by IP (429 with Retry-After if exceeded).
+    // Body: { pin }. Response: { accessToken, user }.
+    // SECURITY: pin value is NEVER logged.
+    @POST("auth/switch-user")
+    suspend fun switchUser(@Body body: SwitchUserRequest): ApiResponse<SwitchUserResponse>
 }

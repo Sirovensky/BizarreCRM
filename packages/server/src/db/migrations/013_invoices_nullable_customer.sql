@@ -1,3 +1,11 @@
+-- @no-transaction
+-- PRAGMA foreign_keys = OFF must run outside an active transaction to
+-- take effect. migrate.ts otherwise wraps this migration in an outer tx
+-- where the PRAGMA silently no-ops and FK checks remain on during the
+-- table rebuild. The @no-transaction directive above opts out of the
+-- wrapper; the table rebuild is naturally atomic at the CREATE/INSERT
+-- level and SQLite will honor the PRAGMA.
+
 -- Allow invoices without a customer (walk-in POS sales)
 -- SQLite doesn't support ALTER COLUMN, so we recreate the table
 PRAGMA foreign_keys = OFF;

@@ -11,14 +11,18 @@ public enum ImportColumnMapper {
 
     // MARK: - Public API
 
-    /// Produce an initial mapping of source columns → CRM field raw values.
+    /// Produce an initial mapping of source columns → CRM field raw values for the given entity type.
     /// Columns that can't be mapped are left unmapped (not present in result).
-    /// - Parameter sourceColumns: Column names from the uploaded file.
+    /// - Parameters:
+    ///   - sourceColumns: Column names from the uploaded file.
+    ///   - entity: The import entity type to scope mapping to.
     /// - Returns: `[sourceColumn: CRMField.rawValue]` for matched columns.
-    public static func autoMap(sourceColumns: [String]) -> [String: String] {
+    public static func autoMap(
+        sourceColumns: [String],
+        entity: ImportEntityType = .customers
+    ) -> [String: String] {
+        let targets = CRMField.fields(for: entity)
         var result: [String: String] = [:]
-        let targets = CRMField.allCases
-
         for source in sourceColumns {
             if let match = bestMatch(for: source, among: targets) {
                 result[source] = match.rawValue
@@ -27,16 +31,22 @@ public enum ImportColumnMapper {
         return result
     }
 
-    /// Returns true iff the mapping covers all required CRM fields.
-    public static func allRequiredMapped(_ mapping: [String: String]) -> Bool {
+    /// Returns true iff the mapping covers all required CRM fields for the entity.
+    public static func allRequiredMapped(
+        _ mapping: [String: String],
+        entity: ImportEntityType = .customers
+    ) -> Bool {
         let mapped = Set(mapping.values)
-        return CRMField.requiredFields.allSatisfy { mapped.contains($0.rawValue) }
+        return CRMField.requiredFields(for: entity).allSatisfy { mapped.contains($0.rawValue) }
     }
 
-    /// Returns the set of required fields still missing from the mapping.
-    public static func missingRequired(_ mapping: [String: String]) -> [CRMField] {
+    /// Returns the set of required fields still missing from the mapping for the entity.
+    public static func missingRequired(
+        _ mapping: [String: String],
+        entity: ImportEntityType = .customers
+    ) -> [CRMField] {
         let mapped = Set(mapping.values)
-        return CRMField.requiredFields.filter { !mapped.contains($0.rawValue) }
+        return CRMField.requiredFields(for: entity).filter { !mapped.contains($0.rawValue) }
     }
 
     // MARK: - Internal matching
@@ -66,12 +76,15 @@ public enum ImportColumnMapper {
         return bestTarget
     }
 
-    /// Normalize: lowercase, strip punctuation and prefix like "customer."
+    /// Normalize: lowercase, strip entity prefixes, strip punctuation.
     static func normalize(_ s: String) -> String {
-        s.lowercased()
-         .replacingOccurrences(of: "customer.", with: "")
-         .components(separatedBy: CharacterSet.alphanumerics.inverted)
-         .joined()
+        var result = s.lowercased()
+        for prefix in ["customer.", "inventory.", "ticket."] {
+            result = result.replacingOccurrences(of: prefix, with: "")
+        }
+        return result
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined()
     }
 
     /// Classic DP Levenshtein distance.

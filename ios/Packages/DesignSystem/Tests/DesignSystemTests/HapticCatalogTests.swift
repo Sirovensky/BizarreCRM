@@ -7,9 +7,9 @@ import Foundation
 @Suite("HapticCatalog")
 struct HapticCatalogTests {
 
-    @Test("HapticEvent has 17 cases")
+    @Test("HapticEvent has 21 cases")
     func hapticEventCaseCount() {
-        #expect(HapticEvent.allCases.count == 17)
+        #expect(HapticEvent.allCases.count == 21)
     }
 
     @Test("HapticEvent rawValues are unique")
@@ -52,5 +52,33 @@ struct HapticCatalogTests {
         #expect(HapticEvent.saleComplete.rawValue == "saleComplete")
         #expect(HapticEvent.drawerKick.rawValue   == "drawerKick")
         #expect(HapticEvent.scanSuccess.rawValue  == "scanSuccess")
+    }
+
+    // §30 — new semantic event membership
+    @Test("HapticEvent has buttonTap")
+    func hasButtonTap() {
+        #expect(HapticEvent.allCases.contains(.buttonTap))
+    }
+
+    @Test("HapticEvent has sheetPresented")
+    func hasSheetPresented() {
+        #expect(HapticEvent.allCases.contains(.sheetPresented))
+    }
+
+    @Test("HapticEvent has listItemAppear")
+    func hasListItemAppear() {
+        #expect(HapticEvent.allCases.contains(.listItemAppear))
+    }
+
+    @Test("HapticEvent has cardHoverActivate")
+    func hasCardHoverActivate() {
+        #expect(HapticEvent.allCases.contains(.cardHoverActivate))
+    }
+
+    @Test("§30 events have unique rawValues")
+    func newEventsRawValuesUnique() {
+        let newCases: [HapticEvent] = [.buttonTap, .sheetPresented, .listItemAppear, .cardHoverActivate]
+        let values = newCases.map { $0.rawValue }
+        #expect(Set(values).count == values.count)
     }
 }

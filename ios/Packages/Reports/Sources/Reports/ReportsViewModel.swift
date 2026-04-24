@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Observation
+import Networking
 
 // MARK: - ReportsViewModel
 
@@ -16,13 +17,25 @@ public final class ReportsViewModel {
     public var customFrom: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     public var customTo: Date = Date()
 
+    // MARK: - Granularity (day / week / month)
+    // Controls the group_by parameter sent to GET /api/v1/reports/sales.
+    public var granularity: ReportGranularity = .day
+
     // MARK: - Data state
 
     public var revenue: [RevenuePoint] = []
+    /// Period-over-period totals from the sales report.
+    public var salesTotals: SalesTotals = SalesTotals()
+    /// Revenue by payment method.
+    public var revenueByMethod: [PaymentMethodPoint] = []
     public var ticketsByStatus: [TicketStatusPoint] = []
     public var avgTicketValue: AvgTicketValue?
     public var employeePerf: [EmployeePerf] = []
     public var inventoryTurnover: [InventoryTurnoverRow] = []
+    /// Full inventory report (low stock, value, top moving).
+    public var inventoryReport: InventoryReport?
+    /// Expenses + daily breakdown.
+    public var expensesReport: ExpensesReport?
     public var csatScore: CSATScore?
     public var npsScore: NPSScore?
     public var lastSyncedAt: Date?
@@ -35,7 +48,12 @@ public final class ReportsViewModel {
     // MARK: - Hero tile computed
 
     public var revenueTotalCents: Int64 { revenue.reduce(0) { $0 + $1.amountCents } }
-    public var revenueTotalDollars: Double { Double(revenueTotalCents) / 100.0 }
+    public var revenueTotalDollars: Double {
+        // Prefer the precise server total when available
+        salesTotals.totalRevenue > 0
+            ? salesTotals.totalRevenue
+            : Double(revenueTotalCents) / 100.0
+    }
 
     // MARK: - Private
 
@@ -63,6 +81,8 @@ public final class ReportsViewModel {
             group.addTask { await self.loadAvgTicketValue() }
             group.addTask { await self.loadEmployeePerf() }
             group.addTask { await self.loadInventoryTurnover() }
+            group.addTask { await self.loadInventoryReport() }
+            group.addTask { await self.loadExpensesReport() }
             group.addTask { await self.loadCSAT() }
             group.addTask { await self.loadNPS() }
         }
@@ -90,7 +110,12 @@ public final class ReportsViewModel {
 
     private func loadRevenue() async {
         do {
-            revenue = try await repository.getRevenue(from: fromDateString, to: toDateString, groupBy: "day")
+            let report = try await repository.getSalesReport(
+                from: fromDateString, to: toDateString, groupBy: granularity.rawValue
+            )
+            revenue = report.rows
+            salesTotals = report.totals
+            revenueByMethod = report.byMethod
         } catch {
             errorMessage = "Revenue: \(error.localizedDescription)"
         }
@@ -98,7 +123,9 @@ public final class ReportsViewModel {
 
     private func loadTicketsByStatus() async {
         do {
-            ticketsByStatus = try await repository.getTicketsByStatus(from: fromDateString, to: toDateString)
+            ticketsByStatus = try await repository.getTicketsByStatus(
+                from: fromDateString, to: toDateString
+            )
         } catch {
             errorMessage = "Tickets: \(error.localizedDescription)"
         }
@@ -106,7 +133,9 @@ public final class ReportsViewModel {
 
     private func loadAvgTicketValue() async {
         do {
-            avgTicketValue = try await repository.getAvgTicketValue(from: fromDateString, to: toDateString)
+            avgTicketValue = try await repository.getAvgTicketValue(
+                from: fromDateString, to: toDateString
+            )
         } catch {
             errorMessage = "Avg value: \(error.localizedDescription)"
         }
@@ -114,7 +143,9 @@ public final class ReportsViewModel {
 
     private func loadEmployeePerf() async {
         do {
-            employeePerf = try await repository.getEmployeesPerformance(from: fromDateString, to: toDateString)
+            employeePerf = try await repository.getEmployeesPerformance(
+                from: fromDateString, to: toDateString
+            )
         } catch {
             errorMessage = "Employees: \(error.localizedDescription)"
         }
@@ -122,15 +153,40 @@ public final class ReportsViewModel {
 
     private func loadInventoryTurnover() async {
         do {
-            inventoryTurnover = try await repository.getInventoryTurnover(from: fromDateString, to: toDateString)
+            inventoryTurnover = try await repository.getInventoryTurnover(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            errorMessage = "Inventory turnover: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadInventoryReport() async {
+        do {
+            inventoryReport = try await repository.getInventoryReport(
+                from: fromDateString, to: toDateString
+            )
         } catch {
             errorMessage = "Inventory: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadExpensesReport() async {
+        do {
+            expensesReport = try await repository.getExpensesReport(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            errorMessage = "Expenses: \(error.localizedDescription)"
         }
     }
 
     private func loadCSAT() async {
         do {
             csatScore = try await repository.getCSAT(from: fromDateString, to: toDateString)
+        } catch let err as ReportsRepositoryError {
+            // CSAT endpoint not yet on server — suppress silently
+            _ = err
         } catch {
             errorMessage = "CSAT: \(error.localizedDescription)"
         }

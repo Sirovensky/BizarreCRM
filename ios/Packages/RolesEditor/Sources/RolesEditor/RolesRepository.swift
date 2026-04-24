@@ -6,7 +6,8 @@ import Factory
 
 public protocol RolesRepository: Sendable {
     func fetchAll() async throws -> [Role]
-    func create(name: String, preset: String?, capabilities: Set<String>) async throws -> Role
+    func fetchOne(id: String) async throws -> Role
+    func create(name: String, description: String?, capabilities: Set<String>) async throws -> Role
     func update(role: Role, newCapabilities: Set<String>) async throws -> Role
     func delete(roleId: String) async throws
     func refresh() async throws -> [Role]
@@ -22,25 +23,51 @@ public actor RolesRepositoryLive: RolesRepository {
         self.api = api
     }
 
+    // MARK: Fetch all roles (capabilities loaded lazily on detail)
+
     public func fetchAll() async throws -> [Role] {
-        let roles = try await api.listRoles()
+        let roles = try await api.domainListRoles()
         cachedRoles = roles
         return roles
     }
 
-    public func create(name: String, preset: String? = nil, capabilities: Set<String>) async throws -> Role {
-        // Guard duplicate names against cache
+    // MARK: Fetch single role with full capability matrix
+
+    public func fetchOne(id: String) async throws -> Role {
+        guard let intId = Int(id) else {
+            throw RolesEditorError.serverError("Invalid role id: \(id)")
+        }
+        let role = try await api.domainFetchRole(id: intId)
+        if let idx = cachedRoles.firstIndex(where: { $0.id == id }) {
+            cachedRoles[idx] = role
+        }
+        return role
+    }
+
+    // MARK: Create
+
+    public func create(
+        name: String,
+        description: String? = nil,
+        capabilities: Set<String>
+    ) async throws -> Role {
         if cachedRoles.contains(where: { $0.name.lowercased() == name.lowercased() }) {
             throw RolesEditorError.duplicateName
         }
-        let role = try await api.createRole(name: name, preset: preset, capabilities: capabilities)
+        let role = try await api.domainCreateRole(
+            name: name,
+            description: description,
+            capabilities: capabilities
+        )
         cachedRoles.append(role)
         NotificationCenter.default.post(name: .rolesChanged, object: nil)
         return role
     }
 
+    // MARK: Update capabilities
+
     public func update(role: Role, newCapabilities: Set<String>) async throws -> Role {
-        let updated = try await api.updateCapabilities(
+        let updated = try await api.domainUpdateCapabilities(
             roleId: role.id,
             before: role.capabilities,
             after: newCapabilities
@@ -52,11 +79,15 @@ public actor RolesRepositoryLive: RolesRepository {
         return updated
     }
 
+    // MARK: Delete
+
     public func delete(roleId: String) async throws {
-        try await api.deleteRole(id: roleId)
+        try await api.domainDeleteRole(id: roleId)
         cachedRoles.removeAll { $0.id == roleId }
         NotificationCenter.default.post(name: .rolesChanged, object: nil)
     }
+
+    // MARK: Refresh
 
     public func refresh() async throws -> [Role] {
         try await fetchAll()
@@ -68,8 +99,6 @@ public actor RolesRepositoryLive: RolesRepository {
 public extension Container {
     var rolesRepository: Factory<any RolesRepository> {
         self {
-            // Requires APIClient to be registered in the host app's container.
-            // Fallback to a stub if not registered (avoids crash in SwiftUI previews).
             RolesRepositoryLive(api: self.apiClient())
         }
     }

@@ -112,6 +112,47 @@ final class FTSIndexStoreTests: XCTestCase {
         XCTAssertFalse(hits.isEmpty)
     }
 
+    // MARK: - indexInvoice
+
+    func test_indexInvoice_canBeFoundByDisplayId() async throws {
+        try await store.indexInvoice(
+            id: 99,
+            displayId: "INV-0099",
+            customerName: "Acme Corp",
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let hits = try await store.search(query: "INV-0099", entity: .invoices, limit: 10)
+        XCTAssertFalse(hits.isEmpty, "Should find invoice by display ID")
+        XCTAssertEqual(hits.first?.entityId, "99")
+    }
+
+    func test_indexInvoice_canBeFoundByCustomerName() async throws {
+        try await store.indexInvoice(
+            id: 7,
+            displayId: "INV-0007",
+            customerName: "Globex Industries",
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let hits = try await store.search(query: "Globex", entity: nil, limit: 10)
+        XCTAssertFalse(hits.isEmpty, "Should find invoice by customer name")
+        XCTAssertEqual(hits.first?.entity, "invoices")
+    }
+
+    func test_indexInvoice_upsert_noduplicates() async throws {
+        try await store.indexInvoice(id: 5, displayId: "INV-5", customerName: "Dup Co", updatedAt: Date(timeIntervalSince1970: 0))
+        try await store.indexInvoice(id: 5, displayId: "INV-5", customerName: "Dup Co", updatedAt: Date(timeIntervalSince1970: 0))
+        let hits = try await store.search(query: "INV-5", entity: .invoices, limit: 50)
+        XCTAssertEqual(hits.count, 1, "Upsert must not create duplicates for invoices")
+    }
+
+    func test_indexInvoice_entityFilterExcludesOtherTypes() async throws {
+        try await store.indexTicket(makeTicket(id: 1))
+        try await store.indexInvoice(id: 1, displayId: "INV-1", customerName: "Alice Smith", updatedAt: Date(timeIntervalSince1970: 0))
+
+        let invoiceHits = try await store.search(query: "Alice", entity: .invoices, limit: 50)
+        XCTAssertTrue(invoiceHits.allSatisfy { $0.entity == "invoices" }, "Invoice filter should exclude ticket hits")
+    }
+
     // MARK: - indexInventory
 
     func test_indexInventory_canBeFoundByName() async throws {

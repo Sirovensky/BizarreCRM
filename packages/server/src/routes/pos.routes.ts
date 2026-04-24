@@ -27,6 +27,7 @@ import { isCommissionLocked } from './_team.payroll.js';
 import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const logger = createLogger('pos');
 
@@ -98,7 +99,7 @@ function validateOptionalRefString(value: unknown, fieldName: string, maxLen = 1
 }
 
 // GET /pos/products - products/services available for POS
-router.get('/products', async (req, res) => {
+router.get('/products', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { keyword, category, item_type } = req.query as Record<string, string>;
 
@@ -165,10 +166,10 @@ router.get('/products', async (req, res) => {
   });
 
   res.json({ success: true, data: { items: finalItems, categories: categories.map((c: any) => c.category) } });
-});
+}));
 
 // GET /pos/register - current register state
-router.get('/register', async (req, res) => {
+router.get('/register', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const [cashInRow, cashOutRow, cashPaymentsRow, recentEntries] = await Promise.all([
     adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')'),
@@ -196,10 +197,11 @@ router.get('/register', async (req, res) => {
       entries: recentEntries,
     },
   });
-});
+}));
 
 // POST /pos/cash-in
-router.post('/cash-in', async (req, res) => {
+router.post('/cash-in', asyncHandler(async (req, res) => {
+  requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
   // @audit-fixed: parseFloat(Infinity) = Infinity passes the upper-bound check via NaN comparison.
@@ -211,10 +213,11 @@ router.post('/cash-in', async (req, res) => {
   const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_in\', ?, ?, ?)', amt, reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
-});
+}));
 
 // POST /pos/cash-out
-router.post('/cash-out', async (req, res) => {
+router.post('/cash-out', asyncHandler(async (req, res) => {
+  requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
   // @audit-fixed: same Number.isFinite hardening as cash-in.
@@ -225,7 +228,7 @@ router.post('/cash-out', async (req, res) => {
   const result = await adb.run('INSERT INTO cash_register (type, amount, reason, user_id) VALUES (\'cash_out\', ?, ?, ?)', amt, reason || null, req.user!.id);
   const entry = await adb.get<any>('SELECT * FROM cash_register WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: { entry } });
-});
+}));
 
 // POST /pos/transaction - complete a POS sale
 //
@@ -246,7 +249,7 @@ router.post('/cash-out', async (req, res) => {
 //   S1:    atomic guarded stock decrement (WHERE in_stock >= ?) inside the
 //          transaction — no precheck/deduct race.
 //   EM6:   inserts employee_tips row linking tip to cashier.
-router.post('/transaction', idempotent, async (req, res) => {
+router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -869,10 +872,10 @@ router.post('/transaction', idempotent, async (req, res) => {
         : null,
     },
   });
-});
+}));
 
 // GET /pos/transactions - recent POS transactions
-router.get('/transactions', async (req, res) => {
+router.get('/transactions', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { from_date, to_date } = req.query as Record<string, string>;
   let where = 'WHERE 1=1';
@@ -893,7 +896,7 @@ router.get('/transactions', async (req, res) => {
   `, ...params);
 
   res.json({ success: true, data: { transactions } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -914,7 +917,7 @@ async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | nu
 }
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
-router.post('/checkout-with-ticket', idempotent, async (req, res) => {
+router.post('/checkout-with-ticket', idempotent, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const userId = req.user!.id;
@@ -1931,7 +1934,7 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
         JSON.stringify({ ticket_id: ticketId, invoice_id: invoiceId, discount_amount: discount, discount_reason: ticketData?.discount_reason || null }),
       );
     } catch (err) {
-      console.error('[Audit] Failed to write audit log:', err);
+      logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -2019,14 +2022,14 @@ router.post('/checkout-with-ticket', idempotent, async (req, res) => {
       } : null,
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-POS2: POST /pos/return — Return/exchange workflow
 // Creates a credit note (negative invoice), restores stock, records reason.
 // Admin/manager only.
 // ---------------------------------------------------------------------------
-router.post('/return', async (req, res) => {
+router.post('/return', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const userId = req.user!.id;
@@ -2161,18 +2164,18 @@ router.post('/return', async (req, res) => {
       JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
     );
   } catch (err) {
-    console.error('[Audit] Failed to write audit log:', err);
+    logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
   }
 
   const creditNote = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', creditNoteId);
 
   res.status(201).json({ success: true, data: { credit_note: creditNote, items: returnDetails, total_credited: creditTotal } });
-});
+}));
 
 // ==================== ENR-POS4: Cash drawer integration ====================
 // POST /pos/open-drawer — sends a command to open the cash drawer
 // For now, logs the event and returns success. Actual hardware integration is per-deployment.
-router.post('/open-drawer', async (req, res) => {
+router.post('/open-drawer', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { reason } = req.body;
@@ -2198,7 +2201,7 @@ router.post('/open-drawer', async (req, res) => {
       JSON.stringify({ reason: reason || 'Manual drawer open' }),
     );
   } catch (err) {
-    console.error('[Audit] Failed to write audit log:', err);
+    logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // @audit-fixed: drop noisy console.log on a hot endpoint — audit log already
@@ -2208,7 +2211,7 @@ router.post('/open-drawer', async (req, res) => {
     success: true,
     data: { message: 'Cash drawer open command sent', opened_at: new Date().toISOString() },
   });
-});
+}));
 
 // ─── Workstations CRUD ───────────────────────────────────────────────────────
 // The workstations table was seeded in seed.ts with a single "Main Workstation"
@@ -2223,7 +2226,7 @@ function requireAdminOrManagerRole(req: any): void {
   }
 }
 
-router.get('/workstations', async (req, res) => {
+router.get('/workstations', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rows = await adb.all<{
     id: number;
@@ -2234,9 +2237,9 @@ router.get('/workstations', async (req, res) => {
     updated_at: string;
   }>('SELECT id, name, is_default, is_active, created_at, updated_at FROM workstations ORDER BY is_default DESC, name ASC');
   res.json({ success: true, data: rows });
-});
+}));
 
-router.post('/workstations', async (req, res) => {
+router.post('/workstations', asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb: AsyncDb = req.asyncDb;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
@@ -2253,9 +2256,9 @@ router.post('/workstations', async (req, res) => {
   );
   audit(req.db, 'workstation_created', req.user?.id ?? null, req.ip || '', { id: result.lastInsertRowid, name });
   res.status(201).json({ success: true, data: row });
-});
+}));
 
-router.put('/workstations/:id', async (req, res) => {
+router.put('/workstations/:id', asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb: AsyncDb = req.asyncDb;
   const id = Number(req.params.id);
@@ -2289,9 +2292,9 @@ router.put('/workstations/:id', async (req, res) => {
   );
   audit(req.db, 'workstation_updated', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: row });
-});
+}));
 
-router.post('/workstations/:id/set-default', async (req, res) => {
+router.post('/workstations/:id/set-default', asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb: AsyncDb = req.asyncDb;
   const id = Number(req.params.id);
@@ -2306,6 +2309,6 @@ router.post('/workstations/:id/set-default', async (req, res) => {
 
   audit(req.db, 'workstation_set_default', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: { id, is_default: true } });
-});
+}));
 
 export default router;

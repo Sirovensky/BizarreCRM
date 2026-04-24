@@ -28,6 +28,10 @@ import { createLogger } from '../utils/logger.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { readJobState, buildJobId } from '../services/importJobState.js';
+import { trackInterval } from '../utils/trackInterval.js';
+import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
+import { encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
+import type { Request } from 'express';
 
 const router = Router();
 const logger = createLogger('import');
@@ -1395,13 +1399,35 @@ export function getRdAccessToken(): string | null {
   return null;
 }
 
-// OAuth state store: state -> expiry timestamp (5 minute TTL)
-const oauthStates = new Map<string, number>();
+// SCAN-804: requireAdmin used by OAuth endpoints
+function requireAdmin(req: Request): void {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
+}
+
+// SCAN-807: OAuth state store: state -> { user_id, expiry } (5 minute TTL, user-bound)
+interface OAuthStateRecord { user_id: number; expiry: number; }
+const oauthStates = new Map<string, OAuthStateRecord>();
+// SCAN-803: hard cap to prevent unbounded growth under flood conditions
+const MAX_OAUTH_STATES = 10_000;
+
+function addOAuthState(state: string, record: OAuthStateRecord): void {
+  if (oauthStates.size >= MAX_OAUTH_STATES) {
+    const oldest = oauthStates.keys().next().value;
+    if (oldest) {
+      oauthStates.delete(oldest);
+      logger.warn('oauthStates at capacity; evicting oldest');
+    }
+  }
+  oauthStates.set(state, record);
+}
+
 // Clean up expired states periodically
-setInterval(() => {
+trackInterval(() => {
   const now = Date.now();
-  for (const [state, expiry] of oauthStates) {
-    if (now > expiry) oauthStates.delete(state);
+  for (const [state, record] of oauthStates) {
+    if (now > record.expiry) oauthStates.delete(state);
   }
 }, 60_000);
 
@@ -1409,8 +1435,11 @@ setInterval(() => {
 router.get(
   '/oauth/authorize-url',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const state = crypto.randomBytes(32).toString('hex');
-    oauthStates.set(state, Date.now() + 5 * 60 * 1000); // 5 minute expiry
+    // SCAN-807: bind state to current user so callback can verify identity
+    // SCAN-803: use capped helper to prevent unbounded Map growth
+    addOAuthState(state, { user_id: req.user!.id, expiry: Date.now() + 5 * 60 * 1000 });
     const redirectUri = `${req.protocol}://${req.get('host')}/api/v1/import/oauth/callback`;
     const url = `${RD_OAUTH_BASE}/authorize?client_id=${RD_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
     res.json({ success: true, data: { url, redirect_uri: redirectUri } });
@@ -1421,6 +1450,8 @@ router.get(
 router.get(
   '/oauth/callback',
   asyncHandler(async (req, res) => {
+    // SCAN-804: only admins may complete OAuth token exchange
+    requireAdmin(req);
     const adb = req.asyncDb;
     const code = req.query.code as string;
     const state = req.query.state as string;
@@ -1430,10 +1461,19 @@ router.get(
       return;
     }
 
-    // Validate OAuth state to prevent CSRF
-    if (!state || !oauthStates.has(state)) {
+    // SCAN-807: Validate OAuth state and verify it is bound to this user
+    const stateRecord = state ? oauthStates.get(state) : undefined;
+    if (!stateRecord) {
       res.status(400).send('Invalid or expired OAuth state. Please try authorizing again.');
       return;
+    }
+    if (stateRecord.user_id !== req.user!.id) {
+      logger.error('OAuth state user mismatch — possible state injection', {
+        state_user: stateRecord.user_id,
+        request_user: req.user!.id,
+      });
+      oauthStates.delete(state);
+      throw new AppError('OAuth state does not match session', 403);
     }
     oauthStates.delete(state); // Consume the state (single-use)
 
@@ -1469,9 +1509,9 @@ router.get(
     rdRefreshToken = tokenData.refresh_token || null;
     rdTokenExpiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
 
-    // Also save to store_config for persistence
-    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, rdAccessToken);
-    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, rdRefreshToken || '');
+    // Also save to store_config for persistence (SCAN-805: encrypt tokens at rest)
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, encryptConfigValue(rdAccessToken));
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, encryptConfigValue(rdRefreshToken || ''));
     await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`, String(rdTokenExpiresAt));
 
     logger.info('RepairDesk OAuth token obtained', { module: 'import' });
@@ -1492,11 +1532,17 @@ router.get(
 router.post(
   '/oauth/refresh',
   asyncHandler(async (req, res) => {
+    // SCAN-822: rate-limit to 1 refresh per minute per user
+    const userId = req.user!.id;
+    if (!checkWindowRate(req.db, 'oauth_refresh', String(userId), 1, 60_000)) {
+      throw new AppError('OAuth refresh rate-limited', 429);
+    }
+    recordWindowAttempt(req.db, 'oauth_refresh', String(userId), 60_000);
     const adb = req.asyncDb;
     if (!rdRefreshToken) {
-      // Try loading from store_config
+      // Try loading from store_config (SCAN-805: decrypt on read)
       const stored = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_refresh_token'");
-      if (stored?.value) rdRefreshToken = stored.value;
+      if (stored?.value) rdRefreshToken = decryptConfigValue(stored.value);
     }
 
     if (!rdRefreshToken) throw new AppError('No refresh token available. Re-authorize via OAuth.');
@@ -1527,9 +1573,10 @@ router.post(
     if (tokenData.refresh_token) rdRefreshToken = tokenData.refresh_token;
     rdTokenExpiresAt = Date.now() + (tokenData.expires_in || 3600) * 1000;
 
-    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, rdAccessToken);
+    // SCAN-805: encrypt tokens at rest
+    await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_access_token', ?)`, encryptConfigValue(rdAccessToken));
     if (tokenData.refresh_token) {
-      await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, rdRefreshToken);
+      await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_refresh_token', ?)`, encryptConfigValue(rdRefreshToken!));
     }
     await adb.run(`INSERT OR REPLACE INTO store_config (key, value) VALUES ('rd_token_expires', ?)`, String(rdTokenExpiresAt));
 
@@ -1542,15 +1589,15 @@ router.get(
   '/oauth/status',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    // Load from memory or DB
+    // Load from memory or DB (SCAN-805: decrypt on read)
     if (!rdAccessToken) {
       const stored = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_access_token'");
       if (stored?.value) {
-        rdAccessToken = stored.value;
+        rdAccessToken = decryptConfigValue(stored.value);
         const exp = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_token_expires'");
         rdTokenExpiresAt = exp?.value ? parseInt(exp.value) : 0;
         const rt = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_refresh_token'");
-        rdRefreshToken = rt?.value || null;
+        rdRefreshToken = rt?.value ? decryptConfigValue(rt.value) : null;
       }
     }
 

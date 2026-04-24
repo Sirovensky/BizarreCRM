@@ -38,9 +38,6 @@ public struct TwoFactorSettingsView: View {
         .navigationTitle("Two-Factor Auth")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadStatus() }
-        .alert("Disable 2FA", isPresented: $vm.showDisableAlert) {
-            disableAlertContent
-        }
         .alert("Regenerate Codes", isPresented: $vm.showRegenerateAlert) {
             regenerateAlertContent
         }
@@ -120,30 +117,8 @@ public struct TwoFactorSettingsView: View {
                 .accessibilityLabel("Regenerate your ten recovery codes. Requires your current authenticator code.")
             }
 
-            Section("Security") {
-                Button(role: .destructive) {
-                    vm.showDisableAlert = true
-                } label: {
-                    Label("Disable 2FA", systemImage: "lock.open.fill")
-                }
-                .accessibilityLabel("Disable two-factor authentication. Requires current password and authenticator code.")
-            }
-        }
-    }
-
-    // MARK: - Disable alert
-
-    @ViewBuilder
-    private var disableAlertContent: some View {
-        SecureField("Current password", text: $vm.disablePassword)
-        TextField("6-digit code", text: $vm.disableCode)
-            .keyboardType(.numberPad)
-        Button("Disable", role: .destructive) {
-            Task { await vm.disable() }
-        }
-        Button("Cancel", role: .cancel) {
-            vm.disablePassword = ""
-            vm.disableCode = ""
+            // Self-service 2FA disable intentionally absent (policy 2026-04-23).
+            // Recovery path: backup codes + super-admin force-disable.
         }
     }
 
@@ -180,13 +155,10 @@ public final class TwoFactorSettingsViewModel {
     public private(set) var newCodes: RecoveryCodeList? = nil
 
     // Alert / sheet state
-    public var showDisableAlert = false
     public var showRegenerateAlert = false
     public var showEnrollSheet = false
 
     // Alert fields
-    public var disablePassword = ""
-    public var disableCode = ""
     public var regenerateCode = ""
 
     let repository: TwoFactorRepository
@@ -202,25 +174,6 @@ public final class TwoFactorSettingsViewModel {
             let status = try await repository.status()
             isEnrolled = status.enabled
             codesRemaining = status.codesRemaining
-        } catch {
-            errorMessage = AppError.from(error).errorDescription
-        }
-    }
-
-    public func disable() async {
-        let pwd = disablePassword
-        let code = disableCode.filter(\.isNumber)
-        disablePassword = ""
-        disableCode = ""
-
-        guard !pwd.isEmpty, code.count == 6 else {
-            errorMessage = "Password and 6-digit code are required."
-            return
-        }
-        do {
-            _ = try await repository.disable(currentPassword: pwd, totpCode: code)
-            isEnrolled = false
-            codesRemaining = nil
         } catch {
             errorMessage = AppError.from(error).errorDescription
         }

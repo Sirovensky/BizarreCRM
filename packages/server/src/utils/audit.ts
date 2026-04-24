@@ -1,6 +1,8 @@
 // @audit-fixed: Cap details JSON at 16KB and strip CR/LF from the event string
 // so callers cannot blow up audit_logs storage with 1MB payloads or inject
 // fake log lines via CRLF in the event name.
+import { createLogger } from './logger.js';
+const logger = createLogger('audit');
 const MAX_AUDIT_DETAILS_BYTES = 16 * 1024;
 const MAX_AUDIT_EVENT_LEN = 128;
 
@@ -39,6 +41,6 @@ export function audit(db: any, event: string, userId: number | null, ip: string,
     db.prepare('INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)').run(safeEvent, userId, safeIp, serialized);
   } catch (err) {
     // Don't let audit failures break the app, but log them so they're visible
-    console.error('[Audit] Failed to write audit log:', err);
+    logger.error('Failed to write audit log', { err });
   }
 }

@@ -13,6 +13,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -35,6 +39,15 @@ import com.bizarreelectronics.crm.ui.theme.BrandMono
 // (instead of a lying fake camera preview): barcode/SKU/IMEI typed in by hand
 // or pasted from a hardware scanner in HID mode. A hardware Bluetooth scanner
 // behaves exactly like a keyboard so this path works today.
+
+// a11y: When CameraX ships, add:
+//   - SemanticsProperties.LiveRegion(LiveRegionMode.Polite) on a scan-result
+//     announcement node ("Scanned: VALUE") for HID/camera auto-fills.
+//   - LiveRegionMode.Assertive on item-not-found error state.
+//   - contentDescription "Looking up item" on a loading indicator node.
+//   - contentDescription per row + Role.Button on recent-lookups list items.
+//   - FAB contentDescription "Add new item with this barcode" if no match.
+//   - mergeDescendants = true on empty-state container.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +72,7 @@ fun BarcodeScanScreen(
             BrandTopAppBar(
                 title = "Scan Barcode",
                 navigationIcon = {
+                    // a11y: "Back" matches platform convention; no change needed.
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -77,27 +91,45 @@ fun BarcodeScanScreen(
         ) {
             Icon(
                 Icons.Default.Keyboard,
-                // decorative — illustrative icon above the "Enter barcode" heading Text that carries the announcement
+                // a11y: Decorative — illustrative icon above the "Enter barcode"
+                // heading Text that carries the screen-level announcement.
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
 
+            // a11y: Heading text is read as plain text by TalkBack; no explicit
+            // heading semantics needed for a single-section screen.
             Text(
                 "Enter barcode",
                 style = MaterialTheme.typography.titleMedium,
             )
 
+            // a11y: Body copy is informational; no interactive role required.
             Text(
                 "Type the barcode, SKU, or IMEI. A bluetooth barcode scanner in HID mode can be used here too — it types into this field just like a keyboard.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // a11y: OutlinedTextField gets an explicit contentDescription so
+            // TalkBack announces the full purpose ("Barcode input, numeric or
+            // scanner-compatible") rather than just the visible label text.
+            // The Modifier.semantics block supplies the description without
+            // removing the label or hint that sighted users see.
             OutlinedTextField(
                 value = manualEntry,
                 onValueChange = { manualEntry = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        contentDescription = "Barcode input, numeric or scanner-compatible"
+                        // a11y: When CameraX / HID delivers a scan result into
+                        // this field automatically, wrap the update in a node
+                        // with liveRegion = LiveRegionMode.Polite so TalkBack
+                        // announces the scanned value without interrupting the
+                        // user ("Scanned: VALUE").
+                    },
                 label = { Text("Barcode / SKU / IMEI") },
                 // BrandMono for barcode/SKU strings per todo rule
                 textStyle = BrandMono,
@@ -111,19 +143,26 @@ fun BarcodeScanScreen(
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 trailingIcon = {
                     if (manualEntry.isNotEmpty()) {
+                        // a11y: "Clear barcode input" is more specific than "Clear"
+                        // so TalkBack announces the target of the action.
                         IconButton(onClick = { manualEntry = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            Icon(Icons.Default.Clear, contentDescription = "Clear barcode input")
                         }
                     }
                 },
             )
 
+            // a11y: Explicit contentDescription overrides the default derivation
+            // from child Text so TalkBack reads the full action label even when
+            // the icon and text are combined inside the Button's slot.
             Button(
                 onClick = { submit() },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Look up item by barcode" },
                 enabled = manualEntry.isNotBlank(),
             ) {
-                // decorative — Button's "Look Up" Text supplies the accessible name
+                // a11y: Decorative — Button's semantics node supplies the name.
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Look Up")

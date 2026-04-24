@@ -7,6 +7,8 @@ import androidx.room.TypeConverters
 import com.bizarreelectronics.crm.data.local.db.converters.Converters
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.db.entities.*
+import com.bizarreelectronics.crm.data.local.draft.DraftDao
+import com.bizarreelectronics.crm.data.local.draft.DraftEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -27,6 +29,7 @@ import kotlinx.coroutines.withContext
         LeadEntity::class,
         EstimateEntity::class,
         ExpenseEntity::class,
+        DraftEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -40,7 +43,10 @@ import kotlinx.coroutines.withContext
     //
     // AUDIT-AND-026: bumped from 4 to 5 to add indices on customers.last_name,
     // customers.email, and customers.phone (search query optimisation).
-    version = 5,
+    //
+    // Plan §1 L260-266: bumped from 5 to 6 to add the `drafts` table for
+    // autosave storage (DraftEntity + unique index on user_id+draft_type).
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -59,13 +65,14 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun leadDao(): LeadDao
     abstract fun estimateDao(): EstimateDao
     abstract fun expenseDao(): ExpenseDao
+    abstract fun draftDao(): DraftDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
 
         /** Current schema version — must match the `version` in @Database above.
          *  Keep in sync when bumping. Used for logging only. */
-        const val SCHEMA_VERSION = 5
+        const val SCHEMA_VERSION = 6
     }
 }
 

@@ -260,4 +260,82 @@ final class CallLogViewModelTests: XCTestCase {
         let result = vm.filteredCalls("anything")
         XCTAssertTrue(result.isEmpty)
     }
+
+    // MARK: - Direction filter
+
+    func test_directionFilter_defaultIsAll() {
+        let mock = MockAPIClient()
+        let vm = CallLogViewModel(api: mock)
+        XCTAssertEqual(vm.directionFilter, .all)
+    }
+
+    func test_directionFilter_inboundShowsOnlyInbound() async throws {
+        let mock = MockAPIClient()
+        try mock.stub(path: "/api/v1/voice/calls", calls: [
+            makeEntry(id: 1, direction: "inbound"),
+            makeEntry(id: 2, direction: "outbound"),
+            makeEntry(id: 3, direction: "inbound"),
+        ])
+        let vm = CallLogViewModel(api: mock)
+        await vm.load()
+        vm.directionFilter = .inbound
+        let result = vm.filteredCalls("")
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result.allSatisfy { $0.direction == "inbound" })
+    }
+
+    func test_directionFilter_outboundShowsOnlyOutbound() async throws {
+        let mock = MockAPIClient()
+        try mock.stub(path: "/api/v1/voice/calls", calls: [
+            makeEntry(id: 1, direction: "inbound"),
+            makeEntry(id: 2, direction: "outbound"),
+        ])
+        let vm = CallLogViewModel(api: mock)
+        await vm.load()
+        vm.directionFilter = .outbound
+        let result = vm.filteredCalls("")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.id, 2)
+    }
+
+    func test_directionFilter_allShowsEverything() async throws {
+        let mock = MockAPIClient()
+        try mock.stub(path: "/api/v1/voice/calls", calls: [
+            makeEntry(id: 1, direction: "inbound"),
+            makeEntry(id: 2, direction: "outbound"),
+        ])
+        let vm = CallLogViewModel(api: mock)
+        await vm.load()
+        vm.directionFilter = .all
+        let result = vm.filteredCalls("")
+        XCTAssertEqual(result.count, 2)
+    }
+
+    func test_directionFilter_combinedWithTextSearch() async throws {
+        let mock = MockAPIClient()
+        try mock.stub(path: "/api/v1/voice/calls", calls: [
+            makeEntry(id: 1, direction: "inbound",  phone: "5551111111", customerName: "Alice"),
+            makeEntry(id: 2, direction: "outbound", phone: "5552222222", customerName: "Alice"),
+            makeEntry(id: 3, direction: "inbound",  phone: "5553333333", customerName: "Bob"),
+        ])
+        let vm = CallLogViewModel(api: mock)
+        await vm.load()
+        vm.directionFilter = .inbound
+        let result = vm.filteredCalls("alice")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.id, 1)
+    }
+
+    func test_directionFilter_allCases() {
+        XCTAssertEqual(CallLogViewModel.DirectionFilter.allCases.count, 3)
+        XCTAssertTrue(CallLogViewModel.DirectionFilter.allCases.contains(.all))
+        XCTAssertTrue(CallLogViewModel.DirectionFilter.allCases.contains(.inbound))
+        XCTAssertTrue(CallLogViewModel.DirectionFilter.allCases.contains(.outbound))
+    }
+
+    func test_directionFilter_labels() {
+        XCTAssertEqual(CallLogViewModel.DirectionFilter.all.label,      "All")
+        XCTAssertEqual(CallLogViewModel.DirectionFilter.inbound.label,  "Inbound")
+        XCTAssertEqual(CallLogViewModel.DirectionFilter.outbound.label, "Outbound")
+    }
 }

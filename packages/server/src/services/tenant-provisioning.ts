@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
-import { getTenantDb, closeTenantDb } from '../db/tenant-pool.js';
+import { getTenantDb, releaseTenantDb, closeTenantDb } from '../db/tenant-pool.js';
 import { createTenantDnsRecord, deleteTenantDnsRecord } from './cloudflareDns.js';
 import { createLogger } from '../utils/logger.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
@@ -701,7 +701,7 @@ export interface TenantDataExport {
  * caller. Tables that do not exist on older tenant DBs are silently skipped
  * rather than erroring, so the export is robust to schema drift.
  */
-export function exportTenantData(tenantId: number): TenantDataExport | null {
+export async function exportTenantData(tenantId: number): Promise<TenantDataExport | null> {
   const masterDb = getMasterDb();
   if (!masterDb) return null;
 
@@ -710,30 +710,34 @@ export function exportTenantData(tenantId: number): TenantDataExport | null {
     .get(tenantId) as { id: number; slug: string } | undefined;
   if (!tenant) return null;
 
-  const db = getTenantDb(tenant.slug);
+  const db = await getTenantDb(tenant.slug);
   if (!db) return null;
 
-  const safeSelectAll = (sql: string): unknown[] => {
-    try {
-      return db.prepare(sql).all();
-    } catch (err: unknown) {
-      logger.warn('exportTenantData: skipped table', {
-        slug: tenant.slug,
-        sql,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return [];
-    }
-  };
+  try {
+    const safeSelectAll = (sql: string): unknown[] => {
+      try {
+        return db.prepare(sql).all();
+      } catch (err: unknown) {
+        logger.warn('exportTenantData: skipped table', {
+          slug: tenant.slug,
+          sql,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      }
+    };
 
-  return {
-    tenantId: tenant.id,
-    slug: tenant.slug,
-    exportedAt: new Date().toISOString(),
-    customers: safeSelectAll('SELECT * FROM customers'),
-    tickets: safeSelectAll('SELECT * FROM tickets'),
-    invoices: safeSelectAll('SELECT * FROM invoices'),
-  };
+    return {
+      tenantId: tenant.id,
+      slug: tenant.slug,
+      exportedAt: new Date().toISOString(),
+      customers: safeSelectAll('SELECT * FROM customers'),
+      tickets: safeSelectAll('SELECT * FROM tickets'),
+      invoices: safeSelectAll('SELECT * FROM invoices'),
+    };
+  } finally {
+    releaseTenantDb(tenant.slug);
+  }
 }
 
 /**

@@ -1,4 +1,30 @@
 
+## Closed 2026-04-23 (wave-47/48/49 web orchestration — hooks + utils + api + stores + components)
+
+Autonomous web-improvement loop. Each item below was implemented, typechecked, and committed atomically. Moved out of TODO.md so the backlog reflects only open work.
+
+- [x] SCAN-713. **useWebSocket silently bailed on missing accessToken with no retry after login** — fixed in commit `900d184c`. authStore now emits `bizarre-crm:auth-ready` after every path that installs a fresh access token (completeLogin, switchUser, each success branch of checkAuth); useWebSocket listens and reconnects deterministically instead of racing localStorage writes.
+- [x] SCAN-846. **Hardcoded `/auth/refresh` path duplicated across API client** — fixed in commit `adad2496`. Extracted `AUTH_REFRESH_PATH` + `AUTH_REFRESH_URL` constants at module top; refresh POST URL and request-interceptor `includes()` now reference the shared constant.
+- [x] SCAN-931. **Settings fetched from server were cast to `Record<string,string>` with no validation** — fixed in commit `c5b846d4`. `useSettings` now narrows the payload through `coerceSettings()`: refuses non-object values, skips nested objects/arrays/null, coerces number/boolean primitives to strings.
+- [x] SCAN-932. **POS keyboard-shortcut listener re-attached every render when callers passed inline handler objects** — fixed in commit `507bf80d`. Handlers pinned in a ref, updated in a separate effect; listener-binding effect depends only on `enabled`, so window listener attaches exactly once per mount.
+- [x] SCAN-933. **Draft autosave wrote unbounded text to localStorage — quota-fill DoS** — fixed in commit `88cc9222`. `useDraft` enforces a 100 KB cap before persist and wraps `setItem` in try/catch so QuotaExceededError never breaks the editing session.
+- [x] SCAN-934. **`useUndoableAction` swallowed unmount-path errors silently** — fixed in commit `f956e146`. Replaced empty `.catch(() => {})` with `console.error` so silent data-loss failures surface in browser console / error telemetry.
+- [x] SCAN-935. **Exported `cn()` utility had no return type** — fixed in commit `13ae478b`. Added `: string` annotation to satisfy the project type-safety rule.
+- [x] SCAN-936. **Currency formatter silently fell back to USD for unknown codes** — fixed in commit `2453734a`. Logs the unknown code via `console.error` before the fallback formatter so misconfigured tenant currency settings surface in error telemetry.
+- [x] SCAN-937. **`useSettings` swallowed fetch errors — callers couldn't tell failed-load from empty-settings** — fixed in commit `c5b846d4` (together with SCAN-931). Destructures `isError` + `error` from `useQuery` and returns them on the hook's public interface.
+- [x] SCAN-938. **Super-admin axios client had no response interceptor — expired tokens silently failed every call** — fixed in commit `2bac8c1f`. Response interceptor clears `superAdminToken` on 401/403, shows a "Session expired" toast, and dispatches a new `bizarre-crm:super-admin-logout` CustomEvent. `TenantsListPage` listens and flips its local authenticated state.
+- [x] SCAN-939. **JWT `exp` used without numeric validation — a malformed token caused a refresh storm** — fixed in commit `2b9c0afd`. Added `typeof payload.exp === 'number' && Number.isFinite(...)` guard before the arithmetic; the existing catch handles the throw by clearing the bad token.
+- [x] SCAN-943. **`window.open('_blank')` missing `noopener,noreferrer` — reverse-tabnabbing risk** — fixed in commit `8389ae27`. Added the window-features string to the payroll-CSV export in `CommissionPeriodLock` and both print fallbacks in `PrintPreviewModal`.
+- [x] SCAN-945. **QuickSmsModal buttons missing `type="button"` — accidental parent-form submit risk** — fixed in commit `27a1c972` (batched with SCAN-946 + SCAN-947).
+- [x] SCAN-946. **QuickSmsModal recipient input not programmatically linked to its label** — fixed in commit `27a1c972`. Added `id="quick-sms-recipient"` + `htmlFor`.
+- [x] SCAN-947. **QuickSmsModal SMS-template data typed as `any[]`** — fixed in commit `27a1c972`. Introduced local `SmsTemplate` interface; dropped every `any` in the template flow; added `Array.isArray` runtime guard against non-array server payload; tightened `onError` to `unknown` with shape narrowing.
+- [x] SCAN-949. **GettingStartedWidget `trackableCount` recomputed every render** — fixed in commit `cc9215e1`. Lifted into `useMemo` with empty deps (STEPS is a module-level constant).
+- [x] SCAN-941. **Plan-fetch errors silently swallowed on planStore** — fixed in commit `04df2cdb`. Added `error: string | null` to `PlanState`; cleared at fetch start + on success; populated from caught value on failure (Error / string / fallback). auth-cleared listener also wipes it. Feature gates can now distinguish transient-failure from empty-plan and offer a retry affordance.
+- [x] SCAN-944. **ImpersonationBanner exit was a clickable `<div role="button">` with no keyboard handler** — fixed in commit `e76900f2`. Replaced with a real `<button type="button">` (full-width) that gets native Enter/Space keyboard activation + a visible focus ring; added `aria-label` including the tenant slug; marked decorative icons `aria-hidden`.
+- [x] SCAN-948. **DataTable clickable rows + sortable headers unreachable by keyboard** — fixed in commit `007d6fef`.
+- [x] SCAN-950. **`onError: (e: any)` in several team + inventory mutations bypassed safe narrowing** — fixed in commit `097197c8`. CommissionPeriodLock (create + lock mutations), TicketHandoffModal, and QuickAddInput now type `e: unknown` and narrow via `e && typeof e === 'object' && 'response' in e` before reading the server message. Keeps behavior identical on the happy path.
+
+
 ## Closed 2026-04-23 (backlog hygiene — TODO.md [x] migration)
 
 Bulk move of items that were already marked [x] in TODO.md but never relocated to DONETODOS.md. Per the workflow rule at the top of TODO.md, completed work must live here. Each entry below is preserved verbatim from the original TODO.md checkbox (proof text / commit refs inline).

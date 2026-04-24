@@ -40,6 +40,7 @@ import { closeTenantDb } from '../db/tenant-pool.js';
 import { deleteTenantDnsRecord } from './cloudflareDns.js';
 import { sendEmail } from './email.js';
 import { createLogger } from '../utils/logger.js';
+import { trackInterval } from '../utils/trackInterval.js';
 
 const logger = createLogger('tenant-termination');
 
@@ -72,13 +73,22 @@ interface TerminationToken {
  */
 const tokens = new Map<string, TerminationToken>();
 
-/** Best-effort reaper so we don't hold expired tokens forever. */
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of tokens) {
-    if (v.expiresAt < now) tokens.delete(k);
-  }
-}, 60_000).unref?.();
+/**
+ * SCAN-652: Token reaper extracted from module scope into a named start
+ * function so index.ts can wire it into the trackInterval registry for
+ * graceful shutdown. Call once post-listen alongside other crons.
+ */
+let sweepTimer: NodeJS.Timeout | null = null;
+
+export function startTenantTerminationSweeper(): void {
+  if (sweepTimer) return;
+  sweepTimer = trackInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of tokens) {
+      if (v.expiresAt < now) tokens.delete(k);
+    }
+  }, 60_000);
+}
 
 function newToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -199,6 +209,8 @@ export interface FinalizeTerminationInput {
   token: string;
   typedSlug: string;
   typedPhrase: string;
+  /** IP address of the caller. Null on cron-initiated paths. */
+  requestIp: string | null;
 }
 
 /**
@@ -250,6 +262,7 @@ export async function finalizeTermination(
   return await executeTermination({
     slug: entry.slug,
     tenantId: entry.tenantId,
+    requestIp: input.requestIp,
   });
 }
 
@@ -267,6 +280,7 @@ export async function finalizeTermination(
 async function executeTermination(opts: {
   slug: string;
   tenantId: number;
+  requestIp: string | null;
 }): Promise<{ ok: true; data: FinalizeTerminationResult } | { ok: false; error: string }> {
   const masterDb = getMasterDb();
   if (!masterDb) return { ok: false, error: 'Master database unavailable' };
@@ -312,8 +326,16 @@ async function executeTermination(opts: {
       srcPath,
     });
   }
-  try { fs.renameSync(srcPath + '-wal', archivedPath + '-wal'); } catch {}
-  try { fs.renameSync(srcPath + '-shm', archivedPath + '-shm'); } catch {}
+  try { fs.renameSync(srcPath + '-wal', archivedPath + '-wal'); } catch (err) {
+    logger.warn('WAL sidecar rename failed during termination (non-fatal)', {
+      slug: row.slug, src: srcPath + '-wal', error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try { fs.renameSync(srcPath + '-shm', archivedPath + '-shm'); } catch (err) {
+    logger.warn('SHM sidecar rename failed during termination (non-fatal)', {
+      slug: row.slug, src: srcPath + '-shm', error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   const scheduledAtMs = Date.now();
   const permanentDeleteAtMs = scheduledAtMs + TERMINATION_GRACE_DAYS * 24 * 60 * 60 * 1000;
@@ -351,7 +373,7 @@ async function executeTermination(opts: {
     masterDb
       .prepare(
         `INSERT INTO master_audit_log (super_admin_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (NULL, 'tenant_self_terminated', 'tenant', ?, ?, NULL)`,
+         VALUES (NULL, 'tenant_self_terminated', 'tenant', ?, ?, ?)`,
       )
       .run(
         row.slug,
@@ -360,6 +382,7 @@ async function executeTermination(opts: {
           deletionScheduledAt: scheduledAtIso,
           permanentDeleteAt: permanentDeleteAtIso,
         }),
+        opts.requestIp ?? null,
       );
   } catch {}
 
@@ -401,32 +424,78 @@ async function executeTermination(opts: {
 }
 
 /**
- * Daily cron: unlink files in `deleted/` whose mtime is older than
- * TERMINATION_GRACE_DAYS. Called from the index.ts cron block + once
- * at startup so a server that was offline through a scheduled purge
- * still catches up.
+ * Daily cron: unlink files in `deleted/` that are past their grace window.
+ * Called from the index.ts cron block + once at startup so a server that was
+ * offline through a scheduled purge still catches up.
+ *
+ * SCAN-595: eligibility is determined by querying `deletion_scheduled_at`
+ * from the master `tenants` table (set at termination time). This is
+ * authoritative and immune to filesystem mtime drift from backups, touches,
+ * or restore operations.
+ *
+ * Fallback: if a .db file has no matching master-DB row (e.g. placed there by
+ * a cold-backup restore before the row was re-created), we fall back to mtime
+ * and log a warning so operators can investigate.
  */
 export function purgeExpiredDeletions(): { scanned: number; purged: number } {
   const deletedDir = path.join(config.tenantDataDir, 'deleted');
   if (!fs.existsSync(deletedDir)) return { scanned: 0, purged: 0 };
 
+  const masterDb = getMasterDb();
+  const nowMs = Date.now();
+  const GRACE_MS = TERMINATION_GRACE_DAYS * 24 * 60 * 60 * 1000;
+
   let scanned = 0;
   let purged = 0;
-  const cutoffMs = Date.now() - TERMINATION_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
   for (const name of fs.readdirSync(deletedDir)) {
-    // Only consider *.db / *.db-wal / *.db-shm files produced by us.
-    if (!/\.db(-wal|-shm)?$/.test(name)) continue;
+    // Only consider *.db entries — WAL/SHM sidecars are removed together.
+    if (!/\.db$/.test(name)) continue;
     scanned += 1;
     const full = path.join(deletedDir, name);
+
     try {
-      const stat = fs.statSync(full);
-      if (stat.mtimeMs <= cutoffMs) {
+      let deadlineMs: number | null = null;
+      let deadlineSource: 'master_db' | 'mtime' = 'master_db';
+
+      if (masterDb) {
+        // Match by archived_db_path (exact) OR by slug extracted from filename.
+        // Filename pattern: "<slug>-<iso-timestamp>.db"
+        // e.g. "acme-2025-01-15T12-30-00-000Z.db" -> slug = "acme"
+        const slugFromName = name.replace(/-\d{4}-\d{2}-\d{2}T[\d-]+Z\.db$/, '');
+        const dbRow = masterDb
+          .prepare(
+            `SELECT deletion_scheduled_at FROM tenants
+              WHERE archived_db_path = ? OR slug = ?
+              LIMIT 1`,
+          )
+          .get(full, slugFromName) as { deletion_scheduled_at: string | null } | undefined;
+
+        if (dbRow?.deletion_scheduled_at) {
+          deadlineMs = new Date(dbRow.deletion_scheduled_at).getTime();
+        }
+      }
+
+      if (deadlineMs === null) {
+        // No authoritative master-DB record — fall back to mtime with a warning.
+        const stat = fs.statSync(full);
+        deadlineMs = stat.mtimeMs + GRACE_MS;
+        deadlineSource = 'mtime';
+        logger.warn(
+          'purgeExpiredDeletions: no master-DB row for archived file; using mtime as fallback',
+          { file: name, deadline: new Date(deadlineMs).toISOString() },
+        );
+      }
+
+      if (nowMs >= deadlineMs) {
         fs.unlinkSync(full);
+        try { fs.unlinkSync(full + '-wal'); } catch {}
+        try { fs.unlinkSync(full + '-shm'); } catch {}
         purged += 1;
         logger.info('Purged expired terminated DB file', {
           file: name,
-          ageDays: Math.floor((Date.now() - stat.mtimeMs) / (24 * 60 * 60 * 1000)),
+          deadlineSource,
+          deadline: new Date(deadlineMs).toISOString(),
         });
       }
     } catch (err) {

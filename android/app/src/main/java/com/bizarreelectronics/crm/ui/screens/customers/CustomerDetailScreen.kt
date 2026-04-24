@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -42,6 +44,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
@@ -51,16 +54,48 @@ import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.UndoStack
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+// ---------------------------------------------------------------------------
+// Domain type for customer undo entries (§1 L232)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sealed payload type covering all reversible customer mutations wired to
+ * [UndoStack] in [CustomerDetailViewModel]. Immutable data classes only.
+ */
+sealed class CustomerEdit {
+    /** A generic scalar field update (e.g. firstName, phone, email). */
+    data class FieldEdit(
+        val fieldName: String,
+        val oldValue: String?,
+        val newValue: String?,
+    ) : CustomerEdit()
+
+    /** Tags change — old and new tag string (comma-separated). */
+    data class TagsEdit(
+        val oldTags: String?,
+        val newTags: String?,
+    ) : CustomerEdit()
+
+    /** A note that was added online (noteId is the server-assigned id). */
+    data class NoteAdded(
+        val noteId: Long,
+        val body: String,
+    ) : CustomerEdit()
+}
 
 data class CustomerDetailUiState(
     val customer: CustomerEntity? = null,
@@ -125,8 +160,44 @@ class CustomerDetailViewModel @Inject constructor(
     private var ticketsJob: Job? = null
     private var notesJob: Job? = null
 
+    // -----------------------------------------------------------------------
+    // Undo / redo (§1 L232 — customer field edit, tags edit, note add)
+    // -----------------------------------------------------------------------
+
+    /** Undo stack scoped to this ViewModel instance; cleared on nav dismiss. */
+    val undoStack = UndoStack<CustomerEdit>()
+
+    /**
+     * Convenience alias so the screen can gate an Undo Snackbar action without
+     * importing [UndoStack] — delegates directly to [undoStack.canUndo].
+     */
+    val canUndo: StateFlow<Boolean> = undoStack.canUndo
+
     init {
         loadCustomer()
+        observeUndoEvents()
+    }
+
+    /**
+     * Collects [UndoStack.events] and forwards [UndoStack.UndoEvent.Undone] /
+     * [UndoStack.UndoEvent.Redone] audit descriptions to Timber tag "CustomerUndo".
+     * The screen handles the UI-visible Pushed/Failed events directly via its own
+     * LaunchedEffect so no snackbar logic lives here.
+     */
+    private fun observeUndoEvents() {
+        viewModelScope.launch {
+            undoStack.events.collect { event ->
+                when (event) {
+                    is UndoStack.UndoEvent.Undone ->
+                        Timber.tag("CustomerUndo").i("Undone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Redone ->
+                        Timber.tag("CustomerUndo").i("Redone: ${event.entry.auditDescription}")
+                    is UndoStack.UndoEvent.Failed ->
+                        Timber.tag("CustomerUndo").w("Undo failed: ${event.reason}")
+                    is UndoStack.UndoEvent.Pushed -> { /* handled by screen */ }
+                }
+            }
+        }
     }
 
     fun loadCustomer() {
@@ -215,6 +286,10 @@ class CustomerDetailViewModel @Inject constructor(
      * success prepends to the local notes list so the UI reflects the new
      * row without a full refetch. A failed POST surfaces via saveMessage
      * and leaves the composer text intact so the user can retry.
+     *
+     * On success pushes a [CustomerEdit.NoteAdded] entry to [undoStack].
+     * compensatingSync calls [CustomerApi.deleteNote] to roll back the server
+     * row; offline-queued notes (noteId < 0) return false immediately.
      */
     fun postNote() {
         val draft = _state.value.noteDraft.trim()
@@ -228,11 +303,46 @@ class CustomerDetailViewModel @Inject constructor(
                     CreateCustomerNoteRequest(body = draft),
                 )
                 val note = response.data
+                val noteId = note?.id ?: -1L
                 val existing = _state.value.notes ?: emptyList()
                 _state.value = _state.value.copy(
                     notes = if (note != null) listOf(note) + existing else existing,
                     noteDraft = "",
                     isPostingNote = false,
+                )
+
+                // Push undo entry — compensatingSync calls deleteNote to
+                // roll back the server row (CROSS9b / B19 undo gap closed).
+                val payload = CustomerEdit.NoteAdded(noteId = noteId, body = draft)
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = payload,
+                        apply = {
+                            // Re-add: reload notes list (no local mutation needed)
+                            viewModelScope.launch { loadNotes() }
+                        },
+                        reverse = {
+                            // Optimistically remove the note from local list
+                            _state.value = _state.value.copy(
+                                notes = _state.value.notes?.filter { it.id != noteId },
+                            )
+                        },
+                        auditDescription = "Note added: \"${draft.take(60)}${if (draft.length > 60) "…" else ""}\"",
+                        compensatingSync = {
+                            if (noteId < 0) {
+                                // Offline-queued notes have no server row to delete.
+                                false
+                            } else {
+                                try {
+                                    val resp = customerApi.deleteNote(customerId, noteId)
+                                    resp.success
+                                } catch (e: Exception) {
+                                    Timber.w(e, "Customer note undo: server delete failed")
+                                    false
+                                }
+                            }
+                        },
+                    )
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -287,32 +397,138 @@ class CustomerDetailViewModel @Inject constructor(
             return
         }
 
+        // Snapshot of field values before the save — used to build undo entries.
+        val oldCustomer = current.customer
+
         viewModelScope.launch {
             _state.value = _state.value.copy(isSaving = true)
             try {
+                val newFirstName = current.editFirstName.trim()
+                val newLastName = current.editLastName.trim().ifBlank { null }
+                val newPhone = current.editPhone.trim().ifBlank { null }
+                val newEmail = current.editEmail.trim().ifBlank { null }
+                val newOrganization = current.editOrganization.trim().ifBlank { null }
+                val newAddress = current.editAddress.trim().ifBlank { null }
+                val newCity = current.editCity.trim().ifBlank { null }
+                val newState = current.editState.trim().ifBlank { null }
+                val newTags = current.editTags
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .joinToString(", ")
+                    .ifBlank { null }
+                val newGroupId = current.editGroupId
+
                 val request = UpdateCustomerRequest(
-                    firstName = current.editFirstName.trim(),
-                    lastName = current.editLastName.trim().ifBlank { null },
-                    phone = current.editPhone.trim().ifBlank { null },
-                    email = current.editEmail.trim().ifBlank { null },
-                    organization = current.editOrganization.trim().ifBlank { null },
-                    address1 = current.editAddress.trim().ifBlank { null },
-                    city = current.editCity.trim().ifBlank { null },
-                    state = current.editState.trim().ifBlank { null },
-                    customerTags = current.editTags
-                        .split(",")
-                        .map { it.trim() }
-                        .filter { it.isNotBlank() }
-                        .joinToString(", ")
-                        .ifBlank { null },
-                    customerGroupId = current.editGroupId,
+                    firstName = newFirstName,
+                    lastName = newLastName,
+                    phone = newPhone,
+                    email = newEmail,
+                    organization = newOrganization,
+                    address1 = newAddress,
+                    city = newCity,
+                    state = newState,
+                    customerTags = newTags,
+                    customerGroupId = newGroupId,
                 )
                 customerRepository.updateCustomer(customerId, request)
                 _state.value = _state.value.copy(
                     isEditing = false,
                     isSaving = false,
-                    saveMessage = "Customer updated",
                 )
+
+                // Push undo entries for each field that changed.
+                if (oldCustomer != null) {
+                    // Scalar field changes — one entry per changed field.
+                    val fieldChanges = listOf(
+                        Triple("firstName",  oldCustomer.firstName,    newFirstName),
+                        Triple("lastName",   oldCustomer.lastName,     newLastName),
+                        Triple("phone",      oldCustomer.mobile ?: oldCustomer.phone, newPhone),
+                        Triple("email",      oldCustomer.email,        newEmail),
+                        Triple("organization", oldCustomer.organization, newOrganization),
+                        Triple("address",    oldCustomer.address1,     newAddress),
+                        Triple("city",       oldCustomer.city,         newCity),
+                        Triple("state",      oldCustomer.state,        newState),
+                    ).filter { (_, old, new) -> old != new }
+
+                    for ((fieldName, oldValue, newValue) in fieldChanges) {
+                        val payload = CustomerEdit.FieldEdit(fieldName, oldValue, newValue)
+                        undoStack.push(
+                            UndoStack.Entry(
+                                payload = payload,
+                                apply = {
+                                    viewModelScope.launch {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            buildSingleFieldRequest(fieldName, newValue),
+                                        )
+                                    }
+                                },
+                                reverse = {
+                                    viewModelScope.launch {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            buildSingleFieldRequest(fieldName, oldValue),
+                                        )
+                                    }
+                                },
+                                auditDescription = "Edited $fieldName from ${oldValue ?: "(empty)"} to ${newValue ?: "(empty)"}",
+                                compensatingSync = {
+                                    try {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            buildSingleFieldRequest(fieldName, oldValue),
+                                        )
+                                        true
+                                    } catch (e: Exception) {
+                                        Timber.tag("CustomerUndo").e(e, "compensatingSync: $fieldName revert failed")
+                                        false
+                                    }
+                                },
+                            )
+                        )
+                    }
+
+                    // Tags change — one dedicated TagsEdit entry.
+                    val oldTags = oldCustomer.tags
+                    if (oldTags != newTags) {
+                        val tagsPayload = CustomerEdit.TagsEdit(oldTags, newTags)
+                        undoStack.push(
+                            UndoStack.Entry(
+                                payload = tagsPayload,
+                                apply = {
+                                    viewModelScope.launch {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            UpdateCustomerRequest(customerTags = newTags),
+                                        )
+                                    }
+                                },
+                                reverse = {
+                                    viewModelScope.launch {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            UpdateCustomerRequest(customerTags = oldTags),
+                                        )
+                                    }
+                                },
+                                auditDescription = "Edited tags from \"${oldTags ?: ""}\" to \"${newTags ?: ""}\"",
+                                compensatingSync = {
+                                    try {
+                                        customerRepository.updateCustomer(
+                                            customerId,
+                                            UpdateCustomerRequest(customerTags = oldTags),
+                                        )
+                                        true
+                                    } catch (e: Exception) {
+                                        Timber.tag("CustomerUndo").e(e, "compensatingSync: tags revert failed")
+                                        false
+                                    }
+                                },
+                            )
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
@@ -321,6 +537,24 @@ class CustomerDetailViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Build a minimal [UpdateCustomerRequest] carrying only [fieldName] = [value].
+     * All other fields are null so the server performs a partial update without
+     * overwriting unrelated columns.
+     */
+    private fun buildSingleFieldRequest(fieldName: String, value: String?): UpdateCustomerRequest =
+        when (fieldName) {
+            "firstName"    -> UpdateCustomerRequest(firstName = value ?: "")
+            "lastName"     -> UpdateCustomerRequest(lastName = value)
+            "phone"        -> UpdateCustomerRequest(phone = value)
+            "email"        -> UpdateCustomerRequest(email = value)
+            "organization" -> UpdateCustomerRequest(organization = value)
+            "address"      -> UpdateCustomerRequest(address1 = value)
+            "city"         -> UpdateCustomerRequest(city = value)
+            "state"        -> UpdateCustomerRequest(state = value)
+            else           -> UpdateCustomerRequest()
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -341,6 +575,7 @@ fun CustomerDetailScreen(
     val customer = state.customer
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.saveMessage) {
         val msg = state.saveMessage
@@ -348,6 +583,39 @@ fun CustomerDetailScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.clearSaveMessage()
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Undo stack UI (§1 L232)
+    // -----------------------------------------------------------------------
+
+    // Collect UndoStack events: show "Edit saved / Undo" Snackbar on Pushed,
+    // plain toast on Failed. Undone/Redone are audit-only (logged in ViewModel).
+    LaunchedEffect(viewModel.undoStack) {
+        viewModel.undoStack.events.collect { event ->
+            when (event) {
+                is UndoStack.UndoEvent.Pushed -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Edit saved",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        scope.launch { viewModel.undoStack.undo() }
+                    }
+                }
+                is UndoStack.UndoEvent.Failed ->
+                    snackbarHostState.showSnackbar(event.reason)
+                is UndoStack.UndoEvent.Undone -> { /* audit handled in ViewModel */ }
+                is UndoStack.UndoEvent.Redone -> { /* audit handled in ViewModel */ }
+            }
+        }
+    }
+
+    // Clear undo history when the screen leaves composition so stale entries
+    // don't survive a back-stack pop and re-push.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.undoStack.clear() }
     }
 
     Scaffold(
@@ -650,6 +918,7 @@ private fun CustomerEditContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CustomerDetailContent(
     customer: CustomerEntity,
@@ -941,22 +1210,38 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Tags — BrandCard
-        if (!customer.tags.isNullOrBlank()) {
-            item {
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+        // Tags — chip row (CROSS9d: replaces raw comma-separated Text).
+        // Always render the card so the empty-state ("No tags") is visible.
+        // tagLabels is recomputed only when customer.tags changes (immutable memo).
+        item {
+            val tagLabels = remember(customer.tags) {
+                customer.tags.orEmpty()
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Tags",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (tagLabels.isEmpty()) {
                         Text(
-                            "Tags",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            customer.tags,
+                            "No tags",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            tagLabels.forEach { tag -> TagChip(label = tag) }
+                        }
                     }
                 }
             }
