@@ -7,7 +7,9 @@ import androidx.room.TypeConverters
 import com.bizarreelectronics.crm.data.local.db.converters.Converters
 import com.bizarreelectronics.crm.data.local.db.dao.*
 import com.bizarreelectronics.crm.data.local.db.entities.*
+import com.bizarreelectronics.crm.data.local.db.dao.CheckInDraftDao
 import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
+import com.bizarreelectronics.crm.data.local.db.entities.CheckInDraftEntity
 import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
 import com.bizarreelectronics.crm.data.local.draft.DraftDao
 import com.bizarreelectronics.crm.data.local.draft.DraftEntity
@@ -66,6 +68,7 @@ import kotlinx.coroutines.withContext
         AppliedMigrationEntity::class,
         SyncStateEntity::class,
         ParkedCartEntity::class,
+        CheckInDraftEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -88,9 +91,10 @@ import kotlinx.coroutines.withContext
     //
     // Plan §1 L180+L183: bumped from 7 to 8 to add `sync_state` table and
     // `_synced_at` bookkeeping columns on tickets/customers/inventory_items/invoices.
-    // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
+    // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
     // Plan §20.2 L2108: bumped from 9 to 10 to add depends_on_queue_id to sync_queue.
-    version = 10,
+    // Phase 3 check-in: bumped from 10 to 11 to add checkin_drafts table.
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -113,6 +117,7 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun appliedMigrationDao(): AppliedMigrationDao
     abstract fun syncStateDao(): SyncStateDao
     abstract fun parkedCartDao(): ParkedCartDao
+    abstract fun checkInDraftDao(): CheckInDraftDao
 
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
@@ -125,7 +130,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 10
+        const val SCHEMA_VERSION = 11
     }
 }
 

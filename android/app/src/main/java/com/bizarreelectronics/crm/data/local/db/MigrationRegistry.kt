@@ -131,6 +131,12 @@ object MigrationRegistry {
             name = "sync-queue-depends_on: FIFO dependency chain for ordered queue [plan:L2108]",
             migration = Migrations.MIGRATION_9_10,
         ),
+        Entry(
+            fromVersion = 10,
+            toVersion = 11,
+            name = "checkin-drafts-table: repair check-in autosave [Phase 3]",
+            migration = Migrations.MIGRATION_10_11,
+        ),
     )
 
     /**

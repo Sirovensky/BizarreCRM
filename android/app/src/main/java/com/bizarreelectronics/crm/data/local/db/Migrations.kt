@@ -737,6 +737,36 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 10 → 11: add `checkin_drafts` table (Phase 3 repair check-in).**
+     *
+     * Creates the `checkin_drafts` table keyed by composite PK `(customer_id, device_id)`.
+     * One draft per customer+device pair; [CheckInDraftDao.upsert] uses
+     * [OnConflictStrategy.REPLACE] so repeated saves overwrite cleanly.
+     *
+     * The `payload_json` column holds a serialised `CheckInUiState` snapshot.
+     * Passcode values stored here are protected by the SQLCipher encryption layer
+     * that wraps the whole database file.
+     *
+     * `CREATE TABLE IF NOT EXISTS` is idempotent — a retried migration is safe.
+     */
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS checkin_drafts (
+                    customer_id  INTEGER NOT NULL,
+                    device_id    INTEGER NOT NULL,
+                    step         INTEGER NOT NULL DEFAULT 0,
+                    payload_json TEXT    NOT NULL,
+                    updated_at   INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (customer_id, device_id)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -748,5 +778,6 @@ object Migrations {
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
+        MIGRATION_10_11,
     )
 }
