@@ -131,7 +131,12 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
 
 // ─── Tabs Config ──────────────────────────────────────────────────────────────
 
-type ReportTabConfig = { key: Tab; label: string; icon: any; proFeature?: keyof PlanFeatures };
+type ReportTabConfig = {
+  key: Tab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  proFeature?: keyof PlanFeatures;
+};
 
 // Free tier gets basic reports (sales, tickets, employees, inventory, tax).
 // Pro-only reports require the `advancedReports` feature.
@@ -162,6 +167,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
       const res = await reportApi.sales({ from_date: from, to_date: to, group_by: groupBy });
       return res.data.data as SalesData;
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -353,6 +359,7 @@ function TicketsTab({ from, to }: { from: string; to: string }) {
       const res = await reportApi.tickets({ from_date: from, to_date: to });
       return res.data.data as TicketsData;
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -463,24 +470,29 @@ function TicketsTab({ from, to }: { from: string; to: string }) {
                 </tr>
               </thead>
               <tbody>
-                {byDay.map((d) => {
+                {(() => {
+                  // Hoist the max once: this was previously recomputed inside
+                  // the map callback, making each row O(n) and the list O(n²)
+                  // for up to 90 days of data.
                   const maxCreated = Math.max(...byDay.map((x) => x.created), 1);
-                  const pct = (d.created / maxCreated) * 100;
-                  return (
-                    <tr key={d.day} className="border-b border-surface-50 dark:border-surface-800/50 hover:bg-surface-50 dark:hover:bg-surface-800/30">
-                      <td className="px-4 py-3 text-surface-900 dark:text-surface-100">{formatDate(d.day)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{d.created}</td>
-                      <td className="px-4 py-3">
-                        <div className="h-4 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-500 rounded-full transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                  return byDay.map((d) => {
+                    const pct = (d.created / maxCreated) * 100;
+                    return (
+                      <tr key={d.day} className="border-b border-surface-50 dark:border-surface-800/50 hover:bg-surface-50 dark:hover:bg-surface-800/30">
+                        <td className="px-4 py-3 text-surface-900 dark:text-surface-100">{formatDate(d.day)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{d.created}</td>
+                        <td className="px-4 py-3">
+                          <div className="h-4 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
@@ -511,6 +523,7 @@ function TechWorkloadChart() {
       const res = await reportApi.techWorkload();
       return res.data.data as TechWorkloadItem[];
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -575,6 +588,7 @@ function EmployeesTab({ from, to }: { from: string; to: string }) {
       const res = await reportApi.employees({ from_date: from, to_date: to });
       return res.data.data as EmployeesData;
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -646,6 +660,7 @@ function InventoryTab() {
       const res = await reportApi.inventory();
       return res.data.data as InventoryData;
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -798,6 +813,7 @@ function TaxTab({ from, to }: { from: string; to: string }) {
       const res = await reportApi.tax({ from_date: from, to_date: to });
       return res.data.data as TaxData;
     },
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -892,6 +908,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
       const res = await reportApi.insights({ from_date: from, to_date: to });
       return res.data.data as InsightsData;
     },
+    staleTime: 30_000,
   });
 
   const { data: prevData } = useQuery({
@@ -901,6 +918,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
       return res.data.data as InsightsData;
     },
     enabled: compare,
+    staleTime: 30_000,
   });
 
   if (isLoading) return <LoadingState />;

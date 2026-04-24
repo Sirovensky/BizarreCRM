@@ -4,7 +4,10 @@
 First batch after switching to direct-on-main commits (no feature branches).
 
 - [x] SCAN-954. **InvoiceListPage rows were `any[]`** — fixed in commit `9f63d3bc`. Added a local `InvoiceRow` interface covering the fields the list actually reads; wrapped payload access in `Array.isArray(...)` narrow before casting; tightened `statusDist` / `methodDist` to explicit array types.
-- [x] SCAN-960. **TicketWizard labels not associated with inputs** — partially fixed in commit `f4466615`. Enhanced the shared `FormLabel` helper with an optional `htmlFor` prop; wired the new-customer section's four fields (first name, last name, phone, email) with matching `id` attributes. Follow-up SCAN-961 logged for the remaining ~18 device/service labels in the same file.
+- [x] SCAN-960. **TicketWizard labels not associated with inputs** — partially fixed in commit `f4466615`.
+- [x] SCAN-962. **ReportsPage tab config `icon: any`** — fixed in commit `<pending>`. Typed as `React.ComponentType<{ className?: string }>` so only renderable components pass type-checking.
+- [x] SCAN-963. **ReportsPage useQuery calls had no `staleTime`** — fixed in commit `<pending>`. Added `staleTime: 30_000` to all 8 useQuery calls across Sales/Tickets/Employees/Inventory/Tax/Insights/Warranty/Devices tabs. Tab switches + refocus no longer hammer aggregation endpoints.
+- [x] SCAN-964. **ReportsPage TicketsTab recomputed `Math.max(...)` inside every row — O(n²) overall** — fixed in commit `<pending>`. Wrapped the `.map()` body in an IIFE that hoists the max once before iterating. Enhanced the shared `FormLabel` helper with an optional `htmlFor` prop; wired the new-customer section's four fields (first name, last name, phone, email) with matching `id` attributes. Follow-up SCAN-961 logged for the remaining ~18 device/service labels in the same file.
 
 ## Closed 2026-04-23 (wave-47/48/49 web orchestration — hooks + utils + api + stores + components)
 

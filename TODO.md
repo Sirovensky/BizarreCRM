@@ -702,12 +702,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
-- [ ] SCAN-962. **Reports tab config icons typed as `any` — no compile-time guarantee they're renderable components.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:134; fix=ComponentType<{className?:string}> -->
-- [ ] SCAN-963. **Reports queries have no staleTime — tab switches re-hit expensive aggregations on every refocus.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:159-165; fix=staleTime-30000 -->
-- [ ] SCAN-964. **Reports TicketsTab recomputes `Math.max(...)` inside every row — O(n) per row over up to 90 days.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:467; fix=hoist-max-once -->
 - [ ] SCAN-965. **Customer list + groups queries have no staleTime — every nav refetches fresh data even on ms-old cache.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:149,172; fix=staleTime-10000 -->
 - [ ] SCAN-966. **Customer CSV import preview typed as `any[]` — malformed/injected rows flow to server untyped.**
