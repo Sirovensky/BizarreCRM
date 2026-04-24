@@ -493,7 +493,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
 - [x] **Skeleton loaders** — shimmer via `placeholder-material3` Compose lib ≤300ms; cached value rendered immediately if present.
 - [x] **Phone**: 2-column grid. **Tablet**: 3-column ≥600dp wide, 4-column ≥840dp, capped at 1200dp content width. **ChromeOS/desktop**: 4-column. (commit 059e249 — `rememberWindowMode()` branches Phone=2 / Tablet=3 / Desktop=4)
-- [ ] **Customization sheet** — long-press tile → `ModalBottomSheet` with "Hide tile" / "Reorder tiles"; persisted in DataStore.
+- [x] **Customization sheet** — long-press tile → `ModalBottomSheet` with "Hide tile" / "Reorder tiles"; persisted in DataStore. (commit 02558f1 — `components/DashboardCustomizationSheet.kt` ModalBottomSheet + drag handles + checkboxes + Save→prefs; `AppPreferences.dashboardTileOrder/dashboardHiddenTiles`)
 - [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (commit 059e249 — `DashboardEmptyState.kt` shown when `allKpisZero`; welcome heading + subtitle + "Create first ticket" CTA → `/tickets/new`; hidden once any KPI > 0)
 
 ### 3.2 Business-intelligence widgets (mirror web)
@@ -599,15 +599,15 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Infinite scroll with cursor-based pagination via Paging3 + Room RemoteMediator. (commit 6f5eb1f — `ActivityApi.getActivity(cursor, limit=20)` cursor pagination + `loadMoreIfNeeded` near list bottom)
 
 ### 3.17 Per-role / saved dashboards
-- [ ] Tenant admin defines per-role tile templates.
-- [ ] Cashier default tiles: today sales / shift totals / quick actions.
-- [ ] Tech default tiles: my queue / my commission / tasks.
-- [ ] Manager default tiles: revenue / team perf / low stock.
-- [ ] User can reorder tiles within allowed set (drag-to-rearrange via `Modifier.draggable` on tablet).
-- [ ] Multiple named saved dashboards per user (e.g. "Morning", "End of day").
-- [ ] Quick-switch between saved dashboards via segmented tab.
-- [ ] Shared data plumbing with §24 Glance widgets.
-- [ ] New users get curated minimal set; reveal advanced on demand.
+- [x] Tenant admin defines per-role tile templates. (commit 02558f1 — `DashboardApi.getRoleTemplate(role)` + `RoleTemplateDto(defaultTiles, allowedTiles)` 404-tolerant)
+- [x] Cashier default tiles: today sales / shift totals / quick actions. (commit 02558f1 — `defaultTilesFor(role="cashier")` client fallback)
+- [x] Tech default tiles: my queue / my commission / tasks. (commit 02558f1 — `defaultTilesFor(role="tech")` client fallback)
+- [x] Manager default tiles: revenue / team perf / low stock. (commit 02558f1 — `defaultTilesFor(role="admin|manager")` all tiles)
+- [x] User can reorder tiles within allowed set (drag-to-rearrange via `Modifier.draggable` on tablet). (commit 02558f1 — `detectDragGesturesAfterLongPress` in CustomizationSheet; ReduceMotion snap)
+- [x] Multiple named saved dashboards per user (e.g. "Morning", "End of day"). (commit 02558f1 — `SavedDashboard` data class + JSON round-trip; max 5 presets; AppPreferences persistence)
+- [x] Quick-switch between saved dashboards via segmented tab. (commit 02558f1 — `components/SavedDashboardTabs.kt` FilterChip row + name dialog)
+- [x] Shared data plumbing with §24 Glance widgets. (commit 02558f1 — `DashboardLayoutConfig` shared data class; Glance contract documented in KDoc)
+- [x] New users get curated minimal set; reveal advanced on demand. (commit 02558f1 — first-launch auto-selects role defaults + "Show all tiles" button)
 
 ### 3.18 Density modes
 - [x] Three modes: Comfortable (default phone, 1-2 col), Cozy (default tablet, 2-3 col), Compact (power user, 3-4 col smaller type). (commit fc88873 — `ui/theme/DashboardDensity.kt` enum + `columnsForWindowSize/baseSpacing/typeScale` + `LocalDashboardDensity` staticCompositionLocal)
@@ -649,10 +649,10 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
   - Row-to-detail transition on selection: inline detail swap, no push animation.
   - Deep-link open (e.g., from push notification) selects row + loads detail simultaneously via `ThreePaneScaffoldNavigator.navigateTo(...)`.
   - Predictive back gesture collapses detail back to list on phone portrait / small windows.
-- [ ] **Export CSV** — `GET /tickets/export` + Storage Access Framework `ACTION_CREATE_DOCUMENT` on tablet/ChromeOS.
-- [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
-- [ ] **Customer-preview popover** — tap customer avatar on row → `Popup` with recent-tickets + quick-actions.
-- [ ] **Row age / due-date badges** — same color scheme as My Queue.
+- [x] **Export CSV** — `GET /tickets/export` + Storage Access Framework `ACTION_CREATE_DOCUMENT` on tablet/ChromeOS. (commit 851f0b7 — `components/TicketExportActions.kt` overflow menu + `buildCsvContent()` streams 9 columns via SAF)
+- [x] **Pinned/bookmarked** tickets at top (⭐ toggle). (commit 851f0b7 — `components/PinnedTicketsHeader.kt` up to 5 tickets + star in row + DropdownMenu toggle; `AppPreferences.pinnedTicketIds: Set<Long>` + `TicketApi.setPinned` 404-local-only)
+- [x] **Customer-preview popover** — tap customer avatar on row → `Popup` with recent-tickets + quick-actions. (commit 851f0b7 — `components/CustomerPreviewPopover.kt` name/phone/email/ticket-count + Call/SMS/Email via PhoneIntents + 3s auto-dismiss)
+- [x] **Row age / due-date badges** — same color scheme as My Queue. (commit 851f0b7 — `components/TicketAgeBadge.kt` + `TicketDueDateBadge` + `TicketRowBadges` chip container; gray/yellow/amber/red tiers; 24 JVM tests for boundaries)
 - [x] **Empty state** — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from Room; banner "Showing cached tickets" + last-sync time.
 
