@@ -78,8 +78,6 @@ type: project
 - [ ] CROSS9c-needs-api. **Customer detail addresses card (Android, DEFERRED)** — parent CROSS9 split. Investigated 2026-04-17: there is **no `GET /customers/:id/addresses` endpoint** and the server schema stores a **single** address per customer (`address1, address2, city, state, country, postcode` columns on `customers` — see `packages/server/src/routes/customers.routes.ts:861` INSERT and the `CustomerDto` single-address shape). Rendering a dedicated "Addresses" card with billing + shipping rows therefore requires a server-side schema change first: either split into a separate `customer_addresses(id, customer_id, type, street, city, state, postcode)` table with `type IN ('billing','shipping')`, or promote existing columns to a billing address and add parallel `shipping_*` columns. The CustomerDetail "Contact info" card already renders the single address via `customer.address1 / address2 / city / state / postcode` (see `CustomerDetailScreen.kt:757-779`), which covers the data we actually have today. Leaving deferred until the web app commits to one-vs-two address pattern and the server migration lands.
   - [ ] BLOCKED: requires upstream product decision (one vs two customer addresses) + server schema migration BEFORE Android work. Not actionable from client-only.
 
-- [x] ~~CROSS9d.~~ FIXED 2026-04-23 — commit 392d1d5. **Customer detail tags chips (Android)** — shipped `ui/components/TagChip.kt` (reusable Material 3 SuggestionChip / AssistChip with secondaryContainer colors + LocalOffer icon + Tag: $label contentDescription) + CustomerDetailScreen.kt tags section now parses the comma-separated string and renders a wrapping FlowRow of chips with empty-state "No tags" text. No server contract change. Tap is a no-op this wave; onClick param pre-wired for future filter-by-tag.
-
 - [ ] CROSS31-save. **"No pricing configured" manual-price: save-as-default (DEFERRED, schema-shape mismatch with original spec):** confirmed 2026-04-16 — picking a service in the ticket wizard shows "No pricing configured. Enter price manually:" with a Price text field. Option (b) of CROSS31 (save the manual price as a default) was attempted 2026-04-17 but **deferred** because the original task assumed a `repair_services.price` column that **does not exist**. The schema (migration `010_repair_pricing.sql`) stores pricing in `repair_prices(device_model_id, repair_service_id, labor_price)` — a composite key, not a per-service default. Persisting a manual price as "default for this service" therefore requires a `repair_prices` upsert keyed on BOTH the selected device model AND the service (plus a decision on grade/part_price semantics and active flag). Server shape: `POST /api/v1/repair-pricing/prices` with `{ device_model_id, repair_service_id, labor_price }` already exists (see `packages/server/src/routes/repairPricing.routes.ts:171`). Android work needed: (1) add `RepairPricingApi.createPrice` wrapper, (2) add `saveAsDefault: Boolean = false` to wizard state, (3) add Checkbox below the manual-price field, (4) on submit when `saveAsDefault && selectedDevice.id != null && selectedService.id != null`, fire the upsert before `createTicket`. Estimated 45-60 min; out of the 30-min spike budget, so deferring. Options (a) seed baseline prices per category and (c) Settings→Pricing link remain part of first-run shop setup wizard scope.
   - [ ] BLOCKED: Android wizard + repair-pricing API plumbing (4 discrete steps, ~45-60 min) requires working Android device build to verify UI flow. Needs Android dev loop; separate work slice.
 
@@ -1397,9 +1395,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-707. **[LOW] authStore.ts access token persisted to localStorage without encryption — XSS exposure** — `packages/web/src/stores/authStore.ts:54,70,81,97`. Fix: sessionStorage OR in-memory only; refresh via httpOnly cookie only.
 - [ ] SCAN-709. **admin backup download Content-Disposition unquoted filename — special chars break header parsing** — `packages/server/src/routes/admin.routes.ts:381`. Fix: quote + escape filename per RFC 5987.
 - [ ] SCAN-710. **repairDeskImport `RdResponse<T = any>` — third-party API shape unvalidated, silent type confusion risk** — `packages/server/src/services/repairDeskImport.ts:130`. Fix: Zod schema + parse at boundary.
-- [x] SCAN-713. **[INFO] useWebSocket.ts `localStorage.getItem('accessToken')` — silent fail if token missing; no retry after login** — `packages/web/src/hooks/useWebSocket.ts:202`. Fix: subscribe to auth store + reconnect on token change.
-  <!-- meta: scope=web/hooks; files=authStore.ts,useWebSocket.ts; commit=900d184c -->
-  - Done 2026-04-23. authStore emits `bizarre-crm:auth-ready` after login/switchUser/refresh. useWebSocket listens + reconnects.
 - [ ] SCAN-714. **db-worker.mjs LRU eviction close errors silently warned but not metrics-tracked — cache counter drift leaks handles** — `packages/server/src/db/db-worker.mjs:68-76`. Fix: increment metrics counter on eviction failure.
 
 ### Wave-26 scan-loop findings (2026-04-23)
@@ -1435,11 +1430,6 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-835. **[LOW] audit.ts details truncated at 16KB silently; consumer has no way to detect loss** — `packages/server/src/utils/audit.ts:27`. Fix: log.warn on truncate + include `truncated_bytes_dropped` metric.
 - [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.
 
-### Wave-33 scan-loop findings (2026-04-23) — top impactful
-- [x] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
-  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts; commit=adad2496 -->
-  - Done 2026-04-23. Extracted `AUTH_REFRESH_PATH` + `AUTH_REFRESH_URL` constants at module top; both refresh POST URL and request-interceptor `includes()` match now reference the shared constant. Typecheck clean.
-
 ### Wave-34 scan-loop findings (2026-04-23)
 - [ ] SCAN-864. **tickets setTimeout at :2118 not via trackInterval** — `packages/server/src/routes/tickets.routes.ts:2118`. Fix: one-shot setTimeout is OK if caller tolerates no shutdown guarantee; verify.
 
@@ -1474,27 +1464,7 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-929. **expenses POST `/` accepts `date` field with no temporal bounds — backdating fraud** — `packages/server/src/routes/expenses.routes.ts:139`. Fix: validate date within ±90 days.
 - [ ] SCAN-930. **[LOW-MED] worker pool maxQueue=200 — no early backpressure; cascading failures under spike** — `packages/server/src/db/worker-pool.ts:55-57`. Fix: metrics on queue depth + consider router-level backpressure.
 
-### Wave-47 scan-loop findings (2026-04-23) — web/hooks + web/utils
-- [x] SCAN-931. **Settings fetched from server aren't validated — bad values slip through and can break settings pages.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts; commit=c5b846d4 -->
-- [x] SCAN-932. **POS keyboard shortcut listener re-attaches on every render when callers pass inline handler objects — wasted work on hot screen.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts; commit=507bf80d -->
-- [x] SCAN-933. **Draft autosave writes unbounded text to browser storage — a very long note can fill the quota and break other features.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts; commit=88cc9222 -->
-- [x] SCAN-934. **Undo action on unmount silently swallows server errors — failures are invisible in prod logs.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx; commit=f956e146 -->
-- [x] SCAN-935. **Shared `cn()` helper has no return type on its exported signature — violates project type-safety rule.**
-  <!-- meta: scope=web/utils; files=packages/web/src/utils/cn.ts; commit=13ae478b -->
-- [x] SCAN-936. **Currency formatter silently falls back to USD for unknown codes — misconfigured tenant currency is invisible.**
-  <!-- meta: scope=web/utils; files=packages/web/src/utils/formatCurrency.ts; commit=2453734a -->
-- [x] SCAN-937. **`useSettings` swallows fetch errors — callers can't tell empty-settings from failed-load.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts; commit=c5b846d4 -->
-
 ### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
-- [x] SCAN-938. **Super-admin API client has no response interceptor — expired super-admin tokens silently fail every call with no cleanup.**
-  <!-- meta: scope=web/api; files=client.ts,TenantsListPage.tsx; commit=2bac8c1f -->
-- [x] SCAN-939. **JWT `exp` claim used without numeric validation — a malformed token makes the refresh scheduler fire an immediate refresh on every request.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts; commit=2b9c0afd -->
 - [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
   <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
 - [ ] SCAN-941. **Plan-fetch errors silently swallowed — UI cannot tell a failed fetch from an empty plan so feature gates silently deny.**
@@ -1503,20 +1473,10 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
   <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
-- [x] SCAN-943. **Window.open links to external URLs without noopener/noreferrer — reverse-tabnapping risk.**
-  <!-- meta: scope=web/components; files=CommissionPeriodLock.tsx,PrintPreviewModal.tsx; commit=8389ae27 -->
 - [ ] SCAN-944. **Impersonation banner exit button is a clickable div without keyboard handler — keyboard users cannot exit impersonation.**
   <!-- meta: scope=web/components; files=packages/web/src/components/ImpersonationBanner.tsx:82-86; fix=use-real-button -->
-- [x] SCAN-945. **Quick SMS modal buttons missing `type="button"` — can accidentally submit a parent form.**
-  <!-- meta: scope=web/components; files=QuickSmsModal.tsx; commit=27a1c972 -->
-- [x] SCAN-946. **Quick SMS recipient input is not programmatically linked to its label — assistive tech can't associate them.**
-  <!-- meta: scope=web/components; files=QuickSmsModal.tsx; commit=27a1c972 -->
-- [x] SCAN-947. **SMS template data typed as `any[]` throughout QuickSmsModal — type safety lost on a user-facing flow.**
-  <!-- meta: scope=web/components; files=QuickSmsModal.tsx; commit=27a1c972 -->
 - [ ] SCAN-948. **DataTable clickable rows + sortable headers have no keyboard handlers — keyboard users can't click into rows or sort columns.**
   <!-- meta: scope=web/components; files=packages/web/src/components/shared/DataTable.tsx:169-188,197-206; fix=onKeyDown-enter-space -->
-- [x] SCAN-949. **Getting-started widget recounts trackable steps on every render — unmemoized filter over static array.**
-  <!-- meta: scope=web/components; files=GettingStartedWidget.tsx; commit=cc9215e1 -->
 - [ ] SCAN-950. **Several onError callbacks in team/inventory components type the error as `any` — bypasses safe narrowing.**
   <!-- meta: scope=web/components; files=team/CommissionPeriodLock.tsx:62,73,team/TicketHandoffModal.tsx:65,inventory/QuickAddInput.tsx:55; fix=unknown-and-narrow -->
 
