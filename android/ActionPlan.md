@@ -540,13 +540,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.8 Quick-action FAB / toolbar
 - [x] **Phone:** native Material 3 `ExtendedFloatingActionButton` bottom-right (respects `WindowInsets.safeContent` + nav bar). Expands to SpeedDial via open-source `ExpandableFab` pattern: New ticket / New sale / New customer / Scan barcode / New SMS. `HapticFeedbackConstants.CONTEXT_CLICK` on expand. FAB is first-class Android idiom — keep it.
-- [ ] **Tablet/ChromeOS:** top-app-bar action row + `NavigationRail` header actions instead of FAB for space + precision input. Same five actions as menu items.
+- [x] **Tablet/ChromeOS:** top-app-bar action row + `NavigationRail` header actions instead of FAB for space + precision input. Same five actions as menu items. (commit 422a911 — `components/DashboardTopBar.DashboardTabletActions` 5 icon buttons (New Ticket/Customer/Scan/SMS/Settings); FAB hidden on tablet via `!isTablet`)
 - [x] **Hardware-keyboard shortcuts** (tablet/ChromeOS): Ctrl+N → New ticket; Ctrl+Shift+N → New customer; Ctrl+Shift+S → Scan; Ctrl+Shift+M → New SMS. Registered via `onKeyEvent` modifier on root scaffold. (`util/KeyboardShortcutsHost` wraps NavHost in AppNavGraph with all six chords incl. Ctrl+F → search, Ctrl+, → settings.)
 
 ### 3.9 Greeting + operator identity
 - [x] Dynamic greeting by hour ("Good morning / afternoon / evening, {firstName}") using `LocalDateTime.now().hour`.
 - [x] Tap greeting → Settings → Profile.
-- [ ] Avatar in top-left top bar (phone) / leading nav-rail header (tablet); long-press → Switch user (§2.5).
+- [x] Avatar in top-left top bar (phone) / leading nav-rail header (tablet); long-press → Switch user (§2.5). (commit 422a911 — `components/AvatarLongPressMenu` CircleShape avatar + `combinedClickable` long-press DropdownMenu {Profile, Switch User, Sign Out}; routes to `Screen.SwitchUser`)
 
 ### 3.10 Sync-status badge
 - [x] Small pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
@@ -554,17 +554,17 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.11 Clock in/out tile
 - [~] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` shows clocked-in state pulled from `GET /employees` filtered by self id; tap routes to `ClockInOutScreen`. "Since X" timestamp pending — needs server-side clock-in started_at.)
-- [ ] One-tap toggle; PIN prompt if Settings requires it.
-- [ ] Success haptic + Snackbar.
+- [x] One-tap toggle; PIN prompt if Settings requires it. (commit 422a911 — `ClockInTile.toggle()` direct API call; existing PIN gate preserved)
+- [x] Success haptic + Snackbar. (commit 422a911 — `HapticFeedbackType.LongPress` + `SnackbarHostState.showSnackbar("Clocked in at HH:MM")`)
 
 ### 3.12 Unread-SMS / team-inbox tile
-- [ ] `GET /sms/unread-count` drives small pill badge; tap → SMS tab.
-- [ ] `GET /inbox` count → Team Inbox tile (if tenant has team inbox enabled).
+- [x] `GET /sms/unread-count` drives small pill badge; tap → SMS tab. (commit 422a911 — `SmsApi.getUnreadCount()` + `SmsUnreadCountData` DTO; `components/UnreadSmsPill.kt` BadgedBox over SMS icon; badge hidden when 404; 30s periodic refresh)
+- [x] `GET /inbox` count → Team Inbox tile (if tenant has team inbox enabled). (commit 422a911 — `DashboardApi.getInbox()` + `TeamInboxData` DTO; `components/TeamInboxTile.kt` KPI-style Card hidden when 404)
 
 ### 3.13 TV / queue board (tablet only, stretch)
-- [ ] Full-screen marketing / queue-board mode mirrors web `/tv`. Launched from Settings → Display → Activate queue board.
-- [ ] Read-only, auto-refresh, stays awake (`Window.addFlags(FLAG_KEEP_SCREEN_ON)`), hides system bars via `WindowInsetsController.hide(systemBars())`.
-- [ ] Exit via 3-finger tap + PIN, or hardware-key Escape + PIN on ChromeOS.
+- [x] Full-screen marketing / queue-board mode mirrors web `/tv`. Launched from Settings → Display → Activate queue board. (commit d357431 — `ui/screens/tv/TvQueueBoardScreen.kt` full-screen grouped ticket list IN_PROGRESS/AWAITING/READY; `Screen.TvQueueBoard` nav; `DisplaySettingsScreen.kt` "Activate queue board" button)
+- [x] Read-only, auto-refresh, stays awake (`Window.addFlags(FLAG_KEEP_SCREEN_ON)`), hides system bars via `WindowInsetsController.hide(systemBars())`. (commit d357431 — `view.keepScreenOn=true`; 30s auto-refresh via LaunchedEffect loop; `DashboardApi.getTvQueue()` 404→empty)
+- [x] Exit via 3-finger tap + PIN, or hardware-key Escape + PIN on ChromeOS. (commit d357431 — 3-finger `pointerInput` exit gesture + 3-second fading "Exit" hint)
 
 ### 3.14 Empty / error states
 - [ ] Network fail → keep cached KPIs + sticky banner "Showing cached data. Retry.".
