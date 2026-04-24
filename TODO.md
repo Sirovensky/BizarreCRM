@@ -699,5 +699,25 @@ Verified working. Not TODOs.
 - [ ] SCAN-961. **Ticket wizard still has ~18 FormLabel/input pairs in device + service sections without htmlFor wiring — needs full sweep.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
+### Wave-52 scan-loop findings (2026-04-23) — web/layout + web/auth
+- [ ] SCAN-972. **AppShell config query triple-cast via `as any` — type safety lost on settings payload.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/AppShell.tsx:52; fix=type-settings-getConfig-response -->
+- [ ] SCAN-973. **LoginPage three `catch (err: any)` blocks in auth-critical code — bypass error narrowing.**
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:202,232,261; fix=catch-unknown+formatApiError -->
+- [ ] SCAN-974. **ResetPasswordPage `catch (err: any)` — same unsafe pattern as login.**
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/ResetPasswordPage.tsx:71; fix=catch-unknown+formatApiError -->
+- [ ] SCAN-975. **Sidebar collapse button only uses `title` — not reliably announced by screen readers.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Sidebar.tsx:222-238; fix=add-aria-label -->
+- [ ] SCAN-976. **Header `notifEntityIcons` declared between component bodies — confusing placement; move to top-level frozen const.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:492-497; fix=move-to-top-or-useMemo -->
+- [ ] SCAN-977. **Header "Mark all read" swallows server errors — optimistic UI never rolls back.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:133-141; fix=toast-error+rollback -->
+- [ ] SCAN-978. **Header individual notification mark-read swallows errors — badge desyncs from server state.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:147-154; fix=rollback+toast -->
+- [ ] SCAN-979. **Sidebar RecentViews parses localStorage without schema check — injected `path` would flow into NavLink.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Sidebar.tsx:250-252; fix=type-guard-path-string-starts-with-/ -->
+- [ ] SCAN-980. **Sidebar MyQueueWidget query has no staleTime despite 30s refetchInterval — sidebar remounts trigger extra fetches.**
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Sidebar.tsx:304-309; fix=staleTime-25000 -->
+
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
