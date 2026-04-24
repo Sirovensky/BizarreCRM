@@ -32,6 +32,10 @@ struct InventoryFullFormView: View {
     var onAddPhoto: (() -> Void)?
     /// Called from "Save & add another" — only shown in create mode.
     var onSaveAndAddAnother: (() -> Void)?
+    /// Called from "Manage variants" row — only active in edit mode when the
+    /// item has a SKU. In create mode the row shows a read-only note instead
+    /// (variants require an existing server-side item id).
+    var onManageVariants: (() -> Void)?
 
     @FocusState private var focus: Field?
 
@@ -56,6 +60,7 @@ struct InventoryFullFormView: View {
             stockSection
             photosSection
             descriptionSection
+            variantsStubSection
             if let err = errorMessage {
                 Section {
                     Text(err)
@@ -218,6 +223,52 @@ struct InventoryFullFormView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add photo for this item")
+    }
+
+    // MARK: - Variants stub
+    //
+    // In create mode we have no server-side item id yet, so variant management
+    // is unavailable. We show a disclosure row that explains this. In edit
+    // mode the parent supplies `onManageVariants` and we render a tappable row
+    // that opens VariantEditorSheet.
+
+    private var variantsStubSection: some View {
+        Section("Variants") {
+            if isEdit, let manage = onManageVariants {
+                Button(action: manage) {
+                    HStack {
+                        Label("Manage variants", systemImage: "rectangle.stack.badge.plus")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOrange)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .imageScale(.small)
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Manage variant SKUs (color, size, storage…)")
+                .accessibilityHint("Opens the variant editor sheet")
+            } else if isEdit {
+                // Edit mode but caller didn't wire the callback — show passive label.
+                Label("No variants configured", systemImage: "rectangle.stack")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityLabel("No variants configured for this item")
+            } else {
+                // Create mode: variants can only be added after the item is saved.
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Save the item first, then add variants from the detail screen.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Variants available after saving the item")
+            }
+        }
     }
 
     private var descriptionSection: some View {

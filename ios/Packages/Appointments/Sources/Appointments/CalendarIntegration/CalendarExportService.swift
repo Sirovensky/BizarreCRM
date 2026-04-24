@@ -41,6 +41,25 @@ public actor CalendarExportService {
     // MARK: - Public API
 
     /// Fetches the appointment and adds it to the user's default calendar.
+    ///
+    /// The export is gated by `CalendarSyncSettings.isEnabled`. If the setting
+    /// is off this is a no-op (returns without throwing) so callers can
+    /// unconditionally call `mirrorIfEnabled` after every save.
+    ///
+    /// - Parameter appointmentId: Server-side ID.
+    /// - Throws: `CalendarExportError` on failure (only when setting is on).
+    public func mirrorIfEnabled(appointmentId: Int64) async throws {
+        guard CalendarSyncSettings.isEnabled else { return }
+        try await exportToCalendar(appointmentId: appointmentId)
+    }
+
+    /// Fetches the appointment and adds it to the user's default calendar.
+    ///
+    /// Prefer `mirrorIfEnabled` at call sites so the setting toggle is
+    /// automatically respected. Call this directly only when you explicitly
+    /// want to export regardless of the setting (e.g. a manual "Add to
+    /// Calendar" button).
+    ///
     /// - Parameter appointmentId: Server-side ID.
     /// - Throws: `CalendarExportError` on failure.
     public func exportToCalendar(appointmentId: Int64) async throws {

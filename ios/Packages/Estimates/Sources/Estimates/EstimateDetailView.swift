@@ -15,6 +15,9 @@ public struct EstimateDetailView: View {
     private let onTicketCreated: @MainActor (Int64) -> Void
 
     @State private var showConvertSheet: Bool = false
+    #if canImport(UIKit)
+    @State private var showSignSheet: Bool = false
+    #endif
 
     public init(
         estimate: Estimate,
@@ -54,6 +57,9 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { compactToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        #if canImport(UIKit)
+        .sheet(isPresented: $showSignSheet) { signSheet }
+        #endif
     }
 
     // MARK: - iPad layout
@@ -91,6 +97,9 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { ipadToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        #if canImport(UIKit)
+        .sheet(isPresented: $showSignSheet) { signSheet }
+        #endif
     }
 
     // MARK: - Header card
@@ -303,6 +312,7 @@ public struct EstimateDetailView: View {
 
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
+            let isSigned = (status == "signed")
 
             Button {
                 showConvertSheet = true
@@ -314,6 +324,20 @@ public struct EstimateDetailView: View {
             .disabled(isConverted)
             .accessibilityLabel(isConverted ? "Already converted to ticket" : "Convert estimate to a service ticket")
             .keyboardShortcut("k", modifiers: [.command, .shift])
+
+            #if canImport(UIKit)
+            Button {
+                showSignSheet = true
+            } label: {
+                Label(isSigned ? "Already Signed" : "Send for Signature",
+                      systemImage: isSigned ? "checkmark.seal.fill" : "pencil.and.signature")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isSigned)
+            .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate a signature link to send to customer")
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            #endif
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
@@ -326,6 +350,7 @@ public struct EstimateDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
+            let isSigned = (status == "signed")
             Menu {
                 Button {
                     showConvertSheet = true
@@ -333,7 +358,15 @@ public struct EstimateDetailView: View {
                     Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(isConverted)
-                .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to a service ticket")
+
+                #if canImport(UIKit)
+                Button {
+                    showSignSheet = true
+                } label: {
+                    Label("Send for Signature", systemImage: "pencil.and.signature")
+                }
+                .disabled(isSigned)
+                #endif
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -355,6 +388,20 @@ public struct EstimateDetailView: View {
             .keyboardShortcut("k", modifiers: [.command, .shift])
             .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to a service ticket")
         }
+        #if canImport(UIKit)
+        ToolbarItem(placement: .primaryAction) {
+            let status = estimate.status ?? ""
+            let isSigned = (status == "signed")
+            Button {
+                showSignSheet = true
+            } label: {
+                Label("Send for Signature", systemImage: "pencil.and.signature")
+            }
+            .disabled(isSigned)
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .accessibilityLabel(isSigned ? "Estimate already signed" : "Generate and share signature link")
+        }
+        #endif
     }
 
     // MARK: - Convert sheet
@@ -369,6 +416,18 @@ public struct EstimateDetailView: View {
             }
         )
     }
+
+    // MARK: - Sign sheet
+
+    #if canImport(UIKit)
+    private var signSheet: some View {
+        EstimateSignSheet(
+            estimateId: estimate.id,
+            orderId: estimate.orderId ?? "EST-?",
+            api: api
+        )
+    }
+    #endif
 
     // MARK: - Helpers
 

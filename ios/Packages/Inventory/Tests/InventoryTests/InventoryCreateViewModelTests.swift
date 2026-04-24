@@ -108,4 +108,55 @@ final class InventoryCreateViewModelTests: XCTestCase {
         XCTAssertNil(vm.createdId)
         XCTAssertEqual(vm.errorMessage, "Name is required.")
     }
+
+    // 409 Conflict: the server rejects the SKU as a duplicate. The error must
+    // surface verbatim — we must NOT queue it offline, because the server has
+    // explicitly told us the payload is bad (duplicate SKU / constraint violation).
+    func test_submit_409Conflict_surfacesErrorNotQueued() async {
+        let conflictError = APITransportError.httpStatus(409, message: "SKU already exists.")
+        let api = StubAPIClient(createResult: .failure(conflictError))
+        let vm = InventoryCreateViewModel(api: api)
+        vm.name = "Widget Pro"
+        vm.sku = "WDG-001"   // a SKU already in the catalogue
+
+        await vm.submit()
+
+        // Should NOT have created the item or queued it offline.
+        XCTAssertNil(vm.createdId, "createdId must remain nil on 409")
+        XCTAssertFalse(vm.queuedOffline, "409 must not trigger offline queue")
+        // The human-readable server message should be surfaced to the operator.
+        XCTAssertEqual(vm.errorMessage, "SKU already exists.",
+                       "errorMessage must relay the server's conflict reason")
+    }
+
+    // Offline queued write — confirm the sentinel id and queuedOffline flag are
+    // set together (belt-and-suspenders after the network-error path test above).
+    func test_submit_offlineQueued_setsExpectedSentinelAndFlag() async {
+        let networkError = URLError(.networkConnectionLost)
+        let api = StubAPIClient(createResult: .failure(networkError))
+        let vm = InventoryCreateViewModel(api: api)
+        vm.name = "Offline Part"
+        vm.sku = "PART-OFF-1"
+
+        await vm.submit()
+
+        XCTAssertEqual(vm.createdId, PendingSyncInventoryId,
+                       "offline path must use the PendingSyncInventoryId sentinel")
+        XCTAssertTrue(vm.queuedOffline)
+        XCTAssertNil(vm.errorMessage, "offline queue must not surface an error to the operator")
+    }
+
+    // After a successful create the ViewModel should be in a clean state ready
+    // for "add another" — createdId set, no error, not still submitting.
+    func test_submit_happyPath_isNotSubmittingAfterCompletion() async {
+        let api = StubAPIClient(createResult: .success(.init(id: 42)))
+        let vm = InventoryCreateViewModel(api: api)
+        vm.name = "Gadget"
+        vm.sku = "GAD-001"
+
+        await vm.submit()
+
+        XCTAssertFalse(vm.isSubmitting, "isSubmitting must be cleared after async completion")
+        XCTAssertEqual(vm.createdId, 42)
+    }
 }

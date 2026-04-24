@@ -21,9 +21,12 @@ public struct TicketEditDeepView: View {
     @State private var vm: TicketEditDeepViewModel
     @State private var pendingBanner: String?
     @State private var showingArchiveConfirm: Bool = false
+    @State private var showingAssigneePicker: Bool = false
+    private let api: APIClient
     private let onSaved: () -> Void
 
     public init(api: APIClient, ticket: TicketDetail, onSaved: @escaping () -> Void = {}) {
+        self.api = api
         _vm = State(wrappedValue: TicketEditDeepViewModel(api: api, ticket: ticket))
         self.onSaved = onSaved
     }
@@ -50,6 +53,15 @@ public struct TicketEditDeepView: View {
         }
         .onChange(of: vm.didArchive) { _, archived in
             if archived { dismiss() }
+        }
+        .sheet(isPresented: $showingAssigneePicker) {
+            AssigneePickerView(
+                api: api,
+                currentAssigneeId: vm.pendingAssigneeId
+            ) { employee in
+                vm.pendingAssigneeId = employee?.id
+                vm.pendingAssigneeName = employee?.displayName ?? ""
+            }
         }
         .overlay(alignment: .top) {
             if let banner = pendingBanner {
@@ -164,6 +176,34 @@ public struct TicketEditDeepView: View {
                     .accessibilityLabel("Ticket notes")
             }
 
+            // Assignee
+            Section("Assignee") {
+                Button {
+                    showingAssigneePicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "person.fill")
+                            .foregroundStyle(vm.pendingAssigneeId != nil ? .bizarreOrange : .bizarreOnSurfaceMuted)
+                        if let name = vm.pendingAssigneeName.isEmpty ? nil : vm.pendingAssigneeName {
+                            Text(name)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                        } else {
+                            Text("Unassigned")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(vm.pendingAssigneeName.isEmpty ? "Unassigned, tap to assign" : "Assigned to \(vm.pendingAssigneeName), tap to change")
+                .accessibilityHint("Opens employee picker")
+            }
+
             // Attribution
             Section("Attribution") {
                 LabeledFormField("Source", text: $vm.source)
@@ -244,6 +284,7 @@ public struct TicketEditDeepView: View {
                     .brandGlass(.clear, in: Capsule())
                     .padding(.horizontal, BrandSpacing.base)
 
+                previewRow("Assignee", value: vm.pendingAssigneeName.isEmpty ? "Unassigned" : vm.pendingAssigneeName)
                 previewRow("Notes", value: vm.notes)
                 previewRow("Estimated cost", value: vm.estimatedCost.isEmpty ? "—" : "$\(vm.estimatedCost)")
                 previewRow("Priority", value: vm.priority.isEmpty ? "—" : vm.priority)

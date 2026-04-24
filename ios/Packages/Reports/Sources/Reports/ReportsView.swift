@@ -185,19 +185,36 @@ public struct ReportsView: View {
         }
     }
 
-    // MARK: - Date Range Picker
+    // MARK: - Date Range Picker + Granularity Toggle
 
     private var dateRangePicker: some View {
-        Picker("Date Range", selection: $vm.selectedPreset) {
-            ForEach(DateRangePreset.allCases) { preset in
-                Text(preset.displayLabel).tag(preset)
+        VStack(spacing: BrandSpacing.sm) {
+            Picker("Date Range", selection: $vm.selectedPreset) {
+                ForEach(DateRangePreset.allCases) { preset in
+                    Text(preset.displayLabel).tag(preset)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: vm.selectedPreset) { _, _ in
+                Task { await vm.loadAll() }
+            }
+            .accessibilityLabel("Select date range preset")
+
+            granularityToggle
+        }
+    }
+
+    private var granularityToggle: some View {
+        Picker("Granularity", selection: $vm.granularity) {
+            ForEach(ReportGranularity.allCases) { g in
+                Text(g.displayLabel).tag(g)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: vm.selectedPreset) { _, _ in
+        .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
         }
-        .accessibilityLabel("Select date range")
+        .accessibilityLabel("Select chart granularity: day, week, or month")
     }
 
     // MARK: - Hero Tile (Liquid Glass on chrome)

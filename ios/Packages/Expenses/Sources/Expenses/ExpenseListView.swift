@@ -245,6 +245,7 @@ public struct ExpenseListView: View {
                 Image(systemName: vm.isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     .foregroundStyle(vm.isFiltered ? Color.bizarreOrange : Color.bizarreOnSurface)
             }
+            .keyboardShortcut("F", modifiers: .command)
             .accessibilityLabel(vm.isFiltered ? "Edit filter (active)" : "Filter expenses")
             .accessibilityIdentifier("expenses.filter")
         }
@@ -291,25 +292,13 @@ public struct ExpenseListView: View {
         List {
             if let s = vm.summary {
                 Section {
-                    HStack {
-                        Text("Total").foregroundStyle(.bizarreOnSurfaceMuted)
-                        Spacer()
-                        Text(formatMoney(s.totalAmount))
-                            .font(.brandTitleMedium())
-                            .foregroundStyle(.bizarreOnSurface)
-                            .monospacedDigit()
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Total: \(formatMoney(s.totalAmount))")
-                    HStack {
-                        Text("Count").foregroundStyle(.bizarreOnSurfaceMuted)
-                        Spacer()
-                        Text("\(s.totalCount)").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).monospacedDigit()
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Count: \(s.totalCount)")
+                    ExpenseSummaryHeaderView(
+                        summary: s,
+                        categoryTotals: ExpenseSummaryHeaderView.categoryTotals(from: vm.items)
+                    )
                 }
-                .listRowBackground(Color.bizarreSurface1)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.xs, trailing: BrandSpacing.base))
             }
             if vm.isFiltered {
                 Section {
@@ -399,13 +388,6 @@ public struct ExpenseListView: View {
             }
             .padding(.vertical, BrandSpacing.xxs)
         }
-    }
-
-    // MARK: - Helpers
-
-    private func formatMoney(_ v: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
-        return f.string(from: NSNumber(value: v)) ?? "$\(v)"
     }
 
     // MARK: - Row

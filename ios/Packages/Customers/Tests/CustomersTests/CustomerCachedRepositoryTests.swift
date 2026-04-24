@@ -135,6 +135,35 @@ final class CustomerCachedRepositoryTests: XCTestCase {
             // Expected.
         }
     }
+
+    // MARK: - update invalidates cache
+
+    func test_update_invalidatesCache_forcesFetchOnNextList() async throws {
+        // Seed the remote with 3 customers and warm the cache.
+        let remote = SpyCustomerRepo(customerCount: 3)
+        let repo = CustomerCachedRepositoryImpl(remote: remote, maxAgeSeconds: 300)
+        _ = try await repo.list(keyword: nil)
+
+        // A second list call should be a cache hit (1 remote call so far).
+        _ = try await repo.list(keyword: nil)
+        let countBeforeUpdate = await remote.callCount
+        XCTAssertEqual(countBeforeUpdate, 1, "Precondition: second call hits cache")
+
+        // update() should clear the cache even when the remote throws (StubCustomerRepo
+        // throws for update), so we use a fresh repo that wraps an update-capable stub.
+        let updateRemote = SpyCustomerRepo(customerCount: 5, supportsUpdate: true)
+        let updateRepo = CustomerCachedRepositoryImpl(remote: updateRemote, maxAgeSeconds: 300)
+        _ = try await updateRepo.list(keyword: nil)
+
+        let req = UpdateCustomerRequest(firstName: "New")
+        _ = try await updateRepo.update(id: 1, req)
+
+        // After update the cache is cleared — next list should hit remote again.
+        _ = try await updateRepo.list(keyword: nil)
+        let callsAfter = await updateRemote.callCount
+        // Calls: 1 (initial list) + 1 (update) + 1 (list after invalidation) = 3
+        XCTAssertEqual(callsAfter, 3, "list after update must bypass cache")
+    }
 }
 
 // MARK: - Performance
@@ -170,17 +199,36 @@ final class CustomerListPerfTests: XCTestCase {
 private actor SpyCustomerRepo: CustomerRepository {
     private let shouldFail: Bool
     private let customerCount: Int
+    private let supportsUpdate: Bool
     private(set) var callCount: Int = 0
 
-    init(shouldFail: Bool = false, customerCount: Int = 0) {
+    init(shouldFail: Bool = false, customerCount: Int = 0, supportsUpdate: Bool = false) {
         self.shouldFail = shouldFail
         self.customerCount = customerCount
+        self.supportsUpdate = supportsUpdate
     }
 
     func list(keyword: String?) async throws -> [CustomerSummary] {
         callCount += 1
         if shouldFail { throw CustTestError.boom }
         return (0..<customerCount).map { makeCustomer(index: $0) }
+    }
+
+    func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        callCount += 1
+        if !supportsUpdate { throw CustTestError.boom }
+        // Return a minimal CustomerDetail with the updated first name.
+        let json = """
+        {
+          "id": \(id),
+          "first_name": "\(req.firstName)",
+          "phones": [],
+          "emails": []
+        }
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(CustomerDetail.self, from: json)
     }
 
     private func makeCustomer(index: Int) -> CustomerSummary {

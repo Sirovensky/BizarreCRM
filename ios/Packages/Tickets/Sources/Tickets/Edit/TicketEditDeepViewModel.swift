@@ -28,6 +28,8 @@ public struct TicketEditDraft: Codable, Sendable {
     public var referralSource: String
     public var dueOn: String
     public var customerId: Int64?
+    public var assigneeId: Int64?
+    public var assigneeName: String?
     public var selectedTransition: String?
 }
 
@@ -61,6 +63,14 @@ public final class TicketEditDeepViewModel {
     public var dueOn: String = ""
     /// Currently-selected customer id for reassignment (nil = no change).
     public var selectedCustomerId: Int64?
+
+    // MARK: — Assignee picker
+
+    /// Pending re-assignment. Set by `AssigneePickerView` callback.
+    /// nil = no change; 0 = explicit unassign (rare); any other value = new assignee.
+    public var pendingAssigneeId: Int64?
+    /// Display name for the pending assignee (used in the preview pane).
+    public var pendingAssigneeName: String = ""
 
     // MARK: — Transition picker
 
@@ -98,6 +108,8 @@ public final class TicketEditDeepViewModel {
         self.discountReason = ticket.discountReason ?? ""
         self.referralSource = ticket.howDidUFindUs ?? ""
         self.selectedCustomerId = ticket.customerId
+        self.pendingAssigneeId = ticket.assignedTo
+        self.pendingAssigneeName = ticket.assignedUser?.fullName ?? ""
 
         // Allowed transitions from the current status string.
         // TicketDetail.status.name might not match TicketStatus raw values,
@@ -233,6 +245,7 @@ public final class TicketEditDeepViewModel {
     private func buildUpdateRequest() -> UpdateTicketRequest {
         UpdateTicketRequest(
             customerId: selectedCustomerId,
+            assignedTo: pendingAssigneeId,
             discount: parsedDiscount,
             discountReason: trim(discountReason),
             source: trim(source),
@@ -253,6 +266,8 @@ public final class TicketEditDeepViewModel {
             referralSource: referralSource,
             dueOn: dueOn,
             customerId: selectedCustomerId,
+            assigneeId: pendingAssigneeId,
+            assigneeName: pendingAssigneeName.isEmpty ? nil : pendingAssigneeName,
             selectedTransition: selectedTransition?.rawValue
         )
     }

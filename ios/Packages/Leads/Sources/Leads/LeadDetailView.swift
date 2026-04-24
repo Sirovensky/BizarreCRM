@@ -49,6 +49,7 @@ public struct LeadDetailView: View {
     private let api: APIClient
     @State private var showingEdit = false
     @State private var showingConvert = false
+    @State private var showingStatusNote = false
 
     public init(api: APIClient, id: Int64) {
         self.api = api
@@ -82,6 +83,13 @@ public struct LeadDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingStatusNote) {
+            if case .loaded(let detail) = vm.state {
+                LeadStatusNoteSheet(api: api, lead: detail) { updated in
+                    vm.state = .loaded(updated)
+                }
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -96,6 +104,18 @@ public struct LeadDetailView: View {
                         Label("Convert", systemImage: "arrow.right.circle")
                     }
                     .accessibilityLabel("Convert lead to ticket")
+                }
+                // Quick status change — hidden for terminal states.
+                if detail.status != "converted" {
+                    Button {
+                        showingStatusNote = true
+                    } label: {
+                        Label("Status", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityLabel("Change lead status")
+                    #if canImport(UIKit)
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    #endif
                 }
                 Button {
                     showingEdit = true

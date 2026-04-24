@@ -6,7 +6,7 @@ import DesignSystem
 //
 // Wired to GET /api/v1/reports/sales.
 // Shows AreaMark + LineMark (period mode) or BarMark (bar mode) toggled by
-// the user. iPad shows both variants side-by-side at the same time (2-up).
+// the user on iPhone. iPad shows 3 columns: trend chart | bar-by-period | KPI panel.
 
 public struct RevenueChartCard: View {
     public let points: [RevenuePoint]
@@ -29,7 +29,7 @@ public struct RevenueChartCard: View {
     @State private var selectedPoint: RevenuePoint?
 
     public var body: some View {
-        // iPad 2-up: show line and bar charts side-by-side
+        // iPad: 3-column layout — trend chart | bar-by-period | KPI panel
         if sizeClass == .regular {
             ipadBody
         } else {
@@ -55,31 +55,107 @@ public struct RevenueChartCard: View {
         .overlay(strokeBorder)
     }
 
-    // MARK: - iPad 2-up layout
+    // MARK: - iPad 3-column layout: chart | legend | KPI panel
 
     private var ipadBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             HStack(alignment: .top, spacing: BrandSpacing.md) {
-                lineChart
-                    .frame(height: 200)
-                    .chartXAxisLabel("Date", alignment: .center)
-                    .chartYAxisLabel("Revenue ($K)", position: .leading)
-                    .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
-                    .chartOverlay { proxy in drillOverlay(proxy: proxy) }
-                    .frame(maxWidth: .infinity)
+                // Column 1 — line chart
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("Trend")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    lineChart
+                        .frame(height: 200)
+                        .chartXAxisLabel("Date", alignment: .center)
+                        .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
+                        .chartOverlay { proxy in drillOverlay(proxy: proxy) }
+                }
+                .frame(maxWidth: .infinity)
 
-                barChart
-                    .frame(height: 200)
-                    .chartXAxisLabel("Date", alignment: .center)
-                    .chartYAxisLabel("Revenue ($K)", position: .leading)
-                    .accessibilityLabel("Revenue bar chart")
-                    .frame(maxWidth: .infinity)
+                // Column 2 — bar chart (acts as period legend)
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("By Period")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    barChart
+                        .frame(height: 200)
+                        .chartXAxisLabel("Date", alignment: .center)
+                        .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .accessibilityLabel("Revenue bar chart by period")
+                }
+                .frame(maxWidth: .infinity)
+
+                // Column 3 — KPI side panel
+                VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                    Text("KPIs")
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityAddTraits(.isHeader)
+                    kpiPanel
+                }
+                .frame(minWidth: 140, maxWidth: 180)
+                .padding(.top, BrandSpacing.xxs)
             }
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .overlay(strokeBorder)
+    }
+
+    // MARK: - KPI panel (iPad column 3)
+
+    @ViewBuilder
+    private var kpiPanel: some View {
+        let total = points.reduce(0.0) { $0 + $1.amountDollars }
+        let avg   = points.isEmpty ? 0.0 : total / Double(points.count)
+        let peak  = points.max(by: { $0.amountDollars < $1.amountDollars })
+
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            revenueKpiCell(label: "Total", value: total, color: .bizarreOrange)
+            Divider()
+            revenueKpiCell(label: "Avg / period", value: avg, color: .bizarreTeal)
+            Divider()
+            if let p = peak {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text("Peak")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text(p.amountDollars, format: .currency(code: "USD"))
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreSuccess)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(p.date)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Peak revenue \(String(format: "$%.2f", p.amountDollars)) on \(p.date)")
+            }
+            if let pct = periodChangePct {
+                Divider()
+                periodBadge(pct: pct)
+            }
+        }
+    }
+
+    private func revenueKpiCell(label: String, value: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            Text(label)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text(value, format: .currency(code: "USD"))
+                .font(.brandTitleSmall())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(String(format: "$%.2f", value))")
     }
 
     // MARK: - Chart mode toggle (iPhone only)

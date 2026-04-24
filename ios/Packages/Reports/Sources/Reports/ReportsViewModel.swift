@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Observation
+import Networking
 
 // MARK: - ReportsViewModel
 
@@ -15,6 +16,10 @@ public final class ReportsViewModel {
     }
     public var customFrom: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     public var customTo: Date = Date()
+
+    // MARK: - Granularity (day / week / month)
+    // Controls the group_by parameter sent to GET /api/v1/reports/sales.
+    public var granularity: ReportGranularity = .day
 
     // MARK: - Data state
 
@@ -106,7 +111,7 @@ public final class ReportsViewModel {
     private func loadRevenue() async {
         do {
             let report = try await repository.getSalesReport(
-                from: fromDateString, to: toDateString, groupBy: "day"
+                from: fromDateString, to: toDateString, groupBy: granularity.rawValue
             )
             revenue = report.rows
             salesTotals = report.totals

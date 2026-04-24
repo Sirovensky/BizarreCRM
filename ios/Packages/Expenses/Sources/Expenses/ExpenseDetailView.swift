@@ -144,6 +144,7 @@ public struct ExpenseDetailView: View {
                 } label: {
                     Image(systemName: "pencil")
                 }
+                .keyboardShortcut("E", modifiers: .command)
                 .accessibilityLabel("Edit expense")
                 .accessibilityIdentifier("expenses.detail.edit")
 
@@ -153,6 +154,7 @@ public struct ExpenseDetailView: View {
                     Image(systemName: vm.isDeleting ? "clock" : "trash")
                 }
                 .disabled(vm.isDeleting)
+                .keyboardShortcut(.delete, modifiers: .command)
                 .accessibilityLabel("Delete expense")
                 .accessibilityIdentifier("expenses.detail.delete")
             }

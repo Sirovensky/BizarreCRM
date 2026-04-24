@@ -69,6 +69,14 @@ public actor CustomerCachedRepositoryImpl: CustomerCachedRepository {
         return try await fetch(keyword: keyword, key: key)
     }
 
+    /// Delegates to the underlying repository and invalidates the cache for
+    /// all keywords so the next `list(keyword:)` call returns fresh data.
+    public func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        let result = try await remote.update(id: id, req)
+        cache.removeAll()
+        return result
+    }
+
     // MARK: - Private
 
     private func fetch(keyword: String?, key: String) async throws -> [CustomerSummary] {

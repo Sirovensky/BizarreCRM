@@ -8,13 +8,18 @@ import Foundation
 actor StubAPIClient: APIClient {
     private let createResult: Result<CreatedResource, Error>?
     private let updateResult: Result<CreatedResource, Error>?
+    /// Used when callers decode the PUT response as `CustomerDetail` (e.g.
+    /// `updateCustomerDetail`) rather than `CreatedResource`.
+    private let detailUpdateResult: Result<CustomerDetail, Error>?
 
     init(
         createResult: Result<CreatedResource, Error>? = nil,
-        updateResult: Result<CreatedResource, Error>? = nil
+        updateResult: Result<CreatedResource, Error>? = nil,
+        detailUpdateResult: Result<CustomerDetail, Error>? = nil
     ) {
         self.createResult = createResult
         self.updateResult = updateResult
+        self.detailUpdateResult = detailUpdateResult
     }
 
     func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
@@ -35,7 +40,24 @@ actor StubAPIClient: APIClient {
     }
 
     func put<T: Decodable & Sendable, B: Encodable & Sendable>(_ path: String, body: B, as type: T.Type) async throws -> T {
-        guard path.hasPrefix("/api/v1/customers/"), let result = updateResult else {
+        guard path.hasPrefix("/api/v1/customers/") else {
+            throw APITransportError.noBaseURL
+        }
+        // If the caller wants a CustomerDetail back (updateCustomerDetail), try
+        // detailUpdateResult first, then fall back to updateResult.
+        if type == CustomerDetail.self {
+            if let result = detailUpdateResult {
+                switch result {
+                case .success(let detail):
+                    guard let cast = detail as? T else { throw APITransportError.decoding("type mismatch") }
+                    return cast
+                case .failure(let err):
+                    throw err
+                }
+            }
+        }
+        // Default: CreatedResource path (updateCustomer)
+        guard let result = updateResult else {
             throw APITransportError.noBaseURL
         }
         switch result {

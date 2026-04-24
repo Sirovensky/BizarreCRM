@@ -108,6 +108,10 @@ private actor StubCachedCustomerRepo: CustomerCachedRepository {
         return makeCustomers(count: customerCount)
     }
 
+    func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        throw CVMTestError.boom
+    }
+
     private func makeCustomers(count: Int) -> [CustomerSummary] {
         (0..<count).map { index in
             let json = """
@@ -136,6 +140,10 @@ private actor PlainStubCustomerRepo: CustomerRepository {
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try! decoder.decode(CustomerSummary.self, from: json)
         }
+    }
+
+    func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        throw CVMTestError.boom
     }
 }
 
