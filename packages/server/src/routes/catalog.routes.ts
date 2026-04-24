@@ -30,6 +30,13 @@ import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const logger = createLogger('catalog-routes');
 
+function parseLimit(raw: unknown, defaultVal = 100, maxVal = 200): number {
+  if (raw === undefined || raw === null || raw === '') return defaultVal;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return defaultVal;
+  return Math.min(Math.floor(n), maxVal);
+}
+
 const router = Router();
 
 // Admin-only middleware for mutating catalog operations
@@ -64,7 +71,7 @@ router.get('/devices', asyncHandler(async (req, res) => {
   // than MAX_PAGE_SIZE rows (203+ phone models + 67 TVs per manufacturer).
   // Cap kept at 200 rather than MAX_PAGE_SIZE=100 to avoid breaking the UI.
   const DEVICE_MODEL_MAX = 200;
-  const limit = Math.min(DEVICE_MODEL_MAX, Number(req.query.limit) || 100);
+  const limit = parseLimit(req.query.limit, 100, DEVICE_MODEL_MAX);
 
   const conditions: string[] = [];
   const params: unknown[] = [];

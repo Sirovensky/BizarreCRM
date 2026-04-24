@@ -7,6 +7,8 @@ export const IMPERSONATION_KEY = 'impersonation_session';
 
 export interface ImpersonationSession {
   tenant_slug: string;
+  tenant_name?: string;
+  started_at?: string;
 }
 
 const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
@@ -24,7 +26,17 @@ export function clearImpersonationSession(): void {
 export function getImpersonationSession(): ImpersonationSession | null {
   try {
     const raw = localStorage.getItem(IMPERSONATION_KEY);
-    return raw ? (JSON.parse(raw) as ImpersonationSession) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.tenant_slug !== 'string' || obj.tenant_slug.length === 0) return null;
+    if (!/^[a-z0-9-]{1,64}$/.test(obj.tenant_slug)) return null;
+    return {
+      tenant_slug: obj.tenant_slug,
+      tenant_name: typeof obj.tenant_name === 'string' ? obj.tenant_name : undefined,
+      started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined,
+    };
   } catch {
     return null;
   }

@@ -2466,6 +2466,16 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-833. **auth parseInt :1878** — FIXED wave-33 via validateId.
 - [x] SCAN-834. **heldCarts validateId** — FIXED wave-33 at 3 sites (GET /:id, DELETE /:id, POST /:id/recall).
 - [x] SCAN-836. **Vonage unknown signatureMethod fallback** — FIXED wave-33 (logger.error; already fail-closed).
+
+## Closed 2026-04-23 (wave-34)
+- [x] SCAN-838. **catalog Number(req.query.limit) NaN** — FIXED wave-34 via parseLimit() helper.
+- [x] SCAN-839. **client.ts JWT atob silent fail** — FIXED wave-34, refreshScheduled reset on decode error.
+- [x] SCAN-840. **ImpersonationBanner localStorage shape** — FIXED wave-34 via typed shape check + slug regex.
+- [x] SCAN-841. **pos /cash-in + /cash-out no role gate** — FIXED wave-34 via requireAdminOrManagerRole.
+- [x] SCAN-842. **pos /workstations no role gates** — verified wave-34, all 3 already gated.
+- [x] SCAN-843. **CommandPalette sessionStorage silent drop** — FIXED wave-34 via console.warn + clear corrupted entry.
+- [x] SCAN-844. **catalog validateId** — verified wave-34, already fixed in prior commit.
+- [x] SCAN-845. **inventory tenant-ownership check** — verified wave-34, per-tenant DB isolation prevents cross-tenant access; comment added.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

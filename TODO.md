@@ -1608,3 +1608,11 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-845. **inventory /image-upload reserveStorage doesn't verify item_id belongs to tenant** — `packages/server/src/routes/inventory.routes.ts:916`. Fix: SELECT id FROM inventory_items WHERE id = ? (per-tenant DB already isolates; verify ok).
 - [ ] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
 - [ ] SCAN-847. **SpotlightCoach Promise.resolve().catch() antipattern — rejected promises silently swallowed** — `packages/web/src/components/SpotlightCoach.tsx:370-371,408-409,414-415`. Fix: await + try/catch.
+
+### Wave-34 scan-loop findings (2026-04-23)
+- [ ] SCAN-858. **[HIGH] tickets parseInt(req.params.linkId) no validation at DELETE /links/:linkId (3770) + POST /merge (3788)** — `packages/server/src/routes/tickets.routes.ts:3770,3788`. Fix: validateId helper.
+- [ ] SCAN-859. **tickets stalled parseInt(req.query.days) NaN fallthrough** — `packages/server/src/routes/tickets.routes.ts:1251`. Fix: Number.isFinite guard + clamp.
+- [ ] SCAN-860. **tickets fire-and-forget .catch(() => {}) at 5 sites — notifications/webhooks silently fail** — `packages/server/src/routes/tickets.routes.ts:1181,1197,2079,2091,3563`. Fix: log.warn with context.
+- [ ] SCAN-861. **auth.routes challenges Map sort() on every over-cap insert — O(n log n) at 10k+ size** — `packages/server/src/routes/auth.routes.ts:150-152`. Fix: FIFO eviction via Map iteration (keys().next() — insertion order guaranteed).
+- [ ] SCAN-863. **audit.ts audit-write failure logged to console.error not logger** — `packages/server/src/utils/audit.ts:42`. Fix: createLogger + structured.
+- [ ] SCAN-864. **tickets setTimeout at :2118 not via trackInterval** — `packages/server/src/routes/tickets.routes.ts:2118`. Fix: one-shot setTimeout is OK if caller tolerates no shutdown guarantee; verify.

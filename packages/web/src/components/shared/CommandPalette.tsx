@@ -45,12 +45,15 @@ function getRecentSearches(): string[] {
   try {
     const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
     if (!stored) return [];
-    const entries = JSON.parse(stored) as RecentSearchEntry[];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) throw new Error('not array');
     const now = Date.now();
-    return entries
+    return (parsed as RecentSearchEntry[])
       .filter((e) => now - e.storedAt < TTL_MS)
       .map((e) => e.query);
-  } catch {
+  } catch (err) {
+    console.warn('CommandPalette: corrupted search history, clearing', err);
+    sessionStorage.removeItem(RECENT_SEARCHES_KEY);
     return [];
   }
 }
@@ -59,7 +62,17 @@ function saveRecentSearch(query: string) {
   if (query.length < MIN_QUERY_LENGTH) return;
   try {
     const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
-    const existing: RecentSearchEntry[] = stored ? JSON.parse(stored) : [];
+    let existing: RecentSearchEntry[] = [];
+    if (stored) {
+      try {
+        const parsed: unknown = JSON.parse(stored);
+        if (!Array.isArray(parsed)) throw new Error('not array');
+        existing = parsed as RecentSearchEntry[];
+      } catch (err) {
+        console.warn('CommandPalette: corrupted search history on save, clearing', err);
+        sessionStorage.removeItem(RECENT_SEARCHES_KEY);
+      }
+    }
     const now = Date.now();
     const filtered = existing
       .filter((e) => e.query !== query && now - e.storedAt < TTL_MS);

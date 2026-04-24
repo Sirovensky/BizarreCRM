@@ -104,9 +104,11 @@ function scheduleTokenRefresh() {
       }
     }, refreshIn);
   } catch (err) {
-    // Invalid token format — clear the malformed token so it doesn't block
-    // every subsequent request. Only remove it if it hasn't been replaced by a
-    // concurrent refresh (compare against the value we tried to decode).
+    // Invalid token format — reset scheduling flag so future requests can
+    // re-enter scheduleTokenRefresh instead of being silently skipped.
+    refreshScheduled = false;
+    // Clear the malformed token so it doesn't block every subsequent request.
+    // Only remove it if it hasn't been replaced by a concurrent refresh.
     if (localStorage.getItem('accessToken') === token) {
       localStorage.removeItem('accessToken');
     }

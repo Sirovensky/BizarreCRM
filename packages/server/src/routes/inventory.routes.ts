@@ -908,6 +908,8 @@ router.post('/:id/image', requirePermission('inventory.edit'), enforceUploadQuot
   const adb: AsyncDb = req.asyncDb;
   const itemId = parseInt(req.params.id as string, 10);
 
+  // Per-tenant DB isolation: req.asyncDb is scoped to the current tenant's DB file,
+  // so a cross-tenant item_id lookup is architecturally impossible here (SCAN-845).
   const item = await adb.get('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', itemId);
   if (!item) throw new AppError('Item not found', 404);
 

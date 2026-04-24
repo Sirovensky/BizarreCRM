@@ -201,6 +201,7 @@ router.get('/register', asyncHandler(async (req, res) => {
 
 // POST /pos/cash-in
 router.post('/cash-in', asyncHandler(async (req, res) => {
+  requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
   // @audit-fixed: parseFloat(Infinity) = Infinity passes the upper-bound check via NaN comparison.
@@ -216,6 +217,7 @@ router.post('/cash-in', asyncHandler(async (req, res) => {
 
 // POST /pos/cash-out
 router.post('/cash-out', asyncHandler(async (req, res) => {
+  requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
   // @audit-fixed: same Number.isFinite hardening as cash-in.
