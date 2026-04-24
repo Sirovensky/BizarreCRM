@@ -19,6 +19,7 @@ Autonomous web-improvement loop. Each item below was implemented, typechecked, a
 - [x] SCAN-946. **QuickSmsModal recipient input not programmatically linked to its label** — fixed in commit `27a1c972`. Added `id="quick-sms-recipient"` + `htmlFor`.
 - [x] SCAN-947. **QuickSmsModal SMS-template data typed as `any[]`** — fixed in commit `27a1c972`. Introduced local `SmsTemplate` interface; dropped every `any` in the template flow; added `Array.isArray` runtime guard against non-array server payload; tightened `onError` to `unknown` with shape narrowing.
 - [x] SCAN-949. **GettingStartedWidget `trackableCount` recomputed every render** — fixed in commit `cc9215e1`. Lifted into `useMemo` with empty deps (STEPS is a module-level constant).
+- [x] SCAN-941. **Plan-fetch errors silently swallowed on planStore** — fixed in commit `04df2cdb`. Added `error: string | null` to `PlanState`; cleared at fetch start + on success; populated from caught value on failure (Error / string / fallback). auth-cleared listener also wipes it. Feature gates can now distinguish transient-failure from empty-plan and offer a retry affordance.
 
 ## Closed 2026-04-23 (wave-46 final-sweep)
 
