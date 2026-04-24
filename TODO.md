@@ -742,8 +742,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/notifications.routes.ts:209; fix=length+regex-guard -->
 - [ ] SCAN-1043. **loaners POST /:id/loan: no rate limit on write — technician can spam loan records.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:106-138; fix=consumeWindowRate -->
-- [ ] SCAN-1044. **loaners POST /:id/loan: TOCTOU on device availability — SELECT then UPDATE without WHERE status guard.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:129-131; fix=conditional-update -->
 - [ ] SCAN-1045. **rma POST /: no rate limit + unbounded items[] array — DoS via 10k-item batch.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/rma.routes.ts:117-156; fix=rate-limit+cap-items -->
 - [ ] SCAN-1046. **crm GET /customers/:id/photo-mementos: returns raw `file_path` strings — leaks server filesystem layout.**

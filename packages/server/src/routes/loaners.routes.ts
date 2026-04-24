@@ -128,7 +128,17 @@ router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(asy
   if (!device) throw new AppError('Loaner device not found', 404);
   if ((device as any).status !== 'available') throw new AppError('Device is not available', 400);
 
-  await adb.run('UPDATE loaner_devices SET status = ?, updated_at = ? WHERE id = ?', 'loaned', now(), id);
+  // Conditional UPDATE gated on status='available' — without the WHERE guard,
+  // two concurrent /loan calls on the same device could both pass the SELECT
+  // above and both insert loaner_history rows. If the guard rejects (0 rows
+  // changed) another loaner_history insert is skipped and a 409 is returned.
+  const updateResult = await adb.run(
+    "UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ? AND status = 'available'",
+    now(), id,
+  );
+  if (updateResult.changes === 0) {
+    throw new AppError('Device is not available', 409);
+  }
   const loanResult = await adb.run(
     'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)',
     id, ticket_device_id, customer_id, now(), (device as any).condition, notes || null
