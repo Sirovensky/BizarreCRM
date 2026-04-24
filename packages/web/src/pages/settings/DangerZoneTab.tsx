@@ -219,7 +219,16 @@ function TerminationModal({ onClose }: TerminationModalProps) {
               tokenExpiresAt={tokenExpiresAt}
               loading={loading}
               onConfirm={handleConfirmSlug}
-              onBack={() => setStep('request')}
+              onBack={() => {
+                // Reset the termination token + typed slug on back-nav so a
+                // second handleRequest starts fresh. Without this, a stale
+                // (potentially server-consumed) token lingers and confirm
+                // would silently fail.
+                setToken(null);
+                setTypedSlug('');
+                setErrorMessage(null);
+                setStep('request');
+              }}
             />
           )}
 
@@ -230,7 +239,11 @@ function TerminationModal({ onClose }: TerminationModalProps) {
               canFinalize={canFinalize}
               loading={loading}
               onFinalize={handleFinalize}
-              onBack={() => setStep('confirm_slug')}
+              onBack={() => {
+                setTypedPhrase('');
+                setErrorMessage(null);
+                setStep('confirm_slug');
+              }}
             />
           )}
 
