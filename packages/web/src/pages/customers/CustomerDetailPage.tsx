@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -2021,13 +2021,31 @@ function FieldBlock({
   required?: boolean;
   children: React.ReactNode;
 }) {
+  // Auto-generate a unique id, inject it into the first element child so the
+  // label's htmlFor points at the real input. Without this, the label and
+  // its input were siblings with no programmatic association — screen
+  // readers couldn't pair them and clicking the label didn't focus the input.
+  const generatedId = React.useId();
+  let linkedChildren: React.ReactNode = children;
+  if (React.isValidElement(children)) {
+    const existingId = (children.props as { id?: string } | undefined)?.id;
+    if (!existingId) {
+      linkedChildren = React.cloneElement(children as React.ReactElement<{ id?: string }>, { id: generatedId });
+    }
+  }
+  const htmlFor = React.isValidElement(children)
+    ? ((children.props as { id?: string } | undefined)?.id ?? generatedId)
+    : undefined;
   return (
     <div>
-      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+      <label
+        htmlFor={htmlFor}
+        className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1"
+      >
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
-      {children}
+      {linkedChildren}
     </div>
   );
 }

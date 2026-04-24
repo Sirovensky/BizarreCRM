@@ -702,6 +702,4 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
-- [ ] SCAN-968. **Customer detail `FieldBlock` wraps a label without htmlFor linking to its child input.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:2015-2032; fix=useId+htmlFor -->
 
