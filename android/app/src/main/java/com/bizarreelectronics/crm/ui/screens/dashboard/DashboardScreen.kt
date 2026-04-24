@@ -1,8 +1,10 @@
 package com.bizarreelectronics.crm.ui.screens.dashboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,9 +77,11 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityFeedCa
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementBanner
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AvatarLongPressMenu
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.CelebratoryModal
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardCustomizationSheet
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardTabletActions
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardCachedBanner
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.SavedDashboardTabs
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.SetupChecklistCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
@@ -462,6 +466,181 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // §3.17 L602-L610 — Dashboard layout config (role templates + customization)
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.17 L609 — Shared layout configuration read by DashboardScreen and the
+     * Glance widget. Updated by [loadRoleTemplate] on init and by
+     * [applyCustomization] / [activateSavedDashboard] on user action.
+     */
+    private val _layoutConfig = MutableStateFlow(DashboardLayoutConfig())
+    val layoutConfig: StateFlow<DashboardLayoutConfig> = _layoutConfig.asStateFlow()
+
+    /**
+     * §3.17 L602-L603 — Ordered tile IDs for a given [role] when the server
+     * returns 404 (endpoint not yet live) or on network error.
+     *
+     * - admin / manager : all tiles
+     * - tech            : my-queue, my-commission, tasks
+     * - cashier         : today-sales, shift-totals, quick-actions
+     * - fallback        : same as admin
+     */
+    fun defaultTilesFor(role: String): List<String> = when (role.lowercase()) {
+        "tech", "technician" -> listOf("my-queue", "my-commission", "tasks")
+        "cashier" -> listOf("today-sales", "shift-totals", "quick-actions")
+        else -> listOf(
+            "open-tickets", "revenue", "appointments", "low-stock",
+            "pending-payments", "my-queue", "team-inbox", "activity-feed",
+            "profit-hero", "busy-hours", "leaderboard", "repeat-customer",
+            "churn-alert", "forecast", "missing-parts",
+        )
+    }
+
+    /**
+     * §3.17 L602 — Load the role template from the server. Falls back to
+     * [defaultTilesFor] on HTTP 404 or any network error.
+     *
+     * On first launch ([dashboardTileOrder] not yet set), the role-default tile
+     * order is persisted to prefs and the advanced tiles are hidden (L610).
+     */
+    private fun loadRoleTemplate() {
+        viewModelScope.launch {
+            val role = authPreferences.userRole ?: "admin"
+            val isFirstLaunch = appPreferences.dashboardTileOrder.isEmpty()
+
+            val (defaultTiles, allowedTiles) = try {
+                val response = dashboardApi.getRoleTemplate(role)
+                val dto = response.data
+                if (dto != null) {
+                    Pair(dto.defaultTiles, dto.allowedTiles)
+                } else {
+                    val defaults = defaultTilesFor(role)
+                    Pair(defaults, defaults.toSet())
+                }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    val defaults = defaultTilesFor(role)
+                    Pair(defaults, defaults.toSet())
+                } else {
+                    android.util.Log.w("Dashboard", "getRoleTemplate(${e.code()}): ${e.message}")
+                    val defaults = defaultTilesFor(role)
+                    Pair(defaults, defaults.toSet())
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "getRoleTemplate offline: ${e.message}")
+                val defaults = defaultTilesFor(role)
+                Pair(defaults, defaults.toSet())
+            }
+
+            // L610 — on first launch, persist the role defaults and mark advanced tiles hidden.
+            if (isFirstLaunch) {
+                appPreferences.dashboardTileOrder = defaultTiles
+                // Advanced tiles are those in allowedTiles but NOT in defaultTiles.
+                val advanced = allowedTiles - defaultTiles.toSet()
+                appPreferences.dashboardHiddenTiles = advanced
+            }
+
+            val savedOrder = appPreferences.dashboardTileOrder
+            val hidden = appPreferences.dashboardHiddenTiles
+            val effectiveOrder = if (savedOrder.isNotEmpty()) savedOrder else defaultTiles
+            val visible = effectiveOrder
+                .filter { it in allowedTiles && it !in hidden }
+
+            _layoutConfig.value = DashboardLayoutConfig(
+                visibleTiles = visible,
+                hiddenTiles = hidden,
+                allowedTiles = allowedTiles,
+                savedDashboards = appPreferences.savedDashboards,
+                activeDashboardName = null,
+                isFirstLaunch = isFirstLaunch,
+            )
+        }
+    }
+
+    /**
+     * §3.17 L496 / L606 — Persist a new tile order + hidden set from the
+     * customisation sheet and rebuild [layoutConfig].
+     *
+     * @param orderedTiles All tiles in their new drag-sorted order.
+     * @param hiddenTiles  Tiles the user has checked "hide".
+     */
+    fun applyCustomization(orderedTiles: List<String>, hiddenTiles: Set<String>) {
+        appPreferences.dashboardTileOrder = orderedTiles
+        appPreferences.dashboardHiddenTiles = hiddenTiles
+        val current = _layoutConfig.value
+        val visible = orderedTiles.filter { it in current.allowedTiles && it !in hiddenTiles }
+        _layoutConfig.value = current.copy(
+            visibleTiles = visible,
+            hiddenTiles = hiddenTiles,
+        )
+    }
+
+    /**
+     * §3.17 L607-L608 — Switch to a saved dashboard preset by name.
+     * Passing null reverts to the "Default" layout (role-template order + prefs).
+     */
+    fun activateSavedDashboard(name: String?) {
+        val current = _layoutConfig.value
+        if (name == null) {
+            // Revert to current prefs-based order.
+            val savedOrder = appPreferences.dashboardTileOrder
+            val hidden = appPreferences.dashboardHiddenTiles
+            val visible = savedOrder.filter { it in current.allowedTiles && it !in hidden }
+            _layoutConfig.value = current.copy(
+                visibleTiles = visible,
+                hiddenTiles = hidden,
+                activeDashboardName = null,
+            )
+            return
+        }
+        val preset = current.savedDashboards.firstOrNull { it.name == name } ?: return
+        val visible = preset.tileOrder.filter { it in current.allowedTiles && it !in preset.hiddenTiles }
+        _layoutConfig.value = current.copy(
+            visibleTiles = visible,
+            hiddenTiles = preset.hiddenTiles,
+            activeDashboardName = name,
+        )
+    }
+
+    /**
+     * §3.17 L607-L608 — Save the current tile order + hidden set as a named preset.
+     * Replaces an existing preset with the same name; max 5 saved dashboards (oldest dropped).
+     */
+    fun saveCurrentLayoutAs(name: String) {
+        val current = _layoutConfig.value
+        val newDashboard = com.bizarreelectronics.crm.data.local.prefs.SavedDashboard(
+            name = name,
+            tileOrder = current.visibleTiles + current.hiddenTiles.toList(),
+            hiddenTiles = current.hiddenTiles,
+        )
+        val existing = appPreferences.savedDashboards.toMutableList()
+        val idx = existing.indexOfFirst { it.name == name }
+        val updated = if (idx >= 0) {
+            existing.toMutableList().also { it[idx] = newDashboard }
+        } else {
+            (existing + newDashboard).takeLast(5)
+        }
+        appPreferences.setSavedDashboards(updated)
+        _layoutConfig.value = current.copy(
+            savedDashboards = updated,
+            activeDashboardName = name,
+        )
+    }
+
+    /** §3.17 L610 — Reveal all allowed tiles (called from "Show all tiles" button). */
+    fun showAllTiles() {
+        val current = _layoutConfig.value
+        appPreferences.dashboardHiddenTiles = emptySet()
+        val visible = current.visibleTiles + current.hiddenTiles.filter { it in current.allowedTiles }
+        _layoutConfig.value = current.copy(
+            visibleTiles = visible,
+            hiddenTiles = emptySet(),
+            isFirstLaunch = false,
+        )
+    }
+
     init {
         loadDashboard()
         collectMyQueue()
@@ -470,6 +649,7 @@ class DashboardViewModel @Inject constructor(
         loadAnnouncement()
         refreshSmsCount()
         refreshTeamInbox()
+        loadRoleTemplate()
         startPeriodicRefresh()
     }
 
@@ -700,7 +880,7 @@ class DashboardViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
     onNavigateToTicket: (Long) -> Unit,
@@ -755,6 +935,10 @@ fun DashboardScreen(
     // §3.12 — SMS unread + team inbox counts.
     val unreadSmsCount by viewModel.unreadSmsCount.collectAsState()
     val teamInboxCount by viewModel.teamInboxCount.collectAsState()
+
+    // §3.17 L602-L610 — Layout config (role templates + customization).
+    val layoutConfig by viewModel.layoutConfig.collectAsState()
+    var showCustomizationSheet by remember { mutableStateOf(false) }
 
     // §3.8 L557 — Snackbar host for clock-in success toast.
     val clockSnackbarHostState = remember { SnackbarHostState() }
@@ -1131,6 +1315,33 @@ fun DashboardScreen(
             )
         }
 
+        // §3.17 L607-L608 — Saved dashboard tabs (Default | Morning | End of day | + Add).
+        if (layoutConfig.savedDashboards.isNotEmpty() || true /* always show Default tab */) {
+            item {
+                SavedDashboardTabs(
+                    savedDashboards = layoutConfig.savedDashboards,
+                    activeName = layoutConfig.activeDashboardName,
+                    onSelect = { name -> viewModel.activateSavedDashboard(name) },
+                    onAdd = { viewModel.saveCurrentLayoutAs(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
+
+        // §3.17 L610 — First-launch "Show all tiles" affordance.
+        if (layoutConfig.isFirstLaunch) {
+            item {
+                TextButton(
+                    onClick = { viewModel.showAllTiles() },
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .semantics { contentDescription = "Show all available tiles" },
+                ) {
+                    Text("Show all tiles")
+                }
+            }
+        }
+
         // KPI section heading — a11y: heading() so TalkBack announces "Today's KPIs, heading"
         item {
             Text(
@@ -1168,7 +1379,14 @@ fun DashboardScreen(
             item {
                 KpiGrid(
                     tiles = kpiTiles,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    // §3.17 L496 — Long-press any tile to open the customization sheet.
+                    modifier = Modifier
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { showCustomizationSheet = true },
+                            onLongClickLabel = "Customize dashboard tiles",
+                        ),
                 )
             }
         }
@@ -1310,6 +1528,19 @@ fun DashboardScreen(
         onDismiss = { viewModel.dismissCelebratoryModal() },
         reduceMotion = reduceMotion,
     )
+
+    // §3.17 L496 — Customization sheet: opened by long-press on any tile.
+    if (showCustomizationSheet) {
+        DashboardCustomizationSheet(
+            layoutConfig = layoutConfig,
+            reduceMotion = reduceMotion,
+            onSave = { orderedTiles, hiddenTiles ->
+                viewModel.applyCustomization(orderedTiles, hiddenTiles)
+                showCustomizationSheet = false
+            },
+            onDismiss = { showCustomizationSheet = false },
+        )
+    }
 
     // Scrim: rendered after PullToRefreshBox so it sits above the list in Z-order.
     // Tapping collapses the FAB; only visible when FAB is expanded.

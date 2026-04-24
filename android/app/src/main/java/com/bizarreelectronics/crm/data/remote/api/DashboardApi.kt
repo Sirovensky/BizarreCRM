@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.RoleTemplateDto
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityItem
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementDto
 import com.google.gson.annotations.SerializedName
@@ -112,6 +113,27 @@ interface DashboardApi {
      */
     @GET("inbox")
     suspend fun getInbox(): ApiResponse<TeamInboxData>
+
+    /**
+     * §3.17 L602 — Fetch the role-based dashboard template.
+     *
+     * Endpoint: GET /dashboard/role-template/{role}
+     *
+     * Returns the ordered default tile list and the allowed tile set for the
+     * given [role]. HTTP 404 means the endpoint is not yet implemented on the
+     * server; the ViewModel falls back to [DashboardViewModel.defaultTilesFor].
+     *
+     * Response shape (when live):
+     * ```json
+     * { "success": true, "data": { "default_tiles": [...], "allowed_tiles": [...] } }
+     * ```
+     *
+     * @param role Role string (e.g. "admin", "manager", "tech", "cashier").
+     */
+    @GET("dashboard/role-template/{role}")
+    suspend fun getRoleTemplate(
+        @Path("role") role: String,
+    ): ApiResponse<RoleTemplateDto>
 }
 
 /**
