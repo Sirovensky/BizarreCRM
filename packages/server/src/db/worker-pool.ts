@@ -103,10 +103,9 @@ function runWithTimeout(task: unknown): Promise<unknown> {
     .catch((err: unknown) => {
       clearTimeout(timer);
       // Piscina throws "queue is full" when maxQueue is exceeded.
-      if (
-        err instanceof Error &&
-        err.message.toLowerCase().includes('queue is full')
-      ) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      const isQueueFull = msg.includes('queue is full') || msg.includes('piscina') || (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError'));
+      if (isQueueFull) {
         throw new WorkerPoolQueueFullError();
       }
       throw err;

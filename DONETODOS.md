@@ -2367,3 +2367,12 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-543. **[SEC] reports GET /device-models no role gate** — already had gate (verified wave-25).
 - [x] SCAN-637. **rma `received` transition not transactional** — adb.transaction already wraps rma.routes.ts:241-269 (verified wave-25).
 - [x] SCAN-708. **admin file browser symlink traversal** — FIXED wave-25 via realpath-first pattern at admin.routes.ts:300-320.
+- [x] SCAN-547. **portal getTicketDetail returns imei/serial** — SKIPPED per user decision 2026-04-23. Threat model requires PIN compromise first (last-4-phone is identifier, not secret); IMEI post-PIN-breach value (carrier recovery + insurance fraud) deemed too low-probability vs customer utility of device verification. Re-open only if portal PIN breach incidents observed or 4-digit PIN proves brute-forceable in prod.
+
+## Closed 2026-04-23 (wave-26)
+- [x] SCAN-544. **reports GET /parts-usage no role gate** — already had gate at reports.routes.ts:1232 (verified wave-26).
+- [x] SCAN-545. **reports GET /stalled-tickets no role gate** — already had gate at reports.routes.ts:1321 (verified wave-26).
+- [x] SCAN-546. **portal-enrich /ticket/:id/queue-position missing guardPortalRate** — already present at portal-enrich.routes.ts:300 (verified wave-26).
+- [x] SCAN-711. **email subject \r\n sanitization** — FIXED wave-26 via sanitizeSubject() helper at email.ts:131-133 + applied at email.ts:158.
+- [x] SCAN-712. **email html→text fallback leaks script fragments** — FIXED wave-26 via script/style block strip before generic tag strip at email.ts:160-166.
+- [x] SCAN-695. **worker-pool queue-full substring brittle** — FIXED wave-26 via extended check (Piscina substring + TimeoutError/AbortError name) at worker-pool.ts:103-112.
