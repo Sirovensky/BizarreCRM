@@ -340,7 +340,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Settings → Security** row; confirm + strength meter; success Snackbar + force logout of other sessions option. (commit c7dd9852 — `ui/screens/settings/ChangePasswordScreen.kt` + SecurityScreen row + AppNavGraph route; `current_password`/`new_password` body matches server)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
-- [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up 13-step wizard mirroring web (/setup).
+- [x] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up 13-step wizard mirroring web (/setup). (commit 71f419d — `ui/screens/setup/SetupWizardScreen.kt` HorizontalPager + LinearProgressIndicator + Back/Next; 13 step composables in `steps/` package (Welcome/BusinessInfo/OwnerAccount/TaxClasses/PaymentMethods/SmsEmail/LabelsStatuses/FirstStaff/InventoryImport/PrinterSetup/BarcodeScanner/Summary/Finish); `SetupWizardViewModel` + `SetupStepValidator`; `SetupApi.postProgress/getProgress/complete` with 404 local-fallback; `Screen.Setup` nav + `bizarrecrm://setup` deep-link; `SetupStatusGateScreen.onNeedsSetup` → Screen.Setup; 18 JVM tests)
 
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` SharedFlow observed by root `NavHost`. (`AuthPreferences.authCleared: SharedFlow<ClearReason>` already consumed by `AppNavGraph`; reroutes to Login + carries reason.)
@@ -451,14 +451,14 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] Sovereignty: IdP external by nature; per-tenant consent; documented in privacy notice. No third-party IdP tokens stored beyond session lifetime.
 
 ### 2.21 Magic-link login (optional)
-- [ ] Login screen "Email me a link" → enter email → server emails link.
-- [ ] App Link opens app on tap; auto-exchange for token.
-- [ ] Link lifetime 15min, one-time use.
-- [ ] Device binding: same-device fingerprint required.
-- [ ] Cross-device triggers 2FA confirm.
-- [ ] Tenant can disable magic links (strict security mode).
-- [ ] Phishing defense: link preview shows tenant name explicitly.
-- [ ] Domain pinned to `app.bizarrecrm.com`.
+- [x] Login screen "Email me a link" → enter email → server emails link. (commit 618532d — LoginScreen button + `MagicLinkRequestSheet` bottom sheet + "Check your email" banner + 30s resend throttle)
+- [x] App Link opens app on tap; auto-exchange for token. (commit 618532d — HTTPS App Link `https://app.bizarrecrm.com/magic/{token}` autoVerify + `MainActivity.resolveDeepLink` → `DeepLinkBus.publishMagicLinkToken`)
+- [x] Link lifetime 15min, one-time use. (server contract; Android exchange flow honors expires_at if present)
+- [x] Device binding: same-device fingerprint required. (commit 618532d — `DeviceBinding.fingerprint(context)` sent in exchange request)
+- [x] Cross-device triggers 2FA confirm. (commit 618532d — server returns `requires_2fa=true` → push TWO_FA_VERIFY step)
+- [x] Tenant can disable magic links (strict security mode). (commit 618532d — `GET /tenants/me magic_links_enabled` field; false → hides button)
+- [x] Phishing defense: link preview shows tenant name explicitly. (commit 618532d — `MagicLinkPreviewDialog` AlertDialog tenant name + one-time-use notice + Continue/Cancel; user confirmation before POST)
+- [x] Domain pinned to `app.bizarrecrm.com`. (commit 618532d — manifest App Link host pinned; custom scheme `bizarrecrm://magic/{token}` fallback)
 
 ### 2.22 Passkey / WebAuthn via Credential Manager
 - [ ] Android 14+ passkeys via AndroidX Credential Manager (`CreatePublicKeyCredentialRequest` / `GetCredentialRequest`).
