@@ -38,6 +38,8 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.DashboardFab
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
+import com.bizarreelectronics.crm.ui.components.PermissionGatedCard
 import com.bizarreelectronics.crm.ui.components.SyncStatusBadge
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
@@ -74,6 +76,8 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.AvatarLongPres
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.CelebratoryModal
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardTabletActions
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardCachedBanner
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.SetupChecklistCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
 import com.bizarreelectronics.crm.util.rememberReduceMotion
@@ -123,6 +127,18 @@ data class DashboardUiState(
     val statsError: String? = null,
     val attentionError: String? = null,
     val queueError: String? = null,
+    // §3.14 L570 — true when a network error occurred but cached data exists.
+    // Drives [DashboardCachedBanner].
+    val hasNetworkError: Boolean = false,
+    val hasCachedData: Boolean = false,
+    // §3.14 L571 — true on brand-new tenant with no prior data loaded.
+    // When true + KPI value is 0, a per-tile stub emoji is shown.
+    val firstLaunch: Boolean = false,
+    // §3.14 L573/L581 — setup wizard progress for [SetupChecklistCard] + completion ring.
+    val setupCompletedSteps: Int = 0,
+    val setupTotalSteps: Int = 5,
+    // §3.14 L572 — permission gates: which tiles the current role can see.
+    val canViewReports: Boolean = true,
 ) {
     // True if any of the three parallel loads failed.
     val hasAnyError: Boolean
@@ -139,6 +155,10 @@ data class DashboardUiState(
             appointmentsToday == 0 &&
             lowStockCount == 0 &&
             pendingPayments == 0
+
+    /** §3.14 L570 — show cached banner when network failed but data is available. */
+    val showCachedBanner: Boolean
+        get() = hasNetworkError && hasCachedData
 }
 
 data class TicketSummary(val id: Long, val orderId: String, val customerName: String, val statusName: String, val statusColor: String)
@@ -503,11 +523,16 @@ class DashboardViewModel @Inject constructor(
                     revenueToday = stats.revenueToday,
                     appointmentsToday = stats.appointmentsToday,
                     statsError = null,
+                    // §3.14 L570 — mark that we have live data; clear network-error flag.
+                    hasNetworkError = false,
+                    hasCachedData = true,
                 )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
                 _state.value = _state.value.copy(
                     statsError = e.message ?: "Failed to load KPIs",
+                    // §3.14 L570 — signal network error; banner shown if hasCachedData.
+                    hasNetworkError = true,
                 )
             }
 
@@ -704,6 +729,8 @@ fun DashboardScreen(
     onSignOut: (() -> Unit)? = null,
     // §3.12 L561 — SMS pill tap → SMS tab.
     onNavigateToSms: (() -> Unit)? = null,
+    // §3.14 L573/L581 — Setup Wizard navigation for SetupChecklistCard + completion ring.
+    onNavigateToSetup: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1008,8 +1035,35 @@ fun DashboardScreen(
             }
         }
 
+        // §3.14 L570 — Cached data banner. Shown when network failed but cached data
+        // is available. Uses tertiaryContainer surface (informational, not error).
+        // ReduceMotion-aware fade controlled by [rememberReduceMotion].
+        if (state.showCachedBanner) {
+            item {
+                DashboardCachedBanner(
+                    visible = true,
+                    onRetry = { viewModel.refresh() },
+                    reduceMotion = reduceMotion,
+                )
+            }
+        }
+
         // CROSS45: WaveDivider moved to topBar slot (directly below the app bar)
         // so placement is consistent across every list/dashboard screen.
+
+        // §3.14 L573/L574 — Setup checklist card for brand-new tenants.
+        // Shown when setupCompletedSteps < setupTotalSteps (default 5).
+        // Contains completion ring (L581) in the top-right corner.
+        // onNavigateToSetup is nullable — card hidden when nav is not wired.
+        if (onNavigateToSetup != null) {
+            item {
+                SetupChecklistCard(
+                    completedSteps = state.setupCompletedSteps,
+                    totalSteps = state.setupTotalSteps,
+                    onNavigateToSetup = onNavigateToSetup,
+                )
+            }
+        }
 
         // §3.5 — getting-started checklist. Auto-hides at 100% complete or
         // when explicitly dismissed; keys off local Room counts + prefs so
@@ -1089,7 +1143,20 @@ fun DashboardScreen(
         // Once any KPI becomes non-zero the grid is rendered instead.
         if (state.allKpisZero && !state.isLoading) {
             item {
-                DashboardEmptyState(onCreateTicket = onCreateTicket)
+                // §3.14 L571 — firstLaunch: show per-KPI stub emoji illustrations
+                // when the tenant has no data yet. Uses EmptyStateIllustration wrapper.
+                if (state.firstLaunch) {
+                    EmptyStateIllustration(
+                        emoji = "📋",
+                        title = "No tickets yet",
+                        subtitle = "Create your first repair ticket to get started.",
+                        primaryCta = "New Ticket",
+                        onPrimaryCta = onCreateTicket,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                } else {
+                    DashboardEmptyState(onCreateTicket = onCreateTicket)
+                }
             }
         } else {
             // §3 L488 — KpiGrid (responsive: 2/3/4 cols by WindowMode).
@@ -1219,9 +1286,16 @@ fun DashboardScreen(
         }
 
         // §3.2 L500–L506 — BI Widgets "Insights" section.
+        // §3.14 L572 — wrapped in PermissionGatedCard when canViewReports is false.
         // Widgets flow 1-column on Phone, 2-column on Tablet/Desktop.
         item {
-            InsightsSection(viewModel = viewModel)
+            PermissionGatedCard(
+                requiredPermission = "Reports",
+                hasPermission = state.canViewReports,
+                modifier = Modifier.padding(horizontal = 0.dp),
+            ) {
+                InsightsSection(viewModel = viewModel)
+            }
         }
     }
     }
