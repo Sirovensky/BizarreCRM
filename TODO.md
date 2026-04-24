@@ -698,5 +698,6 @@ Verified working. Not TODOs.
 ### Wave-50 scan-loop findings (2026-04-23) — web/pages
 - [ ] SCAN-957. **POS customer step fans out 3 parallel queries every session open — consolidate or hoist with stale cache.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:965-1057; fix=consolidate-or-hoist -->
-- [ ] SCAN-960. **Ticket wizard labels not associated with their inputs — click-label and screen readers broken.**
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx:140; fix=htmlFor+id -->
+- [ ] SCAN-961. **Ticket wizard still has ~18 FormLabel/input pairs in device + service sections without htmlFor wiring — needs full sweep.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
+

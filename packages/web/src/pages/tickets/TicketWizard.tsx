@@ -135,9 +135,12 @@ function initials(first?: string, last?: string) {
 
 // ─── Reusable Input Helpers ─────────────────────────────────────────
 
-function FormLabel({ label, required }: { label: string; required?: boolean }) {
+function FormLabel({ label, required, htmlFor }: { label: string; required?: boolean; htmlFor?: string }) {
   return (
-    <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">
+    <label
+      htmlFor={htmlFor}
+      className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300"
+    >
       {label}
       {required && <span className="ml-0.5 text-red-500">*</span>}
     </label>
@@ -1178,20 +1181,20 @@ export function TicketWizard() {
                   <div className="mt-4 rounded-lg border border-surface-200 bg-surface-50/50 p-4 dark:border-surface-700 dark:bg-surface-800/50">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
-                        <FormLabel label="First Name" required />
-                        <input value={newCustomer.first_name} onChange={(e) => setNewCustomer((p) => ({ ...p, first_name: e.target.value }))} placeholder="John" className={inputCls} />
+                        <FormLabel label="First Name" required htmlFor="tw-new-customer-first" />
+                        <input id="tw-new-customer-first" value={newCustomer.first_name} onChange={(e) => setNewCustomer((p) => ({ ...p, first_name: e.target.value }))} placeholder="John" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Last Name" required />
-                        <input value={newCustomer.last_name} onChange={(e) => setNewCustomer((p) => ({ ...p, last_name: e.target.value }))} placeholder="Doe" className={inputCls} />
+                        <FormLabel label="Last Name" required htmlFor="tw-new-customer-last" />
+                        <input id="tw-new-customer-last" value={newCustomer.last_name} onChange={(e) => setNewCustomer((p) => ({ ...p, last_name: e.target.value }))} placeholder="Doe" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Phone" />
-                        <input type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="(555) 123-4567" className={inputCls} />
+                        <FormLabel label="Phone" htmlFor="tw-new-customer-phone" />
+                        <input id="tw-new-customer-phone" type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="(555) 123-4567" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Email" />
-                        <input type="email" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" className={inputCls} />
+                        <FormLabel label="Email" htmlFor="tw-new-customer-email" />
+                        <input id="tw-new-customer-email" type="email" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" className={inputCls} />
                       </div>
                     </div>
                     <div className="mt-4">

@@ -4,6 +4,7 @@
 First batch after switching to direct-on-main commits (no feature branches).
 
 - [x] SCAN-954. **InvoiceListPage rows were `any[]`** — fixed in commit `9f63d3bc`. Added a local `InvoiceRow` interface covering the fields the list actually reads; wrapped payload access in `Array.isArray(...)` narrow before casting; tightened `statusDist` / `methodDist` to explicit array types.
+- [x] SCAN-960. **TicketWizard labels not associated with inputs** — partially fixed in commit `<pending>`. Enhanced the shared `FormLabel` helper with an optional `htmlFor` prop; wired the new-customer section's four fields (first name, last name, phone, email) with matching `id` attributes. Follow-up SCAN-961 logged for the remaining ~18 device/service labels in the same file.
 
 ## Closed 2026-04-23 (wave-47/48/49 web orchestration — hooks + utils + api + stores + components)
 
