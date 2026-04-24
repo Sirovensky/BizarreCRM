@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-73 — reset-password rate limit parity)
+
+- [x] SCAN-1179. **`/reset-password` had no rate limit** — sibling gap of SCAN-1155 (/change-pin) and SCAN-1178 (/change-password). `/forgot-password` was protected, but its twin endpoint wasn't: an attacker could hammer `/reset-password` with random 64-char tokens, burning bcrypt cost=12 per call for CPU-exhaustion DoS even when every attempt resolved to "invalid token". Added `checkWindowRate('reset_password', ip, 10, 3600_000)` at handler entry (10/hr since a real reset click lands here exactly once) + `recordWindowFailure` on the invalid-token and reused-password branches. Successful resets don't burn a slot.
+
 ## Closed 2026-04-24 (wave-72 — change-password rate limit parity)
 
 - [x] SCAN-1178. **`/change-password` had no rate limit** — sibling gap of SCAN-1155 which already covered `/change-pin`. A stolen access token could spray current-password guesses at bcrypt uncapped; slow but no upstream lockout. Added `checkWindowRate('change_password', userId:ip, 5, 3600_000)` at handler entry + `recordWindowFailure` on the bad-password branch. Matches the change-pin cap exactly.

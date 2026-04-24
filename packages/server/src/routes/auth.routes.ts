@@ -1763,6 +1763,19 @@ router.post('/reset-password', asyncHandler(async (req: Request, res: Response) 
   const adb = req.asyncDb;
   const dbSync = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  // SCAN-1179: sibling gap — `/forgot-password` is rate-limited but
+  // `/reset-password` wasn't. An attacker could hammer the endpoint,
+  // burning bcrypt cost=12 per call for CPU exhaustion even when every
+  // request resolves to "invalid token". 10 attempts/hr/IP matches the
+  // endpoint's low-expected-legit-traffic profile (a real reset click
+  // lands on this endpoint exactly once). The bad-token / reused-password
+  // branches below record a failure; success does not burn a slot.
+  if (!checkWindowRate(dbSync, 'reset_password', ip, 10, 3600_000)) {
+    res.status(429).json({ success: false, message: 'Too many reset attempts. Try again later.' });
+    return;
+  }
+
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
   const user = await adb.get<any>(
@@ -1771,12 +1784,19 @@ router.post('/reset-password', asyncHandler(async (req: Request, res: Response) 
   );
 
   if (!user) {
+    // SCAN-1179: count the invalid-token attempt toward the hourly cap —
+    // this is the enumeration/DoS path the limit is meant to defend.
+    recordWindowFailure(dbSync, 'reset_password', ip, 3600_000);
     res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
     return;
   }
 
   // SEC (P2FA8): Block reuse of the last N passwords (incl. current).
   if (await isPasswordReused(adb, user.id, password)) {
+    // SCAN-1179: reused-password rejection burns a slot too — otherwise
+    // an attacker with a valid token could spin bcrypt on the check
+    // unlimited.
+    recordWindowFailure(dbSync, 'reset_password', ip, 3600_000);
     res.status(400).json({
       success: false,
       message: `Password must be different from your last ${PASSWORD_HISTORY_DEPTH} passwords.`,
