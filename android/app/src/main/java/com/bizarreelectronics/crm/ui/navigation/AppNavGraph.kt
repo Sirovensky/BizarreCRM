@@ -59,6 +59,7 @@ import com.bizarreelectronics.crm.ui.screens.employees.EmployeeListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
+import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
@@ -218,6 +219,9 @@ sealed class Screen(val route: String) {
     // §32.3 Crash reports — Settings → Diagnostics. Lists files written by
     // util/CrashReporter to filesDir/crash-reports/.
     data object CrashReports : Screen("settings/diagnostics/crash-reports")
+
+    // §1.3 [plan:L185] — Diagnostics (Export DB snapshot). DEBUG builds only.
+    data object Diagnostics : Screen("settings/diagnostics")
 
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
@@ -1149,10 +1153,19 @@ fun AppNavGraph(
                     onAbout = { navController.navigate(Screen.About.route) },
                     // §2.5 — Switch user (shared device): navigate to PIN entry.
                     onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
+                    // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only.
+                    onDiagnostics = { navController.navigate(Screen.Diagnostics.route) },
                 )
             }
             composable(Screen.CrashReports.route) {
                 com.bizarreelectronics.crm.ui.screens.settings.CrashReportsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §1.3 [plan:L185] — Diagnostics (Export DB snapshot). DEBUG builds only;
+            // SettingsScreen never navigates here in release builds.
+            composable(Screen.Diagnostics.route) {
+                DiagnosticsScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

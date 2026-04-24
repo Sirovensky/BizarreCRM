@@ -242,6 +242,8 @@ fun SettingsScreen(
     onCrashReports: (() -> Unit)? = null,
     // §28 — opens About + diagnostics screen (copy-bundle for support).
     onAbout: (() -> Unit)? = null,
+    // §1.3 [plan:L185] — opens Diagnostics (Export DB snapshot). DEBUG builds only.
+    onDiagnostics: (() -> Unit)? = null,
     // §2.5 — opens the Switch User PIN screen (shared device flow).
     // Nullable so previews and any callers that don't need the row can omit it.
     onSwitchUser: (() -> Unit)? = null,
@@ -372,6 +374,18 @@ fun SettingsScreen(
                     icon = Icons.Default.BugReport,
                     title = "Crash reports",
                     onClick = onCrashReports,
+                )
+            }
+
+            // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only:
+            // a plaintext/decrypted export would be a data-exfil risk in
+            // production. The callback is also gated on BuildConfig.DEBUG so
+            // the row is compiled-out in release builds entirely.
+            if (com.bizarreelectronics.crm.BuildConfig.DEBUG && onDiagnostics != null) {
+                SettingsRow(
+                    icon = Icons.Default.BugReport,
+                    title = "Diagnostics",
+                    onClick = onDiagnostics,
                 )
             }
 
