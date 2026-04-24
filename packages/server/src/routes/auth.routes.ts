@@ -2161,6 +2161,16 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   const userId = req.user!.id;
 
+  // SCAN-1178: sibling gap of SCAN-1155. `/change-pin` was rate-limited but
+  // `/change-password` wasn't — a stolen access token could spray current-
+  // password guesses at bcrypt uncapped. 5 bad attempts per hour per
+  // (userId,ip) matches the change-pin cap.
+  const rateKey = `${userId}:${ip}`;
+  if (!checkWindowRate(db, 'change_password', rateKey, 5, 3600_000)) {
+    res.status(429).json({ success: false, message: 'Too many password-change attempts. Try again in an hour.' });
+    return;
+  }
+
   const { current_password: currentPassword, new_password: newPassword } = req.body || {};
 
   if (!currentPassword || typeof currentPassword !== 'string') {
@@ -2192,6 +2202,8 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
     passwordValid = false;
   }
   if (!passwordValid) {
+    // SCAN-1178: count the failed attempt toward the hourly cap.
+    recordWindowFailure(db, 'change_password', rateKey, 3600_000);
     audit(db, 'password_change_failed', userId, ip, { reason: 'bad_current_password' });
     logTenantAuthEvent('password_change_failed', req, userId, user.username, { reason: 'bad_current_password' });
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });

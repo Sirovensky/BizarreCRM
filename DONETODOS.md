@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-72 — change-password rate limit parity)
+
+- [x] SCAN-1178. **`/change-password` had no rate limit** — sibling gap of SCAN-1155 which already covered `/change-pin`. A stolen access token could spray current-password guesses at bcrypt uncapped; slow but no upstream lockout. Added `checkWindowRate('change_password', userId:ip, 5, 3600_000)` at handler entry + `recordWindowFailure` on the bad-password branch. Matches the change-pin cap exactly.
+
 ## Closed 2026-04-24 (wave-71 — logout deviceTrust + forgot-password rate fairness)
 
 - [x] SCAN-1176. **`/auth/logout` cleared `refreshToken` + `csrf_token` but NOT `deviceTrust`** — after an explicit logout on a shared device, the 90-day trust cookie remained valid so the next login from that browser skipped 2FA, defeating the logout semantic. `/account/2fa/disable` and the failed-trust branches already cleared the cookie correctly; logout was the missing parity case. Added `res.clearCookie('deviceTrust', { path: '/' });`.
