@@ -1186,9 +1186,19 @@ class TicketCreateViewModel @Inject constructor(
                         },
                     )
                 }
+                // CROSS12-fix: pass is_walk_in + optional walk-in identity.
+                // The server creates a unique editable row when first/phone are
+                // present; falls back to the shared sentinel for anonymous walk-ins.
                 val request = CreateTicketRequest(
-                    // CROSS10 / CROSS5: walk-in → customer_id = NULL.
+                    // CROSS10 / CROSS5: walk-in -> customer_id = NULL; the
+                    // server resolves the effective customer FK from is_walk_in
+                    // + optional identity fields.
                     customerId = s.selectedCustomer?.id,
+                    isWalkIn = if (s.isWalkIn) true else null,
+                    walkInFirstName = if (s.isWalkIn) s.newCustFirstName.trim().ifBlank { null } else null,
+                    walkInLastName  = if (s.isWalkIn) s.newCustLastName.trim().ifBlank  { null } else null,
+                    walkInPhone     = if (s.isWalkIn) s.newCustPhone.trim().ifBlank     { null } else null,
+                    walkInEmail     = if (s.isWalkIn) s.newCustEmail.trim().ifBlank     { null } else null,
                     devices = devices,
                 )
                 val createdId = ticketRepository.createTicket(request)

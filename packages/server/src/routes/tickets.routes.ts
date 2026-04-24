@@ -864,10 +864,14 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   const userId = req.user!.id;
   const body = req.body;
 
-  // F18: Require customer if setting enabled (default: required)
+  // F18: Require customer if setting enabled (default: required).
+  // CROSS12-fix: walk-in tickets (is_walk_in=true) are exempt -- the server
+  // resolves or creates a customer row below, so no customer_id is needed
+  // from the client.
   const requireCustomer = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_require_customer'");
   const customerRequired = !requireCustomer || requireCustomer.value !== '0';
-  if (!body.customer_id && customerRequired) {
+  const isWalkIn = body.is_walk_in === true;
+  if (!body.customer_id && customerRequired && !isWalkIn) {
     throw new AppError('customer_id is required', 400);
   }
   if (!body.devices || !Array.isArray(body.devices) || body.devices.length === 0) {
@@ -885,8 +889,42 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     dev.additional_notes = maxLen(dev.additional_notes, 2000);
   }
 
-  // Verify customer exists (if provided)
-  if (body.customer_id) {
+  // CROSS12-fix: resolve the effective customer_id.
+  //   - Normal ticket:  use body.customer_id as-is (verified below).
+  //   - Walk-in with identity (name/phone provided): create a unique customer
+  //     row so this ticket has an editable, per-ticket customer record.
+  //   - Truly anonymous walk-in (no identity fields): fall back to the shared
+  //     WALK-IN sentinel -- that row must NOT be renamed (CROSS12 guard on
+  //     CustomerDetailScreen keeps the Edit button hidden for it).
+  let resolvedCustomerId: number | null = body.customer_id ?? null;
+
+  if (isWalkIn) {
+    const walkInFirst = ((body.walk_in_first_name as string | undefined) ?? '').trim();
+    const walkInLast  = ((body.walk_in_last_name  as string | undefined) ?? '').trim();
+    const walkInPhone = ((body.walk_in_phone       as string | undefined) ?? '').trim();
+    const walkInEmail = ((body.walk_in_email       as string | undefined) ?? '').trim();
+
+    if (walkInFirst || walkInLast || walkInPhone) {
+      // Create a unique, fully-editable customer row for this walk-in.
+      const insertResult = await adb.run(
+        `INSERT INTO customers
+           (first_name, last_name, mobile, email, type, source, is_deleted, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'individual', 'Walk-in', 0, datetime('now'), datetime('now'))`,
+        walkInFirst || 'Walk-in',
+        walkInLast  || '',
+        walkInPhone || null,
+        walkInEmail || null,
+      );
+      resolvedCustomerId = Number(insertResult.lastInsertRowid);
+    } else {
+      // Truly anonymous walk-in -- use the shared sentinel.
+      const sentinel = await adb.get<{ id: number }>(
+        "SELECT id FROM customers WHERE code = 'WALK-IN' LIMIT 1",
+      );
+      resolvedCustomerId = sentinel?.id ?? null;
+    }
+  } else if (body.customer_id) {
+    // Verify non-walk-in customer exists.
     const customer = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', body.customer_id);
     if (!customer) throw new AppError('Customer not found', 404);
   }
@@ -1021,6 +1059,8 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   }
 
   // Insert ticket (ENR-POS1: includes is_layaway + layaway_expires; migration 136: location_id)
+  // CROSS12-fix: use resolvedCustomerId so walk-in tickets point to their
+  // unique customer row (or the sentinel for truly anonymous walk-ins).
   const ticketResult = await adb.run(`
     INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
                          source, referral_source, labels, due_on, created_by, tracking_token,
@@ -1028,7 +1068,7 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
-    body.customer_id,
+    resolvedCustomerId,
     statusId,
     assignedTo,
     body.discount ?? 0,
@@ -1216,7 +1256,8 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   fireWebhook(db, 'ticket_created', { ticket_id: ticketId, order_id: orderId });
 
   // Fire automations (async, non-blocking)
-  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', body.customer_id);
+  // CROSS12-fix: use resolvedCustomerId (handles walk-in rows correctly).
+  const cust = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ?', resolvedCustomerId);
   runAutomations(db, 'ticket_created', { ticket, customer: cust ?? {} });
 
   // M10 fix: attach a tax_warning field when any device referenced a deleted/missing tax class

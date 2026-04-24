@@ -318,6 +318,21 @@ data class CreateTicketRequest(
     @SerializedName("discount_reason")
     val discountReason: String? = null,
     val source: String? = null,
+    // CROSS12-fix: walk-in identity fields. When is_walk_in=true and at least
+    // one of walk_in_first_name/walk_in_phone is non-blank, the server creates
+    // a unique, editable customer row for this ticket instead of linking to the
+    // shared WALK-IN sentinel. Truly anonymous walk-ins (all null) still fall
+    // back to the sentinel.
+    @SerializedName("is_walk_in")
+    val isWalkIn: Boolean? = null,
+    @SerializedName("walk_in_first_name")
+    val walkInFirstName: String? = null,
+    @SerializedName("walk_in_last_name")
+    val walkInLastName: String? = null,
+    @SerializedName("walk_in_phone")
+    val walkInPhone: String? = null,
+    @SerializedName("walk_in_email")
+    val walkInEmail: String? = null,
     val devices: List<CreateTicketDeviceRequest>
 )
 
