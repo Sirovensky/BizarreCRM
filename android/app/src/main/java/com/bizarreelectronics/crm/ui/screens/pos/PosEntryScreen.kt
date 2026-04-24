@@ -156,52 +156,72 @@ private fun EntryContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(top = 24.dp, bottom = 120.dp),
     ) {
-        // ── Customer header ─────────────────────────────────────────────────
-        state.attachedCustomer?.let { customer ->
-            item {
-                CustomerHeaderBanner(customer = customer)
-            }
-        }
-
-        // ── Path picker tiles ────────────────────────────────────────────────
-        item {
-            PathTile(
-                emoji = "🛒",
-                title = "Retail sale",
-                subtitle = "Scan or browse parts · tender",
-                isPrimary = true,
-                onClick = onRetailSale,
-            )
-        }
-        item {
-            PathTile(
-                emoji = "🔧",
-                title = "Create repair ticket",
-                subtitle = "Pick device · describe · reserve parts",
-                isPrimary = false,
-                onClick = onRepairTicket,
-            )
-        }
-        item {
-            PathTile(
-                emoji = "💳",
-                title = "Store credit · payment",
-                subtitle = "Balance · add funds",
-                isPrimary = false,
-                onClick = onStoreCredit,
-            )
-        }
-
-        // ── Ready-for-pickup hero card ───────────────────────────────────────
-        items(state.readyForPickupTickets) { ticket ->
-            ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
-        }
-
-        // Walk-in "ghost" tile — dashed-border per pos-phone-mockups.html.
-        // Visually demoted vs the three primary path tiles to signal it's
-        // the no-record shortcut. Only shown when no customer is attached.
+        // ── Two-state surface matching pos-phone-mockups.html flow:
+        //    * Pre-attach (no customer picked): customer-picker tiles only
+        //      (Search / Create new / Walk-in) + RECENT strip.
+        //    * Post-attach (customer picked): customer chip header + path
+        //      tiles (Retail / Repair / Store credit) + Ready-for-pickup
+        //      hero + Past repairs.
+        //    Old behavior rendered every tile at once, which mixed the two
+        //    mockup states and hid which action was reachable next.
         if (state.attachedCustomer == null) {
+            // Pre-attach state
+            item {
+                PathTile(
+                    emoji = "👤",
+                    title = "Search customer",
+                    subtitle = "Tap or use search below",
+                    isPrimary = false,
+                    onClick = { /* keyboard focus drives search; no-op */ },
+                )
+            }
+            item {
+                PathTile(
+                    emoji = "+",
+                    title = "Create new customer",
+                    subtitle = "First name required",
+                    isPrimary = true,
+                    onClick = { /* search bar handles create flow */ },
+                )
+            }
             item { GhostWalkInTile(onWalkIn = onWalkIn) }
+        } else {
+            // Post-attach state — customer is already attached
+            item { CustomerHeaderBanner(customer = state.attachedCustomer!!) }
+
+            item {
+                PathTile(
+                    emoji = "🛒",
+                    title = "Retail sale",
+                    subtitle = "Scan or browse parts · tender",
+                    isPrimary = true,
+                    onClick = onRetailSale,
+                )
+            }
+            item {
+                PathTile(
+                    emoji = "🔧",
+                    title = "Create repair ticket",
+                    subtitle = "Pick device · describe · reserve parts",
+                    isPrimary = false,
+                    onClick = onRepairTicket,
+                )
+            }
+            item {
+                PathTile(
+                    emoji = "💳",
+                    title = "Store credit · payment",
+                    subtitle = "Balance · add funds",
+                    isPrimary = false,
+                    onClick = onStoreCredit,
+                )
+            }
+
+            // Ready-for-pickup hero + past repairs — only meaningful once a
+            // customer is attached.
+            items(state.readyForPickupTickets) { ticket ->
+                ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
+            }
         }
 
         // ── Past repairs compact list ────────────────────────────────────────
