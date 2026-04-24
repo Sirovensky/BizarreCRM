@@ -708,20 +708,20 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired. (commit ced0ac0 — ReviewStep onCreateSuccess navigates to detail)
 
 ### 4.4 Edit
-- [ ] In-place edit on detail: status, assignee, notes, devices, services, prices, deposit, due date, urgency, tags, labels, customer reassign, source.
-- [ ] **Optimistic UI** with rollback on failure (revert local mutation + error Snackbar).
-- [ ] **Audit log** entries streamed back into timeline.
-- [ ] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
-- [ ] **Delete** — destructive confirm; soft-delete server-side.
+- [x] In-place edit on detail: status, assignee, notes, devices, services, prices, deposit, due date, urgency, tags, labels, customer reassign, source. (commit 181e486 — VM `updateField()` generic optimistic path)
+- [x] **Optimistic UI** with rollback on failure (revert local mutation + error Snackbar). (commit 181e486 — apply local + revert on failure + Snackbar)
+- [x] **Audit log** entries streamed back into timeline. (commit 181e486 — `loadTicketDetail()` called after each write)
+- [x] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner. (commit 181e486 — `components/ConcurrentEditBanner.kt` + 409 detection + Reload-to-merge)
+- [x] **Delete** — destructive confirm; soft-delete server-side. (commit 181e486 — `components/TicketDeleteDialog.kt` + role gate)
 
 ### 4.5 Ticket actions
-- [ ] **Convert to invoice** — `POST /tickets/:id/convert-to-invoice` → navigates to new invoice detail; prefill ticket line items; respect deposit credit.
-- [ ] **Attach to existing invoice** — picker; append line items.
-- [ ] **Duplicate ticket** — same customer + device + clear status.
-- [ ] **Merge tickets** — pick duplicate candidate (search dialog); confirm; server merges notes / photos / devices.
-- [ ] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged.
-- [ ] **Transfer to another store / location** (multi-location tenants).
-- [ ] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive / bulk tag.
+- [x] **Convert to invoice** — `POST /tickets/:id/convert-to-invoice` → navigates to new invoice detail; prefill ticket line items; respect deposit credit. (commit 181e486 — pre-existing; wired via overflow)
+- [x] **Attach to existing invoice** — picker; append line items. (commit 181e486 — `TicketApi.attachToInvoice` endpoint)
+- [x] **Duplicate ticket** — same customer + device + clear status. (commit 181e486 — `duplicateTicket()` VM + API + navigate)
+- [x] **Merge tickets** — pick duplicate candidate (search dialog); confirm; server merges notes / photos / devices. (commit 181e486 — `components/TicketMergeDialog.kt` + `searchMergeCandidates` + `mergeTickets`)
+- [x] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged. (commit 181e486 — `components/TicketHandoffDialog.kt` + `loadHandoffEmployees` + `transferTicket` 404-fallback)
+- [x] **Transfer to another store / location** (multi-location tenants). (commit 181e486 — location picker slot in TicketHandoffDialog active when locations non-empty)
+- [x] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive / bulk tag. (commit 181e486 — `components/TicketBulkActionBar.kt` extracted; Assign/Status/Archive/Tag wired via `TicketApi.bulkAction` + 20 JVM tests)
 - [ ] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`.
 - [ ] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer.
 - [ ] **Star / pin** to dashboard.
@@ -1781,35 +1781,35 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST /pos/carts/{id}/lines`, `POST /blockchyp/charge`, `POST /pos/cash-sessions`, `POST /pos/cash-sessions/{id}/close`._
 
 ### 16.1 POS shell
-- [ ] 2-pane layout on tablet (catalog left, cart right) via `Row` + weight modifiers. Phone: tabs — Catalog / Cart.
-- [ ] Top bar: customer chip (tap to change), location chip, shift status, parked-carts chip.
-- [ ] Always-visible bottom bar: subtotal + tax + total + big tender `Button`.
+- [x] 2-pane layout on tablet (catalog left, cart right) via `Row` + weight modifiers. Phone: tabs — Catalog / Cart. (commit 002cdf6 — `PosScreen.kt` full rewrite)
+- [x] Top bar: customer chip (tap to change), location chip, shift status, parked-carts chip. (commit 002cdf6)
+- [x] Always-visible bottom bar: subtotal + tax + total + big tender `Button`. (commit 002cdf6)
 
 ### 16.2 Catalog
-- [ ] Grid of tiles with photo / name / price (tablet 4-col, phone 2-col).
-- [ ] Search — debounced; barcode scan via FAB ICON `QrCodeScanner`.
-- [ ] Category filter chips.
-- [ ] Quick-add top-5 bar driven by `GET /pos-enrich/quick-add`.
-- [ ] HID scanner input (external Bluetooth / USB-C).
+- [x] Grid of tiles with photo / name / price (tablet 4-col, phone 2-col). (commit 002cdf6 — `components/PosCatalogGrid.kt` LazyVerticalGrid)
+- [x] Search — debounced; barcode scan via FAB ICON `QrCodeScanner`. (commit 002cdf6 — debounced search + barcode FAB)
+- [x] Category filter chips. (commit 002cdf6 — SegmentedButtonRow)
+- [x] Quick-add top-5 bar driven by `GET /pos-enrich/quick-add`. (commit 002cdf6 — 404→hide)
+- [x] HID scanner input (external Bluetooth / USB-C). (commit 002cdf6 — onKeyEvent root handler)
 
 ### 16.3 Cart
-- [ ] Lines with qty stepper, unit price (editable role-gated), discount, tax class, remove.
-- [ ] Line-level discount and cart-level discount.
-- [ ] Customer attach — search or inline mini-create (§5.3).
-- [ ] Tip prompt (flat / %) configurable per tenant.
-- [ ] Park cart — stores in Room; list of parked carts in top bar chip.
-- [ ] Split cart — split by item or evenly.
+- [x] Lines with qty stepper, unit price (editable role-gated), discount, tax class, remove. (commit 002cdf6 — `components/PosCart.kt`)
+- [x] Line-level discount and cart-level discount. (commit 002cdf6 — flat/% both levels)
+- [x] Customer attach — search or inline mini-create (§5.3). (commit 002cdf6 — dialog)
+- [x] Tip prompt (flat / %) configurable per tenant. (commit 002cdf6 — presets + custom)
+- [x] Park cart — stores in Room; list of parked carts in top bar chip. (commit 002cdf6 — `ParkedCartEntity` + `ParkedCartDao` + MIGRATION_8_9; `PosParkedCartsSheet.kt`)
+- [x] Split cart — split by item or evenly. (commit 002cdf6 — `PosSplitTenderDialog.kt`)
 
 ### 16.4 Payment
-- [ ] Tender buttons: Cash / Card (BlockChyp) / Google Pay / Gift Card / Store Credit / Check / ACH / Split / Invoice later.
-- [ ] **Cash** — numeric keypad + change calculator + denomination hints.
-- [ ] **Card (BlockChyp)** — BlockChyp Android SDK `TransactionClient.charge(...)` → terminal prompts customer; progress ongoing notification Live Update; surfaces approval code + last 4.
-- [ ] **Google Pay / Google Wallet NFC** — `PaymentsClient.loadPaymentData(...)` with PaymentDataRequest; appears only if PaymentsClient.isReadyToPay passes.
-- [ ] **Gift card** — scan code → `POST /gift-cards/redeem`; balance + partial redeem.
-- [ ] **Store credit** — pull balance → apply up to min(balance, total); surplus refunds to credit.
-- [ ] **Split tender** — chain methods until balance = 0; cart shows running balance.
-- [ ] **Invoice later** — creates invoice + attaches to customer; no immediate payment.
-- [ ] **Idempotency-Key** required on POST /pos/sales.
+- [x] Tender buttons: Cash / Card (BlockChyp) / Google Pay / Gift Card / Store Credit / Check / ACH / Split / Invoice later. (commit 002cdf6 — `PosPaymentSheet.kt` ModalBottomSheet rows)
+- [x] **Cash** — numeric keypad + change calculator + denomination hints. (commit 002cdf6 — `PosCashKeypad.kt`)
+- [~] **Card (BlockChyp)** — BlockChyp Android SDK `TransactionClient.charge(...)`. (commit 002cdf6 — stub "Connect BlockChyp terminal" CTA + TODO; SDK integration deferred)
+- [~] **Google Pay / Google Wallet NFC** — `PaymentsClient.loadPaymentData(...)` with PaymentDataRequest. (commit 002cdf6 — stub; GMS Pay dep + `isReadyToPay` guard pending)
+- [x] **Gift card** — scan code → `POST /gift-cards/redeem`; balance + partial redeem. (commit 002cdf6)
+- [x] **Store credit** — pull balance → apply up to min(balance, total); surplus refunds to credit. (commit 002cdf6)
+- [x] **Split tender** — chain methods until balance = 0; cart shows running balance. (commit 002cdf6 — `PosSplitTenderDialog.kt`)
+- [x] **Invoice later** — creates invoice + attaches to customer; no immediate payment. (commit 002cdf6 — `PosApi.createInvoiceLater`)
+- [x] **Idempotency-Key** required on POST /pos/sales. (commit 002cdf6 — UUID header)
 
 ### 16.5 Tax engine
 - [ ] Per-line tax class; cart-level tax override (tenant admin).
