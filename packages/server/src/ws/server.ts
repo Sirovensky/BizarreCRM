@@ -151,6 +151,31 @@ trackInterval(() => {
 const clients = new Map<string, Set<AuthenticatedSocket>>();
 const allClients = new Set<AuthenticatedSocket>();
 
+// SCAN-1066: per-tenant socket bucket so broadcast() can iterate only the
+// affected tenant instead of the global allClients set. Key 'null' is used
+// for non-tenant (super-admin / management) sockets so platform-level
+// broadcasts also iterate just that bucket.
+const clientsByTenant = new Map<string, Set<AuthenticatedSocket>>();
+function tenantBucketKey(tenantSlug: string | null | undefined): string {
+  return tenantSlug ?? 'null';
+}
+function addToTenantBucket(ws: AuthenticatedSocket): void {
+  const key = tenantBucketKey(ws.tenantSlug);
+  let bucket = clientsByTenant.get(key);
+  if (!bucket) {
+    bucket = new Set();
+    clientsByTenant.set(key, bucket);
+  }
+  bucket.add(ws);
+}
+function removeFromTenantBucket(ws: AuthenticatedSocket): void {
+  const key = tenantBucketKey(ws.tenantSlug);
+  const bucket = clientsByTenant.get(key);
+  if (!bucket) return;
+  bucket.delete(ws);
+  if (bucket.size === 0) clientsByTenant.delete(key);
+}
+
 function clientKey(tenantSlug: string | null | undefined, userId: number): string {
   return `${tenantSlug || 'null'}:${userId}`;
 }
@@ -480,6 +505,9 @@ export function setupWebSocket(wss: WebSocketServer): void {
             clients.set(key, new Set());
           }
           clients.get(key)!.add(ws);
+          // SCAN-1066: register in the per-tenant index so broadcast() avoids
+          // the O(allClients) scan.
+          addToTenantBucket(ws);
           try {
             ws.send(JSON.stringify({ type: 'auth', success: true }));
           } catch {
@@ -579,6 +607,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
             clients.delete(key);
           }
         }
+        removeFromTenantBucket(ws);
       }
     });
   });
@@ -637,16 +666,13 @@ export function broadcast(event: string, data: unknown, tenantSlug: string | nul
     return fullMsg;
   };
 
-  allClients.forEach((ws) => {
+  // SCAN-1066: iterate only the per-tenant bucket. Tenant 'null' bucket holds
+  // super-admin / management (non-tenant) sockets so platform-level
+  // broadcasts also stay scoped instead of scanning every connection.
+  const bucket = clientsByTenant.get(tenantBucketKey(tenantSlug));
+  if (!bucket) return;
+  bucket.forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN && ws.userId) {
-      // Always scope to tenant: if broadcast has a tenant, only send to that tenant's clients.
-      // If broadcast has no tenant (platform-level), only send to clients with no tenant (super-admin/management).
-      if (tenantSlug !== null) {
-        if (ws.tenantSlug !== tenantSlug) return;
-      } else {
-        // Platform-level broadcast: only send to non-tenant clients
-        if (ws.tenantSlug) return;
-      }
       // SEC-H123: Back-pressure guard. Close slow clients before send so their
       // accumulated buffer does not grow further and we don't stall the loop.
       if (ws.bufferedAmount > WS_BUFFERED_AMOUNT_THRESHOLD) {
