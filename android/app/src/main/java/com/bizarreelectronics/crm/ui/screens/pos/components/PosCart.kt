@@ -21,6 +21,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.bizarreelectronics.crm.ui.screens.pos.AttachedCustomer
 import com.bizarreelectronics.crm.ui.screens.pos.CartLine
 import com.bizarreelectronics.crm.ui.screens.pos.DiscountMode
@@ -51,6 +56,14 @@ fun PosCart(
     onAttachCustomer: (AttachedCustomer?) -> Unit,
     onPark: () -> Unit,
     onTender: () -> Unit,
+    // Customer picker state + callbacks (search / create new / walk-in)
+    customerSearchQuery: String,
+    customerSearchResults: List<com.bizarreelectronics.crm.data.remote.dto.CustomerListItem>,
+    customerSearchLoading: Boolean,
+    onCustomerSearchQuery: (String) -> Unit,
+    onSelectExistingCustomer: (com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) -> Unit,
+    onSelectWalkInCustomer: () -> Unit,
+    onCreateNewCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
     modifier: Modifier = Modifier,
     // Role-gate: if false, unit price fields are read-only
     canEditPrice: Boolean = true,
@@ -187,10 +200,13 @@ fun PosCart(
     // ── Dialogs ───────────────────────────────────────────────────────────
     if (showCustomerPicker) {
         CustomerPickerDialog(
-            onCustomerSelected = { customer ->
-                onAttachCustomer(customer)
-                showCustomerPicker = false
-            },
+            searchQuery = customerSearchQuery,
+            searchResults = customerSearchResults,
+            searchLoading = customerSearchLoading,
+            onSearchQueryChange = onCustomerSearchQuery,
+            onSelectExisting = onSelectExistingCustomer,
+            onSelectWalkIn = onSelectWalkInCustomer,
+            onCreateNew = onCreateNewCustomer,
             onDismiss = { showCustomerPicker = false },
         )
     }
@@ -380,36 +396,301 @@ private fun PosBottomBar(
     }
 }
 
-// ─── Customer picker dialog (stub) ────────────────────────────────────────────
+// ─── Customer picker dialog ───────────────────────────────────────────────────
+// User-facing requirement: three first-class options — Search / New / Walk-in.
+// Walk-in tile rendered as dashed-border ghost so cashiers see it's a fallback.
+// Functionality parity with web, not visual — web shows these three; we must
+// mirror the choice set, not the exact styling.
 
 @Composable
-private fun CustomerPickerDialog(
-    onCustomerSelected: (AttachedCustomer) -> Unit,
+internal fun CustomerPickerDialog(
+    searchQuery: String,
+    searchResults: List<com.bizarreelectronics.crm.data.remote.dto.CustomerListItem>,
+    searchLoading: Boolean,
+    onSearchQueryChange: (String) -> Unit,
+    onSelectExisting: (com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) -> Unit,
+    onSelectWalkIn: () -> Unit,
+    onCreateNew: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var searchText by remember { mutableStateOf("") }
+    var mode by remember { mutableStateOf(PickerMode.ROOT) }
+    var newFirst by remember { mutableStateOf("") }
+    var newLast by remember { mutableStateOf("") }
+    var newPhone by remember { mutableStateOf("") }
+    var newEmail by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Customer") },
+        title = {
+            Text(
+                when (mode) {
+                    PickerMode.ROOT   -> "Add customer to cart"
+                    PickerMode.SEARCH -> "Search customers"
+                    PickerMode.NEW    -> "Create new customer"
+                }
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = { searchText = it },
-                    label = { Text("Search customers…") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+            when (mode) {
+                PickerMode.ROOT -> PickerRoot(
+                    onSearch = { mode = PickerMode.SEARCH },
+                    onNew = { mode = PickerMode.NEW },
+                    onWalkIn = { onSelectWalkIn(); onDismiss() },
                 )
-                Text(
-                    "Customer search requires server connection.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                PickerMode.SEARCH -> PickerSearch(
+                    query = searchQuery,
+                    results = searchResults,
+                    loading = searchLoading,
+                    onQueryChange = onSearchQueryChange,
+                    onSelect = { onSelectExisting(it); onDismiss() },
+                )
+                PickerMode.NEW -> PickerNew(
+                    firstName = newFirst,
+                    lastName = newLast,
+                    phone = newPhone,
+                    email = newEmail,
+                    onFirstName = { newFirst = it },
+                    onLastName = { newLast = it },
+                    onPhone = { newPhone = it },
+                    onEmail = { newEmail = it },
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            when (mode) {
+                PickerMode.NEW -> TextButton(
+                    onClick = {
+                        if (newFirst.isNotBlank()) {
+                            onCreateNew(newFirst, newLast, newPhone, newEmail)
+                            onDismiss()
+                        }
+                    },
+                    enabled = newFirst.isNotBlank(),
+                ) { Text("Create & attach") }
+                else -> TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
         },
+        dismissButton = {
+            if (mode != PickerMode.ROOT) {
+                TextButton(onClick = { mode = PickerMode.ROOT }) { Text("Back") }
+            }
+        },
+    )
+}
+
+private enum class PickerMode { ROOT, SEARCH, NEW }
+
+@Composable
+private fun PickerRoot(
+    onSearch: () -> Unit,
+    onNew: () -> Unit,
+    onWalkIn: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Solid tile — search existing
+        OutlinedCard(
+            onClick = onSearch,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Default.Person, contentDescription = null)
+                Column {
+                    Text("Search existing customer", style = MaterialTheme.typography.titleSmall)
+                    Text("Name, phone, or email", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        // Solid tile — create new
+        OutlinedCard(
+            onClick = onNew,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Column {
+                    Text("Create new customer", style = MaterialTheme.typography.titleSmall)
+                    Text("First name required; rest optional", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        // Ghost tile — walk-in (dashed border)
+        androidx.compose.material3.Surface(
+            onClick = onWalkIn,
+            modifier = Modifier
+                .fillMaxWidth()
+                .dashedBorder(
+                    strokeWidthDp = 1.5f,
+                    gapDp = 6f,
+                    dashDp = 6f,
+                    color = MaterialTheme.colorScheme.outline,
+                    cornerRadiusDp = 12f,
+                ),
+            color = androidx.compose.ui.graphics.Color.Transparent,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column {
+                    Text(
+                        "Walk-in customer",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "No customer record — cash/card sale only",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickerSearch(
+    query: String,
+    results: List<com.bizarreelectronics.crm.data.remote.dto.CustomerListItem>,
+    loading: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSelect: (com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("Search customers…") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        when {
+            loading -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("Searching…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            query.length < 2 -> {
+                Text(
+                    "Type at least 2 characters",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            results.isEmpty() -> {
+                Text(
+                    "No matches",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 300.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(results, key = { it.id }) { item ->
+                        val name = listOfNotNull(item.firstName, item.lastName).joinToString(" ").ifBlank {
+                            item.organization ?: item.email ?: "#${item.id}"
+                        }
+                        val subtitle = listOfNotNull(item.phone, item.email).joinToString(" • ")
+                        OutlinedCard(
+                            onClick = { onSelect(item) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                if (subtitle.isNotBlank()) {
+                                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickerNew(
+    firstName: String,
+    lastName: String,
+    phone: String,
+    email: String,
+    onFirstName: (String) -> Unit,
+    onLastName: (String) -> Unit,
+    onPhone: (String) -> Unit,
+    onEmail: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = firstName,
+            onValueChange = onFirstName,
+            label = { Text("First name *") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = lastName,
+            onValueChange = onLastName,
+            label = { Text("Last name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = phone,
+            onValueChange = onPhone,
+            label = { Text("Phone") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = email,
+            onValueChange = onEmail,
+            label = { Text("Email") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+// Dashed border modifier — used on the Walk-in ghost tile.
+private fun Modifier.dashedBorder(
+    strokeWidthDp: Float,
+    gapDp: Float,
+    dashDp: Float,
+    color: Color,
+    cornerRadiusDp: Float,
+): Modifier = this.drawBehind {
+    val d = this.density
+    val stroke = Stroke(
+        width = strokeWidthDp * d,
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashDp * d, gapDp * d), 0f),
+    )
+    val cornerPx = cornerRadiusDp * d
+    drawRoundRect(
+        color = color,
+        cornerRadius = CornerRadius(cornerPx, cornerPx),
+        style = stroke,
     )
 }
 

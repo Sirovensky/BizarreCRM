@@ -6,8 +6,11 @@ import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
+import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
@@ -115,6 +118,7 @@ enum class PosTab { CATALOG, CART }
 @HiltViewModel
 class PosViewModel @Inject constructor(
     private val posApi: PosApi,
+    private val customerApi: CustomerApi,
     private val parkedCartDao: ParkedCartDao,
     private val syncQueueDao: SyncQueueDao,
     private val networkMonitor: NetworkMonitor,
@@ -125,6 +129,81 @@ class PosViewModel @Inject constructor(
     val state: StateFlow<PosUiState> = _state.asStateFlow()
 
     private val searchQuery = MutableStateFlow("")
+
+    // ── Customer picker state ─────────────────────────────────────────────────
+    private val _customerSearchQuery = MutableStateFlow("")
+    private val _customerSearchResults = MutableStateFlow<List<CustomerListItem>>(emptyList())
+    private val _customerSearchLoading = MutableStateFlow(false)
+    val customerSearchQuery: StateFlow<String> = _customerSearchQuery.asStateFlow()
+    val customerSearchResults: StateFlow<List<CustomerListItem>> = _customerSearchResults.asStateFlow()
+    val customerSearchLoading: StateFlow<Boolean> = _customerSearchLoading.asStateFlow()
+
+    fun setCustomerSearchQuery(q: String) {
+        _customerSearchQuery.value = q
+    }
+
+    init {
+        // Debounce customer search
+        viewModelScope.launch {
+            _customerSearchQuery
+                .debounce(300)
+                .distinctUntilChanged()
+                .collect { q ->
+                    if (q.length < 2) {
+                        _customerSearchResults.value = emptyList()
+                        _customerSearchLoading.value = false
+                        return@collect
+                    }
+                    _customerSearchLoading.value = true
+                    runCatching { customerApi.searchCustomers(q) }
+                        .onSuccess { resp ->
+                            _customerSearchResults.value =
+                                if (resp.success) resp.data.orEmpty() else emptyList()
+                        }
+                        .onFailure { _customerSearchResults.value = emptyList() }
+                    _customerSearchLoading.value = false
+                }
+        }
+    }
+
+    fun attachWalkInCustomer() {
+        // Walk-in sentinel: id = -1, no server record. Cart tracks it locally.
+        applyCustomer(AttachedCustomer(id = -1L, name = "Walk-in", storeCreditCents = 0L))
+    }
+
+    fun attachExistingCustomer(item: CustomerListItem) {
+        val name = listOfNotNull(item.firstName, item.lastName).joinToString(" ").ifBlank {
+            item.organization ?: item.email ?: "#${item.id}"
+        }
+        applyCustomer(AttachedCustomer(id = item.id, name = name, storeCreditCents = 0L))
+    }
+
+    fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {
+        viewModelScope.launch {
+            runCatching {
+                customerApi.createCustomer(
+                    CreateCustomerRequest(
+                        firstName = firstName.trim(),
+                        lastName = lastName?.trim()?.takeIf { it.isNotBlank() },
+                        phone = phone?.trim()?.takeIf { it.isNotBlank() },
+                        email = email?.trim()?.takeIf { it.isNotBlank() },
+                    )
+                )
+            }.onSuccess { resp ->
+                val created = resp.data
+                if (resp.success && created != null) {
+                    val name = listOfNotNull(created.firstName, created.lastName).joinToString(" ").ifBlank {
+                        created.organization ?: "#${created.id}"
+                    }
+                    applyCustomer(AttachedCustomer(id = created.id, name = name, storeCreditCents = 0L))
+                }
+            }
+        }
+    }
+
+    private fun applyCustomer(customer: AttachedCustomer) {
+        _state.update { s -> s.copy(cart = s.cart.copy(customer = customer)) }
+    }
 
     init {
         loadQuickAdd()

@@ -66,6 +66,9 @@ internal fun PosScreenContent(
     onNavigateToTicketCreate: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+    val customerSearchQuery by viewModel.customerSearchQuery.collectAsState()
+    val customerSearchResults by viewModel.customerSearchResults.collectAsState()
+    val customerSearchLoading by viewModel.customerSearchLoading.collectAsState()
     val isTablet = isMediumOrExpandedWidth()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -202,6 +205,13 @@ internal fun PosScreenContent(
                             onAttachCustomer = viewModel::attachCustomer,
                             onPark = { viewModel.parkCart() },
                             onTender = viewModel::showPaymentSheet,
+                            customerSearchQuery = customerSearchQuery,
+                            customerSearchResults = customerSearchResults,
+                            customerSearchLoading = customerSearchLoading,
+                            onCustomerSearchQuery = viewModel::setCustomerSearchQuery,
+                            onSelectExistingCustomer = viewModel::attachExistingCustomer,
+                            onSelectWalkInCustomer = viewModel::attachWalkInCustomer,
+                            onCreateNewCustomer = viewModel::createCustomerAndAttach,
                         )
                     }
                 }
@@ -281,6 +291,13 @@ internal fun PosScreenContent(
                             onAttachCustomer = viewModel::attachCustomer,
                             onPark = { viewModel.parkCart() },
                             onTender = viewModel::showPaymentSheet,
+                            customerSearchQuery = customerSearchQuery,
+                            customerSearchResults = customerSearchResults,
+                            customerSearchLoading = customerSearchLoading,
+                            onCustomerSearchQuery = viewModel::setCustomerSearchQuery,
+                            onSelectExistingCustomer = viewModel::attachExistingCustomer,
+                            onSelectWalkInCustomer = viewModel::attachWalkInCustomer,
+                            onCreateNewCustomer = viewModel::createCustomerAndAttach,
                             modifier = Modifier.weight(1f),
                         )
                     }
