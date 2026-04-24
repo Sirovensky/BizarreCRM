@@ -63,6 +63,16 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttention
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionCategory
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionPriority
 import com.bizarreelectronics.crm.data.remote.api.DashboardApi
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityItem
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementDto
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueTicket
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityFeedCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementBanner
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.CelebratoryModal
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
+import com.bizarreelectronics.crm.util.rememberReduceMotion
+import kotlinx.coroutines.flow.combine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -220,6 +230,65 @@ class DashboardViewModel @Inject constructor(
     val missingParts: StateFlow<List<MissingPartItem>?> = _missingParts.asStateFlow()
 
     // -------------------------------------------------------------------------
+    // §3.4 L519 — My Queue section visibility
+    // -------------------------------------------------------------------------
+
+    private val _showMyQueue = MutableStateFlow(appPreferences.dashboardShowMyQueue)
+    val showMyQueue: StateFlow<Boolean> = _showMyQueue.asStateFlow()
+
+    fun setShowMyQueue(on: Boolean) {
+        appPreferences.dashboardShowMyQueue = on
+        _showMyQueue.value = on
+    }
+
+    // -------------------------------------------------------------------------
+    // §3.5 L531 — Celebratory modal
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.5 L531 — true when the queue just transitioned from non-zero → zero and
+     * the modal has not yet been shown today.
+     *
+     * Derived by [collectMyQueue] by tracking the previous queue size. The flag
+     * is cleared when the user dismisses the modal via [dismissCelebratoryModal].
+     */
+    private val _showCelebratoryModal = MutableStateFlow(false)
+    val showCelebratoryModal: StateFlow<Boolean> = _showCelebratoryModal.asStateFlow()
+
+    /** Previous queue size — used to detect the non-zero → zero transition. */
+    private var _previousQueueSize: Int = -1 // -1 = "not yet observed"
+
+    fun dismissCelebratoryModal() {
+        _showCelebratoryModal.value = false
+        val today = java.time.LocalDate.now().toString()
+        appPreferences.lastCelebrationDate = today
+    }
+
+    // -------------------------------------------------------------------------
+    // §3.6 L534 — Activity feed
+    // -------------------------------------------------------------------------
+
+    private val _recentActivity = MutableStateFlow<List<ActivityItem>>(emptyList())
+    val recentActivity: StateFlow<List<ActivityItem>> = _recentActivity.asStateFlow()
+
+    // -------------------------------------------------------------------------
+    // §3.7 L538 — Announcement banner
+    // -------------------------------------------------------------------------
+
+    private val _announcement = MutableStateFlow<AnnouncementDto?>(null)
+    val announcement: StateFlow<AnnouncementDto?> = _announcement.asStateFlow()
+
+    /**
+     * §3.7 — Persist the dismissed announcement id and clear the banner.
+     * The ViewModel will not re-show the same id until a different announcement
+     * is returned from the server.
+     */
+    fun dismissAnnouncement(id: String) {
+        appPreferences.dismissedAnnouncementId = id
+        _announcement.value = null
+    }
+
+    // -------------------------------------------------------------------------
     // §3.3 L510–L514 — Needs-Attention row-level cards
     // -------------------------------------------------------------------------
 
@@ -313,6 +382,8 @@ class DashboardViewModel @Inject constructor(
         loadDashboard()
         collectMyQueue()
         loadAssignmentSetting()
+        loadActivityFeed()
+        loadAnnouncement()
     }
 
     private fun loadAssignmentSetting() {
@@ -445,6 +516,18 @@ class DashboardViewModel @Inject constructor(
     private fun collectMyQueue() {
         viewModelScope.launch {
             dashboardRepository.getMyQueue().collect { entities ->
+                val currentSize = entities.size
+                // §3.5 — detect non-zero → zero transition for celebratory modal
+                val wasNonZero = _previousQueueSize > 0
+                val isNowZero = currentSize == 0
+                if (wasNonZero && isNowZero) {
+                    val today = java.time.LocalDate.now().toString()
+                    if (appPreferences.lastCelebrationDate != today) {
+                        _showCelebratoryModal.value = true
+                    }
+                }
+                _previousQueueSize = currentSize
+
                 _state.value = _state.value.copy(
                     myQueue = entities.map { entity ->
                         TicketSummary(
@@ -456,6 +539,54 @@ class DashboardViewModel @Inject constructor(
                         )
                     },
                 )
+            }
+        }
+    }
+
+    /**
+     * §3.6 L534 — Load the activity feed from `GET /activity?limit=20`.
+     * Silently stubs to empty list on 404 (endpoint not yet implemented).
+     */
+    private fun loadActivityFeed() {
+        viewModelScope.launch {
+            try {
+                val response = dashboardApi.recentActivity(limit = 20)
+                _recentActivity.value = response.data?.items ?: emptyList()
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    // Endpoint not yet implemented — show empty state
+                    _recentActivity.value = emptyList()
+                } else {
+                    android.util.Log.w("Dashboard", "recentActivity failed (${e.code()}): ${e.message}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "recentActivity offline fallback: ${e.message}")
+                _recentActivity.value = emptyList()
+            }
+        }
+    }
+
+    /**
+     * §3.7 L538 — Fetch the current announcement from `GET /announcements/current`.
+     * Silently returns null on 404. Suppresses banners for already-dismissed ids.
+     */
+    private fun loadAnnouncement() {
+        viewModelScope.launch {
+            try {
+                val response = dashboardApi.currentAnnouncement()
+                val dto = response.data
+                if (dto != null && dto.id != appPreferences.dismissedAnnouncementId) {
+                    _announcement.value = dto
+                }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    _announcement.value = null
+                } else {
+                    android.util.Log.w("Dashboard", "currentAnnouncement failed (${e.code()}): ${e.message}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "currentAnnouncement offline fallback: ${e.message}")
+                _announcement.value = null
             }
         }
     }
@@ -496,6 +627,13 @@ fun DashboardScreen(
     // [P1] FAB expand state hoisted so this screen can render a scrim overlay.
     // Passed to DashboardFab as expandedState so both share a single source of truth.
     val fabExpandedState = remember { mutableStateOf(false) }
+
+    // §3.4–3.7 — new section state
+    val showMyQueue by viewModel.showMyQueue.collectAsState()
+    val recentActivity by viewModel.recentActivity.collectAsState()
+    val announcement by viewModel.announcement.collectAsState()
+    val showCelebratoryModal by viewModel.showCelebratoryModal.collectAsState()
+    val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     // §3 L491 — track which preset is active so the segmented button row
     // highlights the correct button. Defaults to TODAY; set to CUSTOM when
@@ -692,6 +830,19 @@ fun DashboardScreen(
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // §3.7 L538 — Announcement banner (sticky, top-of-feed position)
+        announcement?.let { ann ->
+            item {
+                AnnouncementBanner(
+                    announcement = ann,
+                    onDismiss = { viewModel.dismissAnnouncement(it) },
+                    onLearnMore = { id ->
+                        android.util.Log.i("Dashboard", "announcement_learn_more id=$id")
+                    },
+                )
+            }
+        }
+
         // U9 fix: top-of-screen summary banner only appears if ANY section
         // failed, and each failing section also gets its own in-place banner
         // below. This tells users exactly which chunk of the dashboard is
@@ -817,8 +968,9 @@ fun DashboardScreen(
             }
         }
 
-        // CROSS1: entire "My Queue" section hidden when assignment feature is off.
-        if (state.assignmentEnabled) {
+        // CROSS1: entire "My Queue" section hidden when assignment feature is off
+        // OR when the user has toggled the section off via dashboardShowMyQueue pref.
+        if (state.assignmentEnabled && showMyQueue) {
             // U9 fix: My Queue error banner in-place.
             if (state.queueError != null) {
                 item {
@@ -829,43 +981,32 @@ fun DashboardScreen(
                 }
             }
 
-            // My Queue header
+            // §3.4 L519–L526 — polished My Queue section with urgency chips,
+            // device field, time-since-opened, and long-press context menu.
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // a11y: heading() so TalkBack announces "My Queue, heading" on focus
-                    Text(
-                        "My Queue",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    TextButton(onClick = onNavigateToTickets) {
-                        Text("View All")
-                    }
-                }
-            }
-
-            // [P0/P1] Empty state → shared EmptyState component.
-            if (state.myQueue.isEmpty()) {
-                item {
-                    EmptyState(
-                        icon = Icons.Default.ConfirmationNumber,
-                        title = "All clear",
-                        subtitle = "No tickets assigned to you",
-                        includeWave = false,
-                    )
-                }
-            } else {
-                items(state.myQueue, key = { it.id }) { ticket ->
-                    QueueTicketRow(
-                        ticket = ticket,
-                        onClick = { onNavigateToTicket(ticket.id) },
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
+                MyQueueSection(
+                    tickets = state.myQueue.map { t ->
+                        MyQueueTicket(
+                            id = t.id,
+                            orderId = t.orderId,
+                            customerName = t.customerName,
+                            device = "", // device not in TicketSummary; stub until enriched
+                            timeSinceOpened = "", // stub — VM will add once queue entity carries created_at
+                            urgency = when {
+                                t.statusName.contains("urgent", ignoreCase = true) ||
+                                    t.statusName.contains("critical", ignoreCase = true) -> TicketUrgency.Critical
+                                t.statusName.contains("waiting", ignoreCase = true) ||
+                                    t.statusName.contains("parts", ignoreCase = true) -> TicketUrgency.High
+                                t.statusName.contains("in progress", ignoreCase = true) ||
+                                    t.statusName.contains("repair", ignoreCase = true) -> TicketUrgency.Medium
+                                else -> TicketUrgency.Normal
+                            },
+                            statusName = t.statusName,
+                        )
+                    },
+                    onViewAll = onNavigateToTickets,
+                    onTicketClick = onNavigateToTicket,
+                )
             }
         }
 
@@ -920,6 +1061,15 @@ fun DashboardScreen(
             )
         }
 
+        // §3.6 L534 — Activity Feed card
+        item {
+            ActivityFeedCard(
+                items = recentActivity,
+                onShowMore = null, // TODO(plan:L534): wire to dedicated activity route
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+
         // §3.2 L500–L506 — BI Widgets "Insights" section.
         // Widgets flow 1-column on Phone, 2-column on Tablet/Desktop.
         item {
@@ -927,6 +1077,14 @@ fun DashboardScreen(
         }
     }
     }
+    // §3.5 L531 — Celebratory modal overlay (ModalBottomSheet; rendered at the
+    // Box level so it appears above the list content in Z-order).
+    CelebratoryModal(
+        visible = showCelebratoryModal,
+        onDismiss = { viewModel.dismissCelebratoryModal() },
+        reduceMotion = reduceMotion,
+    )
+
     // Scrim: rendered after PullToRefreshBox so it sits above the list in Z-order.
     // Tapping collapses the FAB; only visible when FAB is expanded.
     if (fabExpandedState.value) {

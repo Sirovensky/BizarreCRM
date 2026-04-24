@@ -465,6 +465,44 @@ class AppPreferences @Inject constructor(
         prefs.edit().putString("seen_attention_ids", serializeStringSet(updated)).apply()
     }
 
+    // --- §3.4 L519 — My Queue section visibility toggle ---------------------------
+
+    /**
+     * §3.4 L519 — controls whether the My Queue section is shown on the Dashboard.
+     *
+     * Defaults TRUE so users see their queue out of the box. The setting is
+     * surfaced via Dashboard preferences (long-press section header or Settings).
+     * Independent of the server-side `ticket_all_employees_view_all` flag — both
+     * must be true for the section to appear.
+     */
+    var dashboardShowMyQueue: Boolean
+        get() = prefs.getBoolean("dashboard_show_my_queue", true)
+        set(value) = prefs.edit().putBoolean("dashboard_show_my_queue", value).apply()
+
+    // --- §3.5 L531 — Celebratory modal last-seen date -------------------------
+
+    /**
+     * §3.5 L531 — ISO-date string (yyyy-MM-dd) of the last day the celebratory
+     * "Queue clear" modal was shown. Used to gate the "show once per day" rule.
+     *
+     * Null on a fresh install — means the modal has never been shown.
+     */
+    var lastCelebrationDate: String?
+        get() = prefs.getString("last_celebration_date", null)
+        set(value) = prefs.edit().putString("last_celebration_date", value).apply()
+
+    // --- §3.7 L538 — dismissed announcement ID --------------------------------
+
+    /**
+     * §3.7 L538 — ID of the last announcement the user dismissed. When this
+     * matches the server's current announcement ID the banner is hidden.
+     *
+     * Null on a fresh install — means no announcement has ever been dismissed.
+     */
+    var dismissedAnnouncementId: String?
+        get() = prefs.getString("dismissed_announcement_id", null)
+        set(value) = prefs.edit().putString("dismissed_announcement_id", value).apply()
+
     /**
      * §2.14 — user_id of the staff member currently signed in on a shared device.
      *
