@@ -141,11 +141,25 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         lineItems = [];
       }
 
+      const MAX_SUBTOTAL_CENTS = 100_000_000_00; // $1 million cap per invoice
       let subtotalCents = 0;
       for (const li of lineItems) {
-        const qty = typeof li.quantity === 'number' ? li.quantity : 1;
-        const unitCents = typeof li.unit_price_cents === 'number' ? li.unit_price_cents : 0;
-        subtotalCents += qty * unitCents;
+        const qty = Number(typeof li.quantity === 'number' ? li.quantity : 1);
+        const unitCents = Number(typeof li.unit_price_cents === 'number' ? li.unit_price_cents : 0);
+        if (!Number.isFinite(qty) || qty < 0 || qty > 100_000) {
+          throw new Error(`recurring invoice template ${tpl.id}: invalid quantity ${qty}`);
+        }
+        if (!Number.isFinite(unitCents) || unitCents < 0 || unitCents > MAX_SUBTOTAL_CENTS) {
+          throw new Error(`recurring invoice template ${tpl.id}: invalid unit_price_cents ${unitCents}`);
+        }
+        const lineTotal = qty * unitCents;
+        if (!Number.isFinite(lineTotal) || lineTotal > MAX_SUBTOTAL_CENTS) {
+          throw new Error(`recurring invoice template ${tpl.id}: line total overflow`);
+        }
+        subtotalCents += lineTotal;
+        if (subtotalCents > MAX_SUBTOTAL_CENTS) {
+          throw new Error(`recurring invoice template ${tpl.id}: subtotal exceeds $1M cap`);
+        }
       }
 
       // invoices table stores money as dollars (REAL), not cents

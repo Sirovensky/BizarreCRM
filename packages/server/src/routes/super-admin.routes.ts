@@ -1670,7 +1670,11 @@ router.get('/tenants/:slug/notifications', (req: Request, res: Response) => {
   try {
     tdb = getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+    logger.error('super-admin: tenant notification-queue DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 
   // Pre-flight: notification_queue is created by migration 060; on a fresh
@@ -1736,7 +1740,11 @@ router.get('/tenants/:slug/webhook-failures', (req: Request, res: Response) => {
   try {
     tdb = getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+    logger.error('super-admin: tenant webhook-failures DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
   const tableExists = tdb.prepare(
     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'"
@@ -1797,7 +1805,11 @@ router.post(
     let tdb: import('better-sqlite3').Database;
     try { tdb = getTenantDb(slug); }
     catch (err) {
-      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+      logger.error('super-admin: tenant webhook-failure retry DB open failed', {
+        err: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_TENANT_DB_FAILED, error: 'internal server error — operation failed' });
     }
     const { retryDeliveryFailure } = await import('../services/webhooks.js');
     const result = await retryDeliveryFailure(tdb, failureId);
@@ -1827,7 +1839,11 @@ router.get('/tenants/:slug/automation-runs', (req: Request, res: Response) => {
   try {
     tdb = getTenantDb(slug);
   } catch (err) {
-    return res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'tenant DB unavailable' });
+    logger.error('super-admin: tenant automation-runs DB open failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
   const tableExists = tdb.prepare(
     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_log'"

@@ -356,7 +356,11 @@ router.post('/drives/mkdir', (req, res) => {
     fs.mkdirSync(fullPath, { recursive: true });
     res.json({ success: true, data: { path: fullPath } });
   } catch (err: unknown) {
-    res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'Failed to create folder' });
+    logger.error('admin: create folder failed', {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    res.status(500).json({ success: false, error: 'internal server error — operation failed' });
   }
 });
 

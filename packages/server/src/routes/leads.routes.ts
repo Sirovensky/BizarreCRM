@@ -556,6 +556,16 @@ router.post(
       // which is already day-count exact across DST transitions (setDate
       // respects the server's TZ, which is the same TZ we store to DB
       // as naive local strings — so wall-clock semantics are preserved).
+      /**
+       * Add `months` to a date, clamping day-of-month to the target month's length
+       * (e.g., Jan 31 + 1 month = Feb 28/29).
+       *
+       * TIMEZONE: uses setMonth which respects server's local timezone. DST
+       * transitions preserve wall-clock semantics (the resulting hour of day stays
+       * the same; UTC timestamp shifts by DST offset). If DST-independent offsets
+       * are required (e.g., billing cycles that must fire at exact UTC times), use
+       * UTC-based arithmetic instead.
+       */
       const addMonthsClamped = (source: Date, months: number): Date => {
         const d = new Date(source);
         const originalDay = d.getDate();

@@ -2487,6 +2487,15 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-742. **customers normalizePhone empty vacuous** — FIXED wave-35 via empty-string short-circuit before keepPhoneSet check.
 - [x] SCAN-753. **signup dev-mode env gate** — FIXED wave-35 via SKIP_EMAIL_VERIFICATION=1 AND nodeEnv !== 'production' both required.
 - [x] SCAN-847. **SpotlightCoach Promise.resolve().catch()** — FIXED wave-35 via async/await + try/catch at 3 sites.
+
+## Closed 2026-04-23 (wave-36)
+- [x] SCAN-865. **500 err.message PII leak at 5 admin sites** — FIXED wave-36 via logger.error + generic public message at admin.routes.ts:359 + super-admin.routes.ts:1673/1739/1800/1830.
+- [x] SCAN-866. **smsAutoResponderMatcher tenant isolation** — verified wave-36 + SECURITY JSDoc added (per-tenant DB model naturally isolates).
+- [x] SCAN-868. **receiptOcrCron stuck-processing** — FIXED wave-36, stale-cleanup predicate now IN ('pending','processing'); crashed rows recovered by 24h sweep.
+- [x] SCAN-869. **index.ts JSON.parse sites** — FIXED wave-36, media_urls/media_types per-field try/catch; malformed sends SMS without media instead of failing.
+- [x] SCAN-870. **recurringInvoicesCron Infinity overflow** — FIXED wave-36 via MAX_SUBTOTAL_CENTS=$1M cap + Number.isFinite + per-line + cumulative guards.
+- [x] SCAN-735. **estimate_versions snapshot shape** — FIXED wave-36 via non-object reject + subtotal/total typeof number check at estimates.routes.ts.
+- [x] SCAN-736. **leads addMonthsClamped DST** — FIXED wave-36 via JSDoc documenting wall-clock + DST semantics.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

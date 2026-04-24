@@ -124,7 +124,13 @@ function parseRule(raw: string): AutoResponderRule | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Try to match an inbound SMS against all active auto-responders.
+ * tryAutoRespond — inbound SMS auto-responder matching.
+ *
+ * SECURITY: this helper MUST be called with a per-tenant `adb` (the
+ * request's tenant-bound async DB). The function does NOT filter by
+ * tenant_id internally because the per-tenant DB file model isolates
+ * tables naturally. Callers that pass the master DB would match rules
+ * across all tenants — do NOT do this.
  *
  * @param adb   - AsyncDb handle (req.asyncDb in route context)
  * @param msg   - Inbound message with `from` and `body` fields

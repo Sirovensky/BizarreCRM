@@ -554,6 +554,18 @@ router.put(
       ...existing,
       line_items: currentLineItems,
     };
+    // SCAN-735: reject snapshot if top-level is not a plain object (guards against
+    // corrupt DB rows or future refactors that accidentally pass a primitive/array).
+    if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) {
+      throw new AppError('estimate snapshot must be an object', 400);
+    }
+    const _snap = snapshot as Record<string, unknown>;
+    if (_snap.subtotal !== undefined && typeof _snap.subtotal !== 'number') {
+      throw new AppError('estimate snapshot.subtotal must be number', 400);
+    }
+    if (_snap.total !== undefined && typeof _snap.total !== 'number') {
+      throw new AppError('estimate snapshot.total must be number', 400);
+    }
     // V13: circular-ref + size guarded JSON serialization (replaces raw JSON.stringify).
     const snapshotJson = validateJsonPayload(snapshot, 'snapshot', 262_144); // 256 KB cap
     await adb.run(`

@@ -2778,9 +2778,25 @@ server.listen(config.port, config.host, async () => {
             // Parse media if present
             let mediaItems: { url: string; contentType: string }[] | undefined;
             if (msg.media_urls) {
-              const urls = JSON.parse(msg.media_urls);
-              const types = msg.media_types ? JSON.parse(msg.media_types) : [];
-              mediaItems = urls.map((url: string, i: number) => ({ url, contentType: types[i] || 'image/jpeg' }));
+              let urls: string[] = [];
+              let types: string[] = [];
+              try {
+                const parsedUrls = JSON.parse(msg.media_urls);
+                if (Array.isArray(parsedUrls)) urls = parsedUrls.filter((s): s is string => typeof s === 'string');
+              } catch (parseErr) {
+                log.warn('ScheduledSMS: malformed JSON in media_urls; sending without media', { messageId: msg.id, err: parseErr instanceof Error ? parseErr.message : String(parseErr) });
+              }
+              if (msg.media_types) {
+                try {
+                  const parsedTypes = JSON.parse(msg.media_types);
+                  if (Array.isArray(parsedTypes)) types = parsedTypes.filter((s): s is string => typeof s === 'string');
+                } catch (parseErr) {
+                  log.warn('ScheduledSMS: malformed JSON in media_types; using default content type', { messageId: msg.id, err: parseErr instanceof Error ? parseErr.message : String(parseErr) });
+                }
+              }
+              if (urls.length > 0) {
+                mediaItems = urls.map((url, i) => ({ url, contentType: types[i] || 'image/jpeg' }));
+              }
             }
 
             const result = await sendSmsTenant(tenantDb, slug, msg.to_number, msg.message, msg.from_number, mediaItems);

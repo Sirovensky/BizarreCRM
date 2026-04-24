@@ -1627,3 +1627,15 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-871. **[LOW] super-admin failed-login audit includes username — enables enumeration if audit log accessible** — `packages/server/src/routes/super-admin.routes.ts:292`. Fix: mask to first-4 chars + hash tail.
 - [ ] SCAN-872. **index.ts mutable module state (isReady, shuttingDown)** — `packages/server/src/index.ts:348,3559`. Fix: ensure writers happen in one event-loop tick; readers tolerate transient stale.
 - [ ] SCAN-873. **slaBreachCron WS broadcast errors silently swallowed** — `packages/server/src/services/slaBreachCron.ts:117-131`. Fix: logger.warn already present; no action OR add metrics counter.
+
+### Wave-36 scan-loop findings (2026-04-23)
+- [ ] SCAN-874. **management setup rate-limit in-memory Map — flood between boot + operator setup steals super-admin slot** — `packages/server/src/routes/management.routes.ts:135-156`. Fix: DB-backed rate-limit for setup OR one-time token issued at install.
+- [ ] SCAN-875. **dunningScheduler parseSteps JSON.parse silent on fail + no bounds** — `packages/server/src/services/dunningScheduler.ts:400-405`. Fix: log on fail + MAX_STEPS cap.
+- [ ] SCAN-876. **[LOW] WS SENSITIVE_CUSTOMER_FIELDS doesn't scrub company_name/website** — `packages/server/src/ws/server.ts:20-41`. Fix: review if company data should broadcast to non-finance.
+- [ ] SCAN-877. **idempotency purge race — simultaneous retry between DELETE + INSERT could double-process** — `packages/server/src/utils/idempotency.ts`. Fix: atomic UPSERT pattern.
+- [ ] SCAN-878. **billing Stripe checkout/portal POST missing CSRF double-submit** — `packages/server/src/routes/billing.routes.ts:43-94`. Fix: align with auth.routes SEC-H89 pattern.
+- [ ] SCAN-879. **[POSSIBLE] webhooks payload.timestamp uses ISO string — clock jumps may fail replay-window** — `packages/server/src/services/webhooks.ts:479`. Fix: use unix-seconds + document drift.
+- [ ] SCAN-880. **[LOW] dunning template {key} regex unbounded key lengths — no recursive expansion (current), but fragile** — `packages/server/src/services/dunningScheduler.ts:496`. Fix: cap key length.
+- [ ] SCAN-881. **auth.routes challenges Map no TTL sweep — only evicted on new-token over-cap insert** — `packages/server/src/routes/auth.routes.ts:144-146`. Fix: trackInterval reaper every 5 min.
+- [ ] SCAN-882. **tenantResolver plan cache invalidation race — stale trial_active served between clearPlanCache + recompute** — `packages/server/src/middleware/tenantResolver.ts:221-230`. Fix: version counter OR atomic swap.
+- [ ] SCAN-883. **auth /forgot-password sends email without audit log — reset attempts untraceable** — `packages/server/src/routes/auth.routes.ts:1526`. Fix: audit('password_reset_requested', ...) before send.

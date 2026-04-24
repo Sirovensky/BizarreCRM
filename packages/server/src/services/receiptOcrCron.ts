@@ -33,7 +33,7 @@ const logger = createLogger('receipt-ocr-cron');
 
 const CRON_INTERVAL_MS = 2 * 60 * 1000;          // 2 minutes
 const PENDING_BATCH_LIMIT = 10;                    // uploads per tenant per tick
-const STALE_PENDING_HOURS = 24;                    // hours before a pending is failed
+const STALE_PENDING_HOURS = 24;                    // hours before a pending/processing is failed
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,7 +66,7 @@ function cleanStale(slug: string, db: Database.Database): void {
         `UPDATE expense_receipt_uploads
             SET ocr_status    = 'failed',
                 error_message = 'OCR processor not configured — tesseract.js not installed'
-          WHERE ocr_status = 'pending'
+          WHERE ocr_status IN ('pending', 'processing')
             AND created_at <= datetime('now', ?)`,
       )
       .run(staleModifier);
