@@ -30,6 +30,12 @@
     <!-- FOREGROUND_SERVICE_DATA_SYNC: required on API 34+ for RepairInProgressService
          which uses foregroundServiceType="dataSync" in startForeground(). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- FOREGROUND_SERVICE_MEDIA_PLAYBACK: required for CallNotificationService
+         which uses foregroundServiceType="mediaPlayback" (§42 call audio). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- FOREGROUND_SERVICE_PHONE_CALL: API 34+ — required for the phoneCall
+         foreground-service type used by CallNotificationService on API 34+. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
 
     <!-- POST_NOTIFICATIONS: runtime permission required on API 33+ to show any
          notification (FCM alerts, RepairInProgress pinned notification, etc.).
@@ -265,6 +271,29 @@
         <service
             android:name=".service.RepairInProgressService"
             android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- §42 — In-progress call Activity. supportsPictureInPicture=true lets
+             the user swipe home while on a call and continue in PiP mode.
+             launchMode=singleTop prevents stacking multiple CallInProgress instances
+             from rapid FCM pushes. showOnLockScreen: call UI visible on lock screen.
+             configChanges mirrors MainActivity to survive rotation. -->
+        <activity
+            android:name=".ui.screens.calls.CallInProgressActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:launchMode="singleTop"
+            android:showOnLockScreen="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
+
+        <!-- §42 — Foreground service that shows the active-call notification.
+             foregroundServiceType="mediaPlayback|phoneCall":
+               mediaPlayback — audio output associated with the server-bridged call.
+               phoneCall     — required on API 34+ for telephony-category FGS.
+             exported=false: only this app's process starts the service. -->
+        <service
+            android:name=".service.CallNotificationService"
+            android:foregroundServiceType="mediaPlayback|phoneCall"
             android:exported="false" />
 
         <!-- Quick Settings tile (Android 7+). BIND_QUICK_SETTINGS_TILE is

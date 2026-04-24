@@ -662,4 +662,8 @@ object RetrofitClient {
     @Provides @Singleton fun provideCashRegisterApi(retrofit: Retrofit): CashRegisterApi = retrofit.create(CashRegisterApi::class.java)
     // §40 — gift cards / store credit; all endpoints 404-tolerant
     @Provides @Singleton fun provideGiftCardApi(retrofit: Retrofit): GiftCardApi = retrofit.create(GiftCardApi::class.java)
+    // §41 — payment links; all endpoints 404-tolerant
+    @Provides @Singleton fun providePaymentLinkApi(retrofit: Retrofit): PaymentLinkApi = retrofit.create(PaymentLinkApi::class.java)
+    // §42 — voice / calls; all endpoints 404-tolerant
+    @Provides @Singleton fun provideVoiceApi(retrofit: Retrofit): VoiceApi = retrofit.create(VoiceApi::class.java)
 }
