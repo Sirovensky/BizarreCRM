@@ -708,14 +708,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
-- [ ] SCAN-991. **[HIGH] Catalog page renders unsanitized server `product_url` into `href` — `javascript:` / `data:` XSS vector.**
-  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:477; fix=protocol-check -->
 - [ ] SCAN-992. **Catalog page: `jobs`, `items`, `modelResults` typed as `any[]` — server payload unchecked.**
   <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:75,86,91; fix=define-Job-Item-Model-interfaces -->
-- [ ] SCAN-993. **Catalog device-model search catches errors silently — 401/network failure invisible.**
-  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:98; fix=log-and-show-error -->
-- [ ] SCAN-994. **Catalog stats/jobs queries missing `staleTime` — remounts re-fetch every 3-5 s interval.**
-  <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:63,70; fix=staleTime -->
 - [ ] SCAN-995. **Employees page buttons missing `type="button"` — parent form submit risk.**
   <!-- meta: scope=web/pages/employees; files=packages/web/src/pages/employees/EmployeeListPage.tsx:161-170,526; fix=add-type-button -->
 - [ ] SCAN-996. **EmployeeRow `getWeekRange()` called at render — unmemoized, can drift across rows same render.**

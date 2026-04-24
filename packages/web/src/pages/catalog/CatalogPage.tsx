@@ -40,6 +40,18 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Only accept http/https URLs from the supplier catalog. Without this guard a
+// poisoned `product_url` (e.g. `javascript:alert(document.cookie)`) would
+// execute in the user's tab when they click the "open product page" icon.
+function safeProductUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+  } catch { /* fall through */ }
+  return null;
+}
+
 export function CatalogPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'browse' | 'import'>('browse');
@@ -64,6 +76,7 @@ export function CatalogPage() {
     queryKey: ['catalog-stats'],
     queryFn: catalogApi.getStats,
     refetchInterval: 5000, // poll while syncing
+    staleTime: 4500, // just under the 5s interval — no redundant refetch on remount
   });
   const stats = (statsData?.data?.data as any) || {};
 
@@ -71,6 +84,7 @@ export function CatalogPage() {
     queryKey: ['catalog-jobs'],
     queryFn: catalogApi.getJobs,
     refetchInterval: 3000,
+    staleTime: 2500, // just under the 3s interval
   });
   const jobs: any[] = (jobsData?.data?.data as any[]) || [];
 
@@ -95,7 +109,12 @@ export function CatalogPage() {
     try {
       const r = await catalogApi.searchDevices({ q, limit: 8 });
       setModelResults((r.data?.data as any[]) || []);
-    } catch { /* ignore */ }
+    } catch (err) {
+      // Surface failures instead of silently returning empty results; users
+      // otherwise think "no matches" when the backend is actually 401/down.
+      console.error('[catalog] device-model search failed', err);
+      setModelResults([]);
+    }
   };
 
   // Sync mutation
@@ -473,12 +492,17 @@ export function CatalogPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {item.product_url && (
-                      <a href={item.product_url} target="_blank" rel="noopener noreferrer"
-                        className="p-1.5 text-surface-400 hover:text-surface-600 transition-colors">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
+                    {(() => {
+                      const url = safeProductUrl(item.product_url);
+                      if (!url) return null;
+                      return (
+                        <a href={url} target="_blank" rel="noopener noreferrer"
+                          aria-label={`Open supplier product page for ${item.name}`}
+                          className="p-1.5 text-surface-400 hover:text-surface-600 transition-colors">
+                          <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                        </a>
+                      );
+                    })()}
                     <button
                       onClick={() => { setImportModal(item); setMarkupPct(30); }}
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors">
