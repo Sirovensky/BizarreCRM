@@ -558,6 +558,36 @@ class AppPreferences @Inject constructor(
         prefs.edit().putString("seen_attention_ids", serializeStringSet(updated)).apply()
     }
 
+    // --- Recent check-in customers (last 3, persisted) ------------------------
+    //
+    // Drives the "Recent" chip strip on CheckInEntryScreen Step 1 so a cashier
+    // re-opening the check-in flow sees who they just attached instead of an
+    // empty list. Stored as a comma-separated id list, most-recent first,
+    // capped at RECENT_CHECKIN_MAX.
+
+    companion object {
+        private const val RECENT_CHECKIN_MAX = 3
+    }
+
+    val recentCheckinCustomerIds: List<Long>
+        get() = prefs.getString("recent_checkin_customer_ids", null)
+            ?.split(",")
+            ?.mapNotNull { it.trim().toLongOrNull() }
+            ?.filter { it > 0L }
+            .orEmpty()
+
+    /** Insert [customerId] at head, dedupe, trim to RECENT_CHECKIN_MAX. */
+    fun addRecentCheckinCustomerId(customerId: Long) {
+        if (customerId <= 0L) return
+        val updated = (listOf(customerId) + recentCheckinCustomerIds)
+            .distinct()
+            .take(RECENT_CHECKIN_MAX)
+        prefs.edit().putString(
+            "recent_checkin_customer_ids",
+            updated.joinToString(","),
+        ).apply()
+    }
+
     // --- §3.4 L519 — My Queue section visibility toggle ---------------------------
 
     /**

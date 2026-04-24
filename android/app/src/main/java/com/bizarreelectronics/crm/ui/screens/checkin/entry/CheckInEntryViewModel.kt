@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.checkin.entry
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
@@ -53,6 +54,7 @@ data class AttachedCustomerEntry(
 @HiltViewModel
 class CheckInEntryViewModel @Inject constructor(
     private val customerApi: CustomerApi,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _step1 = MutableStateFlow(EntryStep1State())
@@ -68,6 +70,37 @@ class CheckInEntryViewModel @Inject constructor(
 
     init {
         wireSearchDebounce()
+        hydrateRecentCustomers()
+    }
+
+    /**
+     * Fetch the most-recently attached customer detail rows from the server
+     * using ids persisted in SharedPreferences. Failures are swallowed — the
+     * chip strip just shows fewer entries.
+     */
+    private fun hydrateRecentCustomers() {
+        val ids = appPreferences.recentCheckinCustomerIds
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val fetched = ids.mapNotNull { id ->
+                runCatching { customerApi.getCustomer(id) }
+                    .getOrNull()
+                    ?.data
+                    ?.let { d ->
+                        AttachedCustomerEntry(
+                            id = d.id,
+                            name = listOfNotNull(d.firstName, d.lastName)
+                                .joinToString(" ")
+                                .ifBlank { "Customer #${d.id}" },
+                            phone = d.phone ?: d.mobile,
+                            email = d.email,
+                        )
+                    }
+            }
+            if (fetched.isNotEmpty()) {
+                _step1.update { it.copy(recent = fetched) }
+            }
+        }
     }
 
     // ── Step navigation ────────────────────────────────────────────────────────
@@ -105,7 +138,7 @@ class CheckInEntryViewModel @Inject constructor(
             email = customer.email,
             ticketCount = customer.ticketCount ?: 0,
         )
-        val updatedRecent = (_step1.value.recent + entry)
+        val updatedRecent = (listOf(entry) + _step1.value.recent)
             .distinctBy { it.id }
             .take(MAX_RECENT)
         _step1.update {
@@ -117,6 +150,7 @@ class CheckInEntryViewModel @Inject constructor(
                 isCreatingNew = false,
             )
         }
+        appPreferences.addRecentCheckinCustomerId(entry.id)
     }
 
     fun attachWalkIn() {
@@ -155,6 +189,7 @@ class CheckInEntryViewModel @Inject constructor(
                         email = detail.email,
                     )
                     _step1.update { it.copy(attachedCustomer = entry) }
+                    appPreferences.addRecentCheckinCustomerId(entry.id)
                 }
         }
     }
@@ -212,7 +247,7 @@ class CheckInEntryViewModel @Inject constructor(
                     phone = detail.phone ?: detail.mobile,
                     email = detail.email,
                 )
-                val updatedRecent = (_step1.value.recent + entry)
+                val updatedRecent = (listOf(entry) + _step1.value.recent)
                     .distinctBy { it.id }
                     .take(MAX_RECENT)
                 _step1.update {
@@ -227,6 +262,7 @@ class CheckInEntryViewModel @Inject constructor(
                         newEmail = "",
                     )
                 }
+                appPreferences.addRecentCheckinCustomerId(entry.id)
             }.onFailure { e ->
                 _step1.update { it.copy(isCreating = false, createError = "Could not create: ${e.message}") }
             }
