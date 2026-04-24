@@ -610,10 +610,10 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] New users get curated minimal set; reveal advanced on demand.
 
 ### 3.18 Density modes
-- [ ] Three modes: Comfortable (default phone, 1-2 col), Cozy (default tablet, 2-3 col), Compact (power user, 3-4 col smaller type).
-- [ ] Per-user setting: Settings → Appearance → Dashboard density; sync respects shared-device mode (off on shared devices).
-- [ ] Density token feeds spacing rhythm (§30); orthogonal to Reduce Motion.
-- [ ] Live preview in settings (real dashboard) as user toggles.
+- [x] Three modes: Comfortable (default phone, 1-2 col), Cozy (default tablet, 2-3 col), Compact (power user, 3-4 col smaller type). (commit fc88873 — `ui/theme/DashboardDensity.kt` enum + `columnsForWindowSize/baseSpacing/typeScale` + `LocalDashboardDensity` staticCompositionLocal)
+- [x] Per-user setting: Settings → Appearance → Dashboard density; sync respects shared-device mode (off on shared devices). (commit fc88873 — `AppPreferences.dashboardDensityFlow` + `setDashboardDensity()` + tablet-default detection; `MainActivity` shared-device gate forces Comfortable)
+- [x] Density token feeds spacing rhythm (§30); orthogonal to Reduce Motion. (commit fc88873 — `DashboardScreen.InsightsSection` reads LocalDashboardDensity; `KpiGrid` uses `density.columnsForWindowSize` + `baseSpacing`)
+- [x] Live preview in settings (real dashboard) as user toggles. (commit fc88873 — `AppearanceScreen` SingleChoiceSegmentedButtonRow + live preview card; SettingsScreen row + AppNavGraph route)
 
 ### 3.19 Rollout gates
 - [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage.
@@ -630,9 +630,9 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 
 ### 4.1 List
 - [x] Base list + filter chips + search via `LazyColumn` + Paging3.
-- [ ] **Cursor-based pagination (offline-first)** — list reads from Room via `Flow<PagingData<Ticket>>`. `RemoteMediator` drives `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into Room; list auto-refreshes. Offline: no-op (or un-archive older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from `total_pages`.
-- [ ] **Room cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via Room predicates on `(status_group, assignee, urgency, updated_at)` rather than server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
-- [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
+- [x] **Cursor-based pagination (offline-first)** — list reads from Room via `Flow<PagingData<Ticket>>`. `RemoteMediator` drives `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into Room; list auto-refreshes. Offline: no-op (or un-archive older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from `total_pages`. (commit 7dffcfe — `data/sync/TicketRemoteMediator.kt` with `initialize()` 15-min staleness + REFRESH/APPEND/PREPEND; `TicketRepository.ticketsPaged(filterKey)` via Pager + filter-scoped pagingSourceFactory; `SyncStateDao` drives hasMore; `paging 3.3.6` dep; `TicketApi.getTicketPage` cursor endpoint)
+- [x] **Room cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via Room predicates on `(status_group, assignee, urgency, updated_at)` rather than server-returned pagination tuple. No `(filter, keyword, page)` cache buckets. (commit 7dffcfe — `TicketDao.pagingSource() / pagingSourceByStatusClosed() / pagingSourceByAssignee()`; filter resolution via `_filterKeyFlow` in VM + `flatMapLatest + cachedIn`)
+- [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed. (commit 7dffcfe — `components/TicketListFooter.kt` 4 distinct states; `TicketListScreen` uses `collectAsLazyPagingItems()`; 6 JVM tests)
 - [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`) via `FilterChip`.
 - [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots). (commit 68cadc5 — `components/TicketUrgencyChip.kt` + `TicketUrgency` enum Critical→errorContainer/High→tertiary/Medium→secondary/Normal→surfaceVariant/Low→faded; `ticketUrgencyFor()` derives from status-name heuristics; TODO comment for server priority field)
 - [~] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms via Flow `debounce`.
