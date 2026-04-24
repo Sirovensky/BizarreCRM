@@ -716,8 +716,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/communications; files=CommunicationPage.tsx; fix=type-per-response-interfaces -->
 
 ### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
-- [ ] SCAN-1062. **`recordWindowFailure` deprecated but still imported by 15+ routes — `@deprecated` JSDoc ignored at compile time.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:43; fix=remove-or-tsdoc-deprecated -->
 - [ ] SCAN-1063. **[HIGH/SSRF] `fetchWithSsrfGuard` checks DNS then fetches original hostname — DNS rebinding window open.**
   <!-- meta: scope=server/utils; files=packages/server/src/utils/ssrfGuard.ts:185-198; fix=use-resolved-ip-with-Host-header -->
 - [ ] SCAN-1065. **`checkWindowRate` SELECT + `recordWindowFailure` INSERT are not transactional — TOCTOU race.**

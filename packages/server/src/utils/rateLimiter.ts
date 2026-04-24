@@ -37,9 +37,15 @@ export function checkWindowRate(
 
 /**
  * Record an attempt for window-based rate limiting.
- * @deprecated Use recordWindowAttempt — the "Failure" suffix was a misnomer;
- *   this function counts every attempt (successful or not) toward the window cap.
+ *
+ * @deprecated Prefer `recordWindowAttempt` or `consumeWindowRate`. The
+ *   "Failure" suffix was a misnomer — this function counts every attempt
+ *   (successful or not) toward the window cap, and does NOT gate on the
+ *   existing count (see SCAN-1065 about the read-then-increment TOCTOU).
+ *   This export exists for backwards compatibility with 15+ route imports
+ *   that haven't been migrated yet.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for callers
 export function recordWindowFailure(
   db: Database.Database, category: string, key: string,
   windowMs: number,
