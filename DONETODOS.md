@@ -1,4 +1,10 @@
 
+## Dropped 2026-04-24 (biometric scope — web-first product)
+
+- [~] AUDIT-AND-013. **androidx.biometric:1.2.0-alpha05 is pre-release** — DROPPED per user: biometric is out-of-scope for the web-first CRM. If Android keeps the biometric path, the library-version concern is still valid but is an Android-side backlog concern, not a CRM-scope TODO.
+- [~] NEW-BIOMETRIC-LOGIN. **Android biometric re-login from fully logged-out state** — DROPPED per user. Was already BLOCKED ("pure Android feature, out of server/web loop scope"). Closing the TODO entry; Android-side team can re-open in their own tracker if desired.
+- Also removed the passing "biometric" mention from the Settings information-architecture sketch (line 107) — Device preferences now reads "haptic, dark mode" only.
+
 ## Closed 2026-04-24 (wave-74 — settings re-auth + clock-in PIN rate limits)
 
 - [x] SCAN-1181. **`PATCH /settings/users/:id` sensitive-change re-auth (`admin_confirm_password` bcrypt compare) had no rate limit** — a hijacked admin session could brute-force the admin's own password here to step-up to password/pin/role changes on any user, bypassing the caps already on `/change-password` (SCAN-1178) and `/change-pin` (SCAN-1155). Added `checkWindowRate('settings_user_reauth', admin:ip, 5, 3600_000)` + `recordWindowFailure` on bad-password, bad-totp, and missing-caller branches. Same 5/hr cap used by the sibling endpoints.
