@@ -715,6 +715,33 @@ Verified working. Not TODOs.
 - [ ] SCAN-1003b. **Communications page: 14+ `(x.data as any)?.data?.…` chains remain across SMS/customer/voice queries (templates narrowed).**
   <!-- meta: scope=web/pages/communications; files=CommunicationPage.tsx; fix=type-per-response-interfaces -->
 
+### Wave-60 scan-loop findings (2026-04-24) — server/ws + utils + db
+- [ ] SCAN-1060. **`audit()`, `getConfigValue()`, `setConfigValue()`, `masterAudit.ts` use `db: any` on security-critical call sites.**
+  <!-- meta: scope=server/utils; files=audit.ts:34,configEncryption.ts:104,114,masterAudit.ts:3; fix=Database.Database -->
+- [ ] SCAN-1061. **`masterAudit.ts` uses raw console.* instead of structured logger — critical-alert branch logs `JSON.stringify(details)` with potential PII.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:59,83,101,106,137,139,142; fix=createLogger -->
+- [ ] SCAN-1062. **`recordWindowFailure` deprecated but still imported by 15+ routes — `@deprecated` JSDoc ignored at compile time.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:43; fix=remove-or-tsdoc-deprecated -->
+- [ ] SCAN-1063. **[HIGH/SSRF] `fetchWithSsrfGuard` checks DNS then fetches original hostname — DNS rebinding window open.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/ssrfGuard.ts:185-198; fix=use-resolved-ip-with-Host-header -->
+- [ ] SCAN-1064. **`db-worker.mjs` `execute()` accepts arbitrary task shape without validation — `db.prepare(undefined)` possible.**
+  <!-- meta: scope=server/db; files=packages/server/src/db/db-worker.mjs:102-145; fix=allowlist-op+typeof-guards -->
+- [ ] SCAN-1065. **`checkWindowRate` SELECT + `recordWindowFailure` INSERT are not transactional — TOCTOU race.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:18-36; fix=use-consumeWindowRate-or-tx -->
+- [ ] SCAN-1066. **WS broadcast iterates global allClients set per event — O(totalSockets), not O(tenantSockets).**
+  <!-- meta: scope=server/ws; files=packages/server/src/ws/server.ts:640-675; fix=per-tenant-Map -->
+- [ ] SCAN-1067. **`validateTextLength` silently coerces missing required field to empty string — no throw.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/validate.ts:65-69; fix=add-required-flag -->
+- [ ] SCAN-1068. **`scanFileForViruses` returns clean when CLAMAV_HOST set but integration unwired — operators think scanning is active.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/fileValidation.ts:204-232; fix=startup-env-check -->
+- [ ] SCAN-1069. **`logTenantAuthEvent` runs `checkBruteForce` synchronously on every failed login — 2-4 SQLite round-trips in auth hot path.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/masterAudit.ts:54-56; fix=setImmediate-or-queue -->
+- [ ] SCAN-1070. **`createLogger` return type inferred — no stable Logger interface for mocks/consumers.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/logger.ts:114; fix=export-Logger-interface -->
+- [ ] SCAN-1071. **`LRUCache.getCached` inflight cleanup on rejection can race re-entrant callers — stale inflight entries.**
+  <!-- meta: scope=server/utils; files=packages/server/src/utils/cache.ts:105-131; fix=use-finally -->
+
+
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing
 - [ ] SCAN-1014. **PrintPage ticket + config props typed as `any` — 30+ property accesses unchecked.**
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
