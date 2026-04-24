@@ -1550,3 +1550,15 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-667. **routes/employees.routes.ts `autoClockoutSweepTimer = setInterval(...)` — stored but not trackInterval-registered; async callback can reject uncaught** — `packages/server/src/routes/employees.routes.ts:639`. Fix: trackInterval wrapping + error-catching callback.
 - [ ] SCAN-668. **middleware/stepUpTotp.ts module-scope setInterval — challenge reaper fires on import; cannot be stopped** — `packages/server/src/middleware/stepUpTotp.ts:63`. Fix: wrap in startStepUpReaper() + trackInterval.
 - [ ] SCAN-669. **services/metricsCollector.ts sampleTimer + rollupTimer use raw setInterval with manual `.unref()` — not registered for graceful shutdown** — `packages/server/src/services/metricsCollector.ts:329,334`. Fix: trackInterval with { unref: true } option.
+
+### Wave-20 scan-loop findings (2026-04-23)
+- [ ] SCAN-671. **[HIGH pervasive] `Number(req.params.id)` without `Number.isFinite` guard across 15 route files — NaN/Infinity leak into WHERE id = ? predicates (silent no-match or SQLite coercion)** — automations (4), bench (6), campaigns (6), catalog (2), crm (14), customers (6), deviceTemplates (3), employees (6), estimates (8), heldCarts (3), leads (8), notifications (1), pos (2), reports (1), snippets (2). Fix: shared `parseIdOrThrow(raw, label)` helper + migrate call sites.
+- [ ] SCAN-672. **[MEDIUM] auth.routes 11 unauthenticated handlers use bare `async (req,res) =>` without asyncHandler — unhandled rejection crashes request + leaks stack** — `packages/server/src/routes/auth.routes.ts:453,484,625,809,851,885,1021,1133,1557,1679,1933`. Fix: wrap each in asyncHandler.
+- [ ] SCAN-673. **[POSSIBLE MEDIUM] paymentLinks DELETE /:id check-then-update race — concurrent DELETEs both pass `status !== 'paid'` check, double-cancellation state possible** — `packages/server/src/routes/paymentLinks.routes.ts:170`. Fix: conditional UPDATE (`WHERE status NOT IN ('paid','cancelled')`) + check `changes`; 409 when 0.
+- [ ] SCAN-674. **[LOW] management audit-write catch logs raw `error.message` (leaks system paths on EPERM/ENOENT to server log)** — `packages/server/src/routes/management.routes.ts:72`. Fix: log `err?.code` only.
+
+### Wave-21 production migration hardening (2026-04-23)
+- [x] SCAN-676. **migrate.ts missing `@skip-if-no-table` directive — master-only migrations (116) crashed on legacy single-tenant DB** — FIXED commit 16239b28.
+- [x] SCAN-677. **migration 128 `checklist_templates` collided with migration 001 same-name-different-schema table — CREATE INDEX `kind` column crash** — FIXED commit fdeead53 via rename to `ops_checklist_templates` / `ops_checklist_instances`.
+- [x] SCAN-678. **migration 138 explicit `BEGIN TRANSACTION` nested inside migrate.ts outer wrapper — "cannot start a transaction within a transaction"** — FIXED commit 44f49823 via `@no-transaction` header.
+- [x] SCAN-679. **migration 142 re-ADD `location_id` on shift_schedules already added by migration 121 — duplicate column crash** — FIXED commit a8381870 by dropping redundant ALTER; kept idempotent UPDATE + INDEX.
