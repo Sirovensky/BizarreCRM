@@ -141,6 +141,42 @@ interface SyncQueueDao {
     @Query("UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL WHERE id = :id")
     suspend fun resurrectDeadLetter(id: Long)
 
+    // ─── Ordered queue (plan §20.4 L2112) ────────────────────────────────────────
+
+    /**
+     * Returns the single oldest `pending` entry whose dependency is satisfied:
+     *
+     *  - `depends_on_queue_id IS NULL` — no dependency, always eligible.
+     *  - `depends_on_queue_id` refers to a row whose `status = 'completed'` — dependency
+     *    fulfilled.
+     *
+     * Entries whose parent is still `pending` / `syncing` / `dead_letter` are skipped
+     * so that the dependency ordering is preserved. Called by [OrderedQueueProcessor]
+     * on every drain tick.
+     *
+     * The LEFT JOIN approach is O(log n) when the (status, created_at) composite index
+     * is used for the outer WHERE and the depends_on_queue_id index covers the join.
+     */
+    @Query(
+        """
+        SELECT q.*
+        FROM sync_queue q
+        LEFT JOIN sync_queue parent ON q.depends_on_queue_id = parent.id
+        WHERE q.status = 'pending'
+          AND (q.depends_on_queue_id IS NULL OR parent.status = 'completed')
+        ORDER BY q.created_at ASC
+        LIMIT 1
+        """
+    )
+    suspend fun nextReady(): SyncQueueEntity?
+
+    /**
+     * Mark a batch of entries as `syncing` atomically. Called by [OrderedQueueProcessor]
+     * when it claims a window of ready entries for dispatch.
+     */
+    @Query("UPDATE sync_queue SET status = 'syncing' WHERE id IN (:ids)")
+    suspend fun markSyncing(ids: List<Long>)
+
     companion object {
         /** Max attempts before an entry is moved to the dead-letter queue. */
         const val MAX_RETRIES = 5

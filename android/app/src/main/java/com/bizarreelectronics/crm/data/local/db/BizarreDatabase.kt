@@ -89,7 +89,8 @@ import kotlinx.coroutines.withContext
     // Plan §1 L180+L183: bumped from 7 to 8 to add `sync_state` table and
     // `_synced_at` bookkeeping columns on tickets/customers/inventory_items/invoices.
     // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
-    version = 9,
+    // Plan §20.2 L2108: bumped from 9 to 10 to add depends_on_queue_id to sync_queue.
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -124,7 +125,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 9
+        const val SCHEMA_VERSION = 10
     }
 }
 

@@ -125,6 +125,12 @@ object MigrationRegistry {
             name = "parked-carts-table: offline POS cart parking [plan:L1800]",
             migration = Migrations.MIGRATION_8_9,
         ),
+        Entry(
+            fromVersion = 9,
+            toVersion = 10,
+            name = "sync-queue-depends_on: FIFO dependency chain for ordered queue [plan:L2108]",
+            migration = Migrations.MIGRATION_9_10,
+        ),
     )
 
     /**

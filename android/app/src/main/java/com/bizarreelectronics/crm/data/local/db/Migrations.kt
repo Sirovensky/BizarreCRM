@@ -705,6 +705,38 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 9 → 10: add `depends_on_queue_id` to `sync_queue` (Plan §20.2 L2108).**
+     *
+     * Adds a nullable INTEGER column `depends_on_queue_id` to `sync_queue`. When
+     * non-null it references another row in the same table; [OrderedQueueProcessor]
+     * will not dispatch the dependent entry until the referenced row has
+     * `status = 'completed'`. This enables FIFO-within-dependency-chain semantics
+     * (e.g. ticket-create must complete before child note-add is dispatched).
+     *
+     * A separate index on `depends_on_queue_id` ensures the LEFT JOIN inside
+     * [SyncQueueDao.nextReady] stays O(log n) even with a large queue.
+     *
+     * `ALTER TABLE … ADD COLUMN` is not idempotent in SQLite, but Room guarantees
+     * each migration runs exactly once per upgrade path, so this is safe.
+     *
+     * NOTE: Run `./gradlew :app:kspDebugKotlin` to regenerate 10.json after this
+     * migration is applied. The placeholder 10.json checked in alongside this
+     * migration exists only to satisfy [RoomSchemaFilesTest]; it will be overwritten
+     * by the KSP-generated file.
+     */
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE sync_queue ADD COLUMN depends_on_queue_id INTEGER"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_sync_queue_depends_on_queue_id " +
+                    "ON sync_queue(depends_on_queue_id)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -715,5 +747,6 @@ object Migrations {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
+        MIGRATION_9_10,
     )
 }
