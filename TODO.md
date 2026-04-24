@@ -731,14 +731,8 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes+shared; files=packages/server/src/routes/roles.routes.ts:23-39; fix=use-Object.values(PERMISSIONS) -->
 - [ ] SCAN-1101. **[MED] RMA create loop not transactional — orphan header + partial items on mid-loop failure.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/rma.routes.ts:154-169; fix=wrap-in-adb.transaction -->
-- [ ] SCAN-1102. **[MED] Loaner UPDATE + history INSERT split — device stuck `loaned` if insert fails, no return path.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/loaners.routes.ts:145-155; fix=adb.transaction -->
 - [ ] SCAN-1103. **[MED] `shiftsSchedule.routes.ts` uses deprecated `checkWindowRate`+`recordWindowAttempt` pair 8× — TOCTOU.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/shiftsSchedule.routes.ts:141-144,188,241,277,332,379,417; fix=consumeWindowRate-per-site -->
-- [ ] SCAN-1104. **[MED/perf] `ensureDefaultPermsSeeded` runs 128 INSERT OR IGNORE on every role read — no per-DB seeded flag.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/roles.routes.ts:83-98,119,224; fix=module-Set<dbPath>-cache -->
-- [ ] SCAN-1105. **[MED] `bookingPublic` rate limit keyed on raw `req.socket.remoteAddress` — behind proxy, all clients collapse to one bucket.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/bookingPublic.routes.ts:43-49; fix=use-req.ip-first -->
 - [ ] SCAN-1106. **[MED] `email.ts transporterCache` uncapped + not cleared on cred rotation — unbounded growth + stale creds.**
   <!-- meta: scope=server/services; files=packages/server/src/services/email.ts:21,99-128; fix=LRU-cap+wire-clearEmailCache-on-config-PUT -->
 

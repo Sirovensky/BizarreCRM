@@ -41,7 +41,14 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
 function ipRateLimit(req: any, category: string, max: number): void {
-  const ip = (req.socket.remoteAddress || 'unknown').slice(0, 64);
+  // SCAN-1105: previously keyed on raw `req.socket.remoteAddress` which
+  // ignored Express `trust proxy`. Behind Cloudflare / any reverse proxy
+  // every public-booking client arrived from the same proxy IP, so the
+  // per-IP limit collapsed to one shared global bucket — useless against
+  // distributed `/availability` enumeration. `req.ip` respects the app-
+  // level trust-proxy config and falls back to the socket IP on direct
+  // LAN access.
+  const ip = (req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 64);
   const result = consumeWindowRate(req.db, category, ip, max, ONE_HOUR_MS);
   if (!result.allowed) {
     throw new AppError(`Rate limit exceeded. Retry in ${result.retryAfterSeconds}s`, 429);

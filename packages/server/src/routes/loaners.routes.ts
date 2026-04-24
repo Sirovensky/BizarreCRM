@@ -142,18 +142,27 @@ router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(asy
   // two concurrent /loan calls on the same device could both pass the SELECT
   // above and both insert loaner_history rows. If the guard rejects (0 rows
   // changed) another loaner_history insert is skipped and a 409 is returned.
-  const updateResult = await adb.run(
-    "UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ? AND status = 'available'",
-    now(), id,
-  );
-  if (updateResult.changes === 0) {
-    throw new AppError('Device is not available', 409);
-  }
-  const loanResult = await adb.run(
-    'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)',
-    id, ticket_device_id, customer_id, now(), (device as any).condition, notes || null
-  );
-  const historyId = loanResult.lastInsertRowid;
+  //
+  // SCAN-1102: previously the UPDATE + INSERT were split async calls. If the
+  // INSERT into loaner_history failed (constraint violation, disk full,
+  // WAL error), the device was left `status='loaned'` with no history row —
+  // so /return could never find an active loan and the device was stuck
+  // forever. Wrap both statements in a sync better-sqlite3 transaction so
+  // a failed INSERT rolls back the status flip.
+  const txNow = now();
+  const loanTx = db.transaction((): number | bigint => {
+    const u = db.prepare(
+      "UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ? AND status = 'available'"
+    ).run(txNow, id);
+    if (u.changes === 0) {
+      throw new AppError('Device is not available', 409);
+    }
+    const r = db.prepare(
+      'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(id, ticket_device_id, customer_id, txNow, (device as any).condition, notes || null);
+    return r.lastInsertRowid;
+  });
+  const historyId = loanTx();
   audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: id, customer_id, history_id: historyId });
   res.json({ success: true, data: { history_id: historyId } });
 }));

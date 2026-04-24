@@ -79,8 +79,17 @@ interface RoleRow {
 /**
  * Lazy-seed the role_permissions matrix on first read so we never pin a stale
  * key list at migration time. Idempotent — only inserts missing rows.
+ *
+ * SCAN-1104: previously ran ~128 `INSERT OR IGNORE` statements every time
+ * `GET /roles` or `GET /roles/:id/permissions` was called. The settings
+ * page renders both on mount, doubling the work per page view on every
+ * tenant. Cache a per-tenant DB path in a module-scope Set so subsequent
+ * calls early-return after a single inexpensive check. If the process
+ * restarts or the DB is swapped the set is rebuilt.
  */
+const seededDbs = new Set<string>();
 async function ensureDefaultPermsSeeded(adb: AsyncDb): Promise<void> {
+  if (seededDbs.has(adb.dbPath)) return;
   const roles = await adb.all<RoleRow>('SELECT id, name FROM custom_roles WHERE name IN (?, ?, ?, ?)',
     'admin', 'manager', 'technician', 'cashier');
   for (const role of roles) {
@@ -95,6 +104,7 @@ async function ensureDefaultPermsSeeded(adb: AsyncDb): Promise<void> {
       );
     }
   }
+  seededDbs.add(adb.dbPath);
 }
 
 function requireAdmin(req: any): void {
