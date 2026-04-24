@@ -1,4 +1,41 @@
 
+## Closed 2026-04-23 (wave-46 retro-sweep)
+
+Retroactive sweep of SCAN-301..600 (waves 11-45 stale-state audit). Skipped SCAN-491..498 (parity/web UI). Code at each referenced site inspected; fix is visibly in place. Moved from TODO.md with no code changes this wave.
+
+- [x] SCAN-356. **dunningScheduler email_opt_in check missing** — verified wave-46; `if (customer.email_opt_in === 0) return { outcome:'skipped' }` at `services/dunningScheduler.ts:713`.
+- [x] SCAN-379. **invoices setInterval not tracked** — verified wave-46; `trackInterval(...)` wraps recentPayments sweep at `routes/invoices.routes.ts:656`.
+- [x] SCAN-380. **employees autoClockout setTimeout fire-and-forget** — verified wave-46; `autoClockoutSweepTimer = trackInterval(...)` at `routes/employees.routes.ts:641`.
+- [x] SCAN-382. **auth middleware silent catch on session touch** — verified wave-46; `.catch((err) => logger.warn('auth: last_active update failed', ...))` at `middleware/auth.ts:158`.
+- [x] SCAN-435. **WS isTenantOriginAllowed missing releaseTenantDb** — verified wave-46; `if (tdb !== undefined) releaseTenantDb(tenantSlug)` in finally at `ws/server.ts:258`.
+- [x] SCAN-455. **archiveDueTenants never wired** — verified wave-46; daily `trackInterval` invokes `archiveDueTenants()` at `index.ts:2521-2534`.
+- [x] SCAN-456. **recalculateAllCustomerHealth never scheduled** — verified wave-46; daily cron at `index.ts:3495,3529,3563`.
+- [x] SCAN-514. **pl_snapshots metadata_json duplicate generated_by** — verified wave-46; explicit comment "generated_by is intentionally NOT included here" at `routes/ownerPl.routes.ts:596-598`.
+- [x] SCAN-548. **portal SELECT * FROM invoices leaks new columns** — verified wave-46; explicit column list at `routes/portal.routes.ts:333-335,341-343`.
+- [x] SCAN-550. **campaigns COALESCE(sms_opt_in,1) violates affirmative consent** — verified wave-46; `COALESCE(c.sms_opt_in,0)` + `COALESCE(c.sms_consent_marketing,0)` at `routes/campaigns.routes.ts:164,614,635`.
+- [x] SCAN-551. **super-admin auditLog catch uses console.error** — verified wave-46; `logger.error('super_admin_audit_write_failed', ...)` at `routes/super-admin.routes.ts:146`.
+- [x] SCAN-552. **membership GET /tiers bare JSON.parse(benefits)** — verified wave-46; `safeJsonParseArray(t.benefits)` helper at `routes/membership.routes.ts:22-30,66`.
+- [x] SCAN-553. **membership GET /customer bare JSON.parse(benefits)** — verified wave-46; `safeJsonParseArray(subscription.benefits)` at `routes/membership.routes.ts:143`.
+- [x] SCAN-555. **admin PUT /backup-settings no validation** — verified wave-46; typeof+length+range guards + retention 1-3650 at `routes/admin.routes.ts:564-595`.
+- [x] SCAN-556. **tradeIns write mutation no rate-limit** — verified wave-46; `checkWindowRate(req.db, TRADE_IN_WRITE_CATEGORY, ...)` at `routes/tradeIns.routes.ts:114,156`.
+- [x] SCAN-558. **cloudflareDns console.log leak tenant slugs** — verified wave-46; `createLogger('cloudflareDns')` + `logger.info` at `services/cloudflareDns.ts:5,181,201,219,225`.
+- [x] SCAN-559. **billing console.error may dump Stripe PII** — verified wave-46; `logger.error` at `routes/billing.routes.ts:34,67,94,118`.
+- [x] SCAN-560. **management PM2 console.error** — verified wave-46; `logger.error('pm2_restart_failed', ...)` at `routes/management.routes.ts:618,628`.
+- [x] SCAN-561. **pos 3 audit-write console.error on hot path** — verified wave-46; `logger.error('audit_log_write_failed', ...)` at `routes/pos.routes.ts:1937,2167,2204`.
+- [x] SCAN-562. **invoices console.warn forensic loss at 845+1151** — verified wave-46; `logger.warn` at `routes/invoices.routes.ts:845,1192`.
+- [x] SCAN-563. **adminTokens Map unbounded** — verified wave-46; `ADMIN_TOKENS_CAP=1000` + `addWithCap` at `routes/admin.routes.ts:40,108`.
+- [x] SCAN-564. **super-admin challenges Map unbounded** — verified wave-46; `CHALLENGES_CAP` + `addWithCap` at `routes/super-admin.routes.ts:162,182`.
+- [x] SCAN-565. **tickets SMS lookup console.error logs phone** — verified wave-46; `logger.error('tickets_sms_lookup_failed', ...)` at `routes/tickets.routes.ts:758` + `redactPhone` helper at line 39.
+- [x] SCAN-570. **campaigns marketing consent gap sms_consent_marketing** — verified wave-46; joined and required `COALESCE(c.sms_consent_marketing,0) = 1` at `routes/campaigns.routes.ts:614,635`.
+- [x] SCAN-572. **corsRejectionLog Map unbounded** — verified wave-46; 5-min `trackInterval` sweep at `index.ts:1052-1058`.
+- [x] SCAN-575. **adminTokens stale entries never swept** — verified wave-46; `trackInterval` 60s sweeping expired entries at `routes/admin.routes.ts:74-79`.
+- [x] SCAN-576. **estimates SEC-M54 quota-refund console.error** — verified wave-46; `logger.error('SEC-M54 quota refund failed', ...)` at `routes/estimates.routes.ts:467`.
+- [x] SCAN-577. **estimates GET /versions bare JSON.parse** — verified wave-46; `try { versionData = JSON.parse(version.data) } catch { throw new AppError('Corrupted...', 422) }` at `routes/estimates.routes.ts:697-698`.
+- [x] SCAN-578. **estimates POST /bulk-convert inline role check** — verified wave-46; `requirePermission('estimates.create')` at `routes/estimates.routes.ts:315`.
+- [x] SCAN-579. **loaners write endpoints no requirePermission** — verified wave-46; `requirePermission('inventory.adjust')` on all POST/PUT/DELETE/loan/return at `routes/loaners.routes.ts:68,81,106,142,166`.
+- [x] SCAN-582. **dunningScheduler dispatchStep sms_opt_in check** — verified wave-46; `customer.sms_opt_in !== 0 && customer.sms_consent_transactional !== 0` gate at `services/dunningScheduler.ts:638`.
+- [x] SCAN-590. **estimates convert tier-limit leaves status 'converting'** — verified wave-46; tier check moved before status lock + try/finally revert at `routes/estimates.routes.ts:744-803`.
+
 ## Closed 2026-04-23 (wave-45 retro-sweep)
 
 Verified-fixed during retroactive sweep of SCAN-001..300 (waves 1-10 stale-state audit). Code at each referenced site inspected; fix is visibly in place. Moved from TODO.md with no code changes this wave.
