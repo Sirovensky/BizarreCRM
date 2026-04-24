@@ -390,6 +390,12 @@ sealed class Screen(val route: String) {
         fun createRoute(roomId: String, roomName: String = "") =
             "team-chat/${android.net.Uri.encode(roomId)}?roomName=${android.net.Uri.encode(roomName)}"
     }
+
+    // §48 — Goals, Performance Reviews & Time Off
+    data object Goals : Screen("goals")
+    data object PerformanceReviews : Screen("performance-reviews")
+    data object TimeOffRequest : Screen("time-off-request")
+    data object TimeOffList : Screen("time-off-list")
 }
 
 data class BottomNavItem(
@@ -1979,6 +1985,34 @@ fun AppNavGraph(
                 ),
             ) {
                 com.bizarreelectronics.crm.ui.screens.team.TeamChatThreadScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Goals ────────────────────────────────────────────────────
+            composable(Screen.Goals.route) {
+                com.bizarreelectronics.crm.ui.screens.goals.GoalsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Performance Reviews ──────────────────────────────────────
+            composable(Screen.PerformanceReviews.route) {
+                com.bizarreelectronics.crm.ui.screens.performance.PerformanceReviewScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Time-Off Request (staff) ─────────────────────────────────
+            composable(Screen.TimeOffRequest.route) {
+                com.bizarreelectronics.crm.ui.screens.timeoff.TimeOffRequestScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §48 Time-Off List / Approval Queue (manager) ─────────────────
+            composable(Screen.TimeOffList.route) {
+                com.bizarreelectronics.crm.ui.screens.timeoff.TimeOffListScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

@@ -668,4 +668,8 @@ object RetrofitClient {
     @Provides @Singleton fun provideVoiceApi(retrofit: Retrofit): VoiceApi = retrofit.create(VoiceApi::class.java)
     // §47 — team chat rooms + messages + reactions; all endpoints 404-tolerant
     @Provides @Singleton fun provideTeamChatApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.TeamChatApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.TeamChatApi::class.java)
+    // §48 — goals / performance reviews / time-off; all endpoints 404-tolerant
+    @Provides @Singleton fun provideGoalApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.GoalApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.GoalApi::class.java)
+    @Provides @Singleton fun providePerformanceApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PerformanceApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PerformanceApi::class.java)
+    @Provides @Singleton fun provideTimeOffApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.TimeOffApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.TimeOffApi::class.java)
 }
