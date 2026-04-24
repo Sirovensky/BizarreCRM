@@ -6,12 +6,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- CAMERA permission removed (AND-020). BarcodeScanScreen is manual-entry
-         only and PhotoCaptureScreen uses ActivityResultContracts.GetContent
-         (gallery picker) which does NOT require CAMERA. When a real CameraX
-         live-capture flow ships, re-add this permission and gate runtime
-         requests behind shouldShowRequestPermissionRationale + a rationale
-         dialog before ActivityResultContracts.RequestPermission. -->
+    <!-- CAMERA: required for the runtime permission request in PhotoCaptureScreen.
+         The screen calls ActivityResultContracts.RequestPermission(CAMERA) so the
+         user can pre-authorize the hardware before a future CameraX live-capture
+         surface ships. Without this manifest declaration Android silently denies
+         the request and never shows the system dialog, so the user sees only a
+         rationale dialog but never the actual permission prompt (bug:camera-perms).
+         The gallery-picker path (GetContent) does NOT require CAMERA at runtime;
+         this declaration only enables the permission-request dialog. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- M4 fix: CALL_PHONE was declared but never used. CustomerDetailScreen
