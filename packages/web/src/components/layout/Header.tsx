@@ -427,7 +427,11 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   label="Profile"
                   onClick={() => { setUserMenuOpen(false); navigate('/settings/users'); }}
                 />
-                {user?.role === 'admin' && (
+                {/* SCAN-1145: managers have settings.edit server-side — let
+                    them see the Settings link too. Kept as explicit role
+                    check rather than a perm derivation to keep the dropdown
+                    pure (no extra auth-store reads). */}
+                {(user?.role === 'admin' || user?.role === 'manager') && (
                   <DropdownItem
                     icon={<Settings className="h-4 w-4" />}
                     label="Settings"

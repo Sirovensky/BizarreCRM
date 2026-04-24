@@ -177,9 +177,27 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         }
       }
 
+      // SCAN-1142: a corrupt users.permissions row (truncated import, manual
+      // DB edit) would throw inside JSON.parse — the outer `.catch` then
+      // surfaced a misleading 401 "Invalid token" to a user whose token
+      // is actually fine. Fall back to null on parse failure so the user
+      // can still authenticate with the standard role enum; log a warn so
+      // an operator can spot the data corruption.
+      let parsedPermissions: Record<string, boolean> | null = null;
+      if (user.permissions) {
+        try {
+          const raw = JSON.parse(user.permissions);
+          if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            parsedPermissions = raw as Record<string, boolean>;
+          }
+        } catch {
+          console.warn('[auth] corrupt users.permissions JSON, treating as null', { userId: user.id });
+          parsedPermissions = null;
+        }
+      }
       req.user = {
         ...user,
-        permissions: user.permissions ? JSON.parse(user.permissions) : null,
+        permissions: parsedPermissions,
         sessionId: payload.sessionId,
         customRolePermissions,
       };

@@ -1369,20 +1369,22 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // POST /logout
-router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: wrap in asyncHandler so thrown errors route to errorHandler.
+router.post('/logout', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   await adb.run('DELETE FROM sessions WHERE id = ?', req.user!.sessionId);
   res.clearCookie('refreshToken', { path: '/' });
   // SEC-H89: Clear csrf_token alongside refreshToken on logout.
   res.clearCookie('csrf_token', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
-});
+}));
 
 // POST /switch-user (rate-limited, requires existing auth session)
 // SEC (A4): If the target user has 2FA enabled, the caller must also supply
 // a current TOTP code for that target user. PIN alone is not enough to bypass
 // 2FA when the target account has it turned on.
-router.post('/switch-user', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler so thrown errors route to errorHandler.
+router.post('/switch-user', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -1531,10 +1533,11 @@ router.post('/switch-user', authMiddleware, async (req: Request, res: Response) 
     success: true,
     data: { accessToken, user: userForResponse },
   });
-});
+}));
 
 // POST /verify-pin — verify current user's PIN without switching user
-router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler wrap.
+router.post('/verify-pin', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -1573,7 +1576,7 @@ router.post('/verify-pin', authMiddleware, async (req: Request, res: Response) =
   audit(db, 'pin_verify_success', userId, ip, {});
   logTenantAuthEvent('pin_verify_success', req, userId, null, {});
   res.json({ success: true, data: { verified: true } });
-});
+}));
 
 // ENR-UX19: POST /forgot-password — Request a password reset token
 // Generates a reset token, stores it in the DB, and emails it (or logs to console if SMTP is not configured).
@@ -1809,7 +1812,8 @@ router.post('/reset-password', asyncHandler(async (req: Request, res: Response) 
 // Allow an authenticated user to voluntarily disable their own 2FA.
 // Requires BOTH: current password AND a current TOTP code. Clears the totp_secret,
 // totp_enabled flag, and any backup codes. Every disable is written to the audit log.
-router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler wrap.
+router.post('/account/2fa/disable', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -1893,7 +1897,7 @@ router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Re
   logTenantAuthEvent('2fa_disabled', req, userId, user.username, { self_service: true });
 
   res.json({ success: true, data: { message: '2FA has been disabled on your account.' } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // P2FA6: POST /auth/force-disable-2fa/:userId
@@ -1902,7 +1906,8 @@ router.post('/account/2fa/disable', authMiddleware, async (req: Request, res: Re
 // that user is locked out. Requires req.user.role === 'admin' and targets a
 // user in the SAME tenant (all queries run against the tenant DB via req.asyncDb).
 // Also revokes the target user's refresh tokens so they must re-authenticate.
-router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler wrap.
+router.post('/force-disable-2fa/:userId', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -1952,7 +1957,7 @@ router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, r
       message: `2FA has been force-disabled for user ${target.username}. They must re-enroll on next login.`,
     },
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // P2FA7: POST /auth/recover-with-backup-code
@@ -2109,7 +2114,8 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
 // the same history / length rules as /reset-password, updates password_hash,
 // records to password_history, and revokes ALL sessions (force re-login on
 // every device). Update + session delete run atomically via adb.transaction.
-router.post('/change-password', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler wrap.
+router.post('/change-password', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -2206,7 +2212,7 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
   logger.info('Password changed by user', { userId });
 
   res.json({ success: true, data: { message: 'Password changed successfully' } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /auth/change-pin — Authenticated user changes their own PIN
@@ -2214,7 +2220,8 @@ router.post('/change-password', authMiddleware, async (req: Request, res: Respon
 // Android ProfileScreen entry point. Requires the current password (not the
 // old PIN — the PIN is a lower-trust credential), validates the new PIN is
 // 4-6 digits, hashes with bcrypt, and updates users.pin.
-router.post('/change-pin', authMiddleware, async (req: Request, res: Response) => {
+// SCAN-1143: asyncHandler wrap.
+router.post('/change-pin', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -2267,7 +2274,7 @@ router.post('/change-pin', authMiddleware, async (req: Request, res: Response) =
   logger.info('PIN changed by user', { userId });
 
   res.json({ success: true, data: { message: 'PIN changed successfully' } });
-});
+}));
 
 // GET /me
 router.get('/me', authMiddleware, (req: Request, res: Response) => {

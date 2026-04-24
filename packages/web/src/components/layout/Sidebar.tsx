@@ -137,13 +137,19 @@ export function Sidebar() {
   // @audit-fixed: filter nav sections + items by role so technicians don't see
   // admin-only links (Employees, Reports, Settings). Server still enforces auth
   // — this just removes the broken-click experience.
+  //
+  // SCAN-1145: shared ROLE_PERMISSIONS grants manager every permission except
+  // a handful of user-admin + destructive ones (see shared/constants/permissions).
+  // Treat manager like admin for sidebar filtering so the Settings + Reports
+  // sections are visible to them; server-side `requirePermission` still gates
+  // the specific endpoints that stay admin-only.
   const userRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = userRole === 'admin';
+  const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
   const visibleSections = navSections
-    .filter((section) => !section.adminOnly || isAdmin)
+    .filter((section) => !section.adminOnly || isAdminOrManager)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || isAdmin),
+      items: section.items.filter((item) => !item.adminOnly || isAdminOrManager),
     }))
     .filter((section) => section.items.length > 0);
 
@@ -196,8 +202,8 @@ export function Sidebar() {
 
       {/* Bottom Section */}
       <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-800">
-        {/* Settings — admin only (server enforces /settings writes by role) */}
-        {isAdmin && (
+        {/* Settings — admin + manager (server enforces /settings writes by role) */}
+        {isAdminOrManager && (
           <NavLink
             to="/settings"
             className={({ isActive }) =>

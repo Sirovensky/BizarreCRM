@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-67 auth hardening + manager settings visibility)
+
+- [x] SCAN-1142. **`authMiddleware` called raw `JSON.parse(user.permissions)`** — a corrupt row (manual DB edit, truncated import) threw inside `.catch()` and the user got a misleading 401 "Invalid token" instead of being logged in with null permissions. Wrapped in try/catch with shape-guard (`raw && typeof === 'object' && !isArray`) so valid permission maps type-narrow to `Record<string, boolean>`, malformed ones fall back to `null` with a warn log for operator visibility.
+- [x] SCAN-1143. **7 auth.routes POST handlers declared `async` without `asyncHandler`** — thrown errors (bcrypt OOM, tx failure mid-flight) became unhandled promise rejections that Express silently dropped; client hung until keep-alive timeout. Wrapped `/logout`, `/switch-user`, `/verify-pin`, `/account/2fa/disable`, `/force-disable-2fa/:userId`, `/change-password`, `/change-pin` — every thrown error now routes through `errorHandler`.
+- [x] SCAN-1145. **Header + Sidebar gated Settings link on `role === 'admin'` only** — shared `ROLE_PERMISSIONS` grants managers every perm except user-admin + GDPR (including settings.edit). Managers could write settings server-side but had no visible entry point. Widened the gate to `admin || manager` in Header user-menu + Sidebar section filter + Sidebar bottom Settings link. Server-side `requirePermission` still gates the specific endpoints that stay admin-only.
+
 ## Closed 2026-04-24 (wave-66 tail — tenant-pool stats)
 
 - [x] SCAN-1138 [perf]. **`getPoolStats` walked `pool.values()` and dereferenced `e.refcount` on every call** — the stats endpoint is polled on 1s intervals by some ops dashboards. Swapped to iterating the parallel `refcounts` Map (same invariant: key present iff pool entry present) so we skip the property dereference and the shape is future-proof for a shadow counter rework without the current bug surface. Complexity is still O(pool.size) but the constant is lower and the loop body is one compare instead of a lookup+compare.
