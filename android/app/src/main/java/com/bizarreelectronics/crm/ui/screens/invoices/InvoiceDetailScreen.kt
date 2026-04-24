@@ -1,9 +1,11 @@
 package com.bizarreelectronics.crm.ui.screens.invoices
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,6 +27,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
 import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
+import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
@@ -34,6 +37,12 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTextButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceLineItemsTable
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSendActions
+import com.bizarreelectronics.crm.ui.screens.invoices.components.sendSms
+import com.bizarreelectronics.crm.ui.screens.invoices.components.sendEmail
+import com.bizarreelectronics.crm.ui.screens.invoices.components.shareText
+import com.bizarreelectronics.crm.ui.screens.invoices.components.printInvoice
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
@@ -59,6 +68,8 @@ data class InvoiceDetailUiState(
     // via a LaunchedEffect keyed on this counter — NOT during the click handler
     // (that caused U1's race where the dialog closed before the mutation finished).
     val paymentSuccessCounter: Int = 0,
+    // Server URL used by InvoiceSendActions for SMS/email/share/print links.
+    val serverUrl: String? = null,
 )
 
 @HiltViewModel
@@ -171,6 +182,48 @@ class InvoiceDetailViewModel @Inject constructor(
         }
     }
 
+    fun issueRefund(amount: Double, reason: String?) {
+        if (_state.value.isActionInProgress) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val request = IssueRefundRequest(invoiceId = invoiceId, amount = amount, reason = reason)
+                invoiceApi.issueRefund(request)
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Refund of $${"%.2f".format(amount)} issued.",
+                )
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
+                loadOnlineDetails()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    // 404 → endpoint not deployed yet — surface gracefully.
+                    actionMessage = "Refund endpoint unavailable. Try again when the server is updated.",
+                )
+            }
+        }
+    }
+
+    fun cloneInvoice() {
+        if (_state.value.isActionInProgress) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                invoiceApi.cloneInvoice(invoiceId)
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Invoice cloned as a new Draft.",
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Clone endpoint unavailable. Try again when the server is updated.",
+                )
+            }
+        }
+    }
+
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
@@ -187,12 +240,18 @@ fun InvoiceDetailScreen(
     val state by viewModel.state.collectAsState()
     val invoice = state.invoice
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     // U13 fix: rememberSaveable so rotations / dialog dismissals don't reset these.
     var showPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var showVoidConfirm by rememberSaveable { mutableStateOf(false) }
+    var showRefundDialog by rememberSaveable { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     var paymentAmount by rememberSaveable { mutableStateOf("") }
     var paymentMethod by rememberSaveable { mutableStateOf("cash") }
     var showMethodDropdown by remember { mutableStateOf(false) }
+    var refundAmount by rememberSaveable { mutableStateOf("") }
+    var refundReason by rememberSaveable { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -373,6 +432,69 @@ fun InvoiceDetailScreen(
         )
     }
 
+    // Refund dialog
+    if (showRefundDialog) {
+        val totalPaidDollars = (invoice?.amountPaid ?: 0L).toDollars()
+        AlertDialog(
+            onDismissRequest = { showRefundDialog = false; refundAmount = "" },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Issue Refund", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val parsedRefund = refundAmount.toDoubleOrNull()
+                    val refundError: String? = when {
+                        refundAmount.isBlank() -> null
+                        parsedRefund == null -> "Enter a valid amount"
+                        parsedRefund <= 0.0 -> "Amount must be greater than $0.00"
+                        parsedRefund > totalPaidDollars -> "Cannot exceed amount paid ($${"%.2f".format(totalPaidDollars)})"
+                        else -> null
+                    }
+                    OutlinedTextField(
+                        value = refundAmount,
+                        onValueChange = { v ->
+                            if (v.isEmpty() || v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) refundAmount = v
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Refund amount") },
+                        leadingIcon = { Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        isError = refundError != null,
+                        supportingText = {
+                            if (refundError != null) Text(refundError, color = MaterialTheme.colorScheme.error)
+                        },
+                    )
+                    OutlinedTextField(
+                        value = refundReason,
+                        onValueChange = { refundReason = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Reason (optional)") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                val parsedRefund = refundAmount.toDoubleOrNull()
+                val isValid = parsedRefund != null && parsedRefund > 0.0 && parsedRefund <= totalPaidDollars
+                TextButton(
+                    onClick = {
+                        if (isValid && parsedRefund != null) {
+                            viewModel.issueRefund(parsedRefund, refundReason.ifBlank { null })
+                            showRefundDialog = false
+                            refundAmount = ""
+                            refundReason = ""
+                        }
+                    },
+                    enabled = isValid && !state.isActionInProgress,
+                ) { Text("Issue Refund") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRefundDialog = false; refundAmount = "" }) { Text("Cancel") }
+            },
+        )
+    }
+
     // Void confirmation — migrated to ConfirmDialog(isDestructive = true)
     if (showVoidConfirm) {
         ConfirmDialog(
@@ -412,6 +534,78 @@ fun InvoiceDetailScreen(
                                 Icons.Default.Block,
                                 contentDescription = "Void",
                                 tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    // Overflow menu: Refund / Clone / Send / Share / Print
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                        ) {
+                            if (invoice != null && invoice.amountPaid > 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Issue Refund") },
+                                    leadingIcon = { Icon(Icons.Default.Undo, null) },
+                                    onClick = { showOverflowMenu = false; showRefundDialog = true },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Clone Invoice") },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.cloneInvoice()
+                                },
+                            )
+                            HorizontalDivider()
+                            val invNum = invoice?.orderId ?: invoiceId.toString()
+                            val phone = invoice?.let {
+                                // phone not on InvoiceEntity; use null — InvoiceSendActions will disable SMS
+                                null as String?
+                            }
+                            val email = null as String? // not on entity; will disable Email button
+                            val url = state.serverUrl
+                            DropdownMenuItem(
+                                text = { Text("Send SMS") },
+                                leadingIcon = { Icon(Icons.Default.Sms, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
+                                    sendSms(context, phone, invNum, link)
+                                },
+                                enabled = !phone.isNullOrBlank(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Send Email") },
+                                leadingIcon = { Icon(Icons.Default.Email, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
+                                    sendEmail(context, email, invNum, link)
+                                },
+                                enabled = !email.isNullOrBlank(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Share") },
+                                leadingIcon = { Icon(Icons.Default.Share, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
+                                    shareText(context, invNum, link)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Print") },
+                                leadingIcon = { Icon(Icons.Default.Print, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
+                                    printInvoice(context, invNum, link)
+                                },
                             )
                         }
                     }
@@ -467,6 +661,7 @@ fun InvoiceDetailScreen(
                     lineItems = state.lineItems,
                     payments = state.payments,
                     onlineDetailMessage = state.onlineDetailMessage,
+                    serverUrl = state.serverUrl,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                 )
@@ -481,6 +676,7 @@ private fun InvoiceDetailContent(
     lineItems: List<InvoiceLineItem>,
     payments: List<InvoicePayment>,
     onlineDetailMessage: String?,
+    serverUrl: String?,
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,
 ) {
@@ -538,47 +734,21 @@ private fun InvoiceDetailContent(
             )
         }
 
-        if (lineItems.isEmpty()) {
-            item {
-                BrandCard(modifier = Modifier.fillMaxWidth()) {
+        // InvoiceLineItemsTable — read-only table; embedded as a single item to
+        // avoid nested lazy list issues.
+        item {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                if (lineItems.isEmpty()) {
                     Text(
                         onlineDetailMessage ?: "No line items",
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-        } else {
-            items(lineItems, key = { it.id }) { item ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(item.name ?: "Item", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Qty: ${item.quantity ?: 1} x $${"%.2f".format(item.price ?: 0.0)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (item.sku != null) {
-                            Text(
-                                "SKU: ${item.sku}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = BrandMono.fontFamily,
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Text(
-                        "$${"%.2f".format(item.total ?: 0.0)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
+                } else {
+                    InvoiceLineItemsTable(
+                        lineItems = lineItems,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -682,6 +852,137 @@ private fun InvoiceDetailContent(
                         )
                     }
                 }
+            }
+        }
+
+        // Send / Share / Print actions
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Send & Share",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            InvoiceSendActions(
+                invoiceNumber = invoice.orderId.ifBlank { invoice.id.toString() },
+                customerPhone = null,  // not on InvoiceEntity; SMS button disabled gracefully
+                customerEmail = null,  // not on InvoiceEntity; Email button disabled gracefully
+                serverUrl = serverUrl,
+            )
+        }
+
+        // Status-change timeline
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Timeline",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            InvoiceTimelineSection(invoice = invoice, payments = payments)
+        }
+    }
+}
+
+/**
+ * Synthetic timeline built from the payments list + invoice creation date.
+ *
+ * A server-side /invoices/{id}/history endpoint does not exist yet; this derives
+ * events from the data already available to avoid a 404. When the endpoint is added,
+ * replace this with a real TicketHistoryTimeline-style component.
+ */
+@Composable
+private fun InvoiceTimelineSection(
+    invoice: InvoiceEntity,
+    payments: List<InvoicePayment>,
+) {
+    data class TimelineEvent(val label: String, val date: String, val isFirst: Boolean = false)
+
+    val events = buildList {
+        add(TimelineEvent("Invoice created", invoice.createdAt.take(16).replace("T", " "), isFirst = true))
+        payments.sortedBy { it.paymentDate }.forEach { p ->
+            val method = p.method?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Payment"
+            val amt = "$${"%.2f".format(p.amount ?: 0.0)}"
+            val suffix = if (p.status == "voided") " (voided)" else ""
+            add(TimelineEvent("$method $amt recorded$suffix", p.paymentDate?.take(10) ?: ""))
+        }
+        if (invoice.status.equals("Voided", ignoreCase = true)) {
+            add(TimelineEvent("Invoice voided", invoice.updatedAt.take(10)))
+        } else if (invoice.amountDue <= 0L && invoice.amountPaid > 0L) {
+            add(TimelineEvent("Invoice fully paid", invoice.updatedAt.take(10)))
+        }
+    }
+
+    if (events.isEmpty()) {
+        BrandCard(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "No timeline events yet.",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        events.forEachIndexed { index, event ->
+            InvoiceTimelineRow(event = event, label = event.label, date = event.date, isLast = index == events.lastIndex)
+        }
+    }
+}
+
+@Composable
+private fun InvoiceTimelineRow(
+    event: Any,
+    label: String,
+    date: String,
+    isLast: Boolean,
+) {
+    val dotColor = MaterialTheme.colorScheme.primary
+    val lineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(24.dp),
+        ) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(dotColor, CircleShape),
+            )
+            if (!isLast) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(lineColor),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = if (isLast) 0.dp else 12.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.bodySmall)
+            if (date.isNotBlank()) {
+                Text(
+                    date,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

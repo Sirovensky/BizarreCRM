@@ -166,3 +166,35 @@ data class CreateInvoiceRequest(
     @SerializedName("due_date")
     val dueDate: String? = null,
 )
+
+// ── Stats DTO ────────────────────────────────────────────────────────────────
+
+/**
+ * Aggregate invoice totals returned by GET /invoices/stats.
+ * All amounts are in dollars (server returns doubles).
+ * 404 → tolerated; UI skips the stats header.
+ */
+data class InvoiceStatsData(
+    @SerializedName("total_unpaid")
+    val totalUnpaid: Double = 0.0,
+    @SerializedName("total_paid")
+    val totalPaid: Double = 0.0,
+    @SerializedName("total_overdue")
+    val totalOverdue: Double = 0.0,
+    @SerializedName("count_unpaid")
+    val countUnpaid: Int = 0,
+    @SerializedName("count_overdue")
+    val countOverdue: Int = 0,
+)
+
+// ── Refund DTO ───────────────────────────────────────────────────────────────
+
+/**
+ * Request body for POST /refunds.
+ */
+data class IssueRefundRequest(
+    @SerializedName("invoice_id")
+    val invoiceId: Long,
+    val amount: Double,
+    val reason: String? = null,
+)

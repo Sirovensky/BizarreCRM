@@ -4,6 +4,8 @@ import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
+import com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData
+import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -19,6 +21,13 @@ interface InvoiceApi {
     @GET("invoices/{id}")
     suspend fun getInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>
 
+    /**
+     * Aggregate stats: total unpaid / paid / overdue amounts.
+     * 404 → tolerated; callers should gracefully skip the stats header.
+     */
+    @GET("invoices/stats")
+    suspend fun getStats(): ApiResponse<InvoiceStatsData>
+
     /** Create a new invoice. Server requires at least one line item and a valid customer_id. */
     @POST("invoices")
     suspend fun createInvoice(@Body body: CreateInvoiceRequest): ApiResponse<InvoiceDetailData>
@@ -28,4 +37,18 @@ interface InvoiceApi {
 
     @POST("invoices/{id}/void")
     suspend fun voidInvoice(@Path("id") id: Long): ApiResponse<Unit>
+
+    /**
+     * Issue a refund against a paid invoice.
+     * 404 → endpoint not yet deployed; callers catch and display stub.
+     */
+    @POST("refunds")
+    suspend fun issueRefund(@Body request: IssueRefundRequest): ApiResponse<Unit>
+
+    /**
+     * Clone an existing invoice (creates a new Draft copy).
+     * 404 → endpoint not yet deployed; callers catch and display stub.
+     */
+    @POST("invoices/{id}/clone")
+    suspend fun cloneInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>
 }
