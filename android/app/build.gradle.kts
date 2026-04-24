@@ -245,6 +245,9 @@ dependencies {
     // TwoFaVerifyStep field (§2.4 L302).
     implementation(libs.play.services.auth.api.phone)
 
+    // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
+    lintChecks(project(":lint-rules"))
+
     // Testing — unit test baseline
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

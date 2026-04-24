@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BizarreCRM"
 include(":app")
+include(":lint-rules")
