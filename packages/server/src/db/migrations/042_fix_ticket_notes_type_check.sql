@@ -21,7 +21,11 @@ CREATE TABLE ticket_notes_new (
     updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO ticket_notes_new SELECT * FROM ticket_notes;
+INSERT INTO ticket_notes_new
+  (id, ticket_id, ticket_device_id, user_id, type, content, is_flagged, parent_id, created_at, updated_at)
+SELECT
+  id, ticket_id, ticket_device_id, user_id, type, content, is_flagged, parent_id, created_at, updated_at
+FROM ticket_notes;
 
 DROP TABLE ticket_notes;
 

@@ -62,6 +62,10 @@ export function runMigrations(db: any): void {
     // better-sqlite3 also locks sqlite_master in defensive mode by default.
     // unsafeMode(true) unlocks it for the duration of the exec and is
     // deterministically restored in the finally block.
+    // Directive syntax accepts any trailing content on the same line, e.g.:
+    //   -- @no-transaction
+    //   -- @no-transaction — reason: PRAGMA foreign_keys cannot toggle mid-tx
+    // Everything matched by \b after "@no-transaction" is ignored.
     const noTransaction = /^[\t ]*--\s*@no-transaction\b/m.test(sql);
 
     try {
