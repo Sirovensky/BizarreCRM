@@ -34,6 +34,7 @@ import com.bizarreelectronics.crm.service.WebSocketService
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -257,6 +258,9 @@ fun SettingsScreen(
     onSharedDevice: (() -> Unit)? = null,
     // §3.13 L565–L567 — opens the Display sub-screen (queue board + keep-screen-on).
     onDisplay: (() -> Unit)? = null,
+    // §3.19 L613–L616 — opens the Appearance / dashboard density picker.
+    // Nullable so previews and callers that don't wire it can omit it.
+    onAppearance: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -331,6 +335,19 @@ fun SettingsScreen(
                     icon = Icons.Default.Tv,
                     title = "Display",
                     onClick = onDisplay,
+                )
+            }
+
+            // §3.19 L613–L616 — Appearance / dashboard density sub-screen.
+            // Placed immediately after Display so layout-related settings are grouped
+            // together. Subtitle shows the currently active density mode.
+            if (onAppearance != null) {
+                val currentDensity = viewModel.appPreferences.dashboardDensity
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.GridView,
+                    title = "Dashboard Density",
+                    subtitle = currentDensity.name,
+                    onClick = onAppearance,
                 )
             }
 

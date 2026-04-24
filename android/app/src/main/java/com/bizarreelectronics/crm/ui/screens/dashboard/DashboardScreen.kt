@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.theme.*
+import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
 import com.bizarreelectronics.crm.data.local.db.dao.NotificationDao
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -1541,6 +1542,9 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
 private fun InsightsSection(viewModel: DashboardViewModel) {
     val windowMode = rememberWindowMode()
     val isTwoCol = windowMode != WindowMode.Phone
+    // §3.19 L615 — BI widgets section spacing follows LocalDashboardDensity.
+    val dashboardDensity = LocalDashboardDensity.current
+    val sectionSpacing = dashboardDensity.baseSpacing
 
     // Collect all BI state flows
     val profitTrend by viewModel.profitTrend.collectAsState()
@@ -1559,8 +1563,8 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = sectionSpacing),
+        verticalArrangement = Arrangement.spacedBy(sectionSpacing),
     ) {
         // Section heading
         Text(
@@ -1573,7 +1577,7 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
             // 2-column layout for tablet/desktop
             // Row 1: Profit Hero + Repeat Customer
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(sectionSpacing),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 ProfitHeroCard(
@@ -1590,7 +1594,7 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
             }
             // Row 2: Churn Alert + Forecast
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(sectionSpacing),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 ChurnAlertCard(

@@ -78,6 +78,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
 import com.bizarreelectronics.crm.ui.screens.settings.ThemeScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
+import com.bizarreelectronics.crm.ui.screens.settings.AppearanceScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DisplaySettingsScreen
 import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
@@ -319,6 +320,9 @@ sealed class Screen(val route: String) {
 
     // §3.13 L565–L567 — Display sub-screen (TV queue board + keep-screen-on toggle).
     data object DisplaySettings : Screen("settings/display")
+
+    // §3.19 L613–L616 — Appearance / dashboard density picker.
+    data object Appearance : Screen("settings/appearance")
 
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
@@ -1352,6 +1356,8 @@ fun AppNavGraph(
                     onRateLimitBuckets = { navController.navigate(Screen.RateLimitBuckets.route) },
                     // §3.13 L565–L567 — Display sub-screen (TV queue board + keep-screen-on).
                     onDisplay = { navController.navigate(Screen.DisplaySettings.route) },
+                    // §3.19 L613–L616 — Appearance / dashboard density picker.
+                    onAppearance = { navController.navigate(Screen.Appearance.route) },
                 )
             }
             // §3.13 L565–L567 — Display settings sub-screen.
@@ -1361,6 +1367,10 @@ fun AppNavGraph(
                     // Navigate to TV queue board; board calls onExitRequest → PIN → popBackStack.
                     onActivateBoard = { navController.navigate(Screen.TvQueueBoard.route) },
                 )
+            }
+            // §3.19 L613–L616 — Appearance / dashboard density picker.
+            composable(Screen.Appearance.route) {
+                AppearanceScreen(onBack = { navController.popBackStack() })
             }
             // §3.13 L565–L567 — Full-screen TV queue board.
             // Exit: 3-finger tap → navigate to PinLockScreen with onUnlocked → popBackStack().

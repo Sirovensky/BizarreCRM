@@ -32,9 +32,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.DashboardDensity
+import com.bizarreelectronics.crm.ui.theme.ErrorRed
+import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.ui.theme.WarningAmber
-import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.util.WindowMode
 import com.bizarreelectronics.crm.util.rememberWindowMode
 
@@ -56,11 +58,15 @@ data class KpiTile(
 )
 
 /**
- * §3 L488 — Responsive KPI grid.
+ * §3 L488 / §3.19 L613 — Responsive KPI grid with density-mode support.
  *
- * Phone  (< 600 dp)  : 2 columns
- * Tablet (600–839 dp): 3 columns
- * Desktop(≥ 840 dp)  : 4 columns
+ * Column count and spacing are driven by [LocalDashboardDensity]:
+ *
+ * | Density     | Phone | Tablet/Desktop |
+ * |-------------|-------|----------------|
+ * | Comfortable | 1     | 2              |
+ * | Cozy        | 2     | 3              |
+ * | Compact     | 3     | 4              |
  *
  * Uses WindowMode from [rememberWindowMode] — same helper used throughout
  * the app so layout reacts to foldable posture and multi-window resize.
@@ -71,23 +77,21 @@ fun KpiGrid(
     modifier: Modifier = Modifier,
 ) {
     val windowMode = rememberWindowMode()
-    val columnCount = when (windowMode) {
-        WindowMode.Phone -> 2
-        WindowMode.Tablet -> 3
-        WindowMode.Desktop -> 4
-    }
+    val density = LocalDashboardDensity.current
+    val columnCount = density.columnsForWindowSize(windowMode)
+    val spacing = density.baseSpacing
 
     val rows = tiles.chunked(columnCount)
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         rows.forEach { rowTiles ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = spacing),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
             ) {
                 rowTiles.forEach { tile ->
                     KpiTileCard(tile = tile, modifier = Modifier.weight(1f))

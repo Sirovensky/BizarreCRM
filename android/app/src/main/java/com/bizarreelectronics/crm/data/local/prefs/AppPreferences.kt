@@ -11,10 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.bizarreelectronics.crm.ui.theme.DashboardDensity
+import com.bizarreelectronics.crm.ui.theme.DashboardDensity.Companion.toKey
 
 @Singleton
 class AppPreferences @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
@@ -685,5 +687,63 @@ class AppPreferences @Inject constructor(
             .putString("morning_checklist_last_date", dateKey)
             .putLong("morning_checklist_last_staff_$dateKey", staffId)
             .apply()
+    }
+
+    // --- §3.19 L613–L616 — Dashboard density mode ------------------------------
+    //
+    // Three modes: "comfortable" (default phone) / "cozy" (default tablet) / "compact".
+    //
+    // Default is determined once at init-time from the screen width so a fresh
+    // tablet install starts at Cozy (more information) and a phone install starts
+    // at Comfortable (more breathing room). The check uses DisplayMetrics.widthPixels
+    // divided by density to obtain logical dp — the same breakpoint as WindowMode.
+    //
+    // Shared-device gate: when sharedDeviceModeEnabled = true, the density
+    // preference is ignored by DashboardScreen and always reads Comfortable so
+    // the counter-kiosk view is predictable for every staff member. The pref
+    // is still persisted and written normally so switching back to personal
+    // mode restores the user's last choice without re-prompting.
+
+    private val defaultDensityKey: String by lazy {
+        val metrics = context.resources.displayMetrics
+        val widthDp = metrics.widthPixels / metrics.density
+        if (widthDp >= 600f) DashboardDensity.Cozy.toKey() else DashboardDensity.Comfortable.toKey()
+    }
+
+    private val _dashboardDensityFlow = MutableStateFlow(
+        DashboardDensity.fromKey(prefs.getString("dashboard_density", null) ?: defaultDensityKey),
+    )
+
+    /**
+     * §3.19 L613 — observable dashboard density.
+     *
+     * Collect in [MainActivity] via [collectAsState] to reactively provide
+     * [com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity] around the
+     * content tree. Defaults to [DashboardDensity.Comfortable] on phones and
+     * [DashboardDensity.Cozy] on tablets for fresh installs.
+     */
+    val dashboardDensityFlow: Flow<DashboardDensity> = _dashboardDensityFlow.asStateFlow()
+
+    /**
+     * §3.19 L613 — current dashboard density (non-reactive snapshot).
+     *
+     * Prefer [dashboardDensityFlow] in Compose; use this getter only from
+     * non-composable call sites (e.g. ViewModel init).
+     */
+    val dashboardDensity: DashboardDensity
+        get() = DashboardDensity.fromKey(
+            prefs.getString("dashboard_density", null) ?: defaultDensityKey,
+        )
+
+    /**
+     * §3.19 L613 — persist the user's chosen density and emit to [dashboardDensityFlow].
+     *
+     * Writing this pref causes [dashboardDensityFlow] to emit immediately so
+     * [MainActivity] can update [com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity]
+     * within the same Compose recomposition cycle — no activity recreate needed.
+     */
+    fun setDashboardDensity(density: DashboardDensity) {
+        prefs.edit().putString("dashboard_density", density.toKey()).apply()
+        _dashboardDensityFlow.value = density
     }
 }

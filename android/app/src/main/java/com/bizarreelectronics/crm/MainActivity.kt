@@ -9,6 +9,7 @@ import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +26,8 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.ui.theme.DashboardDensity
+import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.RateLimiter
@@ -236,6 +239,20 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
+            // §3.19 L613 — observe dashboardDensityFlow so LocalDashboardDensity
+            // updates reactively whenever the user changes the pref on AppearanceScreen.
+            // Shared-device gate: when sharedDeviceModeEnabled = true, always serve
+            // Comfortable regardless of the persisted preference so every staff
+            // member on the kiosk sees the same predictable layout.
+            val rawDensity by appPreferences.dashboardDensityFlow.collectAsState(
+                initial = appPreferences.dashboardDensity,
+            )
+            val sharedDeviceMode by appPreferences.sharedDeviceModeFlow.collectAsState(
+                initial = appPreferences.sharedDeviceModeEnabled,
+            )
+            val dashboardDensity = if (sharedDeviceMode) DashboardDensity.Comfortable else rawDensity
+
+            CompositionLocalProvider(LocalDashboardDensity provides dashboardDensity) {
             BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
                 // §1.7 line 238 — lock state is owned by lockedState (Activity level)
                 // so onResume can set it to true when the inactivity threshold has
@@ -297,6 +314,7 @@ class MainActivity : FragmentActivity() {
                     )
                 }
             }
+            } // end CompositionLocalProvider(LocalDashboardDensity)
         }
     }
 
