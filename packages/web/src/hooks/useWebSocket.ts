@@ -360,10 +360,24 @@ export function useWebSocket() {
     };
     window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
 
+    // When auth becomes available (login, switchUser, or silent refresh),
+    // (re)connect immediately instead of waiting for the next tab-visibility
+    // change. The initial connect() at mount-time can legitimately fail if
+    // the token arrives a beat after the AppShell renders; this event closes
+    // that gap and also covers the cross-tab case where another tab refreshes
+    // the token while this tab is visible.
+    const handleAuthReady = () => {
+      authRejectedRef.current = false;
+      backoffRef.current = INITIAL_BACKOFF;
+      if (!wsRef.current) connect();
+    };
+    window.addEventListener('bizarre-crm:auth-ready', handleAuthReady);
+
     return () => {
       unmountedRef.current = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
+      window.removeEventListener('bizarre-crm:auth-ready', handleAuthReady);
       disconnect();
     };
   }, [connect, disconnect]); // mount-only: disconnect is stable (useCallback with stable deps)

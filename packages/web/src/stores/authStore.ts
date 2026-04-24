@@ -8,6 +8,7 @@ import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 // logging in as user B would inherit user A's React Query cache, plan/usage
 // data, and last-message WebSocket state.
 const AUTH_CLEAR_EVENT = 'bizarre-crm:auth-cleared';
+const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
 function emitAuthCleared(): void {
   if (typeof window === 'undefined') return;
   try {
@@ -16,7 +17,19 @@ function emitAuthCleared(): void {
     console.warn('Failed to emit auth-cleared event', err);
   }
 }
-export { AUTH_CLEAR_EVENT };
+// Fired whenever a fresh access token becomes available (login, switchUser,
+// or silent refresh via checkAuth). Listeners like useWebSocket use this to
+// (re)connect now that authentication is live, rather than waiting for the
+// next tab-visibility change.
+function emitAuthReady(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent(AUTH_READY_EVENT));
+  } catch (err) {
+    console.warn('Failed to emit auth-ready event', err);
+  }
+}
+export { AUTH_CLEAR_EVENT, AUTH_READY_EVENT };
 
 // TODO(LOW, §26, DASH-6): Token expiry warning — implement when ready
 // To add a "session expiring" warning:
@@ -53,6 +66,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Only store access token in localStorage; refresh token is in httpOnly cookie
     localStorage.setItem('accessToken', accessToken);
     set({ user, isAuthenticated: true, isLoading: false });
+    emitAuthReady();
   },
 
   logout: async () => {
@@ -69,6 +83,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { accessToken, user } = res.data.data;
     localStorage.setItem('accessToken', accessToken);
     set({ user, isAuthenticated: true });
+    emitAuthReady();
   },
 
   checkAuth: async () => {
@@ -80,6 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         const { accessToken, user } = refreshRes.data.data;
         localStorage.setItem('accessToken', accessToken);
         set({ user, isAuthenticated: true, isLoading: false });
+        emitAuthReady();
         return;
       } catch {
         set({ isLoading: false, isAuthenticated: false });
@@ -89,6 +105,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await api.get('/auth/me');
       set({ user: res.data.data, isAuthenticated: true, isLoading: false });
+      emitAuthReady();
     } catch {
       // Access token expired — try refresh before logging out
       try {
@@ -96,6 +113,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         const { accessToken, user } = refreshRes.data.data;
         localStorage.setItem('accessToken', accessToken);
         set({ user, isAuthenticated: true, isLoading: false });
+        emitAuthReady();
       } catch {
         localStorage.removeItem('accessToken');
         set({ user: null, isAuthenticated: false, isLoading: false });
