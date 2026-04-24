@@ -101,7 +101,10 @@ export function InvoiceListPage() {
   });
 
   const { data: statsData } = useQuery({
-    queryKey: ['invoice-stats'],
+    // Include the active filters in the cache key so the stats chart refetches
+    // when the user changes date range or status tab; otherwise the charts
+    // show stale aggregates from the last filter combination.
+    queryKey: ['invoice-stats', { status, dateRange }],
     queryFn: () => invoiceApi.stats(),
   });
 
@@ -121,8 +124,14 @@ export function InvoiceListPage() {
   const statusDist: any[] = stats?.status_distribution || [];
   const methodDist: any[] = stats?.method_distribution || [];
 
-  const statusPieData = statusDist.map(s => ({ name: s.status, value: s.count }));
-  const methodPieData = methodDist.map(m => ({ name: m.method || 'Unknown', value: m.count }));
+  const statusPieData = useMemo(
+    () => statusDist.map(s => ({ name: s.status, value: s.count })),
+    [statusDist],
+  );
+  const methodPieData = useMemo(
+    () => methodDist.map(m => ({ name: m.method || 'Unknown', value: m.count })),
+    [methodDist],
+  );
 
   // Bulk action mutation
   const bulkMut = useMutation({
