@@ -80,4 +80,30 @@ class DeepLinkBus @Inject constructor() {
     fun consumeSsoResult() {
         _pendingSsoResult.value = null
     }
+
+    // §2.21 L454 — Magic-link token bus.
+    //
+    // MainActivity.resolveDeepLink recognises both:
+    //   https://app.bizarrecrm.com/magic/<token>   (HTTPS App Link)
+    //   bizarrecrm://magic/<token>                  (custom scheme)
+    // After DeepLinkAllowlist validates the token shape, MainActivity calls
+    // [publishMagicLinkToken] and returns null (no nav route — VM handles it).
+    // LoginViewModel collects from [pendingMagicToken] and dispatches the
+    // phishing-defense preview + exchange call.
+    // Consumers MUST call [consumeMagicToken] after processing.
+
+    private val _pendingMagicToken = MutableStateFlow<String?>(null)
+
+    /** Collected by LoginViewModel to exchange a magic-link token for session tokens. */
+    val pendingMagicToken: StateFlow<String?> = _pendingMagicToken.asStateFlow()
+
+    /** Called by MainActivity when a magic-link URI is received. */
+    fun publishMagicLinkToken(token: String) {
+        _pendingMagicToken.value = token
+    }
+
+    /** Called by the ViewModel after [pendingMagicToken] has been processed. */
+    fun consumeMagicToken() {
+        _pendingMagicToken.value = null
+    }
 }

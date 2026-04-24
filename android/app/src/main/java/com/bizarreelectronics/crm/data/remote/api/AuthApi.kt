@@ -3,6 +3,10 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorFactorDto
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.MagicLinkRequest
+import com.bizarreelectronics.crm.data.remote.dto.MagicLinkTokenExchange
+import com.bizarreelectronics.crm.data.remote.dto.MagicLinkExchangeResponse
+import com.bizarreelectronics.crm.data.remote.dto.TenantMeResponse
 import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
 import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginRequest
@@ -145,4 +149,29 @@ interface AuthApi {
 
     @POST("auth/sso/token-exchange")
     suspend fun tokenExchange(@Body request: SsoTokenExchangeRequest): ApiResponse<TwoFactorResponse>
+
+    // §2.21 L454 — Magic-link login.
+    //
+    // POST /auth/magic-link/request — dispatches a signed one-time link to [email].
+    //   Body: MagicLinkRequest { email }
+    //   Response: MessageResponse { message }
+    //   404 → magic-link login is disabled for this tenant; caller hides the button.
+    //
+    // POST /auth/magic-link/exchange — redeems the token from the App Link URI.
+    //   Body: MagicLinkTokenExchange { token, deviceFingerprint }
+    //   Same-device path: returns { accessToken, refreshToken, user }.
+    //   Different-device path: returns { requires_2fa: true, challengeToken }.
+    //   404 → magic-link login is disabled; caller surfaces a graceful error.
+    //   Token is one-time-use; server enforces 15-minute TTL.
+    //
+    // GET /tenants/me — returns TenantMeResponse.  When magic_links_enabled = false
+    //   the "Email me a link" button is hidden on the credentials step (opt-out model).
+    @POST("auth/magic-link/request")
+    suspend fun requestMagicLink(@Body request: MagicLinkRequest): ApiResponse<MessageResponse>
+
+    @POST("auth/magic-link/exchange")
+    suspend fun exchangeMagicLink(@Body request: MagicLinkTokenExchange): ApiResponse<MagicLinkExchangeResponse>
+
+    @GET("tenants/me")
+    suspend fun getTenantMe(): ApiResponse<TenantMeResponse>
 }

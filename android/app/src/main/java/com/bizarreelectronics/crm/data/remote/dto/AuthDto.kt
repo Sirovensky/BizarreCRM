@@ -262,6 +262,68 @@ data class SsoTokenExchangeRequest(
 )
 
 /**
+ * §2.21 L454 — Magic-link DTOs.
+ *
+ * POST /auth/magic-link/request — sends a one-time sign-in link to the user's email.
+ *   Body: { email }
+ *   Response: MessageResponse { message }
+ *   404 → tenant has disabled magic-link login; caller hides the button.
+ *
+ * POST /auth/magic-link/exchange — exchanges the token from the link for session tokens.
+ *   Body: { token, deviceFingerprint }
+ *   Response: MagicLinkExchangeResponse { accessToken, refreshToken, user,
+ *             requires_2fa?, expiresAt? }
+ *   Same-device (fingerprint matches) → tokens issued immediately.
+ *   Different device → requires_2fa = true; caller pushes TwoFaVerify step.
+ *   404 → tenant has disabled magic-link login.
+ */
+data class MagicLinkRequest(
+    @SerializedName("email") val email: String,
+)
+
+data class MagicLinkTokenExchange(
+    @SerializedName("token")             val token: String,
+    @SerializedName("deviceFingerprint") val deviceFingerprint: String,
+)
+
+/**
+ * Response from POST /auth/magic-link/exchange.
+ *
+ * [accessToken] + [refreshToken] + [user] are present when the exchange is complete
+ * (same-device or server skips 2FA for magic links).
+ *
+ * [requires2fa] = true when the server wants a second factor before issuing tokens
+ * (different-device scenario). In this case the client must push [SetupStep.TWO_FA_VERIFY]
+ * with [challengeToken] forwarded as the challenge.
+ *
+ * [expiresAt] — ISO-8601 string; when present the exchange UI shows a countdown.
+ * [tenantName] — optional tenant display name for the phishing-defense preview card.
+ */
+data class MagicLinkExchangeResponse(
+    @SerializedName("accessToken")   val accessToken: String? = null,
+    @SerializedName("refreshToken")  val refreshToken: String? = null,
+    @SerializedName("user")          val user: UserDto? = null,
+    @SerializedName("requires_2fa")  val requires2fa: Boolean = false,
+    @SerializedName("challengeToken") val challengeToken: String? = null,
+    @SerializedName("expires_at")    val expiresAt: String? = null,
+    @SerializedName("tenantName")    val tenantName: String? = null,
+)
+
+/**
+ * §2.21 L454 — Stub field added to the tenant-info response.
+ *
+ * When GET /tenants/me returns [magicLinksEnabled] = false the "Email me a link"
+ * button is hidden on the credentials step. The field defaults to true so that
+ * self-hosted servers that predate this field still show the button (opt-out model).
+ *
+ * Reuses the existing [TenantsApi] / [TenantSupportDto] path; this is a separate
+ * DTO fetched from GET /tenants/me (not /tenants/me/support-contact).
+ */
+data class TenantMeResponse(
+    @SerializedName("magic_links_enabled") val magicLinksEnabled: Boolean = true,
+)
+
+/**
  * §2.11 — Active session as returned by GET /auth/sessions.
  *
  * Fields mirror the server's session record. [current] is true for the

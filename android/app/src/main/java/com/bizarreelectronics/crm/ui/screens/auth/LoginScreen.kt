@@ -50,6 +50,7 @@ import androidx.fragment.app.FragmentActivity
 import com.bizarreelectronics.crm.data.local.prefs.BiometricCredentialStore
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.util.ClipboardUtil
+import com.bizarreelectronics.crm.util.DeviceBinding
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
 import com.bizarreelectronics.crm.util.DeepLinkBus
@@ -203,6 +204,40 @@ data class LoginUiState(
     // §2.20 — set to true after a successful SSO token exchange. LoginScreen
     // reacts by calling onLoginSuccess() and clearing this flag.
     val ssoLoginSuccess: Boolean = false,
+
+    // §2.21 L454 — Magic-link state.
+    // magicLinksEnabled: loaded from GET /tenants/me. Null = not yet probed
+    // (show button optimistically). False = tenant disabled; hide button.
+    val magicLinksEnabled: Boolean? = null,
+    // showMagicLinkSheet: true while the "Email me a link" bottom sheet is open.
+    val showMagicLinkSheet: Boolean = false,
+    // magicLinkEmail: controlled input in the bottom sheet.
+    val magicLinkEmail: String = "",
+    // magicLinkSent: true after a successful POST /auth/magic-link/request,
+    // switches the sheet to "Check your email" inline banner.
+    val magicLinkSent: Boolean = false,
+    // magicLinkLoading: true while the request POST is in flight.
+    val magicLinkLoading: Boolean = false,
+    // magicLinkError: inline error in the bottom sheet.
+    val magicLinkError: String? = null,
+    // magicLinkResendCooldownMs: System.currentTimeMillis() deadline before resend is allowed.
+    // Null = no cooldown active.
+    val magicLinkResendCooldownMs: Long? = null,
+
+    // Magic-link exchange state (token arrived from deep link).
+    // pendingMagicToken: the raw token from the deep link, pending user confirmation
+    // in the phishing-defense preview card.
+    val pendingMagicToken: String? = null,
+    // magicLinkTenantName: from MagicLinkExchangeResponse.tenantName, shown in preview card.
+    val magicLinkTenantName: String? = null,
+    // magicLinkExpiresAt: ISO-8601 expiry from exchange response; drives countdown display.
+    val magicLinkExpiresAt: String? = null,
+    // magicLinkExchangeLoading: true while POST /auth/magic-link/exchange is in flight.
+    val magicLinkExchangeLoading: Boolean = false,
+    // magicLinkExchangeError: shown in the phishing-defense preview card on failure.
+    val magicLinkExchangeError: String? = null,
+    // magicLinkLoginSuccess: set to true after a successful same-device exchange.
+    val magicLinkLoginSuccess: Boolean = false,
 )
 
 // ─── ViewModel ──────────────────────────────────────────────────────
@@ -327,6 +362,21 @@ class LoginViewModel @Inject constructor(
         // §2.20 L443 — load SSO providers on init so the button shows (or hides)
         // before the user reaches the credentials step. 404 is silenced.
         viewModelScope.launch { loadSsoProviders() }
+
+        // §2.21 L454 — probe magic-link feature flag from GET /tenants/me.
+        // 404 or any network failure defaults to enabled (opt-out model).
+        viewModelScope.launch { probemagicLinksEnabled() }
+
+        // §2.21 L454 — collect magic-link tokens published by MainActivity.
+        // DeepLinkBus.publishMagicLinkToken is called when a magic-link URI arrives.
+        viewModelScope.launch {
+            deepLinkBus.pendingMagicToken.collect { token ->
+                if (token != null) {
+                    deepLinkBus.consumeMagicToken()
+                    _state.value = _state.value.copy(pendingMagicToken = token)
+                }
+            }
+        }
 
         // §2.20 L446 — collect SSO callbacks published by MainActivity.
         // DeepLinkBus.publishSsoResult is called when bizarrecrm://sso/callback arrives.
@@ -1246,6 +1296,190 @@ class LoginViewModel @Inject constructor(
 
     // endregion
 
+    // region — §2.21 Magic-link
+
+    /**
+     * Probes GET /tenants/me for [TenantMeResponse.magicLinksEnabled].
+     * 404 or network failure → default to true (opt-out model; button shown).
+     */
+    private suspend fun probemagicLinksEnabled() {
+        try {
+            val response = authApi.getTenantMe()
+            val enabled = response.data?.magicLinksEnabled ?: true
+            _state.value = _state.value.copy(magicLinksEnabled = enabled)
+        } catch (_: Exception) {
+            // 404 or any failure → treat as enabled (opt-out model).
+            _state.value = _state.value.copy(magicLinksEnabled = true)
+        }
+    }
+
+    fun updateMagicLinkEmail(value: String) {
+        _state.value = _state.value.copy(magicLinkEmail = value, magicLinkError = null)
+    }
+
+    fun openMagicLinkSheet() {
+        _state.value = _state.value.copy(
+            showMagicLinkSheet = true,
+            magicLinkEmail = "",
+            magicLinkSent = false,
+            magicLinkError = null,
+            magicLinkResendCooldownMs = null,
+        )
+    }
+
+    fun closeMagicLinkSheet() {
+        _state.value = _state.value.copy(
+            showMagicLinkSheet = false,
+            magicLinkEmail = "",
+            magicLinkSent = false,
+            magicLinkError = null,
+            magicLinkResendCooldownMs = null,
+        )
+    }
+
+    /**
+     * Sends POST /auth/magic-link/request {email}.
+     * On success: shows "Check your email" banner and starts 30-second resend cooldown.
+     * 404 → feature disabled; surfaces graceful error.
+     */
+    fun requestMagicLink() {
+        val s = _state.value
+        val emailRegex = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+        val email = s.magicLinkEmail.trim()
+        if (email.isBlank() || !emailRegex.matches(email)) {
+            _state.value = s.copy(magicLinkError = "Enter a valid email address")
+            return
+        }
+        _state.value = s.copy(magicLinkLoading = true, magicLinkError = null)
+        viewModelScope.launch {
+            try {
+                authApi.requestMagicLink(
+                    com.bizarreelectronics.crm.data.remote.dto.MagicLinkRequest(email = email),
+                )
+                _state.value = _state.value.copy(
+                    magicLinkLoading = false,
+                    magicLinkSent = true,
+                    magicLinkResendCooldownMs = System.currentTimeMillis() + 30_000L,
+                )
+            } catch (e: retrofit2.HttpException) {
+                val msg = when (e.code()) {
+                    404  -> "Magic-link login is not available on this server."
+                    429  -> "Too many requests. Please wait before trying again."
+                    else -> "Failed to send link (${e.code()}). Try again."
+                }
+                _state.value = _state.value.copy(magicLinkLoading = false, magicLinkError = msg)
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(
+                    magicLinkLoading = false,
+                    magicLinkError = "Could not send the link. Check your connection.",
+                )
+            }
+        }
+    }
+
+    /** Clears the resend cooldown after the timer expires. */
+    fun clearMagicLinkResendCooldown() {
+        _state.value = _state.value.copy(magicLinkResendCooldownMs = null)
+    }
+
+    /**
+     * Called by the phishing-defense preview card when the user taps "Continue".
+     * Validates token regex then calls POST /auth/magic-link/exchange.
+     *
+     * Same-device (server fingerprint matches) → [TwoFactorResponse] tokens issued;
+     * set magicLinkLoginSuccess = true.
+     * Different device → server returns requires_2fa = true; advance to TWO_FA_VERIFY.
+     * 404 → feature disabled; surface error.
+     */
+    fun exchangeMagicLink(context: android.content.Context) {
+        val s = _state.value
+        val token = s.pendingMagicToken ?: return
+        // Client-side token shape guard (belt-and-suspenders; server validates too).
+        val tokenPattern = Regex("^[A-Za-z0-9_-]{20,128}$")
+        if (!tokenPattern.matches(token)) {
+            _state.value = s.copy(
+                magicLinkExchangeError = "Invalid sign-in link. Request a new one.",
+                pendingMagicToken = null,
+            )
+            return
+        }
+        val fingerprint = DeviceBinding.fingerprint(context)
+        _state.value = s.copy(magicLinkExchangeLoading = true, magicLinkExchangeError = null)
+        viewModelScope.launch {
+            try {
+                val response = authApi.exchangeMagicLink(
+                    com.bizarreelectronics.crm.data.remote.dto.MagicLinkTokenExchange(
+                        token = token,
+                        deviceFingerprint = fingerprint,
+                    ),
+                )
+                val data = response.data ?: throw Exception("Empty exchange response")
+                if (data.requires2fa) {
+                    // Different-device path: push to 2FA verify step.
+                    val challengeToken = data.challengeToken
+                        ?: throw Exception("No challenge token for 2FA")
+                    _state.value = _state.value.copy(
+                        magicLinkExchangeLoading = false,
+                        pendingMagicToken = null,
+                        challengeToken = challengeToken,
+                        challengeTokenExpiresAtMs = System.currentTimeMillis() + 600_000L,
+                        challengeExpired = false,
+                        step = SetupStep.TWO_FA_VERIFY,
+                    )
+                } else {
+                    // Same-device path: tokens issued immediately.
+                    val accessToken = data.accessToken
+                        ?: throw Exception("No access token in exchange response")
+                    val user = data.user ?: throw Exception("No user in exchange response")
+                    authPreferences.saveUser(
+                        token = accessToken,
+                        refreshToken = data.refreshToken,
+                        id = user.id,
+                        username = user.username,
+                        firstName = user.firstName,
+                        lastName = user.lastName,
+                        role = user.role,
+                    )
+                    _state.value = _state.value.copy(
+                        magicLinkExchangeLoading = false,
+                        pendingMagicToken = null,
+                        magicLinkLoginSuccess = true,
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                val msg = when (e.code()) {
+                    404  -> "Magic-link login is not available on this server."
+                    410  -> "This sign-in link has expired or already been used. Request a new one."
+                    else -> "Sign-in failed (${e.code()}). Request a new link."
+                }
+                _state.value = _state.value.copy(
+                    magicLinkExchangeLoading = false,
+                    magicLinkExchangeError = msg,
+                    pendingMagicToken = null,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    magicLinkExchangeLoading = false,
+                    magicLinkExchangeError = "Sign-in failed: ${e.message}",
+                    pendingMagicToken = null,
+                )
+            }
+        }
+    }
+
+    fun dismissMagicLinkPreview() {
+        _state.value = _state.value.copy(
+            pendingMagicToken = null,
+            magicLinkExchangeError = null,
+        )
+    }
+
+    fun clearMagicLinkLoginSuccess() {
+        _state.value = _state.value.copy(magicLinkLoginSuccess = false)
+    }
+
+    // endregion
+
     private fun extractErrorMessage(e: Exception): String {
         // Try to extract server error message from Retrofit HttpException
         if (e is retrofit2.HttpException) {
@@ -1355,6 +1589,31 @@ fun LoginScreen(
             viewModel.clearSsoLoginSuccess()
             onLoginSuccess()
         }
+    }
+
+    // §2.21 L454 — magic-link same-device exchange success: navigate to dashboard.
+    val magicLinkLoginSuccess = state.magicLinkLoginSuccess
+    LaunchedEffect(magicLinkLoginSuccess) {
+        if (magicLinkLoginSuccess) {
+            viewModel.clearMagicLinkLoginSuccess()
+            onLoginSuccess()
+        }
+    }
+
+    // §2.21 L454 — phishing-defense preview card: shown when a magic-link token
+    // arrives via deep link (pendingMagicToken != null). The card is rendered as
+    // a full-screen overlay so it pre-empts any other content.
+    val pendingMagicToken = state.pendingMagicToken
+    if (pendingMagicToken != null) {
+        MagicLinkPreviewDialog(
+            token = pendingMagicToken,
+            tenantName = state.magicLinkTenantName,
+            expiresAt = state.magicLinkExpiresAt,
+            isLoading = state.magicLinkExchangeLoading,
+            error = state.magicLinkExchangeError,
+            onConfirm = { viewModel.exchangeMagicLink(context) },
+            onDismiss = { viewModel.dismissMagicLinkPreview() },
+        )
     }
 
     // §2.4 L301 — Backup codes display after enrollment success.
@@ -2619,6 +2878,267 @@ private fun CredentialsStep(
             }
         }
     }
+
+    // §2.21 L454 — "Email me a link" button + bottom sheet.
+    // Visible only when magic_links_enabled is true (or null = optimistic default).
+    // Hidden when the tenant has explicitly disabled magic-link login (false).
+    val magicLinksVisible = state.magicLinksEnabled != false
+    if (magicLinksVisible) {
+        Spacer(Modifier.height(if (ssoAvailable) 8.dp else 12.dp))
+        if (!ssoAvailable) {
+            // Only show divider when SSO is not also present (avoid double dividers).
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(12.dp))
+        }
+
+        TextButton(
+            onClick = { viewModel.openMagicLinkSheet() },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                Icons.Default.Email,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Email me a link",
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+
+        if (state.showMagicLinkSheet) {
+            MagicLinkRequestSheet(state = state, viewModel = viewModel)
+        }
+    }
+}
+
+/**
+ * §2.21 L454 — Bottom sheet: email input → POST /auth/magic-link/request.
+ *
+ * Two states:
+ *  - Email form (magicLinkSent = false): email field + "Send link" button.
+ *  - Sent banner (magicLinkSent = true): "Check your email" info + 30s resend cooldown.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel) {
+    ModalBottomSheet(onDismissRequest = { viewModel.closeMagicLinkSheet() }) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 40.dp)) {
+            Text(
+                "Sign in with a magic link",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "We'll send a one-time sign-in link to your email. The link expires in 15 minutes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            if (!state.magicLinkSent) {
+                // ── Email input form ──
+                OutlinedTextField(
+                    value = state.magicLinkEmail,
+                    onValueChange = viewModel::updateMagicLinkEmail,
+                    label = { Text("Email address") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { Icon(Icons.Default.Email, null) },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { viewModel.requestMagicLink() }),
+                    isError = state.magicLinkError != null,
+                    supportingText = state.magicLinkError?.let { err ->
+                        { Text(err, color = MaterialTheme.colorScheme.error) }
+                    },
+                )
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick = { viewModel.requestMagicLink() },
+                    enabled = state.magicLinkEmail.isNotBlank() && !state.magicLinkLoading,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) {
+                    if (state.magicLinkLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Text("Send link")
+                    }
+                }
+            } else {
+                // ── "Check your email" banner ──
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.MarkEmailRead,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Check your email",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Text(
+                                "A sign-in link was sent to ${state.magicLinkEmail}.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+
+                // 30-second resend cooldown ticker.
+                val cooldownMs = state.magicLinkResendCooldownMs
+                var cooldownSec by remember(cooldownMs) {
+                    mutableStateOf(
+                        if (cooldownMs == null) 0L
+                        else ((cooldownMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+                    )
+                }
+                LaunchedEffect(cooldownMs) {
+                    if (cooldownMs == null) { cooldownSec = 0L; return@LaunchedEffect }
+                    while (cooldownSec > 0L) {
+                        delay(1_000L)
+                        cooldownSec = ((cooldownMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+                    }
+                    viewModel.clearMagicLinkResendCooldown()
+                }
+
+                TextButton(
+                    onClick = {
+                        viewModel.requestMagicLink()
+                    },
+                    enabled = cooldownSec <= 0L && !state.magicLinkLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (cooldownSec > 0L) {
+                        Text("Resend in ${cooldownSec}s", style = MaterialTheme.typography.labelMedium)
+                    } else {
+                        Text("Resend link", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * §2.21 L454 — Phishing-defense preview card shown before exchanging a magic-link token.
+ *
+ * Renders as an AlertDialog with:
+ *  - Tenant name (from exchange response, or generic fallback).
+ *  - Link validity countdown (if expiresAt is present).
+ *  - "Continue" button that calls the exchange; "Cancel" dismisses without exchange.
+ *  - Inline error message on exchange failure.
+ *
+ * The user MUST tap "Continue" to confirm intent before any POST is sent.
+ */
+@Composable
+private fun MagicLinkPreviewDialog(
+    token: String,
+    tenantName: String?,
+    expiresAt: String?,
+    isLoading: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Suppress unused parameter lint — token is intentionally not displayed
+    // (showing the raw token would expose it to shoulder-surfing; the preview
+    // card shows only the tenant and expiry context).
+    @Suppress("UNUSED_VARIABLE")
+    val _unused = token
+
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        icon = {
+            Icon(
+                Icons.Default.Link,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        title = {
+            Text(
+                "Sign-in link received",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    buildString {
+                        append("You're about to sign in to ")
+                        append(tenantName?.takeIf { it.isNotBlank() } ?: "Bizarre CRM")
+                        append(".")
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (expiresAt != null) {
+                    Text(
+                        "This link is one-time-use and expires soon.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Only continue if you requested this link.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (error != null) {
+                    Text(
+                        error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !isLoading,
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text("Continue")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 // ─── Step 2b: Set Password ──────────────────────────────────────────

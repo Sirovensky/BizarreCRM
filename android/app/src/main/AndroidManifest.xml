@@ -212,6 +212,30 @@
                 <data android:scheme="bizarrecrm" android:host="sso" android:pathPrefix="/callback" />
             </intent-filter>
 
+            <!-- §2.21 L454 — Magic-link App Link: https://app.bizarrecrm.com/magic/<token>
+                 autoVerify=true causes the OS to verify /.well-known/assetlinks.json on
+                 app.bizarrecrm.com; falls back to browser until that route is deployed
+                 (same TODO as AUDIT-AND-019 for setup-token). Kept as a separate filter
+                 from the generic app.bizarrecrm.com filter to scope the pathPrefix tightly.
+                 MainActivity.resolveDeepLink validates the token via DeepLinkAllowlist and
+                 publishes it to DeepLinkBus.publishMagicLinkToken for VM-side exchange. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.bizarrecrm.com" android:pathPrefix="/magic/" />
+            </intent-filter>
+
+            <!-- §2.21 L454 — Magic-link custom-scheme variant: bizarrecrm://magic/<token>
+                 Used in QR codes, test-environment email links, and as a fallback when
+                 App Link verification has not yet completed on the device. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" android:host="magic" />
+            </intent-filter>
+
             <!-- Static shortcuts + App Actions metadata. -->
             <meta-data
                 android:name="android.app.shortcuts"

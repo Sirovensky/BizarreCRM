@@ -48,6 +48,15 @@ object DeepLinkAllowlist {
      * parametrized nav route `"login?setupToken=<token>"` so AppNavGraph can
      * deliver it to LoginScreen. Invalid or missing tokens fall through to null
      * (silent fallback to plain Login).
+     *
+     * §2.21 L454 — magic-link token handling:
+     * A candidate of the form `"magic/<token>"` is recognised as a magic-link
+     * sign-in deep link. The token is validated against [SETUP_TOKEN_PATTERN]
+     * (same 20–128 URL-safe chars pattern). A valid token is published to
+     * [DeepLinkBus.publishMagicLinkToken] by the caller (MainActivity) so the
+     * LoginViewModel can collect and dispatch the exchange call.
+     * Returns the sentinel string `"magic/<token>"` so the caller can distinguish
+     * the magic-link case from a nav-route case.
      */
     fun resolve(candidate: String?): String? {
         if (candidate.isNullOrBlank()) return null
@@ -62,6 +71,16 @@ object DeepLinkAllowlist {
             }
         }
 
+        // §2.21 L454 — magic-link sign-in: "magic/<token>"
+        if (candidate.startsWith("magic/")) {
+            val token = candidate.removePrefix("magic/")
+            return if (SETUP_TOKEN_PATTERN.matches(token)) {
+                "magic/$token" // sentinel returned to MainActivity; not a nav route
+            } else {
+                null // invalid token shape — silent fallback
+            }
+        }
+
         return if (candidate in routes) candidate else null
     }
 
@@ -72,6 +91,19 @@ object DeepLinkAllowlist {
      * before publishing the route.
      */
     fun validateSetupToken(token: String?): String? {
+        if (token.isNullOrBlank()) return null
+        return if (SETUP_TOKEN_PATTERN.matches(token)) token else null
+    }
+
+    /**
+     * §2.21 L454 — validates a raw magic-link token string.
+     * Returns non-null only when [token] satisfies [SETUP_TOKEN_PATTERN]
+     * (same 20–128 URL-safe base64 character pattern as setup tokens).
+     * Used by MainActivity to validate tokens extracted from both:
+     *   - HTTPS App Link URIs: https://app.bizarrecrm.com/magic/<token>
+     *   - Custom scheme URIs:  bizarrecrm://magic/<token>
+     */
+    fun validateMagicToken(token: String?): String? {
         if (token.isNullOrBlank()) return null
         return if (SETUP_TOKEN_PATTERN.matches(token)) token else null
     }

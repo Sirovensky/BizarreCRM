@@ -412,6 +412,7 @@ class MainActivity : FragmentActivity() {
 
         // §2.7 L330 — HTTPS App Link: https://bizarrecrm.com/setup/<token>
         //             or              https://app.bizarrecrm.com/setup/<token>
+        // §2.21 L454 — HTTPS App Link: https://app.bizarrecrm.com/magic/<token>
         // Host is validated against a hard-coded set — we never echo
         // attacker-supplied hosts. Token is validated via DeepLinkAllowlist.
         if (data.scheme == "https") {
@@ -424,6 +425,14 @@ class MainActivity : FragmentActivity() {
                     val token = com.bizarreelectronics.crm.util.DeepLinkAllowlist
                         .validateSetupToken(rawToken) ?: return null
                     return "login?setupToken=${Uri.encode(token)}"
+                }
+                // §2.21 L454 — magic-link: https://app.bizarrecrm.com/magic/<token>
+                if (segments.size == 2 && segments[0] == "magic") {
+                    val rawToken = segments[1]
+                    val token = com.bizarreelectronics.crm.util.DeepLinkAllowlist
+                        .validateMagicToken(rawToken) ?: return null
+                    deepLinkBus.publishMagicLinkToken(token)
+                    return null // no nav route — LoginViewModel handles token exchange
                 }
             }
             return null
@@ -442,6 +451,18 @@ class MainActivity : FragmentActivity() {
                 deepLinkBus.publishSsoResult(code, state)
             }
             return null // no nav route — VM handles the result via pendingSsoResult
+        }
+
+        // §2.21 L454 — magic-link custom scheme: bizarrecrm://magic/<token>
+        // Recognised before the generic whitelist so the token can be extracted
+        // and published to DeepLinkBus.publishMagicLinkToken without forming
+        // a nav route. LoginViewModel collects and dispatches the exchange call.
+        if (data.host == "magic") {
+            val rawToken = data.path?.trimStart('/').orEmpty()
+            val token = com.bizarreelectronics.crm.util.DeepLinkAllowlist
+                .validateMagicToken(rawToken) ?: return null
+            deepLinkBus.publishMagicLinkToken(token)
+            return null // no nav route — VM handles the token via pendingMagicToken
         }
 
         // Normalise "bizarrecrm://ticket/new" → "ticket/new". We intentionally
