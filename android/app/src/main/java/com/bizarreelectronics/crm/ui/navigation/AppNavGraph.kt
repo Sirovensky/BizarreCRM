@@ -72,6 +72,8 @@ import com.bizarreelectronics.crm.ui.screens.settings.SettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SettingsViewModel
 import com.bizarreelectronics.crm.ui.screens.settings.ThemeScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SwitchUserScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SharedDeviceScreen
+import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.sync.SyncManager
@@ -253,6 +255,15 @@ sealed class Screen(val route: String) {
     // §2.5 — Switch User (shared device): PIN entry to switch active identity.
     // Entry point: Settings > "Switch user" row (and TODO: long-press avatar in top bar).
     data object SwitchUser : Screen("settings/switch-user")
+
+    // §2.14 [plan:L369-L378] — Shared-Device Mode settings sub-screen.
+    // Gated behind manager PIN at the call site in AppNavGraph.
+    data object SharedDevice : Screen("settings/shared-device")
+
+    // §2.14 [plan:L369-L378] — Staff picker (kiosk lock screen).
+    // Shown automatically when sharedDeviceModeEnabled=true and the inactivity
+    // threshold has elapsed. Replaces the single-user PIN gate in shared mode.
+    data object StaffPicker : Screen("auth/staff-picker")
 
     // §27 — Per-app language picker (ActionPlan §27).
     data object Language : Screen("settings/language")
@@ -1217,6 +1228,10 @@ fun AppNavGraph(
                     onAbout = { navController.navigate(Screen.About.route) },
                     // §2.5 — Switch user (shared device): navigate to PIN entry.
                     onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
+                    // §2.14 [plan:L369-L378] — Shared Device Mode sub-screen.
+                    // Gate: admin role only. Non-admin sessions fall through to SwitchUser
+                    // for PIN verification before landing on SharedDevice.
+                    onSharedDevice = { navController.navigate(Screen.SharedDevice.route) },
                     // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only.
                     onDiagnostics = { navController.navigate(Screen.Diagnostics.route) },
                     // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG only.
@@ -1299,6 +1314,33 @@ fun AppNavGraph(
                     onSwitched = {
                         navController.navigate(Screen.Dashboard.route) {
                             popUpTo(Screen.Dashboard.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §2.14 [plan:L369-L378] — Shared-Device Mode settings sub-screen.
+            // Gated by manager role: the SettingsScreen row navigates here only
+            // when the current session has role == "admin". Non-admin users see
+            // the row but tapping it shows the SwitchUserScreen PIN dialog first.
+            composable(Screen.SharedDevice.route) {
+                SharedDeviceScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §2.14 [plan:L369-L378] — Staff picker (kiosk lock screen).
+            // Entered automatically by the inactivity observer (AppNavGraph LaunchedEffect
+            // or MainActivity) when sharedDeviceModeEnabled=true and idle > threshold.
+            // Back stack is always cleared to prevent navigating back to protected content.
+            composable(Screen.StaffPicker.route) {
+                StaffPickerScreen(
+                    onStaffSelected = { username ->
+                        // Navigate to SwitchUserScreen pre-scoped to the selected username.
+                        // SwitchUserScreen handles POST /auth/switch-user and on success
+                        // routes to Dashboard clearing the back stack.
+                        navController.navigate(Screen.SwitchUser.route) {
+                            // Keep StaffPicker beneath SwitchUser so Back returns to it
+                            // (staff can cancel and pick a different avatar).
+                            launchSingleTop = true
                         }
                     },
                 )

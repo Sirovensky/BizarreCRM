@@ -333,4 +333,100 @@ class AppPreferences @Inject constructor(
     var ticketListSavedView: String
         get() = prefs.getString("ticket_list_saved_view", "None") ?: "None"
         set(value) = prefs.edit().putString("ticket_list_saved_view", value).apply()
+
+    // --- §2.14 [plan:L369-L378] — shared-device / counter-kiosk mode --------
+    //
+    // When [sharedDeviceModeEnabled] is true, the app shows a staff-picker
+    // screen (LazyVerticalGrid of avatars) after [sharedDeviceInactivityMinutes]
+    // of inactivity instead of the single-user PIN lock. This is the primary
+    // toggle that gates the entire shared-device flow.
+    //
+    // [sharedDeviceCurrentUserId] tracks the user_id of the staff member
+    // currently signed in on the shared device. POS cart binds to this id;
+    // switching staff parks the active cart (POS integration contract — out of
+    // scope for this commit, tracked as a follow-up).
+    //
+    // All three fields are stored in EncryptedSharedPreferences because they
+    // contain business-operational metadata and the current userId is PII-adjacent.
+
+    private val _sharedDeviceModeFlow = MutableStateFlow(
+        encryptedPrefs.getBoolean("shared_device_mode_enabled", false),
+    )
+
+    /**
+     * §2.14 — observable shared-device mode flag.
+     *
+     * Collect in UI layers to reactively adapt the lock-screen target (StaffPicker
+     * vs PIN-only). Defaults FALSE so single-user installs are unaffected.
+     */
+    val sharedDeviceModeFlow: Flow<Boolean> = _sharedDeviceModeFlow.asStateFlow()
+
+    /**
+     * §2.14 — shared-device mode master switch.
+     *
+     * Enabling triggers SessionTimeoutConfig.buildConfig() to return tightened
+     * thresholds; disabling reverts to §2.16 standard defaults. Gated in the UI
+     * behind [KeyguardManager.isDeviceSecure] and a minimum-two-staff-accounts
+     * check — those guards live in [SharedDeviceViewModel], not here.
+     *
+     * Stored in EncryptedSharedPreferences (AES256-GCM).
+     */
+    var sharedDeviceModeEnabled: Boolean
+        get() = encryptedPrefs.getBoolean("shared_device_mode_enabled", false)
+        set(value) {
+            encryptedPrefs.edit().putBoolean("shared_device_mode_enabled", value).apply()
+            _sharedDeviceModeFlow.value = value
+        }
+
+    private val _sharedDeviceInactivityFlow = MutableStateFlow(
+        encryptedPrefs.getInt("shared_device_inactivity_minutes", 10),
+    )
+
+    /**
+     * §2.14 — observable inactivity window (minutes) for shared-device mode.
+     *
+     * Allowed values: 5 / 10 / 15 / 30 / 240. Written by [SharedDeviceViewModel]
+     * after the user moves the slider. Collect to drive SessionTimeoutConfig.
+     */
+    val sharedDeviceInactivityMinutesFlow: Flow<Int> = _sharedDeviceInactivityFlow.asStateFlow()
+
+    /**
+     * §2.14 — inactivity window (minutes) before the app locks to the StaffPicker.
+     *
+     * Default 10 minutes. Allowed values: 5 / 10 / 15 / 30 / 240.
+     * SessionTimeoutConfig.coerceInactivityMinutes() enforces the allowed set.
+     *
+     * Stored in EncryptedSharedPreferences (AES256-GCM).
+     */
+    var sharedDeviceInactivityMinutes: Int
+        get() = encryptedPrefs.getInt("shared_device_inactivity_minutes", 10)
+        set(value) {
+            encryptedPrefs.edit().putInt("shared_device_inactivity_minutes", value).apply()
+            _sharedDeviceInactivityFlow.value = value
+        }
+
+    /**
+     * §2.14 — user_id of the staff member currently signed in on a shared device.
+     *
+     * Null when shared-device mode is off or no switch has occurred since the
+     * initial login. POS cart contract: when this id changes (staff switch),
+     * the POS layer must park the in-progress cart under the outgoing user_id
+     * and restore any parked cart for the incoming user_id. This is a contract
+     * the POS integration will consume; enforcement is out of scope here.
+     *
+     * Stored in EncryptedSharedPreferences (AES256-GCM).
+     *
+     * Follow-up: DraftStore must key drafts by user_id (schema update required —
+     * tracked separately; not implemented in this commit).
+     */
+    var sharedDeviceCurrentUserId: Long?
+        get() = encryptedPrefs.getLong("shared_device_current_user_id", -1L)
+            .takeIf { it != -1L }
+        set(value) {
+            if (value == null) {
+                encryptedPrefs.edit().remove("shared_device_current_user_id").apply()
+            } else {
+                encryptedPrefs.edit().putLong("shared_device_current_user_id", value).apply()
+            }
+        }
 }

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -249,6 +250,10 @@ fun SettingsScreen(
     // §2.5 — opens the Switch User PIN screen (shared device flow).
     // Nullable so previews and any callers that don't need the row can omit it.
     onSwitchUser: (() -> Unit)? = null,
+    // §2.14 [plan:L369-L378] — opens the Shared Device Mode sub-screen.
+    // Unconditional (not gated on BuildConfig.DEBUG) — this is a real production feature.
+    // Gating behind admin role is handled at the navigation call site in AppNavGraph.
+    onSharedDevice: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -296,6 +301,22 @@ fun SettingsScreen(
                     title = "Switch user",
                     subtitle = "Signed in as $currentUsername",
                     onClick = onSwitchUser,
+                )
+            }
+
+            // §2.14 [plan:L369-L378] — Shared Device Mode. Unconditional (not
+            // DEBUG-gated) — real production feature for counter/kiosk deployments.
+            // Trailing badge shows current On/Off status so the user knows the
+            // state without opening the sub-screen. Role gating (admin-only) is
+            // enforced at the navigation layer, not here.
+            if (onSharedDevice != null) {
+                val sharedModeEnabled = viewModel.appPreferences.sharedDeviceModeEnabled
+                SettingsRowWithBadge(
+                    icon = Icons.Default.Groups,
+                    title = "Shared Device Mode",
+                    badgeText = if (sharedModeEnabled) "On" else "Off",
+                    badgeEnabled = sharedModeEnabled,
+                    onClick = onSharedDevice,
                 )
             }
 
@@ -770,6 +791,67 @@ private fun SettingsRowWithSubtitle(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * §2.14 — Variant of [SettingsRow] that adds a trailing status badge (e.g. "On" / "Off").
+ * Used for the Shared Device Mode row so the current state is visible without opening the screen.
+ *
+ * @param badgeEnabled  When true, the badge is rendered in the primary color; false = outline color.
+ */
+@Composable
+private fun SettingsRowWithBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    badgeText: String,
+    badgeEnabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            val badgeColor = if (badgeEnabled)
+                MaterialTheme.colorScheme.primary
+            else
+                MaterialTheme.colorScheme.outline
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                color = badgeColor.copy(alpha = 0.15f),
+            ) {
+                Text(
+                    badgeText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = badgeColor,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
