@@ -38,6 +38,7 @@ export function ExpensesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', page, keyword, catFilter],
     queryFn: () => expenseApi.list({ page, pagesize: 25, keyword: keyword || undefined, category: catFilter || undefined }),
+    staleTime: 30_000,
   });
 
   const expenses = data?.data?.data?.expenses || [];
@@ -156,12 +157,12 @@ export function ExpensesPage() {
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={handleSubmit} disabled={createMut.isPending}
+            <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
               {editingId ? 'Update' : 'Add Expense'}
             </button>
-            <button onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
           </div>
         </div>
       )}

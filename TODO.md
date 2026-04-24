@@ -716,16 +716,12 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:958; fix=type-response-interfaces -->
 - [ ] SCAN-1004. **`smsApi.templates()` response cast via `as any` in 3 files — lost template-shape safety.**
   <!-- meta: scope=web/api+web/pages; files=BulkSmsModal.tsx:63,CannedResponseHotkeys,CommunicationPage.tsx; fix=export-SmsTemplateListResponse-type -->
-- [ ] SCAN-1007. **Expenses list query has no `staleTime`.**
-  <!-- meta: scope=web/pages/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:38; fix=staleTime-30000 -->
 - [ ] SCAN-1008. **Communications `sms-conversations` + `sms-messages` queries missing `staleTime` despite polling.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:953; fix=staleTime-5000 -->
 - [ ] SCAN-1009. **Communications `sendMutation` closure captures `selectedPhone` — mid-flight conversation switch invalidates wrong thread cache.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:1085; fix=pass-phone-in-mutation-variables -->
 - [ ] SCAN-1010. **Expenses `exp: any` loop variable + CashRegisterPage `history: any[]` — lost type safety on rendered rows.**
   <!-- meta: scope=web/pages/expenses; files=ExpensesPage.tsx:196,CashRegisterPage.tsx:22; fix=define-Expense-and-CashRegisterHistory-interfaces -->
-- [ ] SCAN-1011. **ExpensesPage action button missing `type="button"` — form-submit risk if ever wrapped.**
-  <!-- meta: scope=web/pages/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:159; fix=add-type-button -->
 - [ ] SCAN-1013. **Communications `markReadMutation` has no onError — failures silently swallowed.**
   <!-- meta: scope=web/pages/communications; files=packages/web/src/pages/communications/CommunicationPage.tsx:971; fix=add-onError-handler -->
 - [ ] SCAN-997b. **Billing aging/dunning/payment-links icon buttons still need aria-label review (type="button" applied, aria TODO).**
