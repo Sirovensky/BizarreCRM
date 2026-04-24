@@ -30,6 +30,17 @@ import {
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 
+// Module-level constant — moved up from below the component definitions so
+// the file reads top-down without an inline surprise between two functions.
+// Kept as a plain object (JSX elements are memoised by React's element
+// identity, so `Object.freeze` would add no value here).
+const notifEntityIcons: Record<string, React.ReactNode> = {
+  ticket: <Ticket className="h-4 w-4" />,
+  invoice: <FileText className="h-4 w-4" />,
+  inventory: <Package className="h-4 w-4" />,
+  sms: <MessageSquare className="h-4 w-4" />,
+};
+
 interface Notification {
   id: number;
   type: string;
@@ -497,13 +508,6 @@ function DropdownItem({
     </button>
   );
 }
-
-const notifEntityIcons: Record<string, React.ReactNode> = {
-  ticket: <Ticket className="h-4 w-4" />,
-  invoice: <FileText className="h-4 w-4" />,
-  inventory: <Package className="h-4 w-4" />,
-  sms: <MessageSquare className="h-4 w-4" />,
-};
 
 // @audit-fixed: removed local `formatTimeAgo` — now uses the shared `timeAgo`
 // helper imported at the top of the file. The local copy missed the UTC suffix

@@ -700,8 +700,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-52 scan-loop findings (2026-04-23) — web/layout + web/auth
-- [ ] SCAN-976. **Header `notifEntityIcons` declared between component bodies — confusing placement; move to top-level frozen const.**
-  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:492-497; fix=move-to-top-or-useMemo -->
 
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
