@@ -35,11 +35,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
+
+// ─── View-mode toggle ─────────────────────────────────────────────────────────
+
+/**
+ * View mode for the Appointments screen (ActionPlan §10).
+ *
+ * [DAY] shows the existing single-day picker + list.
+ * [WEEK] shows [AppointmentWeekView] — a 7-column week grid.
+ */
+enum class AppointmentViewMode { DAY, WEEK }
 
 // ─── Constants & helpers ─────────────────────────────────────────────────────
 
@@ -212,6 +224,15 @@ fun AppointmentListScreen(
     // persists the open/closed state across configuration changes.
     var showDatePicker by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
+    // §10: view-mode toggle — Day (default) or Week.
+    var viewMode by remember { mutableStateOf(AppointmentViewMode.DAY) }
+
+    // Week-start anchored to Monday (ISO 8601). Immutable: LocalDate.with() returns
+    // a new instance. rememberSaveable not needed — week navigates via buttons.
+    var weekStart by remember {
+        mutableStateOf(LocalDate.now().with(DayOfWeek.MONDAY))
+    }
+
     if (showDatePicker) {
         DatePickerModal(
             initialMillis = state.selectedDateMillis,
@@ -231,6 +252,43 @@ fun AppointmentListScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
                 actions = {
+                    // §10: Day / Week view-mode toggle pair (mirrors §9 List/Kanban pattern).
+                    IconButton(
+                        onClick = { viewMode = AppointmentViewMode.DAY },
+                        modifier = Modifier.semantics {
+                            contentDescription = if (viewMode == AppointmentViewMode.DAY)
+                                "Day view, selected"
+                            else
+                                "Switch to day view"
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.ViewDay,
+                            contentDescription = null,
+                            tint = if (viewMode == AppointmentViewMode.DAY)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewMode = AppointmentViewMode.WEEK },
+                        modifier = Modifier.semantics {
+                            contentDescription = if (viewMode == AppointmentViewMode.WEEK)
+                                "Week view, selected"
+                            else
+                                "Switch to week view"
+                        },
+                    ) {
+                        Icon(
+                            Icons.Default.ViewWeek,
+                            contentDescription = null,
+                            tint = if (viewMode == AppointmentViewMode.WEEK)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = { showDatePicker = true }) {
                         // a11y: descriptive label mirrors "Pick date" intent
                         Icon(
@@ -260,6 +318,35 @@ fun AppointmentListScreen(
             }
         },
     ) { padding ->
+        // §10: when Week mode is active, bypass the day-picker flow entirely and
+        // render the week composable using the full appointments list from the VM.
+        // Client-side filter to the current week avoids a new network call this wave.
+        if (viewMode == AppointmentViewMode.WEEK) {
+            val weekEnd = weekStart.plusDays(6)
+            // Filter to appointments whose start_time falls within [weekStart, weekEnd].
+            // Immutable: filter + sortedBy return new lists.
+            val weekAppointments = state.appointments
+                .filter { appt ->
+                    val d = appt.startTime?.take(10)?.let {
+                        try { LocalDate.parse(it) } catch (_: Exception) { null }
+                    } ?: return@filter false
+                    !d.isBefore(weekStart) && !d.isAfter(weekEnd)
+                }
+                .sortedBy { it.startTime ?: "" }
+
+            AppointmentWeekView(
+                appointments = weekAppointments,
+                weekStart = weekStart,
+                onWeekPrev = { weekStart = weekStart.minusWeeks(1) },
+                onWeekNext = { weekStart = weekStart.plusWeeks(1) },
+                onAppointmentClick = { /* detail nav deferred — read-only this wave */ },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            )
+            return@Scaffold
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
