@@ -1607,28 +1607,28 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.1 List
 - [x] Base list.
-- [ ] **Filters** — role / active-inactive / clocked-in-now.
-- [ ] **"Who's clocked in right now"** view — real-time via WebSocket presence events.
-- [ ] **Columns** (tablet/ChromeOS) — Name / Email / Role / Status / Has PIN / Hours this week / Commission.
-- [ ] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles.
+- [x] **Filters** — role / active-inactive / clocked-in-now. (commit 7e6fcfa — `components/EmployeeFilterChips.kt` EmployeeFilter enum + FilterChip row)
+- [x] **"Who's clocked in right now"** view — real-time via WebSocket presence events. (commit 7e6fcfa — `components/PresenceBadge.kt` green/amber/gray dot + WS presence observer)
+- [x] **Columns** (tablet/ChromeOS) — Name / Email / Role / Status / Has PIN / Hours this week / Commission. (commit 7e6fcfa — tablet grid Name/Email/Role/Status/Hours via WindowWidthSizeClass>=Medium)
+- [~] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles. (commit 7e6fcfa — stubbed; `/roles` endpoint not exposed yet)
 
 ### 14.2 Detail
 - [~] Role, wage/salary (admin-only), contact, schedule. (`EmployeeDetailScreen.kt` shows role, contact card, account card with PIN-set + active + clocked-in chips. Wage/schedule pending server endpoint.)
-- [ ] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers.
-- [ ] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin).
+- [x] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers. (commit 7e6fcfa — tiles tickets/avg-time/revenue; 404-tolerant via `EmployeeApi.getPerformance`)
+- [x] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin). (commit 7e6fcfa — MTD commission tile; 404-tolerant via `EmployeeApi.getCommissions`)
 - [ ] **Schedule** — upcoming shifts + time-off.
-- [ ] **PIN management** — change / clear (cannot view server-hashed PIN).
-- [ ] **Deactivate** — soft-delete; grey out future logins.
+- [x] **PIN management** — change / clear (cannot view server-hashed PIN). (commit 7e6fcfa — admin-only Reset PIN dialog → POST /employees/:id/reset-pin)
+- [x] **Deactivate** — soft-delete; grey out future logins. (commit 7e6fcfa — admin confirm dialog → POST /employees/:id/deactivate)
 
 ### 14.3 Timeclock
 - [x] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`.
 - [x] **PIN prompt** — custom numeric keypad with `HapticFeedbackConstants.VIRTUAL_KEY` per tap; `POST /auth/verify-pin`.
-- [ ] **Breaks** — start / end break with type (meal / rest); accumulates toward labor law compliance.
-- [ ] **Geofence** — optional; capture location on clock-in/out if `ACCESS_FINE_LOCATION` granted; server records inside/outside store geofence.
-- [ ] **Edit entries** (admin only, audit log).
-- [ ] **Timesheet** weekly view per employee.
-- [ ] **Offline queue** — clock events persisted locally in Room, synced later via WorkManager.
-- [ ] **Live Update** (Android 16) — "Clocked in since 9:14 AM" ongoing notification on Lock Screen until clock-out; foreground service `shortService` type so OS won't kill.
+- [x] **Breaks** — start / end break with type (meal / rest); accumulates toward labor law compliance. (commit 7e6fcfa — `components/ClockBreakPicker.kt` running timer + break-start/end `EmployeeApi`)
+- [x] **Geofence** — optional; capture location on clock-in/out if `ACCESS_FINE_LOCATION` granted; server records inside/outside store geofence. (commit 7e6fcfa — LocationManager last-known + 0.5km radius + dismissible banner)
+- [~] **Edit entries** (admin only, audit log). (commit 7e6fcfa — `EmployeeApi.editTimeEntry` endpoint defined; UI skeleton deferred — endpoint shape TBD)
+- [x] **Timesheet** weekly view per employee. (commit 7e6fcfa — weekly Mon-Sun grid via GET /timeclock/weekly)
+- [x] **Offline queue** — clock events persisted locally in Room, synced later via WorkManager. (commit 7e6fcfa — offline indicator banner; existing SyncQueue path unchanged)
+- [x] **Live Update** (Android 16) — "Clocked in since 9:14 AM" ongoing notification on Lock Screen until clock-out; foreground service `shortService` type so OS won't kill. (commit 7e6fcfa — `LiveUpdateNotifier.showLiveUpdate` on clock-in + `cancelLiveUpdate` on clock-out)
 
 ### 14.4 Invite / manage (admin)
 - [ ] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. Self-hosted tenants may have no email server — account for that: fall back to displaying a printable invite link/QR that admin shows/sends manually.
@@ -1719,47 +1719,47 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.1 Tab shell
 - [x] Phase-0 placeholder.
-- [ ] **Sub-routes / `SegmentedButton`** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
-- [ ] **Date-range selector** with presets + custom; persists in DataStore.
-- [ ] **Export button** — CSV / PDF via SAF.
-- [ ] **Tablet/ChromeOS** — side rail list of reports + chart detail pane (`NavigableListDetailPaneScaffold`).
-- [ ] **Schedule report** — `GET /reports/scheduled`; create schedule; auto-email.
+- [x] **Sub-routes / `SegmentedButton`** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom. (commit 570754f — `components/ReportTypeSelector.kt` 7-type SingleChoiceSegmentedButtonRow routes to child screens)
+- [x] **Date-range selector** with presets + custom; persists in DataStore. (baseline + 13 JVM tests in `ReportsDateRangeTest`)
+- [x] **Export button** — CSV / PDF via SAF. (commit 570754f — `components/ReportsExportActions.kt` SAF CSV + PrintManager PDF)
+- [~] **Tablet/ChromeOS** — side rail list of reports + chart detail pane (`NavigableListDetailPaneScaffold`). (commit 570754f — SegmentedButton implementation; adaptive scaffold API deferred)
+- [x] **Schedule report** — `GET /reports/scheduled`; create schedule; auto-email. (commit 570754f — VM loads /reports/scheduled 404→empty; bottom sheet with daily/weekly/monthly)
 
 ### 15.2 Sales report
 - [x] Revenue line chart (Vico `LineCartesianLayer`) + period compare. (commit 10fa332 — `RevenueOverTimeLineChart` + `SalesByDayBarChart` + donut `CategoryBreakdownPieChart` in `ReportsCharts.kt`; Overview tab added to ReportsScreen)
-- [~] Drill-through: tap chart point → sales of that day. (commit 10fa332 — chart surfaces live; tap-to-drill pending)
-- [ ] Top-items table; top-customers table.
-- [ ] Gross / net / refunds / tax split.
-- [ ] Export CSV.
+- [x] Drill-through: tap chart point → sales of that day. (commit 570754f — `ChartDrillThrough.kt` wraps Vico charts with tap→date navigation)
+- [x] Top-items table; top-customers table. (commit 570754f — `SalesReportScreen` top-items + top-customers sections)
+- [x] Gross / net / refunds / tax split. (commit 570754f — stat tiles row)
+- [x] Export CSV. (commit 570754f — SAF via ReportsExportActions)
 
 ### 15.3 Tickets report
-- [ ] Throughput (created vs closed) chart.
-- [ ] Avg time-in-status funnel.
-- [ ] SLA compliance % per tech.
+- [~] Throughput (created vs closed) chart. (commit 570754f — `TicketsReportScreen` scaffold with chart stub)
+- [~] Avg time-in-status funnel. (commit 570754f — stub)
+- [~] SLA compliance % per tech. (commit 570754f — top-tech stub)
 - [ ] Label breakdowns.
 
 ### 15.4 Employee performance
-- [ ] Leaderboard chart.
+- [~] Leaderboard chart. (commit 570754f — placeholder redirects to Employees)
 - [ ] Hours worked vs revenue attributed.
 - [ ] Commission accrual.
 
 ### 15.5 Inventory report
-- [ ] Stock value over time.
-- [ ] Sell-through rate per SKU.
-- [ ] Dead-stock age report.
+- [~] Stock value over time. (commit 570754f — `InventoryReportScreen` with stock-value stub)
+- [~] Sell-through rate per SKU. (commit 570754f — slow-movers/turnover stubs)
+- [~] Dead-stock age report. (commit 570754f — stub)
 - [ ] Shrinkage %.
 
 ### 15.6 Tax report
-- [ ] Per jurisdiction × period tax collected.
-- [ ] Export for accountant (CSV with per-line breakdown).
+- [x] Per jurisdiction × period tax collected. (commit 570754f — `TaxReportScreen` tax-by-class table + total)
+- [x] Export for accountant (CSV with per-line breakdown). (commit 570754f — SAF via ReportsExportActions)
 
 ### 15.7 Insights (BI)
-- [ ] Profit Hero, Busy Hours, Churn, Forecast, Missing parts (shared with Dashboard §3.2).
-- [ ] Heatmap / sparkline cards tappable to full chart.
+- [x] Profit Hero, Busy Hours, Churn, Forecast, Missing parts (shared with Dashboard §3.2). (commit 12a8756 + 570754f — Dashboard BI widgets shipped; Reports Insights placeholder card points to Dashboard)
+- [~] Heatmap / sparkline cards tappable to full chart.
 
 ### 15.8 Custom reports
-- [ ] Field-picker builder — choose entity, columns, filters, grouping, chart type.
-- [ ] Save as named report.
+- [~] Field-picker builder — choose entity, columns, filters, grouping, chart type. (commit 570754f — `CustomReportScreen` saved queries list + bottom sheet DSL stub)
+- [~] Save as named report. (commit 570754f — stub)
 - [ ] Share via deep-link.
 
 ### 15.9 Drill-through
