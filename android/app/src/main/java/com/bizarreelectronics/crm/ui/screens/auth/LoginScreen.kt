@@ -486,10 +486,14 @@ class LoginViewModel @Inject constructor(
                     probeError = null,
                 )
             } catch (e: Exception) {
-                // Non-blocking: let user proceed to login form even on probe failure.
+                // Non-blocking: probe failure is silent. The probe's only user-visible
+                // purpose is surfacing needsSetup=true (a different banner). A network
+                // blip or first-run miss must NOT show an error — the login form is
+                // fully functional regardless of probe result.
+                timber.log.Timber.w(e, "setup-status probe failed silently (non-blocking)")
                 _state.value = _state.value.copy(
                     isProbing = false,
-                    probeError = "Could not reach server. Check your connection.",
+                    probeError = null,
                 )
             }
         }
@@ -501,7 +505,9 @@ class LoginViewModel @Inject constructor(
         if (s.username.isBlank()) { _state.value = s.copy(error = "Username is required"); return }
         if (s.password.isBlank()) { _state.value = s.copy(error = "Password is required"); return }
 
-        _state.value = s.copy(isLoading = true, error = null)
+        // Clear any stale probe/unreachable state from a previous attempt so
+        // a successful login never leaves a misleading error banner visible.
+        _state.value = s.copy(isLoading = true, error = null, probeError = null, unreachableHost = false)
         viewModelScope.launch {
             try {
                 // AUDIT-AND-008: commit serverUrl only when the user submits credentials,
@@ -1320,34 +1326,6 @@ private fun CredentialsStep(
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = androidx.compose.ui.Modifier.weight(1f),
                 )
-            }
-        }
-    }
-
-    // §2.1 — probe error: inline retry, non-blocking (login form still available).
-    if (state.probeError != null) {
-        Surface(
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
-            shape = MaterialTheme.shapes.small,
-            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        ) {
-            Row(
-                modifier = androidx.compose.ui.Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    state.probeError,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = androidx.compose.ui.Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = { viewModel.probeSetupStatus(forceRetry = true) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                ) {
-                    Text("Retry", style = MaterialTheme.typography.labelSmall)
-                }
             }
         }
     }
