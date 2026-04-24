@@ -136,21 +136,30 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
     } catch (err: unknown) {
-      // Mark-all failed — UI stays unchanged
+      // Server refused the mark-all. Surface the failure so the user knows
+      // the badge count they see is still the stale one.
+      console.error('[notifications] markAllRead failed', err);
+      toast.error('Could not mark all notifications read');
     }
   }, []);
 
   const handleNotifClick = useCallback(async (notif: Notification) => {
-    // Mark as read
+    // Mark as read — optimistically flip the row + decrement the badge,
+    // then roll back if the server refuses so the UI doesn't drift.
     if (!notif.is_read) {
+      setUnreadCount((c) => Math.max(0, c - 1));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: 1 } : n))
+      );
       try {
         await notificationApi.markRead(notif.id);
-        setUnreadCount((c) => Math.max(0, c - 1));
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notif.id ? { ...n, is_read: 1 } : n))
-        );
       } catch (err: unknown) {
-        // Mark-read failed — UI stays unchanged
+        console.error('[notifications] markRead failed', err);
+        setUnreadCount((c) => c + 1);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notif.id ? { ...n, is_read: 0 } : n))
+        );
+        toast.error('Could not mark notification read');
       }
     }
     // Navigate to entity

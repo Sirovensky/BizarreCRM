@@ -704,10 +704,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/AppShell.tsx:52; fix=type-settings-getConfig-response -->
 - [ ] SCAN-976. **Header `notifEntityIcons` declared between component bodies — confusing placement; move to top-level frozen const.**
   <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:492-497; fix=move-to-top-or-useMemo -->
-- [ ] SCAN-977. **Header "Mark all read" swallows server errors — optimistic UI never rolls back.**
-  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:133-141; fix=toast-error+rollback -->
-- [ ] SCAN-978. **Header individual notification mark-read swallows errors — badge desyncs from server state.**
-  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:147-154; fix=rollback+toast -->
 
 ### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
 
