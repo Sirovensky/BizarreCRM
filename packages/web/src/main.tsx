@@ -114,8 +114,10 @@ if (typeof window !== 'undefined') {
   // React.lazy() rejections surface as render errors that boundaries catch,
   // but a dynamic `import()` triggered outside the Suspense tree (e.g. from
   // an event handler or a timer) rejects as an unhandled Promise and never
-  // reaches any boundary. Catch that path here. Sentinel is shared with
-  // PageErrorBoundary so the one-shot guard applies across both paths.
+  // reaches any boundary. Catch that path here. Sentinel format + logic
+  // must stay in sync with PageErrorBoundary — a prior (url, ts) pair
+  // within 30 s blocks a second retry so genuine 404s fall through to
+  // the manual card instead of looping (SCAN-1184).
   const CHUNK_RELOAD_SENTINEL = 'bizarre:chunk-reload-attempted';
   const looksLikeChunkError = (msg: string): boolean =>
     /Failed to fetch dynamically imported module/i.test(msg) ||
@@ -124,12 +126,31 @@ if (typeof window !== 'undefined') {
     /ChunkLoadError/i.test(msg);
   const handleChunkReload = (): void => {
     try {
-      if (!sessionStorage.getItem(CHUNK_RELOAD_SENTINEL)) {
-        sessionStorage.setItem(CHUNK_RELOAD_SENTINEL, String(Date.now()));
-        // eslint-disable-next-line no-console
-        console.warn('[main] stale chunk detected outside React tree — auto-reloading once');
-        window.location.reload();
+      const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
+      const now = Date.now();
+      const url = window.location.href;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { ts?: number; url?: string };
+          if (
+            parsed &&
+            typeof parsed.ts === 'number' &&
+            parsed.url === url &&
+            now - parsed.ts < 30_000
+          ) {
+            return; // already tried for this URL within the grace window
+          }
+        } catch {
+          /* old-format or corrupt — fall through and overwrite */
+        }
       }
+      sessionStorage.setItem(
+        CHUNK_RELOAD_SENTINEL,
+        JSON.stringify({ ts: now, url }),
+      );
+      // eslint-disable-next-line no-console
+      console.warn('[main] stale chunk detected outside React tree — auto-reloading once');
+      window.location.reload();
     } catch {
       /* storage blocked — user will see the manual boundary card */
     }

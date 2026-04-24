@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (wave-76 — self-inflicted chunk-reload loop guard)
+
+- [x] SCAN-1184. **Chunk-reload guard in commit `04a96fd9` cleared the sessionStorage sentinel on every `PageErrorBoundary.componentDidMount`** — root shell's boundary mounts OK after every reload, wiping the sentinel, so a genuinely-404'd chunk would loop forever. Changed sentinel payload from raw timestamp to `{ ts, url }` JSON. `componentDidCatch` + `main.tsx` handlers now check: if a prior attempt for the SAME URL within a 30-second window exists, skip reload → fall through to the manual boundary card. Removed the broken `componentDidMount` clear entirely; sentinels age out naturally via the 30s timestamp check. Fix applied symmetrically in both PageErrorBoundary and main.tsx so the unhandled-rejection path stays in sync.
+
 ## Dropped 2026-04-24 (biometric scope — web-first product)
 
 - [~] AUDIT-AND-013. **androidx.biometric:1.2.0-alpha05 is pre-release** — DROPPED per user: biometric is out-of-scope for the web-first CRM. If Android keeps the biometric path, the library-version concern is still valid but is an Android-side backlog concern, not a CRM-scope TODO.

@@ -52,14 +52,44 @@ export class PageErrorBoundary extends Component<Props, State> {
     // eslint-disable-next-line no-console
     console.error('PageErrorBoundary caught:', error, info.componentStack);
 
-    // Stale lazy-chunk after deploy: auto-reload once. sessionStorage
-    // sentinel prevents an infinite loop when chunks genuinely 404 (CDN
-    // down, misconfigured hosting) — second hit falls through to the
-    // manual card so the user can diagnose.
+    // Stale lazy-chunk after deploy: auto-reload ONCE per (url, recent
+    // window). Sentinel stores `{ ts, url }` so two independent conditions
+    // must be true to block a retry: same URL AND recent timestamp.
+    //
+    // SCAN-1184: the previous implementation cleared the sentinel on
+    // every `componentDidMount`, which defeated the loop guard — the
+    // root shell's boundary mounts OK after every reload, wiping the
+    // sentinel, so a genuinely-404'd chunk would loop forever. Now we
+    // don't clear on mount at all; the sentinel ages out by timestamp
+    // (30s grace window) so a stale-deploy retry has room to succeed
+    // but a chunk that's still 404 after the reload falls through to
+    // the manual card as intended.
     if (isChunkLoadError(error)) {
       try {
-        if (!sessionStorage.getItem(CHUNK_RELOAD_SENTINEL)) {
-          sessionStorage.setItem(CHUNK_RELOAD_SENTINEL, String(Date.now()));
+        const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
+        const now = Date.now();
+        const url = window.location.href;
+        let alreadyTriedForThisUrl = false;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as { ts?: number; url?: string };
+            if (
+              parsed &&
+              typeof parsed.ts === 'number' &&
+              parsed.url === url &&
+              now - parsed.ts < 30_000
+            ) {
+              alreadyTriedForThisUrl = true;
+            }
+          } catch {
+            // Old format — pretend no prior attempt, will overwrite below.
+          }
+        }
+        if (!alreadyTriedForThisUrl) {
+          sessionStorage.setItem(
+            CHUNK_RELOAD_SENTINEL,
+            JSON.stringify({ ts: now, url }),
+          );
           // eslint-disable-next-line no-console
           console.warn('[PageErrorBoundary] stale chunk detected — auto-reloading once');
           window.location.reload();
@@ -67,17 +97,6 @@ export class PageErrorBoundary extends Component<Props, State> {
       } catch {
         // sessionStorage disabled / privacy mode — fall through to manual card.
       }
-    }
-  }
-
-  componentDidMount(): void {
-    // Clear the reload sentinel on successful mount. If the boundary
-    // children rendered without error, the stale-chunk situation has
-    // resolved and a future deploy is eligible to auto-reload again.
-    try {
-      sessionStorage.removeItem(CHUNK_RELOAD_SENTINEL);
-    } catch {
-      /* ignore */
     }
   }
 
