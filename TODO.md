@@ -708,8 +708,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:392-394; fix=anyMutationPending-gate -->
 
 ### Wave-57 scan-loop findings (2026-04-24) — web/components/shared + web/api + web/utils
-- [ ] SCAN-1031. **CommandPalette silently swallows search API errors — shows "No results" on backend down.**
-  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CommandPalette.tsx:175-176; fix=surface-error-state -->
 
 ### Wave-54 scan-loop findings (2026-04-23) — web/pages catalog+employees+billing+marketing+gift-cards+expenses+loaners
 - [ ] SCAN-992b. **Catalog `jobs` + `items` still `any[]` — narrow interface deferred until server DTOs stabilise. `modelResults` is now typed.**

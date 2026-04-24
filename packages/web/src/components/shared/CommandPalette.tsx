@@ -122,6 +122,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GroupedResults | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentSearches] = useState(getRecentSearches);
 
@@ -167,13 +168,18 @@ export function CommandPalette() {
 
     const timer = setTimeout(async () => {
       setLoading(true);
+      setSearchError(false);
       try {
         const res = await searchApi.global(query.trim());
         const data = res.data.data as GroupedResults;
         setResults(data);
         setSelectedIndex(0);
-      } catch {
+      } catch (err) {
+        // Surface the failure as an explicit error state so the palette shows
+        // "Search unavailable" instead of a misleading "No results found".
+        console.error('[CommandPalette] search failed', err);
         setResults({ tickets: [], customers: [], inventory: [], invoices: [] });
+        setSearchError(true);
       } finally {
         setLoading(false);
       }
@@ -376,15 +382,15 @@ export function CommandPalette() {
             {/* Grouped results */}
             {groups.length > 0 && <div className="py-1">{groups}</div>}
 
-            {/* No results */}
+            {/* No results — distinguishes backend failure from empty set */}
             {showNoResults && (
               <div className="flex flex-col items-center gap-2 py-12 text-center">
-                <Search className="h-10 w-10 text-surface-200 dark:text-surface-700" />
+                <Search aria-hidden="true" className="h-10 w-10 text-surface-200 dark:text-surface-700" />
                 <p className="text-sm font-medium text-surface-500 dark:text-surface-400">
-                  No results found
+                  {searchError ? 'Search unavailable' : 'No results found'}
                 </p>
                 <p className="text-xs text-surface-400 dark:text-surface-500">
-                  Try a different search term
+                  {searchError ? 'The search service is not responding. Please try again in a moment.' : 'Try a different search term'}
                 </p>
               </div>
             )}
