@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ data class PosCartUiState(
     val cartDiscountCents: Long = 0L,
     val editingLineId: String? = null,
     val taxRate: Double = 0.0,
+    val scanMessage: String? = null,
 ) {
     val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
     val taxCents: Long get() = lines.sumOf { it.taxCents }
@@ -29,6 +31,7 @@ data class PosCartUiState(
 @HiltViewModel
 class PosCartViewModel @Inject constructor(
     private val coordinator: PosCoordinator,
+    private val inventoryApi: InventoryApi,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosCartUiState())
@@ -80,6 +83,41 @@ class PosCartViewModel @Inject constructor(
     /** Called when BarcodeAnalyzer resolves a barcode to an inventory item. */
     fun onBarcodeResolved(itemId: Long, name: String, priceCents: Long) =
         addInventoryItem(itemId, name, priceCents)
+
+    /**
+     * Look up a scanned barcode / SKU against `/inventory/barcode/{code}`
+     * and add the resolved item to the cart. Surfaces a scanMessage
+     * either way so the cart screen can flash a snackbar with the
+     * result ("Added: iPhone 14 Pro Screen" or "No item for code 123").
+     */
+    fun scanBarcode(code: String) {
+        val trimmed = code.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            runCatching { inventoryApi.lookupBarcode(trimmed) }
+                .onSuccess { resp ->
+                    val item = resp.data?.item
+                    if (item == null) {
+                        _uiState.update { it.copy(scanMessage = "No item for code $trimmed") }
+                        return@onSuccess
+                    }
+                    val priceCents = ((item.price ?: 0.0) * 100).toLong()
+                    addInventoryItem(
+                        itemId = item.id,
+                        name = item.name ?: "Item #${item.id}",
+                        unitPriceCents = priceCents,
+                    )
+                    _uiState.update { it.copy(scanMessage = "Added: ${item.name ?: "item"}") }
+                }
+                .onFailure { e ->
+                    _uiState.update {
+                        it.copy(scanMessage = "Scan lookup failed: ${e.message ?: "network error"}")
+                    }
+                }
+        }
+    }
+
+    fun clearScanMessage() = _uiState.update { it.copy(scanMessage = null) }
 
     fun setLineQty(lineId: String, qty: Int) {
         if (qty < 1) return
