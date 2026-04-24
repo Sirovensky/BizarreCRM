@@ -41,6 +41,12 @@ import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardDatePreset
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DateRange
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.DateRangeSelector
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiGrid
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiTile
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.toDateRange
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +74,9 @@ data class DashboardUiState(
     val revenueToday: Double = 0.0,
     val appointmentsToday: Int = 0,
     val lowStockCount: Int = 0,
+    // §3 L488 — pending payments KPI. Populated from server when available;
+    // stays 0 until a dedicated dashboard-stats endpoint exposes the field.
+    val pendingPayments: Int = 0,
     val myQueue: List<TicketSummary> = emptyList(),
     val needsAttention: List<AttentionItem> = emptyList(),
     // CROSS1: ticket_all_employees_view_all == '0' enables the assignment feature.
@@ -85,6 +94,18 @@ data class DashboardUiState(
     // True if any of the three parallel loads failed.
     val hasAnyError: Boolean
         get() = statsError != null || attentionError != null || queueError != null
+
+    /**
+     * §3 L497 — true when every KPI is zero, indicating a brand-new tenant.
+     * [DashboardEmptyState] is shown in place of the KPI grid when this is true.
+     * Hidden immediately once any single KPI becomes non-zero.
+     */
+    val allKpisZero: Boolean
+        get() = openTickets == 0 &&
+            revenueToday == 0.0 &&
+            appointmentsToday == 0 &&
+            lowStockCount == 0 &&
+            pendingPayments == 0
 }
 
 data class TicketSummary(val id: Long, val orderId: String, val customerName: String, val statusName: String, val statusColor: String)
@@ -127,6 +148,31 @@ class DashboardViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(DashboardUiState())
     val state = _state.asStateFlow()
+
+    // §3 L491 — current date-range selection.
+    // Default = TODAY. The UI calls setCurrentRange() when the user picks a
+    // different preset or confirms a custom range from the date picker.
+    //
+    // previousPeriodValues is intentionally empty until the server ships the
+    // /dashboard/compare endpoint. The KpiGrid delta chip slot is wired but
+    // data-less — no network call is made for comparison values yet.
+    private val _currentRange = MutableStateFlow(
+        DashboardDatePreset.TODAY.toDateRange(),
+    )
+    val currentRange: StateFlow<DateRange> = _currentRange.asStateFlow()
+
+    /**
+     * §3 L491 — update the active date range and re-fetch KPIs for that range.
+     * Re-uses the existing [loadDashboard] which reads [currentRange] for the
+     * date context once the stats endpoint supports date parameters.
+     */
+    fun setCurrentRange(range: DateRange) {
+        _currentRange.value = range
+        // Re-trigger load so new range is reflected in KPI values when the
+        // server endpoint supports date filtering. Currently a no-op date-wise
+        // but keeps the contract correct for when the API lands.
+        refresh()
+    }
 
     init {
         loadDashboard()
@@ -270,9 +316,15 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val currentRange by viewModel.currentRange.collectAsState()
     // [P1] FAB expand state hoisted so this screen can render a scrim overlay.
     // Passed to DashboardFab as expandedState so both share a single source of truth.
     val fabExpandedState = remember { mutableStateOf(false) }
+
+    // §3 L491 — track which preset is active so the segmented button row
+    // highlights the correct button. Defaults to TODAY; set to CUSTOM when
+    // the user confirms a date-picker selection.
+    var selectedPreset by remember { mutableStateOf(DashboardDatePreset.TODAY) }
 
     // Monochrome + state rule: icons muted by default, only tinted when the
     // value conveys state that matters. Zero revenue, zero tickets, zero
@@ -284,36 +336,77 @@ fun DashboardScreen(
     val revenueTint = if (state.revenueToday > 0) SuccessGreen else muted
     val apptsTint = if (state.appointmentsToday > 0) MaterialTheme.colorScheme.secondary else muted
     val lowStockTint = if (state.lowStockCount > 0) WarningAmber else muted
+    val pendingTint = if (state.pendingPayments > 0) MaterialTheme.colorScheme.tertiary else muted
 
+    // §3 L488 — KpiTile list fed into KpiGrid composable.
+    // deltaPercent is null for all tiles until /dashboard/compare ships.
+    val kpiTiles = listOf(
+        KpiTile(
+            label = "Open Tickets",
+            value = state.openTickets.toString(),
+            iconTint = openTicketsTint,
+            icon = {
+                Icon(Icons.Default.ConfirmationNumber, contentDescription = null, tint = openTicketsTint)
+            },
+            onClick = onNavigateToTickets,
+        ),
+        KpiTile(
+            label = "Revenue",
+            value = "$${String.format("%.2f", state.revenueToday)}",
+            iconTint = revenueTint,
+            icon = {
+                Icon(Icons.Default.AttachMoney, contentDescription = null, tint = revenueTint)
+            },
+            // Revenue tile has no detail screen on Android yet — inert tap.
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Appointments",
+            value = state.appointmentsToday.toString(),
+            iconTint = apptsTint,
+            icon = {
+                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = apptsTint)
+            },
+            onClick = onNavigateToAppointments,
+        ),
+        KpiTile(
+            label = "Low Stock",
+            value = state.lowStockCount.toString(),
+            iconTint = lowStockTint,
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = lowStockTint)
+            },
+            onClick = onNavigateToInventory,
+        ),
+        KpiTile(
+            label = "Pending Payments",
+            value = state.pendingPayments.toString(),
+            iconTint = pendingTint,
+            icon = {
+                Icon(Icons.Default.Pending, contentDescription = null, tint = pendingTint)
+            },
+            // No detail screen yet — inert tap.
+            onClick = null,
+        ),
+    )
+
+    // Legacy KpiCard list kept for KpiCardView usages elsewhere in this file.
     val kpis = listOf(
         KpiCard(
             label = "Open Tickets",
             value = state.openTickets.toString(),
             iconTint = openTicketsTint,
-            // §3.1 — tap Open Tickets tile → Tickets list. onNavigateToTickets
-            // is required on this screen so always non-null.
             onClick = onNavigateToTickets,
         ) {
-            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
-            Icon(
-                Icons.Default.ConfirmationNumber,
-                contentDescription = null,
-                tint = openTicketsTint,
-            )
+            Icon(Icons.Default.ConfirmationNumber, contentDescription = null, tint = openTicketsTint)
         },
         KpiCard(
             label = "Revenue Today",
             value = "$${String.format("%.2f", state.revenueToday)}",
             iconTint = revenueTint,
-            // Revenue tile has no detail screen on Android yet — inert tap.
             onClick = null,
         ) {
-            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
-            Icon(
-                Icons.Default.AttachMoney,
-                contentDescription = null,
-                tint = revenueTint,
-            )
+            Icon(Icons.Default.AttachMoney, contentDescription = null, tint = revenueTint)
         },
         KpiCard(
             label = "Appointments",
@@ -321,12 +414,7 @@ fun DashboardScreen(
             iconTint = apptsTint,
             onClick = onNavigateToAppointments,
         ) {
-            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
-            Icon(
-                Icons.Default.CalendarToday,
-                contentDescription = null,
-                tint = apptsTint,
-            )
+            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = apptsTint)
         },
         KpiCard(
             label = "Low Stock",
@@ -334,12 +422,7 @@ fun DashboardScreen(
             iconTint = lowStockTint,
             onClick = onNavigateToInventory,
         ) {
-            // a11y: decorative — tile is merged; contentDescription on the Card carries the full announcement
-            Icon(
-                Icons.Default.Warning,
-                contentDescription = null,
-                tint = lowStockTint,
-            )
+            Icon(Icons.Default.Warning, contentDescription = null, tint = lowStockTint)
         },
     )
 
@@ -510,10 +593,29 @@ fun DashboardScreen(
             }
         }
 
+        // §3 L491 — Date-range selector. Sits above the KPI heading so users
+        // understand the grid values reflect the selected window.
+        item {
+            DateRangeSelector(
+                selectedPreset = selectedPreset,
+                onRangeSelected = { range ->
+                    // Resolve which preset matches the new range so the button
+                    // row stays highlighted correctly.
+                    selectedPreset = DashboardDatePreset.entries.firstOrNull { preset ->
+                        preset != DashboardDatePreset.CUSTOM &&
+                            preset.toDateRange().from == range.from &&
+                            preset.toDateRange().to == range.to
+                    } ?: DashboardDatePreset.CUSTOM
+                    viewModel.setCurrentRange(range)
+                },
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+
         // KPI section heading — a11y: heading() so TalkBack announces "Today's KPIs, heading"
         item {
             Text(
-                "Today's KPIs",
+                "${currentRange.label} KPIs",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
@@ -521,32 +623,21 @@ fun DashboardScreen(
             )
         }
 
-        // KPI Cards — 2x2 grid.
-        // a11y: liveRegion=Polite on the outer Column so TalkBack announces updated
-        // KPI values after a sync completes without interrupting the user.
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    kpis.take(2).forEach { kpi ->
-                        KpiCardView(kpi, modifier = Modifier.weight(1f))
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    kpis.drop(2).forEach { kpi ->
-                        KpiCardView(kpi, modifier = Modifier.weight(1f))
-                    }
-                }
+        // §3 L497 — empty state for new tenants. Shown only when all KPIs are zero.
+        // Once any KPI becomes non-zero the grid is rendered instead.
+        if (state.allKpisZero && !state.isLoading) {
+            item {
+                DashboardEmptyState(onCreateTicket = onCreateTicket)
+            }
+        } else {
+            // §3 L488 — KpiGrid (responsive: 2/3/4 cols by WindowMode).
+            // a11y: liveRegion=Polite so TalkBack announces updated values
+            // after a sync without interrupting the user.
+            item {
+                KpiGrid(
+                    tiles = kpiTiles,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
         }
 
