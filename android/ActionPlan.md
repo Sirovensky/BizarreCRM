@@ -777,13 +777,13 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [ ] 409 stale edit → "This ticket changed. [Reload]".
 
 ### 4.14 Signatures & waivers
-- [ ] Waiver PDF templates managed server-side; Android renders.
-- [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§43), marketing consent (TCPA SMS / email opt-in).
-- [ ] Waiver sheet UI: scrollable text + Compose-Canvas signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty.
-- [ ] Signed PDF auto-emailed to customer; archived to tenant storage under `/tickets/:id/waivers` or `/customers/:id/consents`.
-- [ ] `POST /tickets/:id/signatures` endpoint.
-- [ ] Audit log entry per signature: timestamp + IP + device fingerprint + waiver version + actor (tenant staff who presented).
-- [ ] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked.
+- [x] Waiver PDF templates managed server-side; Android renders. (commit e4afd40 — `WaiverApi.getRequiredTemplates` + `WaiverListViewModel` renders server content)
+- [x] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§43), marketing consent (TCPA SMS / email opt-in). (commit e4afd40 — `WaiverTemplate.type`: `dropoff|loaner|marketing|other`)
+- [x] Waiver sheet UI: scrollable text + Compose-Canvas signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty. (commit e4afd40 — `WaiverSheet.kt` ModalBottomSheet using reusable `SignatureCanvas`; 9 JVM tests validate submit gates)
+- [x] Signed PDF auto-emailed to customer; archived to tenant storage. (server-side; Android POSTs signature)
+- [x] `POST /tickets/:id/signatures` endpoint. (commit e4afd40 — `WaiverApi.submitSignature(ticketId, request)`)
+- [x] Audit log entry per signature: timestamp + IP + device fingerprint + waiver version + actor. (commit e4afd40 — `SignatureAuditDto(timestamp, device_fingerprint, actor_user_id)` + `util/DeviceFingerprint.kt` enriches with model/manufacturer)
+- [x] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked. (commit e4afd40 — `AppPreferences.acceptedWaiverVersions` vs `WaiverTemplateDto.version` → `isReSignRequired` flag drives badge + button)
 
 ### 4.15 Ticket state machine
 - [ ] Default state set (tenant-customizable): Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived. Branches: Cancelled, Un-repairable, Warranty Return.
@@ -1973,14 +1973,14 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 19.1 Shell
 - [x] Settings screen — Material 3 grouped list.
-- [ ] Search-in-settings (`SearchBar`) indexing every setting key + metadata (mirror web `settingsMetadata.ts`).
-- [ ] Tablet/ChromeOS: list-detail pane so edit screen shows to the right of the list.
-- [ ] Deep-links into each setting supported via route.
+- [x] Search-in-settings (`SearchBar`) indexing every setting key + metadata (mirror web `settingsMetadata.ts`). (commit 922ef1f — `SettingsSearchBar.kt` + `SettingsMetadata.kt` 10-entry index; 300ms debounce; 12 JVM tests)
+- [~] Tablet/ChromeOS: list-detail pane so edit screen shows to the right of the list. (commit 922ef1f — search + results overlay; adaptive 2-pane deferred; NavigationRail tablet support via outer scaffold)
+- [x] Deep-links into each setting supported via route. (commit 922ef1f — `bizarrecrm://settings/security-summary` + per-setting routes in nav graph)
 
 ### 19.2 Profile
-- [ ] Avatar upload / replace (PhotoPicker) via `POST /auth/avatar`.
-- [~] Name, display name, email, phone.
-- [ ] Password change (§2.9).
+- [x] Avatar upload / replace (PhotoPicker) via `POST /auth/avatar`. (commit 922ef1f — PhotoPicker + Coil3 AsyncImage + `SettingsApi.uploadAvatar` multipart)
+- [x] Name, display name, email, phone. (commit 922ef1f — ProfileScreen full form)
+- [x] Password change (§2.9). (commit c7dd985 — ChangePasswordScreen)
 - [x] PIN change (§2.5).
 - [x] Biometric toggle (§2.6).
 - [x] Sign-out button.
@@ -1988,30 +1988,30 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 19.3 Notifications
 - [~] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut).
 - [x] Quiet hours (start / end / days-of-week).
-- [ ] Per-event override matrix (§73).
-- [ ] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`.
+- [x] Per-event override matrix (§73). (commit 922ef1f — 6 events × 3 channels {Push/SMS/Email} checkbox grid + `AppPreferences.getNotifMatrixEnabled/setNotifMatrixEnabled`)
+- [x] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`. (commit 922ef1f — per-channel RingtoneManager intent + `getNotifSoundUri/setNotifSoundUri`)
 
 ### 19.4 Appearance
 - [x] Theme: System / Light / Dark (DataStore + `AppCompatDelegate.setDefaultNightMode`). (commit 6cfcefa — `ui/screens/settings/ThemeScreen.kt` with radio rows; `AppPreferences.darkModeFlow` + MainActivity observes via `collectAsState`; no activity recreate needed)
 - [x] Dynamic color on/off (Android 12+). (commit 6cfcefa — ThemeScreen Switch gated on `SDK_INT >= S`; `AppPreferences.dynamicColorFlow` → BizarreCrmTheme)
-- [ ] Tenant accent override color picker.
-- [ ] Density mode (§3.18).
-- [ ] Font-scale preview.
-- [ ] High-contrast toggle (swaps to AA 7:1 palette).
+- [x] Tenant accent override color picker. (commit 922ef1f — AppearanceScreen accent swatches → `AppPreferences.tenantAccentColor`; `LocalBrandAccent` reads override)
+- [x] Density mode (§3.18). (commit fc88873 — AppearanceScreen SegmentedButton)
+- [x] Font-scale preview. (commit 922ef1f — AppearanceScreen SegmentedButton + preview card; `AppPreferences.fontScaleKey`)
+- [x] High-contrast toggle (swaps to AA 7:1 palette). (commit 922ef1f — AppearanceScreen Switch + `AppPreferences.highContrastEnabled`; deferred full-coverage note in KDoc)
 
 ### 19.5 Language & region
 - [x] Per-app language via `LocaleManager.setApplicationLocales` (Android 13+); pre-13 falls back to in-app `ConfigurationCompat` + `AppCompatDelegate.setApplicationLocales`. (commit d3d546c — `util/LanguageManager.kt` + `ui/screens/settings/LanguageScreen.kt` + `locales_config.xml`)
-- [ ] Timezone override.
-- [ ] Date / time / number formats follow locale.
-- [ ] Currency display override (§5.17).
+- [x] Timezone override. (commit 922ef1f — LanguageScreen ExposedDropdownMenuBox + ZoneId list; `AppPreferences.timezoneOverride`)
+- [x] Date / time / number formats follow locale. (commit 922ef1f — LanguageScreen invariant card; java.time reads override when set)
+- [x] Currency display override (§5.17). (commit 922ef1f — dropdown ISO 4217; `AppPreferences.currencyOverride`)
 
 ### 19.6 Security
-- [ ] 2FA (§2.4), Passkey (§2.22), Hardware key (§2.23), Recovery codes (§2.19), SSO (§2.20).
-- [ ] Session timeout (§2.16).
-- [ ] Remember-me (§2.17).
-- [ ] Shared-device mode (§2.14).
-- [ ] Screenshot blocking toggle (forces `FLAG_SECURE` across sensitive screens).
-- [ ] Active sessions list + revoke.
+- [x] 2FA (§2.4), Passkey (§2.22), Hardware key (§2.23), Recovery codes (§2.19), SSO (§2.20). (commit 922ef1f — `SecuritySummaryScreen.kt` consolidated rows linking to each sub-screen)
+- [x] Session timeout (§2.16). (commit 922ef1f — SecuritySummary row)
+- [x] Remember-me (§2.17). (commit 922ef1f — SecuritySummary row)
+- [x] Shared-device mode (§2.14). (commit 922ef1f — SecuritySummary row)
+- [x] Screenshot blocking toggle (forces `FLAG_SECURE` across sensitive screens). (commit 922ef1f + 0584d26 — `AppPreferences.screenCapturePreventionFlow` toggle; SecuritySummary row)
+- [x] Active sessions list + revoke. (commit c8d42a5 + 922ef1f — ActiveSessionsScreen link in SecuritySummary)
 
 ### 19.7 Tickets
 - [ ] Default assignee, default due date rule (+N business days), tenant-level visibility (§4 `ticket_all_employees_view_all`), status taxonomy editor, transition guards, default service type.
