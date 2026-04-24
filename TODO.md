@@ -701,3 +701,25 @@ Verified working. Not TODOs.
 - [ ] SCAN-961. **Ticket wizard still has ~18 FormLabel/input pairs in device + service sections without htmlFor wiring — needs full sweep.**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
+### Wave-51 scan-loop findings (2026-04-23) — web/pages dashboard+reports+settings+customers
+- [ ] SCAN-962. **Reports tab config icons typed as `any` — no compile-time guarantee they're renderable components.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:134; fix=ComponentType<{className?:string}> -->
+- [ ] SCAN-963. **Reports queries have no staleTime — tab switches re-hit expensive aggregations on every refocus.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:159-165; fix=staleTime-30000 -->
+- [ ] SCAN-964. **Reports TicketsTab recomputes `Math.max(...)` inside every row — O(n) per row over up to 90 days.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/reports/ReportsPage.tsx:467; fix=hoist-max-once -->
+- [ ] SCAN-965. **Customer list + groups queries have no staleTime — every nav refetches fresh data even on ms-old cache.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:149,172; fix=staleTime-10000 -->
+- [ ] SCAN-966. **Customer CSV import preview typed as `any[]` — malformed/injected rows flow to server untyped.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:80,220; fix=Record<string,string>[] -->
+- [ ] SCAN-967. **[CRITICAL] DashboardPage declares hooks AFTER an early `if (role==='technician') return <TechDashboard/>` — Rules of Hooks violation.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:1563-1632; fix=extract-admin-dashboard-component -->
+- [ ] SCAN-968. **Customer detail `FieldBlock` wraps a label without htmlFor linking to its child input.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:2015-2032; fix=useId+htmlFor -->
+- [ ] SCAN-969. **Tech dashboard ticket status is color-only — no aria-label / title, fails WCAG non-color rule.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:968-972; fix=add-title-or-aria-label -->
+- [ ] SCAN-970. **DangerZone back navigation leaves stale termination token + typed slug in state.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/settings/DangerZoneTab.tsx:131-143; fix=onBack-reset-state -->
+- [ ] SCAN-971. **Dashboard NeedsAttentionCard fires two preference writes without try/catch — UI diverges from server on net error.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:603-613; fix=try-catch+toast-error -->
+
