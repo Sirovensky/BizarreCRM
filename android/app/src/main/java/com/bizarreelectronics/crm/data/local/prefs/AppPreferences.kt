@@ -304,14 +304,14 @@ class AppPreferences @Inject constructor(
     //
     // When true, MainActivity applies FLAG_SECURE + setRecentsScreenshotEnabled(false)
     // to prevent PII leaking via Recents thumbnails, MediaProjection, or adb screencap.
-    // Defaults TRUE so all release installs are protected out of the box (GDPR Art 32 /
-    // PCI-DSS 3.4). The Settings toggle UI is owned by a separate agent (Wave 3).
     //
-    // BuildConfig.DEBUG callers bypass FLAG_SECURE regardless of this pref so QA can
-    // take screenshots — see MainActivity.onCreate.
+    // Default: `!BuildConfig.DEBUG` — release builds default ON (GDPR Art 32 /
+    // PCI-DSS 3.4 out of the box), debug builds default OFF so QA + device
+    // verification screencaps work without first flipping the Settings toggle.
+    // The user can still override either way via Settings (Wave 3).
 
     private val _screenCapturePreventionFlow = MutableStateFlow(
-        prefs.getBoolean("screen_capture_prevention_enabled", true),
+        prefs.getBoolean("screen_capture_prevention_enabled", !com.bizarreelectronics.crm.BuildConfig.DEBUG),
     )
 
     /**
@@ -331,7 +331,7 @@ class AppPreferences @Inject constructor(
      * DO NOT add a Settings UI toggle here — that is owned by the Wave-3 Settings agent.
      */
     var screenCapturePreventionEnabled: Boolean
-        get() = prefs.getBoolean("screen_capture_prevention_enabled", true)
+        get() = prefs.getBoolean("screen_capture_prevention_enabled", !com.bizarreelectronics.crm.BuildConfig.DEBUG)
         set(value) {
             prefs.edit().putBoolean("screen_capture_prevention_enabled", value).apply()
             _screenCapturePreventionFlow.value = value
