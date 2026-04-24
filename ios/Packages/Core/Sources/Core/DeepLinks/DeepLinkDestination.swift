@@ -10,7 +10,7 @@ import Foundation
 /// - Note: This enum lives alongside `DeepLinkRoute` (the legacy parser output).
 ///   New code should prefer `DeepLinkDestination`; the validator and builder
 ///   work exclusively with this type.
-public enum DeepLinkDestination: Sendable, Equatable {
+public enum DeepLinkDestination: Sendable, Equatable, Hashable {
 
     // MARK: Dashboard
     case dashboard(tenantSlug: String)
