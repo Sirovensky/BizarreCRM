@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-63 RMA tx + shiftsSchedule consume swap)
+
+- [x] SCAN-1101. **`POST /rma` split the header INSERT, order_id UPDATE, and ~200 item INSERTs across separate async calls** — any mid-loop failure (FK violation, disk full, WAL error) left an orphan `rma_requests` row plus partial items; the caller retried on 500 and created a second full header + item set. Wrapped the whole sequence in a sync better-sqlite3 transaction so all writes commit together or roll back together. Reused `generateOrderId(rmaId)` inside the transaction since `lastInsertRowid` is available synchronously.
+- [x] SCAN-1103. **`shiftsSchedule.routes.ts` used the deprecated `checkWindowRate` + `recordWindowAttempt` pair at 8 write sites** — same TOCTOU pattern SCAN-1062 deprecated: two concurrent writes both see `count < max` before either records an attempt, doubling the real cap. Swapped every site to the atomic `consumeWindowRate(...)` helper — preserved the same keys (`schedule_write`, `swap_write`) and limits, dropped the redundant `recordWindowAttempt` calls, and updated the file's header comment to reflect the new pattern.
+
 ## Closed 2026-04-24 (wave-63 loaners tx + booking IP + roles seed cache)
 
 - [x] SCAN-1102. **Loaner `POST /:id/loan` flipped device status and inserted history as two separate `adb.run` calls** — if the `loaner_history` INSERT failed after the `UPDATE loaner_devices SET status='loaned'` committed, the device was stuck in `loaned` with no active history row, so `/return` could never find an active loan and the device was stranded. Wrapped both statements in a sync better-sqlite3 transaction (`db.transaction(...)`) — the `changes === 0` conflict check throws inside the transaction, which rolls back both the UPDATE and any partial INSERT. Same semantic as the previous conditional UPDATE but now atomic.

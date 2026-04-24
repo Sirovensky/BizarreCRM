@@ -125,7 +125,7 @@ router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 // (including cashier-tier) queue a return and send it to a supplier.
 router.post('/', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const db = req.db;
-  const adb = req.asyncDb;
+  // SCAN-1101: create tx uses sync `db` directly — no async adb needed.
   // SCAN-1045: per-user write rate limit + array size cap before we start
   // the INSERT loop, which would otherwise run once per item unbounded.
   const rl = consumeWindowRate(db, 'rma_create', String(req.user!.id), RMA_CREATE_MAX, RMA_CREATE_WINDOW_MS);
@@ -150,23 +150,46 @@ router.post('/', requirePermission('inventory.edit'), asyncHandler(async (req, r
     }
   }
 
-  // Insert with placeholder order_id, then update using lastInsertRowid to avoid MAX(id)+1 race
-  const result = await adb.run(`
-    INSERT INTO rma_requests (order_id, supplier_id, supplier_name, status, reason, notes, created_by, created_at, updated_at)
-    VALUES ('__pending__', ?, ?, 'pending', ?, ?, ?, ?, ?)
-  `, supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, now(), now());
-
-  const rmaId = Number(result.lastInsertRowid);
-  const orderId = generateOrderId('RMA', rmaId);
-  await adb.run('UPDATE rma_requests SET order_id = ? WHERE id = ?', orderId, rmaId);
-
-  for (const item of items) {
-    await adb.run(`
+  // SCAN-1101: previously this was three async calls:
+  //   1. INSERT rma_requests (placeholder order_id)
+  //   2. UPDATE rma_requests SET order_id = ?
+  //   3. for-loop of INSERT INTO rma_items
+  // If step 3 threw at item N (FK violation, disk full, WAL error) the
+  // rma_requests row plus the first N-1 items remained in the DB, and
+  // the caller saw 500 and retried — creating a second header plus a
+  // fresh 200-item set. Inconsistent with supplier tracking.
+  //
+  // Wrap the whole sequence in a sync better-sqlite3 transaction: one
+  // INSERT header, compute order_id from lastInsertRowid, UPDATE to
+  // stamp it, then loop the item INSERTs. Any throw inside rolls back
+  // all three writes atomically.
+  const createNow = now();
+  const createTx = db.transaction((): { id: number; orderId: string } => {
+    const headerRes = db.prepare(`
+      INSERT INTO rma_requests (order_id, supplier_id, supplier_name, status, reason, notes, created_by, created_at, updated_at)
+      VALUES ('__pending__', ?, ?, 'pending', ?, ?, ?, ?, ?)
+    `).run(supplier_id || null, supplier_name || null, reason || null, notes || null, req.user!.id, createNow, createNow);
+    const id = Number(headerRes.lastInsertRowid);
+    const orderId = generateOrderId('RMA', id);
+    db.prepare('UPDATE rma_requests SET order_id = ? WHERE id = ?').run(orderId, id);
+    const itemStmt = db.prepare(`
       INSERT INTO rma_items (rma_id, inventory_item_id, ticket_device_part_id, name, quantity, reason, resolution)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, rmaId, item.inventory_item_id || null, item.ticket_device_part_id || null,
-      item.name, item.quantity || 1, item.reason || null, item.resolution || null);
-  }
+    `);
+    for (const item of items) {
+      itemStmt.run(
+        id,
+        item.inventory_item_id || null,
+        item.ticket_device_part_id || null,
+        item.name,
+        item.quantity || 1,
+        item.reason || null,
+        item.resolution || null,
+      );
+    }
+    return { id, orderId };
+  });
+  const { id: rmaId, orderId } = createTx();
 
   audit(db, 'rma_created', req.user!.id, req.ip || 'unknown', { rma_id: rmaId, order_id: orderId, supplier_name: supplier_name || null, item_count: items.length });
   res.status(201).json({ success: true, data: { id: rmaId, order_id: orderId } });

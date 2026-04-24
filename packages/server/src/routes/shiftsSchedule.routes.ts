@@ -18,7 +18,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
-import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import {
   validateIsoDate,
   validateTextLength,
@@ -138,10 +138,13 @@ router.post('/shifts', asyncHandler(async (req: any, res: any) => {
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: replaced deprecated checkWindowRate+recordWindowAttempt pair
+  // with the atomic consumeWindowRate helper (see SCAN-1062). The split
+  // pattern leaked a TOCTOU window where two concurrent writes both saw
+  // `count < max` before either recorded an attempt, doubling the real cap.
+  if (!consumeWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'schedule_write', String(callerId), RL_WINDOW_MS);
 
   const userId   = parseId(String(req.body?.user_id ?? ''), 'user_id');
   const startAt  = validateIsoDate(req.body?.start_at, 'start_at', true)!;
@@ -185,10 +188,13 @@ router.patch('/shifts/:id', asyncHandler(async (req: any, res: any) => {
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: replaced deprecated checkWindowRate+recordWindowAttempt pair
+  // with the atomic consumeWindowRate helper (see SCAN-1062). The split
+  // pattern leaked a TOCTOU window where two concurrent writes both saw
+  // `count < max` before either recorded an attempt, doubling the real cap.
+  if (!consumeWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'schedule_write', String(callerId), RL_WINDOW_MS);
 
   const id = parseId(req.params.id, 'shift id');
   const existing = await adb.get<ShiftRow>(
@@ -238,10 +244,13 @@ router.delete('/shifts/:id', asyncHandler(async (req: any, res: any) => {
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: replaced deprecated checkWindowRate+recordWindowAttempt pair
+  // with the atomic consumeWindowRate helper (see SCAN-1062). The split
+  // pattern leaked a TOCTOU window where two concurrent writes both saw
+  // `count < max` before either recorded an attempt, doubling the real cap.
+  if (!consumeWindowRate(db, 'schedule_write', String(callerId), RL_WRITE_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'schedule_write', String(callerId), RL_WINDOW_MS);
 
   const id = parseId(req.params.id, 'shift id');
   const existing = await adb.get<{ id: number }>(
@@ -274,10 +283,10 @@ router.post('/shifts/:id/swap-request', asyncHandler(async (req: any, res: any) 
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: atomic consumeWindowRate — see comment above.
+  if (!consumeWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'swap_write', String(callerId), RL_WINDOW_MS);
 
   const shiftId      = parseId(req.params.id, 'shift id');
   const targetUserId = parseId(String(req.body?.target_user_id ?? ''), 'target_user_id');
@@ -329,10 +338,10 @@ router.post('/swap/:requestId/accept', asyncHandler(async (req: any, res: any) =
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: atomic consumeWindowRate — see comment above.
+  if (!consumeWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'swap_write', String(callerId), RL_WINDOW_MS);
 
   const reqId = parseId(req.params.requestId, 'requestId');
   const swap  = await adb.get<SwapRow>(
@@ -376,10 +385,10 @@ router.post('/swap/:requestId/decline', asyncHandler(async (req: any, res: any) 
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: atomic consumeWindowRate — see comment above.
+  if (!consumeWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'swap_write', String(callerId), RL_WINDOW_MS);
 
   const reqId = parseId(req.params.requestId, 'requestId');
   const swap  = await adb.get<SwapRow>(
@@ -414,10 +423,10 @@ router.post('/swap/:requestId/cancel', asyncHandler(async (req: any, res: any) =
   const db  = req.db;
   const callerId = requireUserId(req);
 
-  if (!checkWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS)) {
+  // SCAN-1103: atomic consumeWindowRate — see comment above.
+  if (!consumeWindowRate(db, 'swap_write', String(callerId), RL_SWAP_MAX, RL_WINDOW_MS).allowed) {
     throw new AppError('Too many requests — please slow down', 429);
   }
-  recordWindowAttempt(db, 'swap_write', String(callerId), RL_WINDOW_MS);
 
   const reqId = parseId(req.params.requestId, 'requestId');
   const swap  = await adb.get<SwapRow>(
