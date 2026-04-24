@@ -48,6 +48,12 @@ router.post(
     if (!/^[a-zA-Z0-9_\-]+$/.test(shortcode)) throw new AppError('shortcode may only contain letters, digits, underscore, or dash', 400);
     if (typeof title !== 'string' || title.length > 200) throw new AppError('title must be 200 characters or less', 400);
     if (typeof content !== 'string' || content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
+    // SCAN-1095: `category` had no shape/length guard — a hostile caller could
+    // store a 1MB string per snippet row. Cap at 64 chars (category is a UI
+    // dropdown label in practice), reject non-string types.
+    if (category != null && (typeof category !== 'string' || category.length > 64)) {
+      throw new AppError('category must be a string of 64 characters or less', 400);
+    }
 
     // Check uniqueness
     const existing = await adb.get('SELECT id FROM snippets WHERE shortcode = ?', shortcode);
@@ -87,6 +93,10 @@ router.put(
     }
     if (title !== undefined && title.length > 200) throw new AppError('title must be 200 characters or less', 400);
     if (content !== undefined && content.length > 10000) throw new AppError('content must be 10000 characters or less', 400);
+    // SCAN-1095: mirror the POST guard on PUT.
+    if (category !== undefined && category != null && (typeof category !== 'string' || category.length > 64)) {
+      throw new AppError('category must be a string of 64 characters or less', 400);
+    }
 
     // Check shortcode uniqueness if changing
     if (shortcode && shortcode !== existing.shortcode) {

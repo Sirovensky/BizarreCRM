@@ -39,10 +39,18 @@ const MAX_BODY_BYTES = 64 * 1024;
  * `<METHOD>\n<path>\n<body>`.  The body is the raw JSON string (or empty
  * string if the request has no body).  This lets the middleware detect
  * when a retry reuses the same key but sends a different payload.
+ *
+ * SCAN-1091: previously used `req.originalUrl` which includes the query
+ * string. A client that retried with a cache-buster query (`?_=12345`)
+ * produced a different hash and defeated the idempotent replay — the
+ * handler re-ran despite the same Idempotency-Key. Switch to
+ * `req.baseUrl + req.path` so the fingerprint is path-only. Query params
+ * that carry semantic meaning should live in the body of a POST anyway;
+ * idempotency is defined per (key, route, body) tuple.
  */
 function hashRequest(req: Request): string {
   const method = req.method.toUpperCase();
-  const path = req.originalUrl;
+  const path = `${req.baseUrl || ''}${req.path}`;
   // Express has already parsed the body by this point; re-serialize it so the
   // hash is stable regardless of whitespace in the original wire bytes.
   const body = req.body !== undefined && req.body !== null

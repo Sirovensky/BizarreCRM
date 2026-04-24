@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-62 web/hooks + server/middleware + server/routes)
+
+- [x] SCAN-1088. **`useUndoableAction` unmount-fired the destructive action even when the user was closing the tab** — user types "delete ticket", sees 5-second undo toast, changes their mind, closes the tab → deletion still fires through the unmount cleanup. Gated the fire on `document.visibilityState !== 'hidden'` so tab-close skips the commit. SPA-internal unmounts (navigate between routes) still fire so pending user intent is preserved.
+- [x] SCAN-1091. **`idempotency.hashRequest` included the full query string via `req.originalUrl`** — a retry with `?_=<cachebust>` produced a different hash and defeated the stored-response replay for the same `Idempotency-Key`. Switched to `req.baseUrl + req.path` so the fingerprint is path+body-scoped, matching how idempotency keys are defined in RFC 9562.
+- [x] SCAN-1095. **`snippets.routes.ts` accepted `category` with no shape or length bound** — a hostile caller could stuff a 1MB string into every snippet row. Capped at 64 chars with an explicit type guard; mirrored on both POST create and PUT update. Null/undefined remains legal (category is optional).
+
 ## Closed 2026-04-24 (wave-62 server/routes — tradeIns id validation)
 
 - [x] SCAN-1096. **`tradeIns.routes.ts` used `req.params.id` raw in GET/PATCH/DELETE** — malformed ids (`/trade-ins/abc`) surfaced as generic 500s when they reached SQLite or when `Number('abc')` produced NaN in the audit payload. Replaced every raw read with `validateId(req.params.id, 'id')` at handler entry, dropped the ad-hoc `Number(req.params.id)` calls, and reused the validated number through the body of each handler. Now returns 400 with a clear message.

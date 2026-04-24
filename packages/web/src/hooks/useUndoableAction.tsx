@@ -184,6 +184,15 @@ export function useUndoableAction<TArgs = void>(
 
   // If the component unmounts with a pending undo window, fire the action
   // immediately so we do not silently drop the user's intent.
+  //
+  // SCAN-1088: if the user is closing the tab (document becoming hidden /
+  // pagehide firing the unmount) we should NOT commit a destructive action
+  // they were still considering. Before, a user who typed "delete ticket",
+  // saw the 5-second undo toast, changed their mind, and closed the tab
+  // would still have the deletion fire through the unmount cleanup. Skip
+  // the fire in that case — the timer is discarded silently. If the user
+  // navigates to another route inside the SPA (visibility === 'visible'),
+  // firing is still the right behavior so pending intent is preserved.
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) {
@@ -192,7 +201,9 @@ export function useUndoableAction<TArgs = void>(
         const runArgs = argsRef.current;
         argsRef.current = null;
         toastIdRef.current = null;
-        if (runArgs !== null) {
+        const tabHidden =
+          typeof document !== 'undefined' && document.visibilityState === 'hidden';
+        if (runArgs !== null && !tabHidden) {
           // Fire and forget — we are unmounting, no UI to update.
           // Log the error so silent data-loss failures are still visible in
           // browser console / error telemetry rather than vanishing entirely.

@@ -733,20 +733,14 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useWebSocket.ts:281; fix=explicit-undefined-null-check -->
 - [ ] SCAN-1087. **[LOW] `useSettings.getSetting` not memoized — defeats downstream useEffect dep memoization.**
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useSettings.ts:43-47; fix=useCallback-around-getSetting -->
-- [ ] SCAN-1088. **[MED] `useUndoableAction` unmount-fires destructive action without visibility check — tab-close during undo window silently commits.**
-  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:187-205; fix=gate-on-document.visibilityState -->
 - [ ] SCAN-1089. **[LOW] `useDefaultTaxRate` has dead `data.data.data` triple-envelope fallback + any shape.**
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDefaultTaxRate.ts:24-25; fix=drop-fallback+type-response -->
-- [ ] SCAN-1091. **[LOW] `idempotency.hashRequest` includes query string — `?_=cachebust` breaks replay.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/idempotency.ts:43-55; fix=hash-baseUrl+path-only -->
 - [ ] SCAN-1092. **[MED] `fileUploadValidator` quota pre-check races with `adjustFileCounter` lock — N concurrent uploads admit past quota.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/fileUploadValidator.ts:236-252; fix=move-precheck-inside-withCounterLock -->
 - [ ] SCAN-1093. **[MED] `stepUpTotp` replay Map keyed on current 30s window only — skew-accepted codes replayable at bucket boundary.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/stepUpTotp.ts:79-85; fix=claim-under-three-adjacent-buckets -->
 - [ ] SCAN-1094. **[LOW] `worker-pool.runWithTimeout` classifies any error containing "piscina" as 503 — swallows genuine worker crashes.**
   <!-- meta: scope=server/db; files=packages/server/src/db/worker-pool.ts:108-118; fix=tighten-match-to-exact-QUEUE_FULL -->
-- [ ] SCAN-1095. **[LOW] `snippets.routes.ts` no length/shape validation on `category` — 1MB strings can be stored per row.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/snippets.routes.ts:39,59,79,105; fix=validate-category-length<=64 -->
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
