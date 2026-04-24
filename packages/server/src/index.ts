@@ -171,6 +171,7 @@ import { scheduleBackup } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
 // Multi-tenant imports
 import { initMasterDb, getMasterDb, closeMasterDb } from './db/master-connection.js';
+import { assertVirusScannerConfigured } from './utils/fileValidation.js';
 // buildTemplateDb is invoked internally by migrateAllTenants(); no direct import needed.
 import { migrateAllTenants } from './db/migrate-all-tenants.js';
 import { getTenantDb, releaseTenantDb, closeAllTenantDbs } from './db/tenant-pool.js';
@@ -341,6 +342,19 @@ import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue } from './utils/configEncrypt
 if (config.multiTenant) {
   initMasterDb();
   setMasterDb(getMasterDb());
+}
+
+// SCAN-1068: fail fast on a misconfigured virus scanner. If CLAMAV_HOST is
+// set but the clamscan integration is still a stub, refuse to start in
+// production so operators don't believe uploads are being scanned while
+// every upload actually passes through. Dev/test just warns.
+try {
+  assertVirusScannerConfigured();
+} catch (err) {
+  log.error('Virus-scanner startup check failed', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  process.exit(1);
 }
 
 // @audit-fixed: #7 (boot race) — in single-tenant mode runMigrations(db) above already

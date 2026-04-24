@@ -722,8 +722,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/utils; files=packages/server/src/utils/rateLimiter.ts:18-36; fix=use-consumeWindowRate-or-tx -->
 - [ ] SCAN-1066. **WS broadcast iterates global allClients set per event — O(totalSockets), not O(tenantSockets).**
   <!-- meta: scope=server/ws; files=packages/server/src/ws/server.ts:640-675; fix=per-tenant-Map -->
-- [ ] SCAN-1068. **`scanFileForViruses` returns clean when CLAMAV_HOST set but integration unwired — operators think scanning is active.**
-  <!-- meta: scope=server/utils; files=packages/server/src/utils/fileValidation.ts:204-232; fix=startup-env-check -->
 
 
 ### Wave-56 scan-loop findings (2026-04-24) — web/pages pos+print+setup+photo-capture+loaners+landing

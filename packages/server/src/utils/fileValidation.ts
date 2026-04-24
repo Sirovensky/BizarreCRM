@@ -201,6 +201,29 @@ export interface VirusScanResult {
  *   4. The clamd daemon must be reachable from the Node process — run it in
  *      a sidecar container in production deployments.
  */
+// Fail loud at startup when the operator signals they want virus scanning
+// but the real integration is still stubbed out. Called once from index.ts
+// during boot (idempotent — repeated invocations are fine). In production
+// mode we refuse to start so a misconfigured deployment can't claim to scan
+// uploads while silently letting them all through.
+export function assertVirusScannerConfigured(): void {
+  const host = process.env.CLAMAV_HOST;
+  if (!host) return;
+  const env = process.env.NODE_ENV || 'development';
+  const msg =
+    'CLAMAV_HOST is set but the clamscan integration is not wired yet. ' +
+    'File uploads are NOT being scanned. Either unset CLAMAV_HOST (to make ' +
+    'the no-scan default explicit) or install + wire `clamscan` per the ' +
+    'comment above scanFileForViruses().';
+  if (env === 'production') {
+    // Don't let a prod deploy boot in a state where operators believe
+    // scanning is active while every upload actually passes through.
+    logger.error('FATAL: virus scanner misconfigured', { host });
+    throw new Error(msg);
+  }
+  logger.warn('virus scanner stub is active despite CLAMAV_HOST being set', { host });
+}
+
 export async function scanFileForViruses(filePath: string): Promise<VirusScanResult> {
   const host = process.env.CLAMAV_HOST;
   if (!host) {
