@@ -968,6 +968,9 @@ export function CommunicationPage() {
     queryKey: ['sms-conversations', includeArchived],
     queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
     refetchInterval: 15000,
+    // just under the 15s interval — a remount during the same polling cycle
+    // reuses cached data instead of firing a redundant network request.
+    staleTime: 14_000,
   });
   const conversations: Conversation[] = (convData?.data as any)?.data?.conversations ?? [];
 
@@ -977,6 +980,7 @@ export function CommunicationPage() {
     queryFn: () => smsApi.messages(selectedPhone!),
     enabled: !!selectedPhone,
     refetchInterval: 10000,
+    staleTime: 9_000, // just under the 10s interval
   });
 
   // Mark conversation as read when selected.
@@ -986,6 +990,11 @@ export function CommunicationPage() {
     mutationFn: (phone: string) => smsApi.markRead(phone),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
+    },
+    // Log mark-read failures so an unread-count desync is at least visible
+    // during debugging instead of being silently dropped.
+    onError: (err) => {
+      console.error('[sms] markRead failed', err);
     },
   });
   const markAsResolvedMutation = useMutation({
