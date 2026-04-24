@@ -135,31 +135,37 @@ fun CartLineBottomSheet(
                         color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // M3 Expressive: ButtonGroup renders segmented-connected
+                // toggle buttons with single-select semantics. Tap targets
+                // remain 48dp minimum (usability guardrail #3). Falls back
+                // automatically on the feature flag toggle because
+                // ButtonGroup requires the expressive surface.
+                @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+                ButtonGroup(
+                    overflowIndicator = { /* No overflow; 4 fixed items */ },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     DiscountChip.entries.forEach { chip ->
                         val isActive = selectedChip == chip
-                        FilterChip(
-                            selected = isActive,
-                            onClick = {
-                                selectedChip = if (isActive) null else chip
-                                discountCents = when (chip) {
-                                    DiscountChip.FIVE_PCT -> (line.unitPriceCents * qty * 5 / 100)
-                                    DiscountChip.TEN_PCT -> (line.unitPriceCents * qty * 10 / 100)
-                                    DiscountChip.FLAT, DiscountChip.CUSTOM -> 0L
+                        val label = when (chip) {
+                            DiscountChip.FIVE_PCT -> "5%"
+                            DiscountChip.TEN_PCT -> "10%"
+                            DiscountChip.FLAT -> "$"
+                            DiscountChip.CUSTOM -> "Custom"
+                        }
+                        toggleableItem(
+                            checked = isActive,
+                            onCheckedChange = { checked ->
+                                selectedChip = if (checked) chip else null
+                                discountCents = when {
+                                    !checked -> 0L
+                                    chip == DiscountChip.FIVE_PCT -> (line.unitPriceCents * qty * 5 / 100)
+                                    chip == DiscountChip.TEN_PCT -> (line.unitPriceCents * qty * 10 / 100)
+                                    else -> 0L
                                 }
                                 onDiscountChange(discountCents)
                             },
-                            label = {
-                                Text(
-                                    when (chip) {
-                                        DiscountChip.FIVE_PCT -> "5%"
-                                        DiscountChip.TEN_PCT -> "10%"
-                                        DiscountChip.FLAT -> "$"
-                                        DiscountChip.CUSTOM -> "Custom"
-                                    }
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
+                            label = label,
                         )
                     }
                 }

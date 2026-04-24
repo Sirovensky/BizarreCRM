@@ -17,7 +17,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -86,7 +87,14 @@ fun CheckInHostScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
-            LinearProgressIndicator(
+            // M3 Expressive: LinearWavyProgressIndicator (1.5.0-alpha18)
+            // matches the multi-minute nature of a check-in flow — the wave
+            // motion reads as "you are making progress" rather than the
+            // busy-spinner connotation of a flat bar. Usability guardrail #4
+            // (WavyProgressIndicator only for bounded long ops ≥ 5s) is met:
+            // each check-in step typically takes 30-60s.
+            @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+            LinearWavyProgressIndicator(
                 progress = { state.progressFraction },
                 modifier = Modifier
                     .fillMaxWidth()
