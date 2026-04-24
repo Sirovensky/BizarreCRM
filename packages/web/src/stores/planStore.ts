@@ -22,6 +22,7 @@ interface PlanState {
   features: PlanFeatures;
   isLoading: boolean;
   hasFetched: boolean;
+  error: string | null;
   upgradeModalOpen: boolean;
   upgradeModalFeature: keyof PlanFeatures | 'ticket_limit' | null;
   fetchPlan: () => Promise<void>;
@@ -54,6 +55,7 @@ export const usePlanStore = create<PlanState>((set) => ({
   features: DEFAULT_FEATURES,
   isLoading: false,
   hasFetched: false,
+  error: null,
   upgradeModalOpen: false,
   upgradeModalFeature: null,
 
@@ -62,7 +64,7 @@ export const usePlanStore = create<PlanState>((set) => ({
     if (inFlightFetch) return inFlightFetch;
 
     inFlightFetch = (async () => {
-      set({ isLoading: true });
+      set({ isLoading: true, error: null });
       try {
         const res = await api.get('/account/usage');
         const data = res.data.data;
@@ -76,9 +78,20 @@ export const usePlanStore = create<PlanState>((set) => ({
           features: data.features,
           isLoading: false,
           hasFetched: true,
+          error: null,
         });
-      } catch {
-        set({ isLoading: false, hasFetched: true });
+      } catch (err) {
+        // Expose the failure on the store so feature gates can distinguish
+        // "plan fetch failed, retry" from "plan is genuinely empty". Previously
+        // every 500 silently defaulted to all-features-off with no way for the
+        // UI to surface the problem or offer a retry.
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : 'Failed to load plan';
+        set({ isLoading: false, hasFetched: true, error: message });
       } finally {
         inFlightFetch = null;
       }
@@ -109,6 +122,7 @@ if (typeof window !== 'undefined') {
       features: DEFAULT_FEATURES,
       isLoading: false,
       hasFetched: false,
+      error: null,
       upgradeModalOpen: false,
       upgradeModalFeature: null,
     });
