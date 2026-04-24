@@ -172,18 +172,41 @@ private fun LaborRow(
 @Composable
 private fun EtaRow(laborMinutes: Int) {
     if (laborMinutes <= 0) return
-    val etaText = buildString {
-        val hours = laborMinutes / 60
-        val mins = laborMinutes % 60
-        if (hours > 0) append("${hours}h ")
-        if (mins > 0) append("${mins}m")
-        append(" estimated labor")
+    // Mockup CI-5 pattern: ⏱️ card with absolute "Est. ready: <date, time>"
+    // headline + muted helper line. We only have labor minutes here (no
+    // supplier / tech-queue inputs yet), so ETA = now + laborMinutes rounded
+    // up to the next 15-min mark. Helper line documents the caveat.
+    val now = remember(laborMinutes) { java.time.LocalDateTime.now() }
+    val ready = remember(now, laborMinutes) {
+        val raw = now.plusMinutes(laborMinutes.toLong())
+        val mins = raw.minute
+        val roundUp = ((mins / 15) + if (mins % 15 == 0) 0 else 1) * 15
+        raw.withMinute(0).withSecond(0).withNano(0).plusMinutes(roundUp.toLong())
     }
-    Text(
-        etaText,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    val readyFmt = remember(ready) {
+        ready.format(java.time.format.DateTimeFormatter.ofPattern("EEE MMM d, h:mma"))
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("⏱️", style = MaterialTheme.typography.headlineSmall)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Est. ready: $readyFmt",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "Based on labor only — parts ETA not yet factored",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable
