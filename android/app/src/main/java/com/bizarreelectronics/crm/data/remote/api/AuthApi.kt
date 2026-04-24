@@ -1,11 +1,13 @@
 package com.bizarreelectronics.crm.data.remote.api
 
+import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
 import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginRequest
 import com.bizarreelectronics.crm.data.remote.dto.LoginResponse
 import com.bizarreelectronics.crm.data.remote.dto.MessageResponse
+import com.bizarreelectronics.crm.data.remote.dto.RecoveryCodesResponse
 import com.bizarreelectronics.crm.data.remote.dto.RefreshResponse
 import com.bizarreelectronics.crm.data.remote.dto.ResetPasswordRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetPasswordRequest
@@ -21,7 +23,6 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
-import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 
 interface AuthApi {
 
@@ -98,4 +99,13 @@ interface AuthApi {
 
     @DELETE("auth/sessions/{id}")
     suspend fun revokeSession(@Path("id") id: String): ApiResponse<Unit>
+
+    // §2.19 L427 — Recovery codes regenerate.
+    // Body carries { password: <current> } for re-authentication.
+    // 404 → server predates this endpoint; ViewModel maps to NotSupported state.
+    // SECURITY: password value is NEVER logged (Redactor handles body redaction).
+    @POST("auth/account/2fa/recovery-codes/regenerate")
+    suspend fun regenerateRecoveryCodes(
+        @Body body: Map<String, String>,
+    ): ApiResponse<RecoveryCodesResponse>
 }

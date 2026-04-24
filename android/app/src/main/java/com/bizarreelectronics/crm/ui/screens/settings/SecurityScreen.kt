@@ -376,6 +376,7 @@ fun SecurityScreen(
     onChangePin: () -> Unit,
     onChangePassword: () -> Unit,
     onActiveSessions: (() -> Unit)? = null,
+    onRecoveryCodes: (() -> Unit)? = null,
     viewModel: SecurityViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -555,6 +556,20 @@ fun SecurityScreen(
                         title = "Change password",
                         subtitle = "Update your account password",
                         onClick = onChangePassword,
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
+
+                    // §2.19: Recovery codes screen (ActionPlan L427-L438).
+                    SecurityNavRow(
+                        icon = Icons.Default.VpnKey,
+                        title = "Recovery codes",
+                        subtitle = "Generate one-time codes for 2FA recovery",
+                        onClick = { onRecoveryCodes?.invoke() },
+                        enabled = onRecoveryCodes != null,
                     )
                 }
             }

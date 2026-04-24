@@ -128,5 +128,7 @@ class ActiveSessionsViewModelTest {
             throw UnsupportedOperationException()
         override suspend fun switchUser(body: com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest) =
             throw UnsupportedOperationException()
+        override suspend fun regenerateRecoveryCodes(body: Map<String, String>) =
+            throw UnsupportedOperationException()
     }
 }

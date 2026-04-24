@@ -63,6 +63,7 @@ import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ChangePasswordScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DiagnosticsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.RecoveryCodesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
@@ -277,6 +278,9 @@ sealed class Screen(val route: String) {
         fun createRoute(token: String) = "auth/reset-password/$token"
     }
     data object BackupCodeRecovery : Screen("auth/backup-recovery")
+
+    // §2.19 — Recovery codes settings screen (generate / display / print / email).
+    data object RecoveryCodes : Screen("settings/security/recovery-codes")
 }
 
 data class BottomNavItem(
@@ -1289,6 +1293,8 @@ fun AppNavGraph(
                     onChangePassword = { navController.navigate(Screen.ChangePassword.route) },
                     // §2.11: Active sessions screen wired (ActionPlan L350).
                     onActiveSessions = { navController.navigate(Screen.ActiveSessions.route) },
+                    // §2.19: Recovery codes screen wired (ActionPlan L427-L438).
+                    onRecoveryCodes = { navController.navigate(Screen.RecoveryCodes.route) },
                 )
             }
             // §2.11 — Active sessions list + revoke.
@@ -1302,6 +1308,13 @@ fun AppNavGraph(
                 ChangePasswordScreen(
                     onBack = { navController.popBackStack() },
                     onPasswordChanged = { navController.popBackStack() },
+                )
+            }
+            // §2.19 — Recovery codes screen (ActionPlan L427-L438).
+            // Generate new one-time recovery codes with password re-auth.
+            composable(Screen.RecoveryCodes.route) {
+                RecoveryCodesScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             // §2.5 — Switch User (shared device): PIN entry, reachable from

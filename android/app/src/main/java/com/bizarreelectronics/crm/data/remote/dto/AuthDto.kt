@@ -166,6 +166,23 @@ data class SetupStatusResponse(
 )
 
 /**
+ * §2.19 L427 — Response from POST /auth/account/2fa/recovery-codes/regenerate.
+ *
+ * Server returns the freshly-generated recovery codes, when they were generated,
+ * and optionally how many remain (for display in the Idle state before regenerate).
+ *
+ * 404 → server predates this endpoint; ViewModel maps to NotSupported state.
+ */
+data class RecoveryCodesResponse(
+    @SerializedName("codes")
+    val codes: List<String>,
+    @SerializedName("generatedAt")
+    val generatedAt: String? = null,
+    @SerializedName("remaining")
+    val remaining: Int? = null,
+)
+
+/**
  * §2.11 — Active session as returned by GET /auth/sessions.
  *
  * Fields mirror the server's session record. [current] is true for the
