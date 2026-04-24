@@ -18,6 +18,15 @@ import { useDismissible } from '@/hooks/useDismissible';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
+// Shape of the augmented config payload returned by `settingsApi.getConfig()`.
+// Every field is optional because the server merges store config with env
+// metadata; typing them explicitly kills the previous `as any` cast chain.
+interface ServerConfigPayload {
+  _node_env?: string;
+  store_currency?: string;
+  [key: string]: unknown;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
   const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
@@ -37,8 +46,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('focus', onFocus);
   }, [fetchPlan]);
 
-  // Check server environment for dev mode banner
-  const { data: configData } = useQuery({
+  // Check server environment for dev mode banner.
+  // Payload shape: axios response `{ data: { success: true, data: <cfg> } }`
+  // where `<cfg>` is the store-config map augmented with `_node_env` and
+  // `store_currency` by `settings.routes.ts`.
+  const { data: configData } = useQuery<{ data?: { data?: ServerConfigPayload } }>({
     queryKey: ['settings-config-env'],
     queryFn: () => settingsApi.getConfig(),
     staleTime: 5 * 60 * 1000,
@@ -49,11 +61,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // and `undefined !== 'production'` evaluated true on EVERY environment — the red dev
   // banner showed in production too. Correct path is body→inner→key (CLAUDE.md "API
   // response shape" — most common bug).
-  const isDev = (configData as any)?.data?.data?._node_env !== 'production';
+  const isDev = configData?.data?.data?._node_env !== 'production';
 
   // Initialise shared currency formatter from store settings
   useEffect(() => {
-    const currency = (configData as any)?.data?.data?.store_currency;
+    const currency = configData?.data?.data?.store_currency;
     if (currency) initCurrencyFromSettings(currency);
   }, [configData]);
 
