@@ -68,6 +68,7 @@ import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
+import com.bizarreelectronics.crm.ui.components.PredictiveBackScaffold
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -1304,11 +1305,13 @@ fun TicketCreateScreen(
     // the whole screen off the nav stack. Preserves selections accumulated in the
     // earlier steps. When we're already on Customer (step 1), the system back
     // pops the wizard back to the caller (which is the existing onBack behavior).
-    androidx.activity.compose.BackHandler(
+    // PredictiveBackScaffold is a drop-in for BackHandler that additionally exposes
+    // progress (0f..1f) during the swipe gesture via LocalBackProgress for future
+    // custom animations. Behavior is identical to BackHandler on older OS versions.
+    PredictiveBackScaffold(
         enabled = state.currentStep != TicketCreateStep.CUSTOMER,
-    ) {
-        viewModel.goBack()
-    }
+        onBack = { viewModel.goBack() },
+    ) { _ -> }
 
     LaunchedEffect(state.error) {
         state.error?.let {
