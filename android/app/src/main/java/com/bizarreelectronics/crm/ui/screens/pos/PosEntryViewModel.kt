@@ -111,8 +111,29 @@ class PosEntryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Mockup PHONE 1 hero behaviour: tapping a Ready-for-pickup row seeds a
+     * single-line cart at the ticket's due amount and skips straight to the
+     * tender screen so the cashier can collect payment without re-typing the
+     * total. We don't try to re-hydrate every part / labor row here — the
+     * customer already approved the quote at check-in time, so the relevant
+     * artefact is the outstanding balance, not the line breakdown.
+     */
     fun openReadyForPickup(ticketId: Long) {
         coordinator.setLinkedTicket(ticketId)
+        val ticket = _uiState.value.readyForPickupTickets.firstOrNull { it.ticketId == ticketId }
+        if (ticket != null) {
+            coordinator.setLines(
+                listOf(
+                    CartLine(
+                        type = "custom",
+                        itemId = null,
+                        name = "Ticket #${ticket.orderId} · ${ticket.deviceName}",
+                        unitPriceCents = ticket.dueCents,
+                    )
+                )
+            )
+        }
     }
 
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }

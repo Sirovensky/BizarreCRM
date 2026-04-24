@@ -47,6 +47,7 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 fun PosEntryScreen(
     onNavigateToCart: () -> Unit,
     onNavigateToCheckin: (Long?) -> Unit,
+    onNavigateToTender: () -> Unit,
     viewModel: PosEntryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -67,8 +68,11 @@ fun PosEntryScreen(
                 onRepairTicket = { onNavigateToCheckin(state.attachedCustomer?.id?.takeIf { it > 0L }) },
                 onStoreCredit = onNavigateToCart,
                 onOpenPickup = { ticketId ->
+                    // Mockup PHONE 1 'Open cart →' hero pill: skip the cart
+                    // step entirely; the line is seeded by the VM and we
+                    // jump straight to Tender so the cashier can charge.
                     viewModel.openReadyForPickup(ticketId)
-                    onNavigateToCart()
+                    onNavigateToTender()
                 },
                 onWalkIn = {
                     viewModel.attachWalkIn()

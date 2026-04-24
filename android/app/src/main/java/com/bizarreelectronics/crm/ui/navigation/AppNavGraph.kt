@@ -1173,6 +1173,7 @@ fun AppNavGraph(
                             else Screen.CheckInEntry.route
                         )
                     },
+                    onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
                 )
             }
             composable(Screen.PosCart.route) { backStack ->
