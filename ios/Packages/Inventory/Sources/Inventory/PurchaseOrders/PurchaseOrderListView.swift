@@ -303,11 +303,13 @@ private struct POListRow: View {
     private func statusBadge(_ status: POStatus) -> some View {
         let color: Color = {
             switch status {
-            case .draft:      return .bizarreOnSurfaceMuted
-            case .submitted:  return .bizarreWarning
-            case .partial:    return .bizarreWarning
-            case .received:   return .bizarreSuccess
-            case .cancelled:  return .bizarreError
+            case .draft:        return .bizarreOnSurfaceMuted
+            case .pending:      return .bizarreWarning
+            case .ordered:      return .bizarreOrange
+            case .backordered:  return .bizarreWarning
+            case .partial:      return .bizarreWarning
+            case .received:     return .bizarreSuccess
+            case .cancelled:    return .bizarreError
             }
         }()
         return Text(status.displayName)

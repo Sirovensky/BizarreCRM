@@ -113,7 +113,7 @@ final class PurchaseOrderCalculatorTests: XCTestCase {
         return PurchaseOrder(
             id: 1,
             supplierId: 42,
-            status: .submitted,
+            status: .pending,
             createdAt: Date(),
             expectedDate: nil,
             items: items,

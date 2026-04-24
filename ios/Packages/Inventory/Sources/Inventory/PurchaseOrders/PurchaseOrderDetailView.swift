@@ -14,6 +14,7 @@ public final class PurchaseOrderDetailViewModel {
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?
     public var showReceiveSheet: Bool = false
+    public var showCancelConfirm: Bool = false
 
     @ObservationIgnored private let repo: PurchaseOrderRepository
     @ObservationIgnored private let supplierRepo: SupplierRepository
@@ -40,15 +41,30 @@ public final class PurchaseOrderDetailViewModel {
         }
     }
 
-    public func cancelOrder() async {
-        guard let order else { return }
+    /// Transition a draft PO to pending (approve/submit for ordering).
+    public func approveOrder() async {
+        guard let order, order.status.canApprove else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
-            try await repo.cancel(id: order.id)
-            let refreshed = try await repo.get(id: order.id)
-            self.order = refreshed
+            self.order = try await repo.approve(id: order.id)
         } catch {
+            AppLog.ui.error("PO approve failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Cancel an open PO (any non-terminal status).
+    public func cancelOrder(reason: String? = nil) async {
+        guard let order, order.status.isOpen else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            self.order = try await repo.cancel(id: order.id, reason: reason)
+        } catch {
+            AppLog.ui.error("PO cancel failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -100,6 +116,21 @@ public struct PurchaseOrderDetailView: View {
                 }
             )
         }
+        .confirmationDialog(
+            "Cancel Purchase Order",
+            isPresented: $vm.showCancelConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel PO #\(displayOrder.id)", role: .destructive) {
+                Task {
+                    await vm.cancelOrder()
+                    onUpdate()
+                }
+            }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone. The order will be marked as cancelled.")
+        }
     }
 
     // MARK: Toolbar
@@ -107,14 +138,44 @@ public struct PurchaseOrderDetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if displayOrder.status.isOpen {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Receive") {
-                    vm.showReceiveSheet = true
+            // Receive action (non-draft open statuses)
+            if !displayOrder.status.canApprove {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Receive") {
+                        vm.showReceiveSheet = true
+                    }
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOrange)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .accessibilityLabel("Receive items for PO #\(displayOrder.id)")
                 }
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOrange)
-                .keyboardShortcut("r", modifiers: .command)
-                .accessibilityLabel("Receive items for PO #\(displayOrder.id)")
+            }
+            // Approve action (draft → pending)
+            if displayOrder.status.canApprove {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Approve") {
+                        Task {
+                            await vm.approveOrder()
+                            onUpdate()
+                        }
+                    }
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreSuccess)
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .accessibilityLabel("Approve PO #\(displayOrder.id)")
+                    .disabled(vm.isLoading)
+                }
+            }
+            // Cancel action (any open status)
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel PO", role: .destructive) {
+                    vm.showCancelConfirm = true
+                }
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreError)
+                .keyboardShortcut(.delete, modifiers: .command)
+                .accessibilityLabel("Cancel purchase order #\(displayOrder.id)")
+                .disabled(vm.isLoading)
             }
         }
     }
@@ -302,11 +363,13 @@ public struct PurchaseOrderDetailView: View {
     private func statusBadge(_ status: POStatus) -> some View {
         let color: Color = {
             switch status {
-            case .draft:      return .bizarreOnSurfaceMuted
-            case .submitted:  return .bizarreWarning
-            case .partial:    return .bizarreWarning
-            case .received:   return .bizarreSuccess
-            case .cancelled:  return .bizarreError
+            case .draft:        return .bizarreOnSurfaceMuted
+            case .pending:      return .bizarreWarning
+            case .ordered:      return .bizarreOrange
+            case .backordered:  return .bizarreWarning
+            case .partial:      return .bizarreWarning
+            case .received:     return .bizarreSuccess
+            case .cancelled:    return .bizarreError
             }
         }()
         return Text(status.displayName)
