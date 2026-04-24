@@ -306,15 +306,24 @@ router.post('/:id/void', async (req, res) => {
   const adb = req.asyncDb;
   const id = validateId(req.params.id);
 
+  // First check existence so we can emit a clean 404 instead of generic 409.
   const existing = await adb.get<{ id: number; status: string }>('SELECT id, status FROM credit_notes WHERE id = ?', id);
   if (!existing) throw new AppError('Credit note not found', 404);
-  if (existing.status === 'voided') throw new AppError('Credit note is already voided', 400);
-  if (existing.status === 'applied') throw new AppError('Cannot void an already-applied credit note', 400);
 
-  await adb.run(
-    "UPDATE credit_notes SET status = 'voided', voided_at = datetime('now') WHERE id = ?",
+  // Conditional update: transitions only happen when status is still `open`.
+  // Eliminates the SELECT+UPDATE TOCTOU race where two concurrent void calls
+  // (or void+apply) could both pass the pre-check and double-flip the row.
+  const result = await adb.run(
+    "UPDATE credit_notes SET status = 'voided', voided_at = datetime('now') WHERE id = ? AND status = 'open'",
     id,
   );
+  if (result.changes === 0) {
+    if (existing.status === 'voided') throw new AppError('Credit note is already voided', 400);
+    if (existing.status === 'applied') throw new AppError('Cannot void an already-applied credit note', 400);
+    // Fallback — status was valid at SELECT time but changed between SELECT
+    // and UPDATE (concurrent writer won). Surface as 409 Conflict.
+    throw new AppError('Credit note state changed; refresh and retry', 409);
+  }
 
   audit(req.db, 'credit_note.voided', req.user!.id, req.ip ?? '', { credit_note_id: id });
 

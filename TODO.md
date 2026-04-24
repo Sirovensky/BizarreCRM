@@ -732,8 +732,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:61,133,161,235,302; fix=wrap-asyncHandler -->
 - [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
-- [ ] SCAN-1038. **creditNotes POST /:id/void: TOCTOU race — SELECT status then UPDATE without conditional WHERE.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:309-315; fix=conditional-update-with-expectChanges -->
 - [ ] SCAN-1039. **campaigns mass-dispatch endpoints (run-now, birthday, churn-warning) missing rate limiting — unlimited SMS/email blasts.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/campaigns.routes.ts:660-693,823-867,870-927; fix=consumeWindowRate-3-per-min -->
 - [ ] SCAN-1040. **campaigns /review-request/trigger: `req.user!.id` dereferenced even when called via INTERNAL_SERVICE_TOKEN (user undefined).**
