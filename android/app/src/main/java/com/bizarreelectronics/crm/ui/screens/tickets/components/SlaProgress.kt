@@ -25,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.util.SlaCalculator.SlaTier
@@ -138,7 +137,7 @@ fun SlaProgress(
                     // This is a forward-compat placeholder; full Canvas rendering with
                     // exact pixel placement can be added when a Canvas composable is
                     // introduced for the track.
-                    val _ = clampedMarker // used in full implementation
+                    @Suppress("UNUSED_VARIABLE") val marker = clampedMarker // used in full canvas implementation
                 }
             }
         }

@@ -105,6 +105,9 @@ import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
+import com.bizarreelectronics.crm.ui.screens.memberships.MembershipListScreen
+import com.bizarreelectronics.crm.ui.screens.cash.CashRegisterScreen
+import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardScreen
 import java.util.Locale
 import javax.inject.Inject
 
@@ -361,6 +364,25 @@ sealed class Screen(val route: String) {
     // plan:L2009-L2014 — Security Summary consolidated view.
     // Deep link: bizarrecrm://settings/security-summary
     data object SecuritySummary : Screen("settings/security/summary")
+
+    // §41 — Payment Links (create + list)
+    data object PaymentLinks : Screen("payment-links")
+    data object PaymentLinkCreate : Screen("payment-links/create")
+
+    // §42 — Voice / Calls (list + detail)
+    data object Calls : Screen("calls")
+    data object CallDetail : Screen("calls/{id}") {
+        fun createRoute(id: Long) = "calls/$id"
+    }
+
+    // §38 — Memberships / Loyalty list screen.
+    data object Memberships : Screen("memberships")
+
+    // §39 — Cash Register / Z-Report screen.
+    data object CashRegister : Screen("cash-register")
+
+    // §40 — Gift Cards / Store Credit screen.
+    data object GiftCards : Screen("gift-cards")
 }
 
 data class BottomNavItem(
@@ -1395,6 +1417,12 @@ fun AppNavGraph(
                     onAppearance = { navController.navigate(Screen.Appearance.route) },
                     // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
                     onHardware = { navController.navigate(Screen.HardwareSettings.route) },
+                    // §38 — Memberships / Loyalty.
+                    onMemberships = { navController.navigate(Screen.Memberships.route) },
+                    // §39 — Cash Register / Z-Report.
+                    onCashRegister = { navController.navigate(Screen.CashRegister.route) },
+                    // §40 — Gift Cards / Store Credit.
+                    onGiftCards = { navController.navigate(Screen.GiftCards.route) },
                 )
             }
             // §3.13 L565–L567 — Display settings sub-screen.
@@ -1869,6 +1897,61 @@ fun AppNavGraph(
                     },
                 )
             }
+
+            // ─── §41 Payment Links ───
+            composable(Screen.PaymentLinks.route) {
+                com.bizarreelectronics.crm.ui.screens.payments.PaymentLinkListScreen(
+                    onCreateClick = { navController.navigate(Screen.PaymentLinkCreate.route) },
+                )
+            }
+            composable(Screen.PaymentLinkCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.payments.PaymentLinkScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §42 Calls ───
+            composable(Screen.Calls.route) {
+                com.bizarreelectronics.crm.ui.screens.calls.CallsTabScreen(
+                    onCallClick = { id -> navController.navigate(Screen.CallDetail.createRoute(id)) },
+                    // Outbound call initiation — number-picker pre-step TBD
+                    onInitiateCall = { navController.navigate(Screen.Calls.route) },
+                )
+            }
+            composable(
+                route = Screen.CallDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.calls.CallDetailScreen(
+                    callId = it.arguments?.getLong("id") ?: return@composable,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §38 Memberships / Loyalty ───────────────────────────────────
+            composable(Screen.Memberships.route) {
+                MembershipListScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id))
+                    },
+                )
+            }
+
+            // ─── §39 Cash Register / Z-Report ────────────────────────────────
+            composable(Screen.CashRegister.route) {
+                CashRegisterScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §40 Gift Cards / Store Credit ───────────────────────────────
+            composable(Screen.GiftCards.route) {
+                GiftCardScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
@@ -1952,8 +2035,14 @@ fun MoreScreen(
         MoreSection(
             title = "OPERATIONS",
             items = listOf(
-                MoreItem(Icons.Default.BarChart, "Reports",   Screen.Reports.route),
-                MoreItem(Icons.Default.Group,    "Employees", Screen.Employees.route),
+                MoreItem(Icons.Default.BarChart,        "Reports",       Screen.Reports.route),
+                MoreItem(Icons.Default.Group,           "Employees",     Screen.Employees.route),
+                // §38 — Memberships / Loyalty
+                MoreItem(Icons.Default.CardMembership,  "Memberships",   Screen.Memberships.route),
+                // §39 — Cash Register / Z-Report
+                MoreItem(Icons.Default.PointOfSale,     "Cash Register", Screen.CashRegister.route),
+                // §40 — Gift Cards / Store Credit
+                MoreItem(Icons.Default.CardGiftcard,    "Gift Cards",    Screen.GiftCards.route),
             ),
         ),
         MoreSection(
