@@ -733,11 +733,7 @@ Verified working. Not TODOs.
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/crashResiliency.ts:34; fix=use-req.route?.path -->
 - [ ] SCAN-1079. **[LOW] `requestLogger` collapses all unresolvable-host traffic into `'bare-domain'` metric bucket.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/requestLogger.ts:76-83; fix=host-suffix-fallback -->
-- [ ] SCAN-1080. **[LOW] `audit_logs` lacks composite `(user_id, created_at)` index — every per-user audit page scans + sorts.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/022_audit_logs.sql:9-11; fix=new-migration-add-composite-index -->
 - [ ] SCAN-1081. **[MED] Migration 138 omits `PRAGMA foreign_key_check` before COMMIT — orphan rows can survive rebuild-rename.**
   <!-- meta: scope=server/db; files=packages/server/src/db/migrations/138_fk_cascades_on_delete.sql:23-300; fix=add-foreign_key_check-before-commit -->
-- [ ] SCAN-1082. **[LOW] `supplier_catalog.UNIQUE(source, external_id)` treats NULLs as distinct — duplicate scrape rows on PDPs without ID.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/002_device_models_supplier_catalog.sql:38-56; fix=partial-unique-index-WHERE-external_id-IS-NOT-NULL -->
 - [ ] SCAN-1083. **[LOW] `uiStore.matchMedia` listener never detached — stacks under HMR + jsdom.**
   <!-- meta: scope=web/stores; files=packages/web/src/stores/uiStore.ts:88-96; fix=document-or-hoist-handler -->

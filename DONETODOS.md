@@ -1,4 +1,12 @@
 
+## Closed 2026-04-23 (wave-61 server/db — supplier_catalog NULL-ext-id dedup)
+
+- [x] SCAN-1082. **`supplier_catalog.UNIQUE(source, external_id)` was not dedup'ing scraped rows whose `external_id` came back NULL** — SQLite treats every NULL as distinct inside a UNIQUE, so the scraper's "upsert by external_id" silently became "append forever" for PDPs that don't expose a product id. Added migration 145: a partial UNIQUE `(source, name) WHERE external_id IS NULL`. The two uniqueness paths (id-present vs id-absent) are disjoint, so the existing constraint keeps working for normal rows.
+
+## Closed 2026-04-23 (wave-61 server/db — audit-logs composite index)
+
+- [x] SCAN-1080. **`audit_logs` was missing a `(user_id, created_at DESC)` composite index** — every "last N audits for user X" query walked `idx_audit_logs_user` and then filesort-ed by `created_at`. Added migration 144 with the composite covering both the user-prefix filter and the created-at ordering in one walk. Kept the old single-column index for "count per user"-style queries so the migration is trivially reversible.
+
 ## Closed 2026-04-23 (wave-61 web/api — auth store sync on decode fail)
 
 - [x] SCAN-1084. **`scheduleTokenRefresh` removed a malformed token but left the auth store thinking the user was authenticated** — UI rendered protected routes with no `Authorization` header; every outbound request silently failed until the NEXT 401 finally triggered logout. Added `emitLogoutRequired('refresh-failed')` in the catch branch, gated on actually having cleared the token (so a concurrent refresh that replaced the token doesn't get logged out). Reuses the existing `LOGOUT_REQUIRED_EVENT` channel that the store already subscribes to.
