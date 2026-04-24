@@ -247,28 +247,34 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
     throw new AppError('invoice_id must be a positive integer', 400);
   }
 
-  // Run apply in a transaction
-  const applyTx = req.db.transaction(() => {
-    const note = req.db.prepare(
-      'SELECT * FROM credit_notes WHERE id = ?'
-    ).get(id) as Record<string, unknown> | undefined;
+  // SCAN-1037: pre-check OUTSIDE the transaction. better-sqlite3 transactions
+  // re-throw caller errors but bury `AppError` metadata behind their own
+  // TransactionError wrapper, so 404/400 statuses would surface as plain 500s.
+  // Keep the transaction scope to the two UPDATEs and let `changes === 0`
+  // signal state drift back into a clean HTTP error after.
+  const note = req.db.prepare(
+    'SELECT * FROM credit_notes WHERE id = ?'
+  ).get(id) as Record<string, unknown> | undefined;
+  if (!note) throw new AppError('Credit note not found', 404);
+  if (note.status !== 'open') throw new AppError(`Credit note is already ${note.status}`, 400);
 
-    if (!note) throw new AppError('Credit note not found', 404);
-    if (note.status !== 'open') throw new AppError(`Credit note is already ${note.status}`, 400);
+  const inv = req.db.prepare(
+    "SELECT id, amount_due, status FROM invoices WHERE id = ?"
+  ).get(invoiceIdNum) as { id: number; amount_due: number; status: string } | undefined;
+  if (!inv) throw new AppError('Invoice not found', 404);
+  if (inv.status === 'void') throw new AppError('Cannot apply credit to a voided invoice', 400);
+  if (inv.status === 'paid') throw new AppError('Cannot apply credit to a fully paid invoice', 400);
 
-    const inv = req.db.prepare(
-      "SELECT id, amount_due, status FROM invoices WHERE id = ?"
-    ).get(invoiceIdNum) as { id: number; amount_due: number; status: string } | undefined;
+  const amountCents = note.amount_cents as number;
+  const creditDollars = amountCents / 100; // invoices.amount_due is in dollars
+  const newAmountDue = Math.max(0, inv.amount_due - creditDollars);
 
-    if (!inv) throw new AppError('Invoice not found', 404);
-    if (inv.status === 'void') throw new AppError('Cannot apply credit to a voided invoice', 400);
-    if (inv.status === 'paid') throw new AppError('Cannot apply credit to a fully paid invoice', 400);
-
-    const amountCents = note.amount_cents as number;
-    // Convert cents to dollars for amount_due column (invoices use dollars)
-    const creditDollars = amountCents / 100;
-    const newAmountDue = Math.max(0, inv.amount_due - creditDollars);
-
+  // Transaction now only wraps the atomic apply — both UPDATEs must land or
+  // neither. Conditional `WHERE status = 'open'` on the credit-note update
+  // catches a concurrent apply/void that slipped in between the pre-check
+  // and the transaction body.
+  let applied = true;
+  req.db.transaction(() => {
     req.db.prepare(`
       UPDATE invoices
          SET amount_due = ?,
@@ -276,16 +282,24 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
        WHERE id = ?
     `).run(newAmountDue, invoiceIdNum);
 
-    req.db.prepare(`
+    const creditResult = req.db.prepare(`
       UPDATE credit_notes
          SET status = 'applied',
              applied_to_invoice_id = ?,
              applied_at = datetime('now')
-       WHERE id = ?
+       WHERE id = ? AND status = 'open'
     `).run(invoiceIdNum, id);
-  });
+    if (creditResult.changes === 0) {
+      applied = false;
+      // Trigger an automatic rollback by throwing; the plain Error is caught
+      // below so we can surface a clean 409 back to the client.
+      throw new Error('__credit_note_state_changed__');
+    }
+  })();
 
-  applyTx();
+  if (!applied) {
+    throw new AppError('Credit note state changed; refresh and retry', 409);
+  }
 
   audit(req.db, 'credit_note.applied', req.user!.id, req.ip ?? '', {
     credit_note_id: id,
@@ -294,8 +308,8 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
 
   logger.info('credit note applied', { credit_note_id: id, invoice_id: invoiceIdNum });
 
-  const note = await adb.get<Record<string, unknown>>('SELECT * FROM credit_notes WHERE id = ?', id);
-  res.json({ success: true, data: note });
+  const appliedNote = await adb.get<Record<string, unknown>>('SELECT * FROM credit_notes WHERE id = ?', id);
+  res.json({ success: true, data: appliedNote });
 }));
 
 // ---------------------------------------------------------------------------

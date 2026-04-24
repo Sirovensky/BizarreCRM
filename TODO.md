@@ -720,8 +720,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/print; files=packages/web/src/pages/print/PrintPage.tsx:141,396,707,834; fix=define-Ticket-PrintConfig-Device-Payment -->
 
 ### Wave-58 scan-loop findings (2026-04-24) — server routes + middleware
-- [ ] SCAN-1037. **creditNotes POST /:id/apply: AppError thrown inside better-sqlite3 transaction callback silently swallowed.**
-  <!-- meta: scope=server/routes; files=packages/server/src/routes/creditNotes.routes.ts:249-286; fix=precheck-outside-tx -->
 
 ### Wave-59 scan-loop findings (2026-04-24) — server services + shared + automations
 - [ ] SCAN-1051b. **[HIGH/XSS] AutomationsTab email body — client 10KB cap shipped; server-side HTML sanitize/escape still pending.**
