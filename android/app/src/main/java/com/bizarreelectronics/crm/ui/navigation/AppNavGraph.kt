@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.ui.navigation
 import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -861,6 +863,9 @@ fun AppNavGraph(
                 hasServerUrl && authPreferences?.isLoggedIn != true -> Screen.SetupStatusGate.route
                 else -> Screen.Login.route
             }
+            @OptIn(ExperimentalSharedTransitionApi::class)
+            SharedTransitionLayout(modifier = Modifier.weight(1f)) {
+            val sharedTransitionScope = this
             NavHost(
                 navController = navController,
                 startDestination = startDest,
@@ -1046,14 +1051,20 @@ fun AppNavGraph(
                 )
             }
             composable(Screen.Tickets.route) {
+                @OptIn(ExperimentalSharedTransitionApi::class)
                 TicketListScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
                     onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.CheckInEntry.route) },
                 )
             }
             composable(Screen.TicketDetail.route) { backStackEntry ->
                 val ticketId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
+                @OptIn(ExperimentalSharedTransitionApi::class)
                 TicketDetailScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
                     ticketId = ticketId,
                     onBack = { navController.popBackStack() },
                     onNavigateToCustomer = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
@@ -2162,6 +2173,7 @@ fun AppNavGraph(
                 )
             }
         }
+        } // close SharedTransitionLayout
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
         }

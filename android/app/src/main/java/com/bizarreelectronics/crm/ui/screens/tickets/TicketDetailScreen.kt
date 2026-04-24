@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -1099,9 +1103,11 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun TicketDetailScreen(
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     ticketId: Long,
     onBack: () -> Unit,
     onNavigateToCustomer: (Long) -> Unit,
@@ -1337,8 +1343,26 @@ fun TicketDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
+            // sharedElement applied via titleContent so the orderId Text animates
+            // from the list row without wrapping the whole TopAppBar.
             BrandTopAppBar(
                 title = ticket?.orderId ?: "T-$ticketId",
+                titleContent = {
+                    val orderId = ticket?.orderId ?: "T-$ticketId"
+                    with(sharedTransitionScope) {
+                        Text(
+                            text = orderId,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .semantics { heading() }
+                                .sharedElement(
+                                    sharedContentState = rememberSharedContentState(key = "ticket-${ticketId}-orderid"),
+                                    animatedVisibilityScope = animatedContentScope,
+                                ),
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -1692,6 +1716,8 @@ fun TicketDetailScreen(
                             modifier = Modifier.weight(1f),
                             ticket = ticket,
                             ticketId = ticketId,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedContentScope = animatedContentScope,
                             ticketDetail = state.ticketDetail,
                             devices = state.devices,
                             notes = state.notes,
@@ -1727,6 +1753,7 @@ fun TicketDetailScreen(
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun TicketDetailContent(
     ticket: TicketEntity,
@@ -1736,6 +1763,8 @@ private fun TicketDetailContent(
     // `ticket.id` because TicketEntity.id may not equal the URL param in
     // corner cases (offline-created tickets use a negative temp id).
     ticketId: Long,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     ticketDetail: TicketDetail?,
     devices: List<TicketDevice>,
     notes: List<TicketNote>,
@@ -1789,11 +1818,17 @@ private fun TicketDetailContent(
                     // decorative — BrandCard(onClick=...) wrapping Row already merges descendants; sibling customerName Text + "Tap to view customer" Text supply the accessible name
                     Icon(Icons.Default.Person, contentDescription = null)
                     Column {
+                        with(sharedTransitionScope) {
                         Text(
                             customerName,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.sharedElement(
+                                sharedContentState = rememberSharedContentState(key = "ticket-${ticketId}-customer"),
+                                animatedVisibilityScope = animatedContentScope,
+                            ),
                         )
+                        } // with(sharedTransitionScope)
                         // CROSS8: shared formatPhoneDisplay emits +1 (XXX)-XXX-XXXX.
                         val phone = ticketDetail?.customer?.phone ?: ticket.customerPhone
                         if (phone != null) {

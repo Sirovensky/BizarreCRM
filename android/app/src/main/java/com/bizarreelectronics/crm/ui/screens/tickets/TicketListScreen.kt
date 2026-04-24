@@ -2,6 +2,9 @@ package com.bizarreelectronics.crm.ui.screens.tickets
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -62,9 +65,11 @@ import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun TicketListScreen(
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     onTicketClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
     viewModel: TicketListViewModel = hiltViewModel(),
@@ -431,6 +436,8 @@ fun TicketListScreen(
                                 ) {
                                     TicketListRow(
                                         ticket = ticket,
+                                        sharedTransitionScope = sharedTransitionScope,
+                                        animatedContentScope = animatedContentScope,
                                         isSelected = isSelected,
                                         isSelecting = state.isSelecting,
                                         isExpandedWidth = isExpandedWidth,
@@ -507,10 +514,12 @@ private enum class ContextMenuAction {
 // TicketListRow — with urgency chip, context menu, multi-select checkbox
 // -----------------------------------------------------------------------
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun TicketListRow(
     ticket: TicketEntity,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedContentScope: AnimatedContentScope,
     isSelected: Boolean,
     isSelecting: Boolean,
     isExpandedWidth: Boolean,
@@ -562,6 +571,7 @@ private fun TicketListRow(
             } else null,
             headline = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    with(sharedTransitionScope) {
                     Text(
                         ticket.orderId,
                         style = BrandMono.copy(
@@ -569,7 +579,12 @@ private fun TicketListRow(
                         ),
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.sharedElement(
+                            sharedContentState = rememberSharedContentState(key = "ticket-${ticket.id}-orderid"),
+                            animatedVisibilityScope = animatedContentScope,
+                        ),
                     )
+                    } // with(sharedTransitionScope)
                     Spacer(modifier = Modifier.width(6.dp))
                     // Urgency chip (L637)
                     TicketUrgencyChip(urgency = urgency)
@@ -587,15 +602,22 @@ private fun TicketListRow(
             },
             support = {
                 // Customer name — tappable to show popover (L654)
+                with(sharedTransitionScope) {
                 Text(
                     ticket.customerName ?: "Unknown",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.combinedClickable(
-                        onClick = { showCustomerPopover = true },
-                        onLongClick = {},
-                    ),
+                    modifier = Modifier
+                        .sharedElement(
+                            sharedContentState = rememberSharedContentState(key = "ticket-${ticket.id}-customer"),
+                            animatedVisibilityScope = animatedContentScope,
+                        )
+                        .combinedClickable(
+                            onClick = { showCustomerPopover = true },
+                            onLongClick = {},
+                        ),
                 )
+                } // with(sharedTransitionScope)
                 val deviceName = ticket.firstDeviceName
                 if (!deviceName.isNullOrBlank()) {
                     Text(
