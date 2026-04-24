@@ -22,6 +22,28 @@ data class LoginResponse(
     val qr: String? = null,
 )
 
+/**
+ * §2.4 L298 — Response from POST /auth/login/2fa-setup.
+ *
+ * Server returns:
+ *   - qr            : data:image/png;base64,... for display in an ImageView
+ *   - secret        : raw base32 TOTP secret (for manual entry / copyable text)
+ *   - manualEntry   : human-readable formatted key (e.g. "ABCD EFGH …")
+ *   - challengeToken: fresh (or same) challenge token to use in the verify call
+ */
+data class TwoFaSetupResponse(
+    @SerializedName("qr")
+    val qr: String? = null,
+    @SerializedName("qrCode")
+    val qrCode: String? = null,
+    @SerializedName("secret")
+    val secret: String? = null,
+    @SerializedName("manualEntry")
+    val manualEntry: String? = null,
+    @SerializedName("challengeToken")
+    val challengeToken: String? = null,
+)
+
 data class TwoFactorRequest(
     val challengeToken: String,
     val code: String

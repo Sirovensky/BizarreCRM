@@ -1,10 +1,13 @@
 package com.bizarreelectronics.crm.ui.screens.auth
 
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.util.Base64
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -16,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -39,7 +43,9 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
+import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.NetworkMonitor
+import com.bizarreelectronics.crm.util.QrCodeGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -87,6 +93,10 @@ data class LoginUiState(
     val totpCode: String = "",
     val challengeToken: String = "",
     val qrCodeDataUrl: String = "",
+    // §2.4 L298 — raw TOTP secret returned by /auth/login/2fa-setup (copyable)
+    val twoFaSecret: String = "",
+    // §2.4 L298 — formatted manual-entry key (space-grouped base32, e.g. "ABCD EFGH …")
+    val twoFaManualEntry: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
     val serverConnected: Boolean = false,
@@ -636,8 +646,10 @@ class LoginViewModel @Inject constructor(
             try {
                 val response = authApi.setup2FA(mapOf("challengeToken" to challengeToken))
                 val data = response.data ?: throw Exception("Failed to set up 2FA")
-                // Server returns { qr: "data:image/png;base64,...", secret: "...", challengeToken: "..." }
-                val qrCode = data.qrCode ?: data.qr ?: ""
+                // Server returns { qr, secret, manualEntry, challengeToken }
+                val qrCode = data.qr ?: data.qrCode ?: ""
+                val secret = data.secret.orEmpty()
+                val manualEntry = data.manualEntry.orEmpty()
                 val newChallenge = data.challengeToken ?: challengeToken
                 // §2.13-L366: preserve the expiry window started at login(), or start a
                 // fresh one if called without a prior window (e.g. from setPassword path).
@@ -648,6 +660,9 @@ class LoginViewModel @Inject constructor(
                     challengeTokenExpiresAtMs = expiresAt,
                     challengeExpired = false,
                     qrCodeDataUrl = qrCode,
+                    // §2.4 L298 — store secret + manualEntry for enroll step display
+                    twoFaSecret = secret,
+                    twoFaManualEntry = manualEntry,
                     step = SetupStep.TWO_FA_SETUP,
                 )
             } catch (e: Exception) {
@@ -725,6 +740,8 @@ class LoginViewModel @Inject constructor(
             newPassword = "",
             confirmPassword = "",
             qrCodeDataUrl = "",
+            twoFaSecret = "",
+            twoFaManualEntry = "",
             isLoading = false,
             error = null,
         )
@@ -800,51 +817,15 @@ fun LoginScreen(
         }
     }
 
-    // Backup codes dialog — must be dismissed before proceeding to dashboard
+    // §2.4 L301 — Backup codes display after enrollment success.
+    // BackupCodesDisplay handles its own checkbox-gate; onDismiss is called only
+    // when the user confirms they have saved the codes, then navigates to dashboard.
     if (state.showBackupCodes != null) {
-        AlertDialog(
-            onDismissRequest = { /* User must explicitly dismiss */ },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            title = { Text("Save Your Backup Codes") },
-            text = {
-                Column {
-                    Text(
-                        "Write these down and store them safely. Each code can only be used once if you lose access to your authenticator app.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                shape = MaterialTheme.shapes.small,
-                            ),
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            (state.showBackupCodes.orEmpty()).forEachIndexed { index, code ->
-                                Text(
-                                    "${index + 1}.  $code",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontFamily = BrandMono.fontFamily,
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.dismissBackupCodes()
-                    onLoginSuccess()
-                }) {
-                    Text("I've saved these codes")
-                }
+        BackupCodesDisplay(
+            codes = state.showBackupCodes.orEmpty(),
+            onDismiss = {
+                viewModel.dismissBackupCodes()
+                onLoginSuccess()
             },
         )
     }
@@ -1719,49 +1700,157 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
 
-// ─── Step 3a: 2FA Setup (QR Code) ──────────────────────────────────
+// ─── Step 3a: 2FA Enroll (QR Code + secret + OTP submit) ────────────
+//
+// §2.4 L298 — TwoFaEnrollStep (called TwoFaSetupStep in the step machine).
+// Shown after POST /auth/login/2fa-setup returns { qr, secret, manualEntry }.
+// Three rendering paths for the QR bitmap:
+//   1. Server returned a data:image/... URL → decode base64 → Bitmap
+//   2. Server returned a raw secret → QrCodeGenerator encodes otpauth:// URI
+//   3. Neither → spinner (server still loading / network lag)
+//
+// Secret display is copyable via SelectionContainer + "Copy secret" button
+// with 30s auto-clear (ClipboardUtil.copySensitive).
+// "Open authenticator" launches the otpauth:// Intent; hidden when no app resolves it.
 
 @Composable
 private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
+    val context = LocalContext.current
+
     Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(4.dp))
-    Text("Scan this QR code with Google Authenticator or any TOTP app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        "Scan this QR code with any authenticator app (Google Authenticator, Authy, etc.)",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Spacer(Modifier.height(16.dp))
 
-    // Render QR code from data URL
-    if (state.qrCodeDataUrl.startsWith("data:image")) {
-        val qrBitmap = remember(state.qrCodeDataUrl) {
-            try {
-                val base64 = state.qrCodeDataUrl.substringAfter("base64,")
-                val bytes = Base64.decode(base64, Base64.DEFAULT)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            } catch (_: Exception) {
-                null
+    // ── QR bitmap resolution ────────────────────────────────────────────────
+    // Priority: server data URL → on-device ZXing encode from secret → null (spinner)
+    val qrBitmap = remember(state.qrCodeDataUrl, state.twoFaSecret, state.username) {
+        when {
+            state.qrCodeDataUrl.startsWith("data:image") -> {
+                try {
+                    val base64 = state.qrCodeDataUrl.substringAfter("base64,")
+                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } catch (_: Exception) { null }
             }
+            state.twoFaSecret.isNotBlank() -> {
+                // Build otpauth URI on-device and encode with ZXing
+                val issuer = "BizarreCRM"
+                val accountName = state.username.ifBlank { "user" }
+                val otpauthUri = "otpauth://totp/$issuer:$accountName" +
+                    "?secret=${state.twoFaSecret}&issuer=$issuer"
+                try { QrCodeGenerator.generateQrBitmap(otpauthUri) } catch (_: Exception) { null }
+            }
+            else -> null
         }
-        if (qrBitmap != null) {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "2FA QR Code",
-                    modifier = Modifier.size(200.dp),
-                )
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    "Failed to load QR code. Please try again.",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            qrBitmap != null -> Image(
+                bitmap = qrBitmap.asImageBitmap(),
+                contentDescription = "2FA QR Code — scan with your authenticator app",
+                modifier = Modifier.size(240.dp),
+            )
+            state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() ->
+                CircularProgressIndicator()
+            else -> Text(
+                "Failed to render QR code — use the manual key below.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
         }
-    } else {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(200.dp),
-            contentAlignment = Alignment.Center,
+    }
+
+    // ── Secret / manual-entry display ──────────────────────────────────────
+    val displaySecret = state.twoFaManualEntry.ifBlank { state.twoFaSecret }
+    if (displaySecret.isNotBlank()) {
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Or enter this key manually:",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            CircularProgressIndicator()
+            SelectionContainer {
+                Text(
+                    text = displaySecret,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontFamily = BrandMono.fontFamily,
+                        letterSpacing = 2.sp,
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        // Row: "Copy secret" + optional "Open authenticator"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    ClipboardUtil.copySensitive(
+                        context = context,
+                        label = "2FA secret",
+                        text = displaySecret,
+                        clearAfterMillis = 30_000L,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Copy key", style = MaterialTheme.typography.labelMedium)
+            }
+
+            // "Open authenticator" — only shown when an app handles otpauth://
+            val otpauthUri = remember(state.twoFaSecret, state.username) {
+                if (state.twoFaSecret.isBlank()) null
+                else {
+                    val issuer = "BizarreCRM"
+                    val accountName = state.username.ifBlank { "user" }
+                    Uri.parse(
+                        "otpauth://totp/$issuer:$accountName" +
+                        "?secret=${state.twoFaSecret}&issuer=$issuer"
+                    )
+                }
+            }
+            val canOpenAuthenticator = remember(otpauthUri) {
+                if (otpauthUri == null) false
+                else {
+                    val intent = Intent(Intent.ACTION_VIEW, otpauthUri)
+                    context.packageManager.resolveActivity(intent, 0) != null
+                }
+            }
+            if (canOpenAuthenticator && otpauthUri != null) {
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, otpauthUri))
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Open app", style = MaterialTheme.typography.labelMedium)
+                }
+            }
         }
     }
 

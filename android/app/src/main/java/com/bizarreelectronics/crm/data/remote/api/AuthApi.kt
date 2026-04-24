@@ -14,6 +14,7 @@ import com.bizarreelectronics.crm.data.remote.dto.SwitchUserRequest
 import com.bizarreelectronics.crm.data.remote.dto.SwitchUserResponse
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorRequest
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorResponse
+import com.bizarreelectronics.crm.data.remote.dto.TwoFaSetupResponse
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -27,8 +28,10 @@ interface AuthApi {
     @POST("auth/login/2fa-verify")
     suspend fun verify2FA(@Body request: TwoFactorRequest): ApiResponse<TwoFactorResponse>
 
+    // §2.4 L298 — 2FA enroll. Returns QR data URL, raw secret, manualEntry key,
+    // and a (possibly refreshed) challengeToken. Response shape: TwoFaSetupResponse.
     @POST("auth/login/2fa-setup")
-    suspend fun setup2FA(@Body body: Map<String, String>): ApiResponse<LoginResponse>
+    suspend fun setup2FA(@Body body: Map<String, String>): ApiResponse<TwoFaSetupResponse>
 
     @POST("auth/login/set-password")
     suspend fun setPassword(@Body request: SetPasswordRequest): ApiResponse<LoginResponse>

@@ -234,6 +234,10 @@ dependencies {
     // Timber (structured logging, RedactorTree wraps this)
     implementation(libs.timber)
 
+    // ZXing — pure-JVM QR encoder used by QrCodeGenerator to render 2FA enroll QR
+    // codes on-device without a network round-trip. No Android view dependency.
+    implementation(libs.zxing.core)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
