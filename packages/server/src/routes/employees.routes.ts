@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
@@ -294,11 +295,20 @@ router.post(
     if (!user) throw new AppError('Employee not found', 404);
 
     // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
+    // SCAN-1182: sibling gap of `/auth/verify-pin` which IS rate-limited.
+    // Without a cap an admin (or hijacked admin session) could brute-force
+    // any employee's 4-digit PIN here — 10k-space is small. 5 attempts per
+    // 15 min per (targetUserId, ip) matches the /verify-pin cap.
     if (user.pin) {
       if (!user.pin.startsWith('$2')) {
         throw new AppError('PIN is not properly hashed — contact admin', 500);
       }
+      const clockRateKey = `${id}:${req.ip || 'unknown'}`;
+      if (!checkWindowRate(req.db, 'clock_pin', clockRateKey, 5, 900_000)) {
+        throw new AppError('Too many PIN attempts for this employee. Try again in 15 min.', 429);
+      }
       if (!bcrypt.compareSync(pin || '', user.pin)) {
+        recordWindowFailure(req.db, 'clock_pin', clockRateKey, 900_000);
         throw new AppError('Invalid PIN', 401);
       }
     }
@@ -386,11 +396,17 @@ router.post(
     if (!user) throw new AppError('Employee not found', 404);
 
     // Verify PIN if set — ALWAYS use bcrypt, reject unhashed PINs
+    // SCAN-1182: same cap as clock-in.
     if (user.pin) {
       if (!user.pin.startsWith('$2')) {
         throw new AppError('PIN is not properly hashed — contact admin', 500);
       }
+      const clockRateKey = `${id}:${req.ip || 'unknown'}`;
+      if (!checkWindowRate(req.db, 'clock_pin', clockRateKey, 5, 900_000)) {
+        throw new AppError('Too many PIN attempts for this employee. Try again in 15 min.', 429);
+      }
       if (!bcrypt.compareSync(pin || '', user.pin)) {
+        recordWindowFailure(req.db, 'clock_pin', clockRateKey, 900_000);
         throw new AppError('Invalid PIN', 401);
       }
     }

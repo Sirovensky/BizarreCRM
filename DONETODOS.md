@@ -1,4 +1,9 @@
 
+## Closed 2026-04-24 (wave-74 — settings re-auth + clock-in PIN rate limits)
+
+- [x] SCAN-1181. **`PATCH /settings/users/:id` sensitive-change re-auth (`admin_confirm_password` bcrypt compare) had no rate limit** — a hijacked admin session could brute-force the admin's own password here to step-up to password/pin/role changes on any user, bypassing the caps already on `/change-password` (SCAN-1178) and `/change-pin` (SCAN-1155). Added `checkWindowRate('settings_user_reauth', admin:ip, 5, 3600_000)` + `recordWindowFailure` on bad-password, bad-totp, and missing-caller branches. Same 5/hr cap used by the sibling endpoints.
+- [x] SCAN-1182. **`POST /employees/:id/clock-in` + `/clock-out` bcrypt-verified the employee PIN with no rate limit** — `/auth/verify-pin` was rate-limited for the same operation but these sibling endpoints weren't. An admin (or hijacked admin session) could brute-force any employee's 4-digit PIN (10k-space) silently. Added `checkWindowRate('clock_pin', targetId:ip, 5, 900_000)` + failure record on both handlers. 5 attempts per 15-min window matches the existing `/verify-pin` cap.
+
 ## Closed 2026-04-24 (wave-73 — reset-password rate limit parity)
 
 - [x] SCAN-1179. **`/reset-password` had no rate limit** — sibling gap of SCAN-1155 (/change-pin) and SCAN-1178 (/change-password). `/forgot-password` was protected, but its twin endpoint wasn't: an attacker could hammer `/reset-password` with random 64-char tokens, burning bcrypt cost=12 per call for CPU-exhaustion DoS even when every attempt resolved to "invalid token". Added `checkWindowRate('reset_password', ip, 10, 3600_000)` at handler entry (10/hr since a real reset click lands here exactly once) + `recordWindowFailure` on the invalid-token and reused-password branches. Successful resets don't burn a slot.

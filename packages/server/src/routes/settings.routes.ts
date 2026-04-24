@@ -12,6 +12,7 @@ import { reloadSmsProvider, createTestProvider, getProviderRegistry } from '../s
 import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { clearEmailCache } from '../services/email.js';
 import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
@@ -1032,15 +1033,25 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     if (typeof admin_confirm_password !== 'string' || !admin_confirm_password) {
       throw new AppError('admin_confirm_password is required for password, PIN, or role changes', 401);
     }
+    // SCAN-1181: sibling gap of SCAN-1178/1155. An attacker with a hijacked
+    // admin session could otherwise brute the admin's own password here to
+    // step-up to password/pin/role changes on any user. 5 attempts per hour
+    // per (admin,ip) matches the cap used on /change-password + /change-pin.
+    const reauthRateKey = `${req.user!.id}:${req.ip || 'unknown'}`;
+    if (!checkWindowRate(db, 'settings_user_reauth', reauthRateKey, 5, 3600_000)) {
+      throw new AppError('Too many re-auth attempts. Try again in an hour.', 429);
+    }
     const caller = await adb.get<any>(
       'SELECT id, password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1',
       req.user!.id,
     );
     if (!caller || !caller.password_hash) {
+      recordWindowFailure(db, 'settings_user_reauth', reauthRateKey, 3600_000);
       throw new AppError('Re-authentication failed', 401);
     }
     const callerPwMatch = bcrypt.compareSync(admin_confirm_password, caller.password_hash);
     if (!callerPwMatch) {
+      recordWindowFailure(db, 'settings_user_reauth', reauthRateKey, 3600_000);
       audit(db, 'admin_reauth_failed', req.user!.id, req.ip || 'unknown', {
         target_user_id: targetUserId,
         reason: 'bad_password',
@@ -1060,6 +1071,8 @@ router.put('/users/:id', adminOnly, async (req, res) => {
         totpValid = false;
       }
       if (!totpValid) {
+        // SCAN-1181: bad TOTP also counts toward the cap.
+        recordWindowFailure(db, 'settings_user_reauth', reauthRateKey, 3600_000);
         audit(db, 'admin_reauth_failed', req.user!.id, req.ip || 'unknown', {
           target_user_id: targetUserId,
           reason: 'bad_totp',
