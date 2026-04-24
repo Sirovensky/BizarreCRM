@@ -1,4 +1,9 @@
 
+## Closed 2026-04-23 (wave-61 crashGuard + uiStore cleanup)
+
+- [x] SCAN-1078. **`crashGuardMiddleware` keyed routeId on `req.path`** — every request for `/tickets/42` produced a fresh label that the crashTracker auto-disable logic never rolled up with `/tickets/67`. A genuinely broken handler never reached the disable threshold because consecutive crashes hit unique keys. `req.route` is unavailable at this middleware (routing hasn't run yet), so we added a cheap `normalizeRouteForAttribution` that collapses numeric ids, UUIDs, and 24-char hex tokens into `/:id`, `/:uuid`, `/:hex` pattern labels. Route shapes stay distinct; concrete ids fold together.
+- [x] SCAN-1083. **`uiStore.matchMedia` listener was not detached + could stack under Vite HMR / jsdom** — hoisted the change handler to a named `handleSystemThemeChange`, added a module-scope `themeMqAttached` flag, AND stamped `__bizarreThemeAttached` on the MediaQueryList object itself so jsdom test runs that share the same `window.matchMedia` mock across re-imports also dedupe. Benign in a prod bundle, but the new fences make it correct under HMR + tests without introducing an unsubscribe contract.
+
 ## Closed 2026-04-23 (wave-61 server/db — supplier_catalog NULL-ext-id dedup)
 
 - [x] SCAN-1082. **`supplier_catalog.UNIQUE(source, external_id)` was not dedup'ing scraped rows whose `external_id` came back NULL** — SQLite treats every NULL as distinct inside a UNIQUE, so the scraper's "upsert by external_id" silently became "append forever" for PDPs that don't expose a product id. Added migration 145: a partial UNIQUE `(source, name) WHERE external_id IS NULL`. The two uniqueness paths (id-present vs id-absent) are disjoint, so the existing constraint keeps working for normal rows.

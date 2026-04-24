@@ -729,11 +729,7 @@ Verified working. Not TODOs.
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
 - [ ] SCAN-1075. **[MED] `POST /inventory/purchase-orders` line-items: no quantity/price/id validation — NaN poisoning + orphan FK writes.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/inventory.routes.ts:1349-1371; fix=validateQuantity+validatePrice+validateId-per-item -->
-- [ ] SCAN-1078. **[MED] `crashGuardMiddleware` routeId uses `req.path` (with IDs) — crash-attribution never trips auto-disable.**
-  <!-- meta: scope=server/middleware; files=packages/server/src/middleware/crashResiliency.ts:34; fix=use-req.route?.path -->
 - [ ] SCAN-1079. **[LOW] `requestLogger` collapses all unresolvable-host traffic into `'bare-domain'` metric bucket.**
   <!-- meta: scope=server/middleware; files=packages/server/src/middleware/requestLogger.ts:76-83; fix=host-suffix-fallback -->
 - [ ] SCAN-1081. **[MED] Migration 138 omits `PRAGMA foreign_key_check` before COMMIT — orphan rows can survive rebuild-rename.**
   <!-- meta: scope=server/db; files=packages/server/src/db/migrations/138_fk_cascades_on_delete.sql:23-300; fix=add-foreign_key_check-before-commit -->
-- [ ] SCAN-1083. **[LOW] `uiStore.matchMedia` listener never detached — stacks under HMR + jsdom.**
-  <!-- meta: scope=web/stores; files=packages/web/src/stores/uiStore.ts:88-96; fix=document-or-hoist-handler -->

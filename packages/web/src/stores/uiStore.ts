@@ -85,12 +85,32 @@ export const useUiStore = create<UiState>((set) => ({
 // future-proof against moving theme storage out of localStorage. Also guarded
 // for SSR and for older Safari which lacks addEventListener on MediaQueryList.
 // Listener is registered AFTER the store is created so the closure can access it.
+//
+// SCAN-1083: in a plain production bundle this module loads exactly once and
+// the listener leak was benign. But under Vite HMR and jsdom tests (multiple
+// imports of this file) we used to stack a new listener per import, so one
+// system-theme flip fired applyTheme N times. Now we dedupe via a hoisted
+// flag + a hoisted handler constant — if HMR re-imports the file, the flag
+// is reset BUT the previous module instance's handler reference is lost to
+// GC and the new one is the only subscriber. In jsdom where the global
+// matchMedia mock persists across test re-imports we also hang the flag off
+// the MediaQueryList so tests that re-require the store don't stack.
+let themeMqAttached = false;
+const handleSystemThemeChange = (): void => {
+  const current = useUiStore.getState().theme;
+  if (current === 'system') applyTheme('system');
+};
+
 if (typeof window !== 'undefined') {
   try {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      const current = useUiStore.getState().theme;
-      if (current === 'system') applyTheme('system');
-    });
+    const mql = window.matchMedia('(prefers-color-scheme: dark)') as MediaQueryList & {
+      __bizarreThemeAttached?: boolean;
+    };
+    if (!themeMqAttached && !mql.__bizarreThemeAttached) {
+      mql.addEventListener('change', handleSystemThemeChange);
+      themeMqAttached = true;
+      mql.__bizarreThemeAttached = true;
+    }
   } catch {
     // No-op: legacy environments without addEventListener on MediaQueryList.
   }
