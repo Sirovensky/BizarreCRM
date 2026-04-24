@@ -1,4 +1,29 @@
 
+## Closed 2026-04-23 (wave-45 retro-sweep)
+
+Verified-fixed during retroactive sweep of SCAN-001..300 (waves 1-10 stale-state audit). Code at each referenced site inspected; fix is visibly in place. Moved from TODO.md with no code changes this wave.
+
+- [x] SCAN-021. **[SEC] reports GET /dashboard missing `requireAdminOrManager`** — verified wave-45; `requireAdminOrManager(req)` present at `routes/reports.routes.ts:53`.
+- [x] SCAN-024. **[SEC] reports GET /employees missing `requireAdminOrManager`** — verified wave-45; `requireAdminOrManager(req)` present at `routes/reports.routes.ts:783`.
+- [x] SCAN-062. **[SEC] loaners POST / / PUT /:id / DELETE /:id no role/permission gate** — verified wave-45; all three have `requirePermission('inventory.adjust')` at `routes/loaners.routes.ts:68,81,166`.
+- [x] SCAN-063. **loaners GET /:id missing integer validation on params.id** — verified wave-45; `validateId(req.params.id, 'id')` at `routes/loaners.routes.ts:52`.
+- [x] SCAN-064. **estimates GET /:id + PUT /:id missing integer validation on id** — verified wave-45; `validateId` at `routes/estimates.routes.ts:491,530`.
+- [x] SCAN-066. **[SEC] dunning GET /sequences unprotected** — verified wave-45; `requireAdmin(req)` at `routes/dunning.routes.ts:50`.
+- [x] SCAN-071. **snippets PUT /:id missing typeof string guard on shortcode** — verified wave-45; `typeof shortcode !== 'string'` guard at `routes/snippets.routes.ts:83`.
+- [x] SCAN-072. **snippets PUT /:id empty-string shortcode bypasses uniqueness check** — verified wave-45; regex `^[a-zA-Z0-9_\-]+$` at `routes/snippets.routes.ts:83` requires ≥1 char so empty string rejected with 400.
+- [x] SCAN-116. **[SEC] bench GET /timer/by-ticket/:ticketId no tenant/ownership check** — verified wave-45; non-admin/manager scoped to `user_id = req.user?.id` at `routes/bench.routes.ts:548-560`.
+- [x] SCAN-146. **[SEC] stocktake POST / no role gate** — verified wave-45; inline `admin || manager` check at `routes/stocktake.routes.ts:93-95` (SCAN-580 comment).
+- [x] SCAN-183. **[SEC] auth token-type check only rejects defined-non-access** — verified wave-45; strict `payload.type !== 'access'` at `middleware/auth.ts:86` (SCAN-613).
+- [x] SCAN-184. **[SEC] auth parses permissions JSON without boolean-value validation** — verified wave-45; `safeParsePermissions` drops non-boolean values at `routes/auth.routes.ts:32-33` (SCAN-646).
+- [x] SCAN-190. **fileUploadValidator counter race** — verified wave-45; per-tenant `withCounterLock` mutex at `middleware/fileUploadValidator.ts:49-69` (SCAN-549).
+- [x] SCAN-195. **[SEC] WS TOCTOU — client registered before origin check** — verified wave-45; `await isTenantOriginAllowed` runs BEFORE adding to `clients` map at `ws/server.ts:458-476` (SCAN-609).
+- [x] SCAN-254. **estimate_versions JSON.parse(version.data) with no try/catch** — verified wave-45; try/catch → 422 at `routes/estimates.routes.ts:697-698`.
+- [x] SCAN-255. **membership.subscription.benefits JSON.parse crashes on corrupt row** — verified wave-45; `safeJsonParseArray` wrapper at `routes/membership.routes.ts:22-30,143`.
+- [x] SCAN-360. **access token payload doesn't set explicit `type:'access'`** — verified wave-45; `type: 'access'` embedded in sign payload at `routes/auth.routes.ts:393` (SCAN-613).
+- [x] SCAN-374. **deviceTrust cookie `Secure` gated only on production env** — verified wave-45; `secure: req.secure || config.nodeEnv === 'production'` honors req.secure across staging at `routes/auth.routes.ts:1041,1323,1507` (SCAN-905).
+- [x] SCAN-377. **auth JSON.parse(currentBackupCodes) no try/catch** — verified wave-45; safe wrap around backup-code parse + `safeParsePermissions` pattern at `routes/auth.routes.ts:24-37,1049`.
+- [x] SCAN-383. **auth JSON.parse(user.permissions) no try/catch × 3 sites** — verified wave-45; `safeParsePermissions` helper used at all sites at `routes/auth.routes.ts:24-37`.
+
 ## Migrated 2026-04-23 from todo.md
 
 - [x] ~~AUDIT-WEB-026.~~ FIXED 2026-04-19 — see commit. **[SEC] Portal Bearer token double-transmitted** — `pages/portal/portalApi.ts:212-218` `verifySession(token)` sends token in both `Authorization: Bearer` header AND `{token}` body. Fix: header only.
