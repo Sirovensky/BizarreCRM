@@ -1,4 +1,12 @@
 
+## Closed 2026-04-24 (wave-67 AppShell polish + localhost IPv6)
+
+- [x] SCAN-1146. **`AppShell` focus handler fired `fetchPlan` on every focus event** — rapid alt-tab storms hammered `/account/usage`. Added a 30-second `lastFetchAt` debounce around the listener so focus-loss storms collapse into at most one fetch per window. Initial mount still runs a fetch; explicit react-query refetches on route mount are unaffected.
+- [x] SCAN-1147. **AppShell + Header both registered a `?` global keydown listener** — both fired and stacked two shortcuts modals (ShortcutReferenceCard vs KeyboardShortcutsPanel) with focus-trap conflicts. Dropped the AppShell `?` case — Header's listener (with matching `isEditable` guard) covers the same scope. The AppShell's own `KeyboardShortcutsPanel` render stays in tree for other invocation paths; the `?` key now lands in exactly one place.
+- [x] SCAN-1150. **`localhostOnly` rejected Docker WSL2 fully-expanded IPv6 loopback (`0:0:0:0:0:0:0:1`)** — super-admin panel 404'd from the host in some container configs. Added the expanded form to the allowlist, lowercased the peer IP before comparison, and added a fallback `::ffff:127.0.0.1` check for variant mapped forms. Still strictly local — neither variant is reachable from a remote TCP peer.
+
+(SCAN-1148 left open — migrations 139-142 already committed against live tenant DBs; backfill rerun isn't idempotent via the migration runner. Follow-up needs either a new idempotent repair migration or a manual op. Not atomic.)
+
 ## Closed 2026-04-24 (wave-67 setup rate fairness + cache header + quota integer guard + public timeout)
 
 - [x] SCAN-1144. **`/auth/setup` called `recordWindowFailure` BEFORE any validation** — a successful first-run burned a window slot, so a shop owner re-running the wizard after cancelling got 429'd with only 2 attempts. Introduced a local `failSetup(status, body)` helper that records + sends in one call; swapped every validation branch (already-set-up, invalid token, short username, bad password, invalid email, missing names, tx failure) to use it. Successful setups no longer consume the window.

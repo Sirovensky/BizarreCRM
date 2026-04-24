@@ -38,12 +38,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useWebSocket();
 
   // Fetch tenant plan + usage on mount, refetch on focus
+  // SCAN-1146: rapid alt-tab or mobile focus-loss storms previously fired
+  // `fetchPlan` on every focus event (`/account/usage` hammered N times
+  // per minute). Debounce with a 30-second floor — plan data is slow-
+  // changing and dashboards already refetch on reactivation of explicit
+  // react-query hooks, so this focus-driven refresh is nice-to-have.
   const fetchPlan = usePlanStore((s) => s.fetchPlan);
   useEffect(() => {
-    fetchPlan();
-    const onFocus = () => fetchPlan();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    let lastFetchAt = 0;
+    const guardedFetch = (): void => {
+      const now = Date.now();
+      if (now - lastFetchAt < 30_000) return;
+      lastFetchAt = now;
+      fetchPlan();
+    };
+    guardedFetch();
+    window.addEventListener('focus', guardedFetch);
+    return () => window.removeEventListener('focus', guardedFetch);
   }, [fetchPlan]);
 
   // Check server environment for dev mode banner.
@@ -82,15 +93,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // Global keyboard shortcuts
+  // SCAN-1147: Header also registers a `?` listener that opens its own
+  // shortcuts dialog — both firing caused two stacked modals and focus-trap
+  // conflicts. Header's listener (with matching isEditable guard) already
+  // covers the case; drop ours.
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     if (isTypingInField()) return;
 
     switch (e.key) {
-      case '?':
-        e.preventDefault();
-        setShortcutsPanelOpen(true);
-        break;
       case 'F2': e.preventDefault(); navigate('/pos'); break;
       case 'F3': e.preventDefault(); navigate('/customers/new'); break;
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
