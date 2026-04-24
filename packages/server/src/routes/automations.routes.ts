@@ -239,18 +239,28 @@ router.post(
 
     const context: Record<string, unknown> = {};
 
-    if (ticket_id) {
-      const ticket = await adb.get('SELECT * FROM tickets WHERE id = ?', Number(ticket_id)) as any;
+    const ticketId = ticket_id !== undefined && ticket_id !== null && ticket_id !== ('' as unknown)
+      ? validateId(ticket_id, 'ticket_id')
+      : null;
+    const invoiceId = invoice_id !== undefined && invoice_id !== null && invoice_id !== ('' as unknown)
+      ? validateId(invoice_id, 'invoice_id')
+      : null;
+    const customerId = customer_id !== undefined && customer_id !== null && customer_id !== ('' as unknown)
+      ? validateId(customer_id, 'customer_id')
+      : null;
+
+    if (ticketId !== null) {
+      const ticket = await adb.get('SELECT * FROM tickets WHERE id = ?', ticketId) as any;
       if (ticket) context.ticket = ticket;
     }
 
-    if (invoice_id) {
-      const invoice = await adb.get('SELECT * FROM invoices WHERE id = ?', Number(invoice_id)) as any;
+    if (invoiceId !== null) {
+      const invoice = await adb.get('SELECT * FROM invoices WHERE id = ?', invoiceId) as any;
       if (invoice) context.invoice = invoice;
     }
 
-    if (customer_id) {
-      const customer = await adb.get('SELECT id, first_name, last_name, email, phone, mobile FROM customers WHERE id = ?', Number(customer_id)) as any;
+    if (customerId !== null) {
+      const customer = await adb.get('SELECT id, first_name, last_name, email, phone, mobile FROM customers WHERE id = ?', customerId) as any;
       if (customer) context.customer = customer;
     }
 

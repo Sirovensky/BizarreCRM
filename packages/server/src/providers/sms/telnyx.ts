@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, TelnyxConfig } from './types.js';
 import { createBreaker } from '../../utils/circuitBreaker.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('telnyx');
 
 // SEC-H77: per-provider breaker so Telnyx outages don't affect other providers.
 const telnyxBreaker = createBreaker('telnyx');
@@ -97,7 +100,7 @@ export class TelnyxProvider implements SmsProvider {
     // middleware on the Telnyx webhook path.
     const rawBody = (req as any).rawBody;
     if (!rawBody) {
-      console.warn('[Telnyx] verifyWebhookSignature: rawBody missing — wire raw-body capture middleware on the Telnyx webhook path. Refusing to verify against re-serialized JSON.');
+      logger.error('webhook: rawBody missing — rejecting (signature unverifiable; wire raw-body capture middleware on the Telnyx webhook path)');
       return false;
     }
 
@@ -106,7 +109,7 @@ export class TelnyxProvider implements SmsProvider {
     // re-played indefinitely.
     const tsNum = parseInt(String(timestamp), 10);
     if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
-      console.warn('[Telnyx] verifyWebhookSignature: timestamp out of window (>5 min)');
+      logger.warn('webhook: timestamp out of window (>5 min) — rejecting');
       return false;
     }
 

@@ -1042,7 +1042,11 @@ router.post(
       entity_kind: 'customer',
       entity_id: customerId,
       action: 'created',
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      log.warn('customers: activity log (customer_created) failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     res.status(201).json({
       success: true,

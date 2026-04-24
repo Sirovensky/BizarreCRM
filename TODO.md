@@ -1596,3 +1596,15 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-835. **[LOW] audit.ts details truncated at 16KB silently; consumer has no way to detect loss** — `packages/server/src/utils/audit.ts:27`. Fix: log.warn on truncate + include `truncated_bytes_dropped` metric.
 - [ ] SCAN-836. **Vonage signature method fallback returns true on unknown method — config mismatch allows unsigned** — `packages/server/src/providers/sms/vonage.ts:246`. Fix: fail closed (return false).
 - [ ] SCAN-837. **[LOW] loaners POST/DELETE no rate-limit — asset registry spam DoS** — `packages/server/src/routes/loaners.routes.ts:67,162`. Fix: checkWindowRate 20/min/user.
+
+### Wave-33 scan-loop findings (2026-04-23) — top impactful
+- [ ] SCAN-841. **[HIGH] pos POST /cash-in + /cash-out no role gate — any authed (incl read-only) posts cash transactions** — `packages/server/src/routes/pos.routes.ts:202,217`. Fix: requireManagerOrAdmin OR requirePermission('pos.cash').
+- [ ] SCAN-842. **[HIGH] pos /workstations POST/PUT + /set-default no role gates visible** — `packages/server/src/routes/pos.routes.ts:2239,2258,2294`. Fix: verify + add requireAdmin.
+- [ ] SCAN-838. **catalog Number(req.query.limit) NaN → invalid LIMIT** — `packages/server/src/routes/catalog.routes.ts:66,108,142`. Fix: Number.isFinite guard + clamp.
+- [ ] SCAN-839. **client.ts JWT atob silent fail — malformed token leaves refreshScheduled=true forever** — `packages/web/src/api/client.ts:87`. Fix: re-throw on decode fail + reset state.
+- [ ] SCAN-840. **ImpersonationBanner localStorage not shape-validated — malicious other-site script can inject tenant_slug** — `packages/web/src/components/ImpersonationBanner.tsx:27`. Fix: Zod shape check + reject on invalid.
+- [ ] SCAN-843. **CommandPalette sessionStorage JSON.parse silent — search history drops silently on corruption** — `packages/web/src/components/CommandPalette.tsx:48,62`. Fix: log + clear corrupted entry.
+- [ ] SCAN-844. **catalog Number(req.params.id) at several sites — no validateId** — `packages/server/src/routes/catalog.routes.ts:108`. Fix: validateId.
+- [ ] SCAN-845. **inventory /image-upload reserveStorage doesn't verify item_id belongs to tenant** — `packages/server/src/routes/inventory.routes.ts:916`. Fix: SELECT id FROM inventory_items WHERE id = ? (per-tenant DB already isolates; verify ok).
+- [ ] SCAN-846. **client.ts CSRF cookie path matching via hardcoded /auth/refresh string include** — `packages/web/src/api/client.ts:5,116`. Fix: centralize auth-refresh URL constant.
+- [ ] SCAN-847. **SpotlightCoach Promise.resolve().catch() antipattern — rejected promises silently swallowed** — `packages/web/src/components/SpotlightCoach.tsx:370-371,408-409,414-415`. Fix: await + try/catch.

@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { validateId } from '../utils/validate.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -87,8 +88,7 @@ router.get(
     const adb = req.asyncDb;
     const user = req.user!;
 
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid cart ID', 400);
+    const id = validateId(req.params.id, 'id');
 
     const cart = await adb.get<HeldCartRow>('SELECT * FROM held_carts WHERE id = ?', id);
     if (!cart) throw new AppError('Held cart not found', 404);
@@ -183,6 +183,13 @@ router.post(
 
     logger.info('held_cart: created', { id: result.lastInsertRowid, user_id: user.id });
 
+    audit(req.db, 'held_cart_created', user.id, req.ip || 'unknown', {
+      cart_id: result.lastInsertRowid,
+      total_cents: safeTotalCents,
+      customer_id: safeCustomerId,
+      workstation_id: safeWorkstationId,
+    });
+
     res.status(201).json({ success: true, data: cart });
   }),
 );
@@ -203,8 +210,7 @@ router.delete(
       throw new AppError(`Too many delete requests. Retry in ${rl.retryAfterSeconds}s.`, 429);
     }
 
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid cart ID', 400);
+    const id = validateId(req.params.id, 'id');
 
     const cart = await adb.get<HeldCartRow>('SELECT * FROM held_carts WHERE id = ?', id);
     if (!cart) throw new AppError('Held cart not found', 404);
@@ -240,8 +246,7 @@ router.post(
     const adb = req.asyncDb;
     const user = req.user!;
 
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid cart ID', 400);
+    const id = validateId(req.params.id, 'id');
 
     const cart = await adb.get<HeldCartRow>('SELECT * FROM held_carts WHERE id = ?', id);
     if (!cart) throw new AppError('Held cart not found', 404);

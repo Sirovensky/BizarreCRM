@@ -3,6 +3,9 @@ import jwt from 'jsonwebtoken';
 import { SmsProvider, SmsProviderResult, MmsMedia, InboundMessage, DeliveryStatus,
          CallOptions, VoiceCallResult, CallEvent, VonageConfig } from './types.js';
 import { createBreaker } from '../../utils/circuitBreaker.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('vonage');
 
 // SEC-H77: per-provider breaker so Vonage outages don't affect other providers.
 const vonageBreaker = createBreaker('vonage');
@@ -142,7 +145,7 @@ export class VonageProvider implements SmsProvider {
   private async sendMms(to: string, body: string, from: string, media: MmsMedia[]): Promise<SmsProviderResult> {
     try {
       if (media.length > 1) {
-        console.warn(`[Vonage] MMS: ${media.length} media items provided but Vonage only supports 1 per message — sending first only`);
+        logger.warn('MMS: multiple media items provided but Vonage only supports 1 per message — sending first only', { count: media.length });
       }
       const { messageType, payloadKey } = this.detectMediaType(media[0]);
       const mediaPayload = payloadKey === 'image'
@@ -243,7 +246,7 @@ export class VonageProvider implements SmsProvider {
         } else {
           const algo = ALLOWED_HMAC_ALGOS[method];
           if (!algo) {
-            console.warn('[Vonage] verifyWebhookSignature: unknown signatureMethod, rejecting', { method });
+            logger.error('webhook: unknown signatureMethod — rejecting', { method });
             return false;
           }
           expected = crypto.createHmac(algo, this.signatureSecret).update(sigString).digest('hex');
@@ -264,7 +267,7 @@ export class VonageProvider implements SmsProvider {
       const envSecret = process.env.VONAGE_SIGNATURE_SECRET;
       const secret = envSecret || this.signatureSecret;
       if (!secret) {
-        console.warn('[Vonage] Messages API webhook JWT present but no signatureSecret configured — rejecting.');
+        logger.error('Messages API webhook JWT present but no signatureSecret configured — rejecting');
         return false;
       }
 
@@ -273,7 +276,7 @@ export class VonageProvider implements SmsProvider {
       // refuse to verify if it's missing (matches the Telnyx defense-in-depth).
       const rawBody = (req as any).rawBody;
       if (!rawBody) {
-        console.warn('[Vonage] verifyWebhookSignature: rawBody missing — wire raw-body capture on the Vonage webhook path. Refusing to verify against re-serialized JSON.');
+        logger.error('webhook: rawBody missing — rejecting (signature unverifiable; wire raw-body capture on the Vonage webhook path)');
         return false;
       }
       const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody);

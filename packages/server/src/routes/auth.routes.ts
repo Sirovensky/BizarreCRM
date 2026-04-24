@@ -11,7 +11,7 @@ import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit, checkLockoutRate, recordLockoutFailure, cleanupExpiredEntries } from '../utils/rateLimiter.js';
-import { validateEmail } from '../utils/validate.js';
+import { validateEmail, validateId } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { verifyHcaptcha, countRecentLoginFailures, countRateLimitAttempts, CAPTCHA_FAILURE_THRESHOLD } from '../utils/hcaptcha.js';
 import type { AsyncDb } from '../db/async-db.js';
@@ -1875,11 +1875,7 @@ router.post('/force-disable-2fa/:userId', authMiddleware, async (req: Request, r
     res.status(403).json({ success: false, message: 'Admin role required' });
     return;
   }
-  const targetId = parseInt(String(req.params.userId || ''), 10);
-  if (!Number.isInteger(targetId) || targetId <= 0) {
-    res.status(400).json({ success: false, message: 'Invalid user id' });
-    return;
-  }
+  const targetId = validateId(req.params.userId, 'userId');
   if (targetId === actor.id) {
     res.status(400).json({ success: false, message: 'Use /account/2fa/disable for your own account' });
     return;

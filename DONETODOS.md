@@ -2451,6 +2451,21 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-816. **scheduledReports no email validation** — FIXED wave-32 via isValidEmail() + filter logging.
 - [x] SCAN-817. **bench computeElapsedSeconds no cap** — FIXED wave-32 via 24h cap + logger.warn on oversized.
 - [x] SCAN-822. **OAuth /refresh no rate-limit** — FIXED wave-32 via checkWindowRate 1/min/user.
+
+## Closed 2026-04-23 (wave-33)
+- [x] SCAN-823. **loaners POST missing requirePermission** — verified wave-33, POST/PUT/DELETE all already gated with requirePermission('inventory.adjust').
+- [x] SCAN-824. **loaners validateId ×5** — FIXED wave-33 at GET/:id + PUT/:id + POST/:id/loan + POST/:id/return + DELETE/:id.
+- [x] SCAN-825. **heldCarts POST no audit** — FIXED wave-33 via audit(... 'held_cart_created' ...) + validateId.
+- [x] SCAN-826. **catalog scraper silent catch** — verified wave-33, already logger.error.
+- [x] SCAN-827. **automations Number() 3 sites** — FIXED wave-33 via validateId optional pattern.
+- [x] SCAN-828. **voice JSON.parse** — verified wave-33, no JSON.parse in voice webhook; transcription stored raw.
+- [x] SCAN-829. **customers silent catch :1045** — FIXED wave-33 via log.warn on activityLog failure.
+- [x] SCAN-830. **creditNotes apply race** — verified wave-33, better-sqlite3 exclusive-write tx makes SELECT+UPDATE race-safe.
+- [x] SCAN-831. **Vonage missing rawBody** — FIXED wave-33 (logger.error; already fail-closed).
+- [x] SCAN-832. **Telnyx missing rawBody** — FIXED wave-33 (logger.error + .warn; already fail-closed).
+- [x] SCAN-833. **auth parseInt :1878** — FIXED wave-33 via validateId.
+- [x] SCAN-834. **heldCarts validateId** — FIXED wave-33 at 3 sites (GET /:id, DELETE /:id, POST /:id/recall).
+- [x] SCAN-836. **Vonage unknown signatureMethod fallback** — FIXED wave-33 (logger.error; already fail-closed).
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.
