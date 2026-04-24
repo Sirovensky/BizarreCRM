@@ -4,13 +4,20 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
+import coil3.ImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.toBitmap
 import com.bizarreelectronics.crm.BizarreCrmApp
 import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.util.ActiveChatTracker
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -63,6 +70,8 @@ object NotificationController {
         val body = data["body"]?.takeIf { it.isNotBlank() } ?: ""
         val threadPhone = data["thread_phone"]?.takeIf { it.isNotBlank() }
         val navigateTo = data["navigate_to"]?.takeIf { it.isNotBlank() }
+        // §13 L1579 — optional image URL for BigPictureStyle rich push.
+        val imageUrl = data["image_url"]?.takeIf { it.isNotBlank() }
         // Internal hints injected by FcmService — not from server payload.
         val quietOverride = data["_quiet_override"] == "true"
         val badgeCount = data["_badge_count"]?.toIntOrNull() ?: 0
@@ -140,6 +149,27 @@ object NotificationController {
             builder.setPriority(NotificationCompat.PRIORITY_HIGH)
         }
 
+        // §13 L1579 — Rich push: download image_url and apply BigPictureStyle.
+        // Downloads on the calling thread (FcmService is already on a bg thread)
+        // with a 5-second timeout. Falls back to standard style on any failure.
+        if (imageUrl != null) {
+            val bitmap = fetchBitmap(context, imageUrl)
+            if (bitmap != null) {
+                builder.setStyle(
+                    NotificationCompat.BigPictureStyle()
+                        .bigPicture(bitmap)
+                        .setBigContentTitle(title)
+                        .setSummaryText(body),
+                )
+            } else {
+                // Fallback: use BigTextStyle so long body is still readable.
+                builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            }
+        } else if (body.length > 40) {
+            // Expand long text even without an image.
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
+
         // §13.4: stamp badge count so Samsung One UI dot stays accurate.
         if (badgeCount > 0) {
             builder.setNumber(badgeCount)
@@ -191,6 +221,29 @@ object NotificationController {
 
         return id to builder.build()
     }
+
+    /**
+     * §13 L1579 — Download an image for BigPictureStyle with a 5-second timeout.
+     *
+     * Uses the existing Coil singleton (same OkHttp client, disk cache, etc.).
+     * Returns null on any failure — the caller falls back to standard style.
+     * Must be called from a non-Main thread (runBlocking is acceptable inside
+     * FcmService.onMessageReceived which runs on a Firebase-managed IO thread).
+     */
+    private fun fetchBitmap(context: Context, url: String): Bitmap? = runCatching {
+        runBlocking {
+            withTimeout(5_000L) {
+                val loader = ImageLoader(context)
+                val request = ImageRequest.Builder(context)
+                    .data(url)
+                    .build()
+                val result = loader.execute(request)
+                (result as? SuccessResult)?.image?.toBitmap()
+            }
+        }
+    }.onFailure { e ->
+        Timber.w(e, "NotificationController: BigPicture download failed, url=%s", url)
+    }.getOrNull()
 
     private fun receiverIntent(
         context: Context,

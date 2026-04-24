@@ -1,9 +1,6 @@
 package com.bizarreelectronics.crm
 
 import android.app.Application
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.os.Build
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -12,6 +9,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import coil3.SingletonImageLoader
 import com.bizarreelectronics.crm.data.drafts.DraftStore
+import com.bizarreelectronics.crm.service.NotificationChannelBootstrap
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
@@ -89,7 +87,9 @@ class BizarreCrmApp : Application(), Configuration.Provider {
         // §32.3 — wire the uncaught-exception handler before anything else
         // so init-path crashes are still captured.
         crashReporter.install()
-        createNotificationChannels()
+        // §13 L1591 — channel creation is now in NotificationChannelBootstrap
+        // so it can be tested and reused independently of Application lifecycle.
+        NotificationChannelBootstrap.registerAll(this)
         SyncWorker.schedule(this)
         observeReconnect()
         startWebSocket()
@@ -225,102 +225,6 @@ class BizarreCrmApp : Application(), Configuration.Provider {
                     }
                     wasOffline = !online
                 }
-        }
-    }
-
-    /**
-     * §13 notification channels — full granular set. Channel IDs must match
-     * the `channel_id` payload coming from the server so per-category mutes
-     * in system Settings → Notifications carry through. IDs are namespaced
-     * plain strings (never reshuffle — users' per-channel settings key by
-     * these IDs forever).
-     *
-     * Importance levels are chosen per-channel so the user can mute a
-     * subset without killing the whole app:
-     *   - HIGH: sms_inbound, appointment_reminder, sla_breach, security_event
-     *   - DEFAULT: ticket_assigned, ticket_status, payment_received, mention
-     *   - LOW: low_stock, daily_summary, sync, backup_report
-     */
-    private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java)
-
-        val channels = listOf(
-            // — High-importance (heads-up + sound) —
-            NotificationChannel(CH_SMS_INBOUND, "SMS — incoming", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "New SMS messages from customers."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_APPOINTMENT_REMINDER, "Appointment reminder", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Upcoming appointment reminders."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_SLA_BREACH, "SLA breach", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Ticket SLA amber / red alerts."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_SECURITY_EVENT, "Security alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Unusual sign-ins, session revokes, password changes."
-                setShowBadge(true)
-            },
-
-            // — Default-importance (banner + sound) —
-            NotificationChannel(CH_TICKET_ASSIGNED, "Ticket assigned to you", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "You were assigned a ticket."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_TICKET_STATUS, "Ticket status changes", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Status updates on tickets you follow."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_PAYMENT_RECEIVED, "Payment received", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Invoice payments and deposits."
-                setShowBadge(true)
-            },
-            NotificationChannel(CH_MENTION, "You were @mentioned", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "You were tagged in a note, message, or chat."
-                setShowBadge(true)
-            },
-
-            // — Low-importance (silent) — no launcher dot for these; the
-            // user opted into low-importance by definition, no point
-            // pulling them back via the dot.
-            NotificationChannel(CH_LOW_STOCK, "Low-stock alerts", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Inventory items below reorder threshold."
-                setShowBadge(false)
-            },
-            NotificationChannel(CH_DAILY_SUMMARY, "Daily summary", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "End-of-day totals and activity digest."
-                setShowBadge(false)
-            },
-            NotificationChannel(CH_SYNC, "Background sync", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Data synchronization progress."
-                setShowBadge(false)
-            },
-            NotificationChannel(CH_BACKUP_REPORT, "Backup & diagnostics", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Backup results, crash reports, diagnostic logs."
-                setShowBadge(false)
-            },
-
-            // §1.7 L245 — silent SMS dedup: badge only, no sound/vibration.
-            // Created here alongside all other channels so the user sees it in
-            // Settings → Notifications → Bizarre CRM → SMS (silent dedup).
-            NotificationChannel(CH_SMS_SILENT, "SMS — silent (conversation open)", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Badge-only update when a new SMS arrives for a thread you are currently viewing."
-                setShowBadge(true)
-                setSound(null, null)
-                enableVibration(false)
-            },
-        )
-
-        channels.forEach { manager.createNotificationChannel(it) }
-
-        // Legacy channel IDs ("sms", "tickets", "appointments") used by a
-        // previous version. They auto-resurrect in settings if we keep
-        // posting to them, so we delete them cleanly once the new channels
-        // are registered. No-op on fresh installs that never had them.
-        listOf("sms", "tickets", "appointments").forEach { legacy ->
-            runCatching { manager.deleteNotificationChannel(legacy) }
         }
     }
 
