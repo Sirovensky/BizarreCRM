@@ -233,6 +233,36 @@ Implementation option: `.inspector(isPresented:)` with tender VM. Or dedicated 3
 
 ---
 
+## 4.7 Service bundles — auto-add paired items
+
+Selecting a service line (e.g. `Labor · screen replacement`) must auto-add its paired part(s) to the cart. The cashier should not have to remember to scan the screen part after picking the labor row.
+
+Data model:
+- `inventory_items.bundle_children_json` (server) — array of `{ child_inventory_item_id, default_qty, required: true|false }`. Populated on the Labor row for `screen replacement` with the current compatible screen part for the attached device's make/model.
+- Resolution is device-aware: when the customer's device (iPhone 14 Pro) is known from the attached ticket draft, "Labor · screen replacement" resolves `iPhone 14 Pro Screen SKU IPH14P-S` as the paired part. When no device is attached, the cashier gets a modal picker for the right part.
+- Optional siblings (screen protector, cleaning kit) are presented as `required: false` chips below the cart line — a tap adds them. Not silently added.
+
+UI behavior:
+- Tapping a service tile that has children: service + required children land in the cart in a single atomic `cart.addBundle(...)` call with a single undo. A small pill `bundle · 2 lines added` appears beside the service row for 3 s.
+- Catalog tile shows a small link-badge icon if the service has required children; tap preview shows the child list.
+- Editing the service qty scales the required-children qty proportionally (1 labor = 1 screen part; 2 labor = 2 screen parts).
+- Removing the service line prompts "Remove paired parts too?" — default Yes.
+
+Admin catalog surface:
+- `Settings → Repair pricing catalog → <service> → Paired items` — table of child parts with device-model scope, default qty, required flag.
+
+Sequence:
+- Cashier attaches customer + device → picks `Labor · screen replacement` from catalog → server-side BOM resolves to `iPhone 14 Pro Screen` part → both land in cart tagged with the bundle id → totals roll up → haptic `.success` + brief pill "2 lines added".
+
+Edge cases:
+- Part out of stock: cart still adds but line row shows a red `Low / 0` badge; cashier decides to place on hold / order / substitute.
+- Device model not in the BOM map: modal picker fires with filtered parts list matching the device's generic category.
+- Walk-in (no device attached): modal picker always fires before add.
+
+Implementation anchor: `ios/Packages/Pos/Sources/Pos/Bundles/ServiceBundleResolver.swift` (new file) + extend existing `PosCatalogGrid` to call `resolver.paired(for:service, device:)` on tap and route through `Cart.addBundle(lines:bundleId:)`.
+
+---
+
 ## 5. Workflow rules (Square/Shopify-proven ergonomics)
 
 From research agent 6. Non-negotiable:
