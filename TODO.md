@@ -724,8 +724,6 @@ Verified working. Not TODOs.
 ### Wave-68 scan-loop findings (2026-04-24) — idempotency/auth/audit/notifications/metrics
 
 ### Wave-67 scan-loop findings (2026-04-24) — auth/layout/migrations/public-api
-- [ ] SCAN-1148. **[LOW] Migrations 139-142 hardcode `location_id=1` backfill — breaks if Main Store id != 1.**
-  <!-- meta: scope=server/db; files=packages/server/src/db/migrations/139-142; fix=SELECT-FROM-locations-WHERE-is_default=1 -->
 
 ### Wave-66 scan-loop findings (2026-04-24) — reports/locations/retention/autoreorder/webhooks/notifications/sla/dunning/tenantExport/worker-pool
 

@@ -1,4 +1,8 @@
 
+## Closed 2026-04-24 (SCAN-1148 — location_id repair migration)
+
+- [x] SCAN-1148. **Migrations 139-142 hardcoded `location_id = 1` in their backfill UPDATEs, assuming the seeded "Main Store" row from migration 132 would always live at id=1** — any tenant that deleted + re-created locations before running 139 ended up with orphan FK values pointing at a non-existent row. FK SET NULL semantics don't apply because the row never existed to trigger a DELETE. Added migration 148 — idempotent repair pass that re-points every orphan `location_id` (NOT EXISTS a matching locations row) to the current `is_default = 1` location across invoices, inventory_items, users.home_location_id, tickets, expenses, clock_entries, shift_schedules, appointments. If no default exists the column lands on NULL, matching the FK's SET NULL semantics + UI fallbacks. Safe to re-run — each UPDATE only matches still-orphan rows.
+
 ## Closed 2026-04-24 (SCAN-992b LARGE drain + stripe retention)
 
 - [x] SCAN-992b [LARGE]. **CatalogPage.tsx had `jobs: any[]` + `items: any[]` spanning job-row + item-tile renderers** — every optional field access was unchecked. Introduced `CatalogJob` and `CatalogItem` interfaces that extend `Record<string, any>` — named fields (id/source/status/created_at/name/sku/category) get compile-time help for the common subset, price/image_url/product_url stay in the index signature because consumers (formatCurrency, safeProductUrl) accept multiple shapes. Matches the pattern landed in SCAN-1014. Added null-guard on StatusBadge (`j.status ?? 'pending'`) — the prop contract required string.
