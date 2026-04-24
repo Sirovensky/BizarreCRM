@@ -11,7 +11,32 @@ type: project
 - [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/customers.routes.ts:1870-1890; fix=checkWindowRate('customer_gdpr_reauth',userId:ip,5,3600_000)+cap-password<=72+recordWindowFailure-on-mismatch; BLOCKED: file is user WIP (never touch per project rule) -->
 
-## AUDIT CYCLE 2 — 2026-04-19 (deep-dive: reports/portal/print + WebSocket/Room/deep-links + Electron updater/windows)
+### POS mockup session findings (2026-04-24) — per-line notes + receipt portal linking + SMS receipt endpoint
+- [x] POS-NOTES-001. **POS route does not persist per-line-item `notes`** — `invoice_line_items` table HAS `notes TEXT` column (`packages/server/src/db/migrations/001_initial.sql:616`) and `invoices.routes.ts:498,506,510` reads/writes it with a 1000-char cap. ~~But `pos.routes.ts:605-615` INSERT omits `notes` entirely.~~ FIXED 2026-04-24 — `ResolvedLine` type extended with `notes: string|null`, input validation 1000-char cap, INSERT now writes `notes` param.
+- [x] POS-RECEIPT-001 (email). **`/notifications/send-receipt` (email) now embeds public tracking URL** — FIXED 2026-04-24 — notification receipt HTML now includes `View this receipt online:` line. Resolves linked ticket's `tracking_token` → `${host}/track?token=<token>` (direct public access). Falls back to `${host}/track/<orderId>` (phone-last-4 lookup) when no tracking token exists. Uses `req.protocol + req.get('host')` so self-hosted LAN and tenanted subdomains both work.
+
+- [ ] POS-SMS-001. **No SMS receipt endpoint exists — blocks v2b POS receipt screen phone-6 "Send via SMS" tile** — mockup `pos-phone-mockups.html` phone 6 shows three send paths (SMS / Email / Thermal print). Email path resolves to `POST /api/v1/notifications/send-receipt` (wired 2026-04-24 via POS-RECEIPT-001). **SMS has no equivalent route.** Android POS rewrite (Phase 2e of POS redesign wave) ships UI + client-side stub calling `POST /api/v1/notifications/send-receipt-sms` that does not exist yet — returns 404.
+  - **Endpoint to build:** `POST /api/v1/notifications/send-receipt-sms`
+  - **Body shape (proposed):** `{ invoice_id: number, recipient_phone: string }` — phone = E.164 or 10-digit US; validate against the invoice's customer.phone (SEC parity with SCAN-811 pattern from email receipt).
+  - **Auth:** `requireManagerOrAdmin(req)` — same gate as `/send-receipt`.
+  - **Rate limit:** recommend `checkWindowRate('receipt_sms', userId, 30, 60_000)` — 30 per minute per user (parity with signature-capture rate limits in `ticketSignatures.routes.ts:36`).
+  - **Validation:**
+    - `invoice_id` via `validateId`.
+    - `recipient_phone` — regex `^\+?[1-9]\d{6,14}$` OR normalize 10-digit US to E.164; length ≤16.
+    - Cross-check: `invoice.customer.phone` equals `recipient_phone` (reject 403 if mismatch, matching SCAN-811).
+  - **Config check:** `isSmsConfigured(db)` — mirror `isEmailConfigured(db)` pattern at `notifications.routes.ts:245-247`. Likely needs BizarreSMS provider credentials from `store_config` keys: `bizarre_sms_api_key` / `sms_provider`.
+  - **Message body:** short form — `Receipt for invoice #<order_id> from <store_name>. Total $<X.XX>. View online: <trackingUrl>`. Use same tracking URL resolution as `/send-receipt` (linked ticket's `tracking_token` → `/track?token=`, else `/track/<orderId>`). Cap at 320 chars (2 SMS segments).
+  - **Dispatch:** call `sendSms(db, { to: recipientPhone, body })` — adapter already exists in SMS route surface (`sms.routes.ts`). If missing, extract a service helper at `packages/server/src/services/sms.ts` that the receipt endpoint and existing SMS routes both call.
+  - **Audit:** `audit(db, 'receipt_sms_sent', req.user!.id, req.ip ?? '', { invoice_id, recipient_phone })` — call BEFORE dispatch so the audit row exists even if SMS delivery fails (parity with `notifications.routes.ts:311`).
+  - **Response:** `{ success: true, data: { message: 'Receipt SMS sent to <phone>' } }` — matches envelope pattern.
+  - **Error paths:**
+    - `400` — invalid/missing recipient_phone, phone exceeds length, invoice not found.
+    - `403` — recipient_phone mismatch against invoice.customer.phone (SCAN-811 defense-in-depth).
+    - `429` — rate limit.
+    - `500` — SMS provider failure (generic `Failed to send SMS`).
+  - **Integration test:** `curl -X POST /api/v1/notifications/send-receipt-sms -d '{"invoice_id":123,"recipient_phone":"+15552148801"}'` → expect 200; re-run within 60s at 31st call → expect 429.
+  - **Android handoff:** Phase 2e `PosReceiptViewModel.sendSms(phone)` has a STUB call to this endpoint with graceful 404 fallback (shows "SMS receipt not yet available" toast + logs analytics event `receipt_sms_unavailable`). Once server endpoint lands, the client code automatically starts working — no Android change needed.
+  - **Scope estimate:** ~90 lines in `notifications.routes.ts` modeled directly on the existing `/send-receipt` email route (lines 203-327) with email→SMS swap. Total effort ≤1 hour.
 
 ### Web cycle 2 (packages/web) — 24 findings
 

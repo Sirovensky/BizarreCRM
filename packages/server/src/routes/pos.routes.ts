@@ -365,6 +365,9 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
     // SKU. A shortage on any component fails the whole sale.
     kit_id: number | null;
     kit_name: string | null;
+    // POS-NOTES-001 — per-line freeform note (e.g. "gift wrap, tag For Mia").
+    // Matches invoices route behavior + `invoice_line_items.notes` column.
+    notes: string | null;
   }
   const resolvedLines: ResolvedLine[] = [];
   let subtotal = 0;
@@ -448,6 +451,18 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
       kitName = kitRow.name;
     }
 
+    // POS-NOTES-001 — optional per-line note, 1000-char cap matches
+    // invoices.routes.ts policy. Empty/whitespace → null so we don't
+    // store blank strings.
+    let lineNote: string | null = null;
+    if (item?.notes != null) {
+      const raw = String(item.notes).trim();
+      if (raw.length > 1000) {
+        throw new AppError(`line note exceeds 1000 characters`, 400);
+      }
+      if (raw.length > 0) lineNote = raw;
+    }
+
     resolvedLines.push({
       inventory_item_id: invId,
       inv,
@@ -460,6 +475,7 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
       lineTotal,
       kit_id: kitId,
       kit_name: kitName,
+      notes: lineNote,
     });
   }
 
@@ -592,10 +608,10 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
   for (const line of resolvedLines) {
     txQueries.push({
       sql: `INSERT INTO invoice_line_items
-              (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
+              (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total, notes)
             VALUES (
               (SELECT id FROM invoices WHERE order_id = ?),
-              ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?
             )`,
       params: [
         orderId,
@@ -605,6 +621,7 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
         line.unit_price,
         line.lineTax,
         line.lineTotal,
+        line.notes,
       ],
     });
 

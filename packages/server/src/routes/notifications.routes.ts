@@ -246,15 +246,21 @@ router.post(
       throw new AppError('SMTP is not configured. Set up email in Settings.', 400);
     }
 
-    // Fetch line items + receipt config rows in parallel
-    const [lineItems, configRows] = await Promise.all([
-      adb.all<{ description: string; quantity: number; unit_price: number; tax_amount: number; total: number }>(`
-        SELECT description, quantity, unit_price, tax_amount, total
+    // Fetch line items + receipt config rows + linked ticket (for tracking token) in parallel
+    const [lineItems, configRows, linkedTicket] = await Promise.all([
+      adb.all<{ description: string; quantity: number; unit_price: number; tax_amount: number; total: number; notes: string | null }>(`
+        SELECT description, quantity, unit_price, tax_amount, total, notes
         FROM invoice_line_items WHERE invoice_id = ?
         ORDER BY id ASC
       `, invoiceId),
       adb.all<{ key: string; value: string }>(
         `SELECT key, value FROM store_config WHERE key IN ('store_name','receipt_header','receipt_footer','receipt_thermal_footer')`
+      ),
+      // POS-RECEIPT-001 — if the invoice is linked to a repair ticket, pull its
+      // tracking_token so the receipt HTML can embed a direct public-view URL.
+      adb.get<{ order_id: string; tracking_token: string | null }>(
+        `SELECT order_id, tracking_token FROM tickets WHERE invoice_id = ? LIMIT 1`,
+        invoiceId,
       ),
     ]);
     const cfgMap = Object.fromEntries(configRows.map((r) => [r.key, r.value]));
@@ -262,6 +268,22 @@ router.post(
     const receiptHeader = cfgMap['receipt_header'] || '';
     // Prefer thermal footer; fall back to page footer; then a generic default.
     const receiptFooter = cfgMap['receipt_thermal_footer'] || cfgMap['receipt_footer'] || 'Thank you for your business!';
+
+    // POS-RECEIPT-001 — build the customer-facing tracking URL.
+    // Preference order:
+    //   1. Direct token link `${base}/track?token=<token>` (if ticket + token exist)
+    //   2. Order-id lookup `${base}/track/<orderId>` (customer enters phone last-4)
+    //   3. Bare `/track` lookup form
+    // `req.protocol` + `req.get('host')` always yields the URL the client hit.
+    const publicHost = `${req.protocol}://${req.get('host')}`;
+    let trackingUrl: string | null = null;
+    if (linkedTicket?.tracking_token) {
+      trackingUrl = `${publicHost}/track?token=${encodeURIComponent(linkedTicket.tracking_token)}`;
+    } else if (linkedTicket?.order_id) {
+      trackingUrl = `${publicHost}/track/${encodeURIComponent(linkedTicket.order_id)}`;
+    } else {
+      trackingUrl = `${publicHost}/track/${encodeURIComponent(invoice.order_id)}`;
+    }
 
     // Build receipt HTML
     // @audit-fixed: §37 — escape every user-controlled field. li.description,
@@ -303,6 +325,12 @@ router.post(
           ${invoice.amount_due > 0 ? `<p style="color:#dc2626;">Balance Due: <strong>$${Number(invoice.amount_due).toFixed(2)}</strong></p>` : ''}
         </div>
         <hr style="margin:24px 0;border:none;border-top:1px solid #ddd;" />
+        ${trackingUrl ? `
+        <p style="font-size:13px;color:#555;margin:8px 0;">
+          <strong>View this receipt online:</strong><br />
+          <a href="${escapeHtml(trackingUrl)}" style="color:#0d9488;">${escapeHtml(trackingUrl)}</a>
+        </p>
+        ` : ''}
         <p style="font-size:12px;color:#999;">${escapeHtml(receiptFooter)}</p>
       </div>
     `;
