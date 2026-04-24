@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.interceptors.ClockDriftInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.OriginHeaderInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.RateLimitInterceptor
 import com.bizarreelectronics.crm.data.remote.interceptors.ReachabilityReportingInterceptor
+import com.bizarreelectronics.crm.data.remote.interceptors.RetryInterceptor
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.google.gson.Gson
@@ -447,6 +448,10 @@ object RetrofitClient {
 
     @Provides
     @Singleton
+    fun provideRetryInterceptor(): RetryInterceptor = RetryInterceptor()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
@@ -454,6 +459,7 @@ object RetrofitClient {
         originHeaderInterceptor: OriginHeaderInterceptor,
         rateLimitInterceptor: RateLimitInterceptor,
         clockDriftInterceptor: ClockDriftInterceptor,
+        retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
@@ -462,6 +468,7 @@ object RetrofitClient {
         originHeaderInterceptor = originHeaderInterceptor,
         rateLimitInterceptor = rateLimitInterceptor,
         clockDriftInterceptor = clockDriftInterceptor,
+        retryInterceptor = retryInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
@@ -487,6 +494,7 @@ object RetrofitClient {
         originHeaderInterceptor: OriginHeaderInterceptor,
         rateLimitInterceptor: RateLimitInterceptor,
         clockDriftInterceptor: ClockDriftInterceptor,
+        retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
@@ -495,6 +503,7 @@ object RetrofitClient {
         originHeaderInterceptor = originHeaderInterceptor,
         rateLimitInterceptor = rateLimitInterceptor,
         clockDriftInterceptor = clockDriftInterceptor,
+        retryInterceptor = retryInterceptor,
         loggingInterceptor = loggingInterceptor,
         readTimeoutSeconds = SYNC_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = SYNC_WRITE_TIMEOUT_SECONDS,
@@ -508,6 +517,7 @@ object RetrofitClient {
         originHeaderInterceptor: OriginHeaderInterceptor,
         rateLimitInterceptor: RateLimitInterceptor,
         clockDriftInterceptor: ClockDriftInterceptor,
+        retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
@@ -522,6 +532,10 @@ object RetrofitClient {
             // whether the call proceeds at all. ClockDriftInterceptor only reads
             // response headers from calls that reached the server.
             .addInterceptor(rateLimitInterceptor)
+            // RetryInterceptor runs after RateLimitInterceptor so that rate-limit
+            // backoff has already been applied. It wraps ClockDrift + logging so
+            // each retry attempt is individually clock-drift-recorded and logged.
+            .addInterceptor(retryInterceptor)
             // ClockDriftInterceptor must run AFTER auth/reachability interceptors so it
             // only records the Date header from responses that actually reached the server.
             .addInterceptor(clockDriftInterceptor)
