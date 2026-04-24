@@ -92,6 +92,12 @@ function scheduleTokenRefresh() {
     const decoded = atob(parts[1]);
     if (decoded.length > 8192) throw new Error('decoded payload too large');
     const payload = JSON.parse(decoded);
+    // Without this guard, a token with a missing or non-numeric `exp` would
+    // turn expiresIn into NaN, Math.max(NaN, 10_000) into NaN, and setTimeout
+    // into a 0-ms fire — causing a refresh storm on every request.
+    if (typeof payload?.exp !== 'number' || !Number.isFinite(payload.exp)) {
+      throw new Error('token missing numeric exp claim');
+    }
     const expiresIn = (payload.exp * 1000) - Date.now();
     const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
     refreshScheduled = true;
