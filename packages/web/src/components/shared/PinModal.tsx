@@ -10,13 +10,59 @@ interface PinModalProps {
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 30;
+// SCAN-1168: persist the lockout across full page reloads — previously the
+// counter lived in useState only, so a user who hit the 5-attempt cap could
+// just refresh the page and get 5 fresh attempts. sessionStorage scopes per
+// tab, which matches the UX intent (closing the tab = ending the kiosk
+// session). Server-side `authApi.verifyPin` has its own rate limit, but
+// that surfaces as "too many attempts" AFTER a dozen hits — the UI-level
+// cap is load-bearing for the "N remaining" message.
+const LOCKOUT_STORAGE_KEY = 'bizarre:pin-modal-lockout';
+
+interface PersistedLockout {
+  failCount: number;
+  lockedUntil: number | null;
+}
+
+function readPersistedLockout(): PersistedLockout {
+  try {
+    const raw = sessionStorage.getItem(LOCKOUT_STORAGE_KEY);
+    if (!raw) return { failCount: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as Partial<PersistedLockout>;
+    return {
+      failCount: typeof parsed.failCount === 'number' && parsed.failCount >= 0 ? parsed.failCount : 0,
+      lockedUntil: typeof parsed.lockedUntil === 'number' && parsed.lockedUntil > 0 ? parsed.lockedUntil : null,
+    };
+  } catch {
+    return { failCount: 0, lockedUntil: null };
+  }
+}
+
+function writePersistedLockout(next: PersistedLockout): void {
+  try { sessionStorage.setItem(LOCKOUT_STORAGE_KEY, JSON.stringify(next)); }
+  catch { /* quota / sandboxed — best effort */ }
+}
+
+function clearPersistedLockout(): void {
+  try { sessionStorage.removeItem(LOCKOUT_STORAGE_KEY); }
+  catch { /* ignore */ }
+}
 
 export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel }: PinModalProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [failCount, setFailCount] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const initialLockout = (() => {
+    const persisted = readPersistedLockout();
+    // Drop stale lockouts whose expiry has passed.
+    if (persisted.lockedUntil !== null && persisted.lockedUntil <= Date.now()) {
+      clearPersistedLockout();
+      return { failCount: 0, lockedUntil: null };
+    }
+    return persisted;
+  })();
+  const [failCount, setFailCount] = useState(initialLockout.failCount);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(initialLockout.lockedUntil);
   const [lockCountdown, setLockCountdown] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +78,9 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
         setLockCountdown(0);
         setError('');
         setFailCount(0);
+        // SCAN-1168: lockout expired naturally — scrub persisted state so
+        // the next tab load starts fresh.
+        clearPersistedLockout();
         inputRef.current?.focus();
       } else {
         setLockCountdown(remaining);
@@ -55,14 +104,20 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
 
     try {
       await authApi.verifyPin(pin);
+      // SCAN-1168: on success, reset persisted counters so the next gated
+      // action doesn't inherit a stale failCount on this tab.
+      clearPersistedLockout();
       onSuccess();
     } catch {
       const newCount = failCount + 1;
       setFailCount(newCount);
       if (newCount >= MAX_ATTEMPTS) {
-        setLockedUntil(Date.now() + LOCKOUT_SECONDS * 1000);
+        const lockTs = Date.now() + LOCKOUT_SECONDS * 1000;
+        setLockedUntil(lockTs);
+        writePersistedLockout({ failCount: newCount, lockedUntil: lockTs });
         setError(`Too many attempts. Please wait ${LOCKOUT_SECONDS}s.`);
       } else {
+        writePersistedLockout({ failCount: newCount, lockedUntil: null });
         setError(`Invalid PIN (${MAX_ATTEMPTS - newCount} attempts remaining)`);
       }
       setPin('');
@@ -97,6 +152,13 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          {/* SCAN-1163: stop browser password managers (Chrome, 1Password,
+              Bitwarden) from offering to save the clock-in PIN as a credential
+              for the app origin — a 4-6 digit kiosk PIN is explicitly NOT a
+              per-user password and shouldn't live in the user's password
+              vault. `autoComplete="off"` is the standard knob; `data-lpignore`
+              + `data-form-type="other"` cover LastPass and 1Password's
+              heuristic-driven suggestions. */}
           <input
             ref={inputRef}
             type="password"
@@ -105,6 +167,9 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             maxLength={6}
             value={pin}
             disabled={isLocked}
+            autoComplete="off"
+            data-lpignore="true"
+            data-form-type="other"
             onChange={(e) => {
               setPin(e.target.value.replace(/\D/g, ''));
               if (!isLocked) setError('');

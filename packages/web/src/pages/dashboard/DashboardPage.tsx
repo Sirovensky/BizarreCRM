@@ -68,9 +68,22 @@ interface MissingPart {
 
 type DatePreset = 'today' | 'yesterday' | 'last7' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all';
 
+// SCAN-1162: `toISOString().slice(0, 10)` returns the UTC calendar date,
+// which rolls over at midnight UTC — in non-UTC timezones (e.g. America/
+// Denver UTC-6), "today" from 17:00 local onward resolved to the NEXT
+// calendar day for the dashboard queries, so the "Today's Sales" KPIs
+// disappeared at 5pm local. Use the browser's local getFullYear/Month/
+// Date so the range matches the shop's wall clock.
+function localYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function getDateRange(preset: DatePreset): { from: string; to: string } {
   const today = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const fmt = (d: Date) => localYmd(d);
 
   switch (preset) {
     case 'today':
@@ -1147,8 +1160,9 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
 
 function TodaysAppointments() {
   const navigate = useNavigate();
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  // SCAN-1162: local-tz day boundaries — see localYmd comment above.
+  const today = localYmd(new Date());
+  const tomorrow = localYmd(new Date(Date.now() + 86400000));
 
   const { data: apptData, isLoading } = useQuery({
     queryKey: ['todays-appointments', today],

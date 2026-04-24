@@ -1,4 +1,10 @@
 
+## Closed 2026-04-24 (wave-69 dashboard tz + PinModal hardening)
+
+- [x] SCAN-1162. **Dashboard `getDateRange` + `TodaysAppointments` used `toISOString().slice(0,10)`** — UTC calendar date rolled over at midnight UTC, so in America/Denver (UTC-6) "today" resolved to the NEXT calendar day from 17:00 onward and the Today's Sales KPIs / appointments list went blank. Added a `localYmd(d)` helper using `getFullYear/Month/Date` so both preset ranges and the appointments query match the shop's wall clock.
+- [x] SCAN-1163. **`PinModal` PIN input didn't opt out of browser password-manager auto-save** — Chrome, 1Password, LastPass, Bitwarden all offered to save the 4-6 digit kiosk PIN as an origin credential. Added `autoComplete="off"`, `data-lpignore="true"`, `data-form-type="other"` — covers the three major heuristic paths without affecting accessibility.
+- [x] SCAN-1168. **`PinModal` lockout state was client-only** — a user hitting the 5-attempt cap could refresh the page and get 5 fresh attempts. Persisted `failCount` + `lockedUntil` to `sessionStorage` (keyed `bizarre:pin-modal-lockout`, scoped per tab), with stale-lockout cleanup on mount, on natural expiry, and on successful verify. Server-side rate limit still the authoritative gate; this keeps the UI's "N attempts remaining" message load-bearing.
+
 ## Closed 2026-04-24 (wave-69 HIGH — client+server CSV formula injection sweep)
 
 - [x] SCAN-1161 [HIGH]. **Multiple CSV exports (server tickets, server payroll, client inventory, client customers, client reports) had no formula-injection guard** — mirror of SCAN-1130 which only covered `reports.routes.toCsv`. Added a new shared helper `packages/web/src/utils/csv.ts` exporting `sanitizeCsvCell`, `toCsvField`, `toCsvRow` — every client site now uses `rows.map(toCsvRow)`. On the server, `tickets.routes.ts` export handler got the `CSV_FORMULA_TRIGGERS` regex + prefix logic, and `team.routes.ts` payroll export's `sanitize` helper now prepends `'` for any leading trigger char. Cells starting with `=`/`+`/`-`/`@`/TAB/CR no longer auto-evaluate when ops opens the CSV.
