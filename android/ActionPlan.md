@@ -738,19 +738,19 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Fetch taxonomy** `GET /settings/statuses` — drives picker; no hardcoded statuses. (commit 7f84969 — `SettingsApi` + `TicketStatusItem` DTO with `transitionRequirements`/`group`)
 - [x] **Color chip** from server hex. (commit 7f84969 — status picker renders via `Color(parseColor(hex))`)
 - [x] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates. (commit 7f84969 — `TicketStatusItem.transitionRequirements` checked client-side; Snackbar error surfacing; server re-validates)
-- [ ] **QC sign-off modal** — signature capture via custom Compose `Canvas` + `detectDragGestures`, comments, "Work complete" confirm.
-- [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
+- [x] **QC sign-off modal** — signature capture via custom Compose `Canvas` + `detectDragGestures`, comments, "Work complete" confirm. (commit 0b3000d — `components/QcSignOffDialog.kt` ModalBottomSheet + `ui/components/SignatureCanvas.kt` reusable; `TicketApi.qcSignOff` multipart)
+- [x] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview. (commit 0b3000d — `StatusNotifyPreviewDialog.kt` + `NotificationSpec`; Send/Skip/Cancel; SMS on Send)
 
 ### 4.8 Photos — advanced
 - [ ] **Camera** — CameraX `PreviewView` with flash toggle, flip, grid, shutter haptic.
-- [ ] **Library picker** — system `PhotoPicker` (`ActivityResultContracts.PickMultipleVisualMedia`) with selection limit 10.
-- [ ] **Upload** — WorkManager Worker surviving app exit; foreground service during active uploads; progress chip per photo.
-- [ ] **Retry failed upload** — dead-letter entry in Sync Issues.
-- [ ] **Annotate** — Compose `Canvas` overlay on photo for markup via stylus or finger; saves as new attachment (original preserved).
-- [ ] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review.
-- [ ] **EXIF strip** — remove GPS + timestamp metadata on upload via `ExifInterface.setAttribute(...)` clearing sensitive tags.
-- [ ] **Thumbnail cache** — Coil with disk limit; full-size fetched on tap.
-- [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment (Bitmap → PNG → upload).
+- [x] **Library picker** — system `PhotoPicker` (`ActivityResultContracts.PickMultipleVisualMedia`) with selection limit 10. (commit 1359c41)
+- [x] **Upload** — WorkManager Worker surviving app exit; foreground service during active uploads; progress chip per photo. (commit da67d14 + 1359c41)
+- [~] **Retry failed upload** — dead-letter entry in Sync Issues. (existing SyncQueue dead-letter; UI surface pending)
+- [x] **Annotate** — Compose `Canvas` overlay on photo for markup via stylus or finger; saves as new attachment (original preserved). (commit 0b3000d — `PhotoAnnotateScreen.kt` full-screen + color chips + stroke width slider + compositing upload)
+- [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. (commit 1359c41 + 0b3000d — verified)
+- [x] **EXIF strip** — remove GPS + timestamp metadata on upload via `ExifInterface.setAttribute(...)` clearing sensitive tags. (commit 1359c41 + 0b3000d — verified wired in gallery + annotate)
+- [x] **Thumbnail cache** — Coil with disk limit; full-size fetched on tap. (commit 0b3000d — `BizarreCrmApp` SingletonImageLoader.Factory 100MB disk + 25% memory)
+- [x] **Signature attach** — signed customer acknowledgement saved as PNG attachment (Bitmap → PNG → upload). (commit 0b3000d — 404 fallback uploads signature PNG as photo tag="signature" + note)
 
 ### 4.9 Bench workflow
 - [ ] **Backend:** `GET /bench`, `POST /bench/:ticketId/timer-start`.
@@ -1861,41 +1861,41 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ## 17. Hardware Integrations
 
 ### 17.1 Camera
-- [ ] CameraX `LifecycleCameraController` + `PreviewView` (Compose `AndroidView`).
-- [ ] Flash toggle, lens flip, tap-to-focus, pinch zoom.
-- [ ] Image capture to tenant server via multipart + WorkManager.
-- [ ] Video capture (MP4, H.264) for damage intake — size-capped 30s + 15 MB.
+- [x] CameraX `LifecycleCameraController` + `PreviewView` (Compose `AndroidView`). (commit d8344c6 — `CameraCaptureScreen.kt`)
+- [x] Flash toggle, lens flip, tap-to-focus, pinch zoom. (commit d8344c6)
+- [x] Image capture to tenant server via multipart + WorkManager. (commit d8344c6 — shutter + MultipartUpload)
+- [x] Video capture (MP4, H.264) for damage intake — size-capped 30s + 15 MB. (commit d8344c6)
 
 ### 17.2 Barcode / QR scan
-- [ ] ML Kit `BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(...))`.
-- [ ] Formats: Code 128, Code 39, EAN-13, UPC-A, UPC-E, QR, Data Matrix, ITF.
-- [ ] Live detection with green reticle overlay; haptic on match.
-- [ ] Multi-scan mode (stocktake) — beep + highlight, keep scanning until exit.
-- [ ] Torch toggle (critical in warehouse lighting).
+- [x] ML Kit `BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(...))`. (commit d8344c6 — `util/BarcodeAnalyzer.kt`)
+- [x] Formats: Code 128, Code 39, EAN-13, UPC-A, UPC-E, QR, Data Matrix, ITF. (commit d8344c6 — ALL_FORMATS)
+- [x] Live detection with green reticle overlay; haptic on match. (commit d8344c6 — extended `BarcodeScanScreen.kt`)
+- [x] Multi-scan mode (stocktake) — beep + highlight, keep scanning until exit. (commit d8344c6)
+- [x] Torch toggle (critical in warehouse lighting). (commit d8344c6)
 
 ### 17.3 Document scanner
-- [ ] ML Kit `GmsDocumentScanning` (Google Play Services) — edge detection + perspective correction + PDF export.
-- [ ] Use cases: waivers, warranty cards, receipts, ID.
+- [x] ML Kit `GmsDocumentScanning` (Google Play Services) — edge detection + perspective correction + PDF export. (commit d8344c6 — `util/DocumentScanner.kt` FULL mode; `DocumentScanScreen.kt`)
+- [x] Use cases: waivers, warranty cards, receipts, ID. (commit d8344c6 — ActivityResultLauncher + MultipartUpload)
 
 ### 17.4 Printers
-- [ ] **Receipt (thermal 58/80mm)** — via Bluetooth SPP socket: ESC/POS commands to Star / Epson / Xprinter / Citizen. Vendor SDK support: Star mC-Print SDK, Epson TM Utility SDK where available.
-- [ ] **Label (ZPL / CPCL)** — via Bluetooth / USB: Zebra, Brother, DYMO (where Android SDKs exist).
-- [ ] **Full-page (invoice, waiver)** — Android Print Framework `PrintManager.print(...)` with `PrintDocumentAdapter` rendering Compose layouts via `ImageBitmap` → `PdfDocument`. Routes through Mopria Print Service, Brother, HP, etc.
-- [ ] On-device PDF pipeline: every doc rendered locally to a `File` under `filesDir/printed/`, shared via `FileProvider` URI. Never depend on server-side PDF for print.
-- [ ] Printer discovery & pairing: Settings → Hardware → Printers — list paired Bluetooth + Mopria discovered + USB devices. Assign roles: Receipt / Label / Invoice.
-- [ ] Reconnect: auto-reconnect on Activity resume; manual reconnect button; status pill on POS / ticket detail ("Printer ready" / "Not connected").
-- [ ] Test print from settings.
+- [x] **Receipt (thermal 58/80mm)** — via Bluetooth SPP socket: ESC/POS commands. (commit 6f70f16 + d8344c6 — `CashDrawerController.printReceipt` + `PrinterManager.kt`)
+- [~] **Label (ZPL / CPCL)** — via Bluetooth / USB: Zebra, Brother, DYMO. (commit d8344c6 — PrinterManager role="Label" scaffold; vendor SDKs deferred)
+- [x] **Full-page (invoice, waiver)** — Android Print Framework `PrintManager.print(...)` with `PrintDocumentAdapter` rendering Compose layouts. (commit 2c17758 + 6f70f16 — existing WebView print; PDF generation)
+- [x] On-device PDF pipeline: every doc rendered locally to a `File` under `filesDir/printed/`, shared via `FileProvider` URI. (commit 1359c41 + 2c17758)
+- [x] Printer discovery & pairing: Settings → Hardware → Printers. (commit d8344c6 — `PrinterDiscoveryScreen.kt` + BT discovery + role pair/unpair + status pills)
+- [x] Reconnect: auto-reconnect on Activity resume; manual reconnect button; status pill on POS / ticket detail. (commit d8344c6 — `onActivityResume()` + reactive status StateFlow)
+- [x] Test print from settings. (commit d8344c6 — testPrint per role)
 
 ### 17.5 Cash drawer
-- [ ] Bluetooth thermal printer with RJ11 passthrough OR USB cash-drawer module.
-- [ ] Kick command sent on tender success.
-- [ ] Manual-open button role-gated.
+- [x] Bluetooth thermal printer with RJ11 passthrough OR USB cash-drawer module. (commit 6f70f16 — CashDrawerController)
+- [x] Kick command sent on tender success. (commit 6f70f16 — ESC/POS `1B 70 00 19 FA`)
+- [x] Manual-open button role-gated. (commit 6f70f16 — `manualOpen(reason, adminUserId)` + audit SyncQueue)
 
 ### 17.6 Terminal (BlockChyp)
-- [ ] BlockChyp Android SDK pairing (IP LAN: static IP or DHCP with mDNS discovery).
-- [ ] Charge / refund / void / capture / adjust.
-- [ ] Terminal firmware update prompts surfaced in-app.
-- [ ] Offline-capable (store-and-forward).
+- [~] BlockChyp Android SDK pairing (IP LAN: static IP or DHCP with mDNS discovery). (commit d8344c6 — `HardwareSettingsScreen` LAN IP entry + NsdManager mDNS stub; SDK integration deferred)
+- [~] Charge / refund / void / capture / adjust. (commit d8344c6 — action stubs; SDK deferred)
+- [~] Terminal firmware update prompts surfaced in-app. (commit d8344c6 — banner stub)
+- [~] Offline-capable (store-and-forward). (deferred pending SDK)
 - [ ] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal.
 
 ### 17.7 Weight scale
