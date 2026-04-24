@@ -2543,3 +2543,13 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-622. **reportEmailer tenant-TZ week window** — verified wave-40 already-fixed via `getLocalTodayIsoDate` with Intl + tenant timezone.
 - [x] SCAN-625. **reportEmailer SMTP-unconfigured structured logger** — verified wave-40 already-fixed; logger.warn + logger.error in place.
 - [x] SCAN-628. **reportEmailer shared escapeHtml import** — verified wave-40 already-fixed; imports from utils/escape.js, no local dup.
+
+## Closed 2026-04-23 (wave-41)
+- [x] SCAN-889. **admin.routes setInterval → trackInterval** — FIXED wave-41 via startAdminTokenReaper via trackInterval + index.ts wiring.
+- [x] SCAN-890. **automations JSON.parse no try/catch** — FIXED wave-41 via safeParseConfig helper + logger.warn fallback.
+- [x] SCAN-891. **automations PII in buildVars** — FIXED wave-41 via maskedVarsForLogging helper (preventive; no current log site).
+- [x] SCAN-892. **admin token plaintext Map** — FIXED wave-41 via hashToken SHA-256 + verifyToken timingSafeEqual; raw never in Map.
+- [x] SCAN-893. **paymentLinks Math.round cents FP drift** — FIXED wave-41 via toFixed(2)*100 round pattern.
+- [x] SCAN-894. **automations hourly cap race** — FIXED wave-41 via per-rule atomic tx around count-check + run insert.
+- [x] SCAN-895. **configEncryption console.error** — FIXED wave-41 via createLogger + logger.error.
+- [x] SCAN-896. **admin token sliding TTL** — FIXED wave-41 via TOKEN_ABSOLUTE_MAX_MS=8h + created_at + reaper eviction.

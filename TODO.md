@@ -1626,3 +1626,16 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-895. **configEncryption console.error not structured — prod log filter suppresses crypto errors** — `packages/server/src/utils/configEncryption.ts:69,80,93`. Fix: logger.error.
 - [ ] SCAN-896. **admin token sliding TTL — unlimited duration if active; no absolute max** — `packages/server/src/routes/admin.routes.ts:87`. Fix: absolute-max check (8h or 24h).
 - [ ] SCAN-897. **tenant-pool evict-on-release without pre-return health check** — `packages/server/src/db/tenant-pool.ts:143-159`. Fix: quick PRAGMA quick_check before cache return.
+
+### Wave-41 scan-loop findings (2026-04-23)
+- [ ] SCAN-898. **[HIGH] tenant-pool health check + recursive reopen race** — `packages/server/src/db/tenant-pool.ts:133`. Fix: CAS / mutex per-slug.
+- [ ] SCAN-899. **retentionSweeper whereExtra SQL template — safe-static but fragile** — `packages/server/src/services/retentionSweeper.ts:401-402`. Fix: document invariant OR parameterize.
+- [ ] SCAN-900. **invoices fireWebhook + runAutomations fire-and-forget no catch** — `packages/server/src/routes/invoices.routes.ts:222,537,541`. Fix: `.catch(logger.warn)` or `await` in helper.
+- [ ] SCAN-901. **[MEDIUM] legacy TOTP v1/v2 raw SHA-256 derivation (v3 HKDF)** — `packages/server/src/routes/auth.routes.ts:63-70`. Fix: migrate legacy secrets to v3 over time.
+- [ ] SCAN-902. **tenant-pool MAX_POOL_SIZE race — both skip eviction at size=50** — `packages/server/src/db/tenant-pool.ts:143-144`. Fix: atomic check+evict via mutex.
+- [ ] SCAN-903. **[POSSIBLE] postPaymentSideEffects called without await + .catch — loyalty/commission silently fail** — `packages/server/src/routes/invoices.routes.ts:220`. Fix: await or .catch(logger.error).
+- [ ] SCAN-904. **device trust cookie key derived from jwtSecret only** — `packages/server/src/routes/auth.routes.ts:36`. Fix: bind ACCESS_JWT_SECRET + superAdminSecret in derivation.
+- [ ] SCAN-905. **cookie secure flag gated on nodeEnv, not x-forwarded-proto** — `packages/server/src/routes/auth.routes.ts:402`. Fix: check req.secure OR trust X-Forwarded-Proto.
+- [ ] SCAN-906. **tenant-pool refcount-increment before caller return — exception leaks refcount** — `packages/server/src/db/tenant-pool.ts:137`. Fix: try/finally at caller.
+- [ ] SCAN-907. **invoices fireWebhook no idempotency key on retry — duplicate payment_received** — `packages/server/src/routes/invoices.routes.ts:537`. Fix: pass invoice_id+payment_id as idempotency key.
+- [ ] SCAN-908. **super-admin challenge cleanup 60s — manual delete sits in Map up to 60s** — `packages/server/src/routes/super-admin.routes.ts:156-159`. Fix: explicit delete on manual OR accept as minor.
