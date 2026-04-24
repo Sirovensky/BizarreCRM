@@ -1,5 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.leads
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.imePadding
@@ -11,8 +15,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -23,50 +30,28 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
-import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
+import com.bizarreelectronics.crm.ui.screens.leads.components.LeadContextMenu
+import com.bizarreelectronics.crm.ui.screens.leads.components.LeadScoreIndicator
+import com.bizarreelectronics.crm.ui.screens.leads.components.LeadSort
+import com.bizarreelectronics.crm.ui.screens.leads.components.LeadSortDropdown
+import com.bizarreelectronics.crm.ui.screens.leads.components.applySortOrder
 import com.bizarreelectronics.crm.util.PhoneFormatter
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.bizarreelectronics.crm.util.PhoneIntents
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-data class LeadListUiState(
-    val leads: List<LeadEntity> = emptyList(),
-    val isLoading: Boolean = true,
-    val isRefreshing: Boolean = false,
-    val error: String? = null,
-    val searchQuery: String = "",
-    val selectedStatus: String = "All",
-)
+private fun statusLabelFor(status: String?): String {
+    if (status.isNullOrBlank()) return ""
+    return LEAD_STATUSES.firstOrNull { it.key.equals(status, ignoreCase = true) }?.label ?: status
+}
 
-/**
- * View mode toggle for the Leads screen (ActionPlan §9).
- *
- * [LIST] renders the existing flat list; [KANBAN] renders the pipeline board.
- */
-enum class ViewMode { LIST, KANBAN }
-
-/**
- * Status label lookup. Keys match the server's lowercase status strings.
- * Colors are intentionally removed — [BrandStatusBadge] / [statusToneFor]
- * provide the 5-hue brand discipline instead of the old 7-color rainbow.
- */
-private data class LeadStatusMeta(
-    val key: String,
-    val label: String,
-)
+private data class LeadStatusMeta(val key: String, val label: String)
 
 private val LEAD_STATUSES = listOf(
     LeadStatusMeta("new", "New"),
@@ -78,86 +63,15 @@ private val LEAD_STATUSES = listOf(
     LeadStatusMeta("lost", "Lost"),
 )
 
-private fun statusLabelFor(status: String?): String {
-    if (status.isNullOrBlank()) return ""
-    return LEAD_STATUSES.firstOrNull { it.key.equals(status, ignoreCase = true) }?.label
-        ?: status
-}
+enum class ViewMode { LIST, KANBAN }
 
-@HiltViewModel
-class LeadListViewModel @Inject constructor(
-    private val leadRepository: LeadRepository,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(LeadListUiState())
-    val state = _state.asStateFlow()
-
-    private var searchJob: Job? = null
-    private var collectJob: Job? = null
-
-    init {
-        collectLeads()
-    }
-
-    fun loadLeads() = collectLeads()
-
-    private fun collectLeads() {
-        collectJob?.cancel()
-        collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = _state.value.leads.isEmpty(),
-                error = null,
-            )
-            val query = _state.value.searchQuery.trim()
-            val status = _state.value.selectedStatus
-
-            val flow = when {
-                query.isNotEmpty() -> leadRepository.searchLeads(query)
-                status == "Open" -> leadRepository.getOpenLeads()
-                else -> leadRepository.getLeads()
-            }
-
-            flow.collect { leads ->
-                val filtered = when (status) {
-                    "All", "Open" -> leads
-                    else -> leads.filter {
-                        it.status.equals(status, ignoreCase = true)
-                    }
-                }
-                _state.value = _state.value.copy(
-                    leads = filtered,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
-            }
-        }
-    }
-
-    fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
-        collectLeads()
-    }
-
-    fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(300)
-            collectLeads()
-        }
-    }
-
-    fun onStatusChanged(status: String) {
-        _state.value = _state.value.copy(selectedStatus = status)
-        collectLeads()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LeadListScreen(
     onLeadClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
+    onConvertToCustomer: (Long) -> Unit = {},
+    onScheduleAppointment: (Long) -> Unit = {},
     viewModel: LeadListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -166,76 +80,161 @@ fun LeadListScreen(
         "Qualified", "Proposal", "Converted", "Lost",
     )
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val view = LocalView.current
 
-    // §9: view-mode toggle — List (default) or Kanban pipeline board.
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
+    var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteIds by rememberSaveable { mutableStateOf<Set<Long>>(emptySet()) }
 
-    // Derived grouping for Kanban — computed only when leads change and the
-    // kanban view is active. Immutable: groupBy returns a new map each time.
+    // Context-menu state
+    var contextMenuLeadId by remember { mutableStateOf<Long?>(null) }
+    var contextMenuLead by remember { mutableStateOf<LeadEntity?>(null) }
+
+    // Preview popover state
+    var previewLead by remember { mutableStateOf<LeadEntity?>(null) }
+
     val leadsByStage by remember(state.leads) {
         derivedStateOf { state.leads.groupBy { it.status ?: "new" } }
     }
 
+    // Sorted leads for list view
+    val sortedLeads by remember(state.leads, state.currentSort) {
+        derivedStateOf { applySortOrder(state.leads, state.currentSort) }
+    }
+
+    // Bulk-delete confirm
+    if (showDeleteConfirm && pendingDeleteIds.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirm = false
+                pendingDeleteIds = emptySet()
+            },
+            title = { Text("Delete ${pendingDeleteIds.size} leads?") },
+            text = { Text("This will mark the selected leads as lost. This action can be reversed by changing each lead's status.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.bulkDelete(pendingDeleteIds)
+                        val count = pendingDeleteIds.size
+                        showDeleteConfirm = false
+                        pendingDeleteIds = emptySet()
+                        scope.launch {
+                            val result = snackbarHostState.showSnackbar(
+                                message = "$count leads deleted",
+                                actionLabel = "Undo",
+                                duration = SnackbarDuration.Short,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                viewModel.undoBulkDelete()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    pendingDeleteIds = emptySet()
+                }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // Preview popover
+    if (previewLead != null) {
+        LeadPreviewPopover(
+            lead = previewLead!!,
+            onDismiss = { previewLead = null },
+        )
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // CROSS45: WaveDivider docked directly below the TopAppBar — canonical
-            // placement for every list screen.
             Column {
                 TopAppBar(
-                    title = { Text("Leads") },
+                    title = {
+                        if (state.selectedLeadIds.isNotEmpty()) {
+                            Text("${state.selectedLeadIds.size} selected")
+                        } else {
+                            Text("Leads")
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
                     actions = {
-                        // §9: List / Kanban toggle pair.
-                        // a11y: Role.Button + "selected/not selected" so TalkBack
-                        // announces the current mode when the user navigates to the icon.
-                        IconButton(
-                            onClick = { viewMode = ViewMode.LIST },
-                            modifier = Modifier.semantics {
-                                role = Role.Button
-                                contentDescription = if (viewMode == ViewMode.LIST)
-                                    "List view, selected"
-                                else
-                                    "List view, not selected"
-                            },
-                        ) {
-                            Icon(
-                                Icons.Default.ViewList,
-                                contentDescription = null,
-                                tint = if (viewMode == ViewMode.LIST)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (state.selectedLeadIds.isNotEmpty()) {
+                            // Bulk-action bar: only Delete for now
+                            IconButton(
+                                onClick = {
+                                    pendingDeleteIds = state.selectedLeadIds
+                                    showDeleteConfirm = true
+                                },
+                                modifier = Modifier.semantics { contentDescription = "Delete selected leads" },
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.clearSelection() },
+                                modifier = Modifier.semantics { contentDescription = "Clear selection" },
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null)
+                            }
+                        } else {
+                            LeadSortDropdown(
+                                currentSort = state.currentSort,
+                                onSortSelected = { viewModel.onSortChanged(it) },
                             )
-                        }
-                        // a11y: same pattern for Kanban toggle
-                        IconButton(
-                            onClick = { viewMode = ViewMode.KANBAN },
-                            modifier = Modifier.semantics {
-                                role = Role.Button
-                                contentDescription = if (viewMode == ViewMode.KANBAN)
-                                    "Kanban view, selected"
-                                else
-                                    "Kanban view, not selected"
-                            },
-                        ) {
-                            Icon(
-                                Icons.Default.ViewKanban,
-                                contentDescription = null,
-                                tint = if (viewMode == ViewMode.KANBAN)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        // a11y: "Refresh leads" is more specific than generic "Refresh"
-                        IconButton(onClick = { viewModel.loadLeads() }) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh leads",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            IconButton(
+                                onClick = { viewMode = ViewMode.LIST },
+                                modifier = Modifier.semantics {
+                                    role = Role.Button
+                                    contentDescription = if (viewMode == ViewMode.LIST)
+                                        "List view, selected" else "List view, not selected"
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.ViewList,
+                                    contentDescription = null,
+                                    tint = if (viewMode == ViewMode.LIST)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewMode = ViewMode.KANBAN },
+                                modifier = Modifier.semantics {
+                                    role = Role.Button
+                                    contentDescription = if (viewMode == ViewMode.KANBAN)
+                                        "Kanban view, selected" else "Kanban view, not selected"
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.ViewKanban,
+                                    contentDescription = null,
+                                    tint = if (viewMode == ViewMode.KANBAN)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { viewModel.loadLeads() }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh leads",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     },
                 )
@@ -243,12 +242,13 @@ fun LeadListScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onCreateClick,
-                containerColor = MaterialTheme.colorScheme.primary,
-            ) {
-                // a11y: spec §26 — "Create new lead" (imperative, lowercase "new")
-                Icon(Icons.Default.Add, contentDescription = "Create new lead")
+            if (state.selectedLeadIds.isEmpty()) {
+                FloatingActionButton(
+                    onClick = onCreateClick,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create new lead")
+                }
             }
         },
     ) { padding ->
@@ -258,7 +258,6 @@ fun LeadListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            // Search bar — shared brand SearchBar
             com.bizarreelectronics.crm.ui.components.shared.SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
@@ -266,8 +265,6 @@ fun LeadListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            // a11y: "Status filter" heading so TalkBack can navigate directly to
-            // this section via heading swipe without traversing each filter chip.
             Text(
                 "Status filter",
                 style = MaterialTheme.typography.labelSmall,
@@ -277,7 +274,6 @@ fun LeadListScreen(
                     .semantics { heading() },
             )
 
-            // Status filter chips
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -288,26 +284,18 @@ fun LeadListScreen(
                         selected = isSelected,
                         onClick = { viewModel.onStatusChanged(filter) },
                         label = { Text(filter) },
-                        // a11y: Role.Tab + selection state so TalkBack announces
-                        // "<stage> filter, selected/not selected" on each chip.
                         modifier = Modifier.semantics {
                             role = Role.Tab
-                            contentDescription = if (isSelected) {
-                                "$filter filter, selected"
-                            } else {
-                                "$filter filter, not selected"
-                            }
+                            contentDescription = if (isSelected) "$filter filter, selected"
+                            else "$filter filter, not selected"
                         },
                     )
                 }
             }
 
-            // Lead count — demoted to muted labelSmall
             if (!state.isLoading && state.leads.isNotEmpty()) {
                 val leadCount = state.leads.size
                 val countLabel = "$leadCount ${if (leadCount == 1) "lead" else "leads"}"
-                // a11y: liveRegion=Polite so TalkBack announces the updated count
-                // after a filter or search change, without interrupting mid-sentence.
                 Text(
                     countLabel,
                     modifier = Modifier
@@ -325,29 +313,17 @@ fun LeadListScreen(
 
             when {
                 state.isLoading -> {
-                    // a11y: mergeDescendants + contentDescription so TalkBack
-                    // announces "Loading leads" on a single focus stop rather than
-                    // reading each shimmer box individually.
-                    Box(
-                        modifier = Modifier.semantics(mergeDescendants = true) {
-                            contentDescription = "Loading leads"
-                        },
-                    ) {
-                        BrandSkeleton(
-                            rows = 6,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
+                    Box(modifier = Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Loading leads"
+                    }) {
+                        BrandSkeleton(rows = 6, modifier = Modifier.padding(horizontal = 16.dp))
                     }
                 }
                 state.error != null -> {
-                    // a11y: liveRegion=Assertive interrupts TalkBack immediately so
-                    // the user is not left wondering why the list is empty on failure.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .semantics {
-                                liveRegion = LiveRegionMode.Assertive
-                            },
+                            .semantics { liveRegion = LiveRegionMode.Assertive },
                         contentAlignment = Alignment.Center,
                     ) {
                         ErrorState(
@@ -357,8 +333,6 @@ fun LeadListScreen(
                     }
                 }
                 state.leads.isEmpty() -> {
-                    // a11y: mergeDescendants collapses decorative icon + title +
-                    // subtitle into one TalkBack node for a single announcement.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -373,14 +347,15 @@ fun LeadListScreen(
                     }
                 }
                 viewMode == ViewMode.KANBAN -> {
-                    // §9: Kanban pipeline board — horizontally scrollable columns
-                    // grouped by status. Stage-change callback is a no-op here;
-                    // wiring a dropdown/dialog is deferred (drag-drop wave).
                     LeadKanbanBoard(
                         leadsByStage = leadsByStage,
                         stageOrder = DEFAULT_STAGE_ORDER,
                         onLeadClick = onLeadClick,
-                        onStageChangeRequest = { _, _ -> /* deferred */ },
+                        onStageChangeRequest = { leadId, _ ->
+                            contextMenuLeadId = leadId
+                            contextMenuLead = state.leads.firstOrNull { it.id == leadId }
+                        },
+                        onStageDrop = { leadId, newStage -> viewModel.advanceStage(leadId, newStage) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -393,18 +368,66 @@ fun LeadListScreen(
                     ) {
                         LazyColumn(
                             state = listState,
-                            // CROSS16-ext: bottom inset so the last row can
-                            // scroll above the bottom-nav / gesture area.
                             contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 8.dp,
-                                bottom = 80.dp,
+                                start = 16.dp, end = 16.dp,
+                                top = 8.dp, bottom = 80.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(state.leads, key = { it.id }) { lead ->
-                                LeadCard(lead = lead, onClick = { onLeadClick(lead.id) })
+                            items(sortedLeads, key = { it.id }) { lead ->
+                                val isSelected = lead.id in state.selectedLeadIds
+                                var showContextMenu by remember { mutableStateOf(false) }
+
+                                LeadSwipeRow(
+                                    lead = lead,
+                                    onAdvanceStage = { viewModel.advanceStage(lead.id, nextStageFor(lead.status)) },
+                                    onDropStage = { viewModel.dropStage(lead.id, prevStageFor(lead.status)) },
+                                ) {
+                                    Box {
+                                        LeadCard(
+                                            lead = lead,
+                                            isSelected = isSelected,
+                                            onClick = {
+                                                if (state.selectedLeadIds.isNotEmpty()) {
+                                                    viewModel.toggleSelection(lead.id)
+                                                } else {
+                                                    onLeadClick(lead.id)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                                if (state.selectedLeadIds.isEmpty()) {
+                                                    showContextMenu = true
+                                                } else {
+                                                    viewModel.toggleSelection(lead.id)
+                                                }
+                                            },
+                                            onAvatarClick = { previewLead = lead },
+                                        )
+                                        LeadContextMenu(
+                                            expanded = showContextMenu,
+                                            onDismiss = { showContextMenu = false },
+                                            onOpen = { onLeadClick(lead.id) },
+                                            onCall = {
+                                                lead.phone?.let { PhoneIntents.call(context, it) }
+                                            },
+                                            onSms = {
+                                                lead.phone?.let { PhoneIntents.sms(context, it) }
+                                            },
+                                            onEmail = {
+                                                lead.email?.let { PhoneIntents.email(context, it) }
+                                            },
+                                            onConvertToCustomer = { onConvertToCustomer(lead.id) },
+                                            onScheduleAppointment = { onScheduleAppointment(lead.id) },
+                                            onDelete = {
+                                                pendingDeleteIds = setOf(lead.id)
+                                                showDeleteConfirm = true
+                                            },
+                                            hasPhone = !lead.phone.isNullOrBlank(),
+                                            hasEmail = !lead.email.isNullOrBlank(),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -414,52 +437,152 @@ fun LeadListScreen(
     }
 }
 
-@Composable
-private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
-    // D5-3: use Card(onClick = ...) overload so the M3 ripple renders from the
-    // first tap. Chaining .clickable on a Card without onClick broke tactile
-    // feedback because the Card surface drew OVER the ripple indication.
+// ─── Swipe row ────────────────────────────────────────────────────────────────
 
-    // a11y: build the full announcement string once so it can be used in semantics.
-    // Card(onClick) carries Material 3 Card Role.Button; we add contentDescription
-    // via mergeDescendants so TalkBack announces a single coherent sentence rather
-    // than reading each child Text node individually.
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun LeadSwipeRow(
+    lead: LeadEntity,
+    onAdvanceStage: () -> Unit,
+    onDropStage: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val view = LocalView.current
+
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    onAdvanceStage()
+                    false
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    onDropStage()
+                    false
+                }
+                SwipeToDismissBoxValue.Settled -> false
+            }
+        },
+        positionalThreshold = { totalDistance -> totalDistance * 0.35f },
+    )
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.reset()
+        }
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            val scheme = MaterialTheme.colorScheme
+            when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(scheme.primaryContainer)
+                            .padding(start = 20.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ArrowForward, contentDescription = null,
+                                tint = scheme.onPrimaryContainer)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Advance stage", color = scheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(scheme.errorContainer)
+                            .padding(end = 20.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Drop stage", color = scheme.onErrorContainer,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowBack, contentDescription = null,
+                                tint = scheme.onErrorContainer)
+                        }
+                    }
+                }
+                SwipeToDismissBoxValue.Settled -> {
+                    Box(modifier = Modifier.fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface))
+                }
+            }
+        },
+        content = { content() },
+    )
+}
+
+// ─── Lead list card ───────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LeadCard(
+    lead: LeadEntity,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onAvatarClick: () -> Unit,
+) {
     val fullName = listOfNotNull(lead.firstName, lead.lastName)
-        .joinToString(" ")
-        .ifBlank { "Unknown" }
+        .joinToString(" ").ifBlank { "Unknown" }
     val stageLabel = statusLabelFor(lead.status).ifBlank { lead.status ?: "Unknown" }
     val a11yDesc = buildString {
         append("Lead $fullName")
-        lead.phone?.takeIf { it.isNotBlank() }?.let {
-            append(", phone ${PhoneFormatter.format(it)}")
-        }
+        lead.phone?.takeIf { it.isNotBlank() }?.let { append(", phone ${PhoneFormatter.format(it)}") }
         append(", stage $stageLabel")
         append(", score ${lead.leadScore}")
         lead.source?.takeIf { it.isNotBlank() }?.let { append(", source $it") }
         append(". Tap to open.")
     }
 
+    val containerColor = if (isSelected)
+        MaterialTheme.colorScheme.primaryContainer
+    else
+        MaterialTheme.colorScheme.surface
+
     Card(
-        onClick = onClick,
-        // a11y: contentDescription overrides merged child-text reading; 48dp floor
-        // ensures the row meets the Material 3 minimum touch target.
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 48.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics(mergeDescendants = true) { contentDescription = a11yDesc },
+        colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(12.dp)
                 .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Avatar / score ring — tap triggers preview popover
+            LeadScoreIndicator(
+                score = lead.leadScore,
+                size = 44.dp,
+                modifier = Modifier
+                    .combinedClickable(onClick = onAvatarClick)
+                    .semantics { contentDescription = "Score ${lead.leadScore}. Tap for preview." },
+            )
+
+            // Main content
             Column(modifier = Modifier.weight(1f)) {
-                val orderId = lead.orderId
-                if (!orderId.isNullOrBlank()) {
+                if (!lead.orderId.isNullOrBlank()) {
                     Text(
-                        orderId,
+                        lead.orderId,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -476,6 +599,13 @@ private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (!lead.email.isNullOrBlank()) {
+                    Text(
+                        lead.email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (!lead.source.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -485,21 +615,86 @@ private fun LeadCard(lead: LeadEntity, onClick: () -> Unit) {
                     )
                 }
             }
+
+            // Right column: status + value
             Column(horizontalAlignment = Alignment.End) {
-                // 5-hue brand badge — replaces rainbow Surface(color = hardcodedHex)
-                val statusLabel = statusLabelFor(lead.status).ifBlank { lead.status ?: "" }
                 BrandStatusBadge(
-                    label = statusLabel,
+                    label = stageLabel,
                     status = lead.status ?: "",
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "Score: ${lead.leadScore}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (lead.leadScore > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Score ${lead.leadScore}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
+}
+
+// ─── Lead preview popover ─────────────────────────────────────────────────────
+
+@Composable
+private fun LeadPreviewPopover(lead: LeadEntity, onDismiss: () -> Unit) {
+    val fullName = listOfNotNull(lead.firstName, lead.lastName).joinToString(" ").ifBlank { "Unknown" }
+
+    LaunchedEffect(lead.id) {
+        kotlinx.coroutines.delay(3_000L)
+        onDismiss()
+    }
+
+    androidx.compose.ui.window.Popup(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.PopupProperties(focusable = true),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier
+                .width(260.dp)
+                .semantics { contentDescription = "Lead preview for $fullName" },
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    LeadScoreIndicator(score = lead.leadScore, size = 40.dp)
+                    Column {
+                        Text(fullName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if (!lead.phone.isNullOrBlank()) {
+                            Text(PhoneFormatter.format(lead.phone), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (!lead.source.isNullOrBlank()) {
+                    Text("Source: ${lead.source}", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val statusLabel = statusLabelFor(lead.status).ifBlank { lead.status ?: "" }
+                if (statusLabel.isNotBlank()) {
+                    BrandStatusBadge(label = statusLabel, status = lead.status ?: "")
+                }
+            }
+        }
+    }
+}
+
+// ─── Stage navigation helpers ─────────────────────────────────────────────────
+
+private fun nextStageFor(current: String?): String {
+    val stages = DEFAULT_STAGE_ORDER
+    val idx = stages.indexOf(current?.lowercase())
+    return if (idx in 0 until stages.size - 1) stages[idx + 1] else current ?: stages.first()
+}
+
+private fun prevStageFor(current: String?): String {
+    val stages = DEFAULT_STAGE_ORDER
+    val idx = stages.indexOf(current?.lowercase())
+    return if (idx > 0) stages[idx - 1] else current ?: stages.first()
 }

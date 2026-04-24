@@ -37,6 +37,22 @@ interface LeadApi {
     @POST("leads/{id}/convert")
     suspend fun convertLead(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
 
+    /**
+     * Convert lead to customer (ActionPlan §9 L1399).
+     * Copies lead fields to a new customer record and archives the lead.
+     * 404-tolerant: callers should handle [retrofit2.HttpException] with code 404.
+     */
+    @POST("leads/{id}/convert-to-customer")
+    suspend fun convertToCustomer(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    /**
+     * Convert lead to estimate (ActionPlan §9 L1400).
+     * Returns a prefilled estimate detail so the caller can navigate to EstimateCreate.
+     * 404-tolerant: callers should handle [retrofit2.HttpException] with code 404.
+     */
+    @POST("leads/{id}/convert-to-estimate")
+    suspend fun convertToEstimate(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
     @POST("leads/{id}/reminder")
     suspend fun createReminder(@Path("id") id: Long, @Body body: Map<String, @JvmSuppressWildcards Any>): ApiResponse<LeadReminder>
 

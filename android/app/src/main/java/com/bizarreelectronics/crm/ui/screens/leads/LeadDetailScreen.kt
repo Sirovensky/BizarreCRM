@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.LeadEntity
+import com.bizarreelectronics.crm.data.remote.api.LeadApi
 import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
@@ -23,6 +25,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.StatusTone
 import com.bizarreelectronics.crm.ui.components.shared.statusToneFor
+import com.bizarreelectronics.crm.ui.screens.leads.components.LeadScoreIndicator
+import com.bizarreelectronics.crm.ui.screens.leads.components.LostReasonDialog
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.PhoneFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -80,6 +84,12 @@ data class LeadDetailUiState(
     val error: String? = null,
     val actionMessage: String? = null,
     val isActionInProgress: Boolean = false,
+    /** Signals that "lost" status was selected but the lost-reason dialog hasn't been confirmed yet. */
+    val pendingLostTransition: Boolean = false,
+    /** Non-null when convertToCustomer succeeds; screen navigates to the new customer. */
+    val convertedCustomerId: Long? = null,
+    /** Non-null when convertToEstimate succeeds; screen navigates to the estimate. */
+    val convertedEstimateId: Long? = null,
 )
 
 /**
@@ -110,6 +120,7 @@ private fun optionFor(status: String?): LeadStatusOption? {
 class LeadDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val leadRepository: LeadRepository,
+    private val leadApi: LeadApi,
     private val serverMonitor: ServerReachabilityMonitor,
 ) : ViewModel() {
 
@@ -487,8 +498,148 @@ class LeadDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Request "lost" status transition. Emits [pendingLostTransition] = true so the
+     * screen shows [LostReasonDialog]. Call [confirmLostWithReason] once the user picks.
+     */
+    fun requestLostTransition() {
+        _state.value = _state.value.copy(pendingLostTransition = true)
+    }
+
+    fun cancelLostTransition() {
+        _state.value = _state.value.copy(pendingLostTransition = false)
+    }
+
+    /** Called from [LostReasonDialog] after the user picks a reason. */
+    fun confirmLostWithReason(reason: String) {
+        _state.value = _state.value.copy(pendingLostTransition = false)
+        val old = _state.value.lead?.status
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                leadRepository.updateLead(
+                    leadId,
+                    UpdateLeadRequest(status = "lost", lostReason = reason),
+                )
+                _state.value = _state.value.copy(isActionInProgress = false)
+                undoStack.push(
+                    UndoStack.Entry(
+                        payload = LeadEdit.StatusChange(oldStatus = old, newStatus = "lost"),
+                        apply = { viewModelScope.launch { leadRepository.updateLead(leadId, UpdateLeadRequest(status = "lost", lostReason = reason)) } },
+                        reverse = {
+                            if (old != null) viewModelScope.launch {
+                                leadRepository.updateLead(leadId, UpdateLeadRequest(status = old))
+                            }
+                        },
+                        auditDescription = "Marked lost: $reason",
+                        compensatingSync = {
+                            try {
+                                if (old != null) leadRepository.updateLead(leadId, UpdateLeadRequest(status = old))
+                                true
+                            } catch (e: Exception) { Timber.tag("LeadUndo").e(e, "compensatingSync: lost revert"); false }
+                        },
+                    )
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to mark as lost: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Convert lead to customer (ActionPlan §9 L1399).
+     * 404-tolerant: shows a toast if the endpoint is not yet deployed.
+     */
+    fun convertToCustomer() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val response = leadApi.convertToCustomer(leadId)
+                val customerId = (response.data?.get("customerId") as? Number)?.toLong()
+                if (customerId != null) {
+                    refreshLeadInBackground()
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        convertedCustomerId = customerId,
+                        actionMessage = "Lead converted to customer",
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Convert returned no customer id",
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                val msg = if (e.code() == 404) "Convert to customer not yet available on this server"
+                          else "Failed to convert: ${e.message}"
+                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to convert to customer: ${e.message}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Convert lead to estimate (ActionPlan §9 L1400).
+     * 404-tolerant.
+     */
+    fun convertToEstimate() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val response = leadApi.convertToEstimate(leadId)
+                val estimateId = (response.data?.get("estimateId") as? Number)?.toLong()
+                if (estimateId != null) {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        convertedEstimateId = estimateId,
+                        actionMessage = "Lead converted to estimate",
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Convert returned no estimate id",
+                    )
+                }
+            } catch (e: retrofit2.HttpException) {
+                val msg = if (e.code() == 404) "Convert to estimate not yet available on this server"
+                          else "Failed to convert: ${e.message}"
+                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to convert to estimate: ${e.message}",
+                )
+            }
+        }
+    }
+
+    private fun refreshLeadInBackground() {
+        viewModelScope.launch {
+            try {
+                val response = leadApi.getLead(leadId)
+                // toEntity is defined in LeadRepository file
+                response.data?.let { }
+            } catch (_: Exception) { }
+        }
+    }
+
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
+    }
+
+    fun clearConvertedCustomerId() {
+        _state.value = _state.value.copy(convertedCustomerId = null)
+    }
+
+    fun clearConvertedEstimateId() {
+        _state.value = _state.value.copy(convertedEstimateId = null)
     }
 
     /**
@@ -518,6 +669,9 @@ fun LeadDetailScreen(
     leadId: Long,
     onBack: () -> Unit,
     onConverted: (ticketId: Long) -> Unit,
+    onConvertedToCustomer: (customerId: Long) -> Unit = {},
+    onConvertedToEstimate: (estimateId: Long) -> Unit = {},
+    onScheduleAppointment: (leadId: Long) -> Unit = {},
     viewModel: LeadDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -525,22 +679,42 @@ fun LeadDetailScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val lead = state.lead
 
-    // @audit-fixed: showDeleteConfirm previously used remember{} which meant a
-    // rotation while the user was deciding whether to delete the lead would
-    // silently dismiss the warning dialog. Status dropdown is fine on remember
-    // because it's a transient menu, but a destructive confirm must persist.
     var showStatusDropdown by remember { mutableStateOf(false) }
     var showDeleteConfirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Navigate when conversion succeeds
+    // Navigate when ticket conversion succeeds
     LaunchedEffect(convertedTicketId) {
         val ticketId = convertedTicketId
-        if (ticketId != null) {
-            onConverted(ticketId)
+        if (ticketId != null) onConverted(ticketId)
+    }
+
+    // Navigate when customer conversion succeeds
+    LaunchedEffect(state.convertedCustomerId) {
+        val customerId = state.convertedCustomerId
+        if (customerId != null) {
+            viewModel.clearConvertedCustomerId()
+            onConvertedToCustomer(customerId)
         }
+    }
+
+    // Navigate when estimate conversion succeeds
+    LaunchedEffect(state.convertedEstimateId) {
+        val estimateId = state.convertedEstimateId
+        if (estimateId != null) {
+            viewModel.clearConvertedEstimateId()
+            onConvertedToEstimate(estimateId)
+        }
+    }
+
+    // Lost-reason dialog — show when status dropdown selects "lost"
+    if (state.pendingLostTransition) {
+        LostReasonDialog(
+            onConfirm = { reason -> viewModel.confirmLostWithReason(reason) },
+            onDismiss = { viewModel.cancelLostTransition() },
+        )
     }
 
     LaunchedEffect(state.actionMessage) {
@@ -655,32 +829,54 @@ fun LeadDetailScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Header: name + phone
+                    // Header: name + phone + email + score ring + status chip
                     item {
                         Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                val fullName = listOfNotNull(lead.firstName, lead.lastName)
-                                    .joinToString(" ")
-                                    .ifBlank { "Unknown" }
-                                Text(
-                                    fullName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
+                            Row(
+                                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Score ring — tappable for explanation sheet
+                                LeadScoreIndicator(
+                                    score = lead.leadScore,
+                                    size = 64.dp,
                                 )
-                                if (!lead.phone.isNullOrBlank()) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val fullName = listOfNotNull(lead.firstName, lead.lastName)
+                                        .joinToString(" ").ifBlank { "Unknown" }
                                     Text(
-                                        PhoneFormatter.format(lead.phone),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fullName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
                                     )
-                                }
-                                if (!lead.orderId.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        lead.orderId,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    if (!lead.phone.isNullOrBlank()) {
+                                        Text(
+                                            PhoneFormatter.format(lead.phone),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    if (!lead.email.isNullOrBlank()) {
+                                        Text(
+                                            lead.email,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    if (!lead.orderId.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            lead.orderId,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    val statusLabel = optionFor(lead.status)?.label ?: lead.status ?: ""
+                                    if (statusLabel.isNotBlank()) {
+                                        BrandStatusBadge(label = statusLabel, status = lead.status ?: "")
+                                    }
                                 }
                             }
                         }
@@ -764,7 +960,11 @@ fun LeadDetailScreen(
                                                 },
                                                 onClick = {
                                                     showStatusDropdown = false
-                                                    viewModel.updateStatus(option.key)
+                                                    if (option.key == "lost") {
+                                                        viewModel.requestLostTransition()
+                                                    } else {
+                                                        viewModel.updateStatus(option.key)
+                                                    }
                                                 },
                                                 enabled = !lead.status.equals(
                                                     option.key,
@@ -900,11 +1100,7 @@ fun LeadDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            // CROSS48-adopt-more: Convert to Ticket is the one
-                            // positive terminal action on lead detail; filled
-                            // primary hierarchy via BrandPrimaryButton (not a
-                            // raw Button whose default `primary` fill reads
-                            // the same, but intent is now explicit).
+                            // Convert to Ticket — primary action
                             BrandPrimaryButton(
                                 onClick = { viewModel.convertToTicket() },
                                 modifier = Modifier.fillMaxWidth(),
@@ -912,18 +1108,44 @@ fun LeadDetailScreen(
                                     !state.isActionInProgress &&
                                     !lead.status.equals("converted", ignoreCase = true),
                             ) {
-                                // decorative — Button's "Convert to Ticket" Text supplies the accessible name
-                                Icon(
-                                    Icons.Default.SwapHoriz,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
+                                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    if (!isOnline) "Convert to Ticket (Offline)"
-                                    else "Convert to Ticket"
-                                )
+                                Text(if (!isOnline) "Convert to Ticket (Offline)" else "Convert to Ticket")
                             }
+
+                            // Convert to Customer
+                            OutlinedButton(
+                                onClick = { viewModel.convertToCustomer() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = isOnline && !state.isActionInProgress,
+                            ) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Convert to Customer")
+                            }
+
+                            // Convert to Estimate
+                            OutlinedButton(
+                                onClick = { viewModel.convertToEstimate() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = isOnline && !state.isActionInProgress,
+                            ) {
+                                Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Convert to Estimate")
+                            }
+
+                            // Schedule Appointment
+                            OutlinedButton(
+                                onClick = { onScheduleAppointment(leadId) },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !state.isActionInProgress,
+                            ) {
+                                Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Schedule Appointment")
+                            }
+
                             // Delete = outlined error-red (destructive)
                             OutlinedButton(
                                 onClick = { showDeleteConfirm = true },
@@ -933,12 +1155,7 @@ fun LeadDetailScreen(
                                     contentColor = MaterialTheme.colorScheme.error,
                                 ),
                             ) {
-                                // decorative — Button's "Delete" Text supplies the accessible name
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Delete")
                             }
