@@ -45,6 +45,8 @@ fun PosCartScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showDetachConfirm by remember { mutableStateOf(false) }
+    var showMiscDialog by remember { mutableStateOf(false) }
+    var showDiscountDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Consume scan-result handoff from the scanner screen. AppNavGraph
@@ -122,13 +124,27 @@ fun PosCartScreen(
             TotalsAndTenderBar(state = state, onTender = onNavigateToTender)
         },
     ) { padding ->
-        if (state.lines.isEmpty()) {
-            EmptyCartContent(modifier = Modifier.padding(padding))
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 8.dp),
-            ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(bottom = 8.dp),
+        ) {
+            // Cart line rows (or empty emoji)
+            if (state.lines.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("🛒", style = MaterialTheme.typography.displayMedium)
+                        Text(
+                            "Scan or pick parts to start",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
                 items(state.lines, key = { it.id }) { line ->
                     CartLineRow(
                         line = line,
@@ -136,20 +152,42 @@ fun PosCartScreen(
                         onRemove = { viewModel.removeLine(line.id) },
                     )
                 }
+            }
 
-                // Three dashed-border action slots
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        DashedSlot(label = "+ Misc item", onClick = {}, modifier = Modifier.weight(1f))
-                        DashedSlot(label = "+ Note", onClick = {}, modifier = Modifier.weight(1f))
-                        DashedSlot(label = "+ Discount", onClick = {}, modifier = Modifier.weight(1f))
-                    }
+            // Three dashed-border action slots — always visible so cashier can
+            // add a misc line / attach a note / apply a cart discount from an
+            // otherwise empty cart too (matches mockup PHONE 3 layout).
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
+                    DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
                 }
             }
         }
+    }
+
+    if (showMiscDialog) {
+        MiscItemDialog(
+            onAdd = { name, priceCents ->
+                viewModel.addMiscItem(name, priceCents)
+                showMiscDialog = false
+            },
+            onDismiss = { showMiscDialog = false },
+        )
+    }
+
+    if (showDiscountDialog) {
+        CartDiscountDialog(
+            currentCents = state.discountCents,
+            onApply = { cents ->
+                viewModel.setCartDiscount(cents)
+                showDiscountDialog = false
+            },
+            onDismiss = { showDiscountDialog = false },
+        )
     }
 
     // ── Line edit bottom sheet ───────────────────────────────────────────────
@@ -351,16 +389,79 @@ private fun DashedSlot(label: String, onClick: () -> Unit, modifier: Modifier = 
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = LocalExtendedColors.current.info)
     }
 }
 
+// ─── Misc item dialog — name + price ─────────────────────────────────────────
+
 @Composable
-private fun EmptyCartContent(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("🛒", style = MaterialTheme.typography.displayMedium)
-            Text("Scan or pick parts to start", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var priceInput by remember { mutableStateOf("") }
+    val priceCents = ((priceInput.toDoubleOrNull() ?: 0.0) * 100).toLong()
+    val canAdd = name.isNotBlank() && priceCents > 0L
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add misc item") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(120) },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = priceInput,
+                    onValueChange = { raw -> priceInput = raw.filter { it.isDigit() || it == '.' } },
+                    label = { Text("Price") },
+                    prefix = { Text("$") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(name.trim(), priceCents) }, enabled = canAdd) {
+                Text("Add")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ─── Cart-wide discount dialog ───────────────────────────────────────────────
+
+@Composable
+private fun CartDiscountDialog(currentCents: Long, onApply: (Long) -> Unit, onDismiss: () -> Unit) {
+    var input by remember(currentCents) {
+        mutableStateOf(if (currentCents > 0) "%.2f".format(currentCents / 100.0) else "")
     }
+    val cents = ((input.toDoubleOrNull() ?: 0.0) * 100).toLong()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cart discount") },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { raw -> input = raw.filter { it.isDigit() || it == '.' } },
+                label = { Text("Amount") },
+                prefix = { Text("$") },
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = { TextButton(onClick = { onApply(cents) }) { Text("Apply") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
