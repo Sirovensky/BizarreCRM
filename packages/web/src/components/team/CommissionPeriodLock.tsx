@@ -76,7 +76,7 @@ export function CommissionPeriodLock() {
   function downloadCsv(periodId: number) {
     // Open in a new tab — the server returns text/csv with Content-Disposition.
     const url = `/api/v1/team/payroll/export.csv?period=${periodId}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   return (

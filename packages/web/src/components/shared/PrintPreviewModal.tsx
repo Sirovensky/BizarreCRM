@@ -36,7 +36,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
             // Extra 200ms for images/fonts after content is in DOM
             setTimeout(() => {
               try { iframe.contentWindow?.print(); } catch {
-                window.open(url.replace('&embed=1', ''), '_blank');
+                window.open(url.replace('&embed=1', ''), '_blank', 'noopener,noreferrer');
               }
             }, 200);
           } else {
@@ -46,7 +46,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
           // Fallback after timeout
           setTimeout(() => {
             try { iframe.contentWindow?.print(); } catch {
-              window.open(url.replace('&embed=1', ''), '_blank');
+              window.open(url.replace('&embed=1', ''), '_blank', 'noopener,noreferrer');
             }
           }, 2000);
         }
