@@ -7,7 +7,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
-import { validatePositiveAmount, validatePaginationOffset } from '../utils/validate.js';
+import { validatePositiveAmount, validatePaginationOffset, validateId } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
@@ -30,6 +30,19 @@ const GIFT_CARD_MAX_AMOUNT = 10_000;
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+// SCAN-783: null-safe expiry check. null/undefined means "never expires".
+// Malformed dates fail-open (warn + return false) so a bad DB value never
+// blocks a valid card.
+function isExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) {
+    logger.warn('gift card has unparseable expires_at', { raw: expiresAt });
+    return false;
+  }
+  return ts < Date.now();
 }
 
 // SEC-H38: 128-bit (16 byte / 32 hex char) codes. Prior 64-bit codes
@@ -222,7 +235,7 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     recordAndMaybeAudit(`status_${card.status}`);
     throw new AppError(`Gift card is ${card.status}`, 400);
   }
-  if (card.expires_at && new Date(card.expires_at) < new Date()) {
+  if (isExpired(card.expires_at)) {
     recordAndMaybeAudit('expired');
     throw new AppError('Gift card expired', 400);
   }
@@ -290,10 +303,7 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
 router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
-  const cardId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(cardId) || cardId <= 0) {
-    throw new AppError('Invalid gift card id', 400);
-  }
+  const cardId = validateId(req.params.id, 'id');
 
   const amount = validatePositiveAmount(req.body.amount, 'amount');
   const invoiceIdRaw = req.body.invoice_id;
@@ -308,7 +318,7 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
   const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   if (card.status !== 'active') throw new AppError(`Gift card is ${card.status}`, 400);
-  if (card.expires_at && new Date(card.expires_at) < new Date()) {
+  if (isExpired(card.expires_at)) {
     throw new AppError('Gift card expired', 400);
   }
 
@@ -361,10 +371,7 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
 router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
-  const cardId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(cardId) || cardId <= 0) {
-    throw new AppError('Invalid gift card id', 400);
-  }
+  const cardId = validateId(req.params.id, 'id');
 
   const amount = validatePositiveAmount(req.body.amount, 'amount');
   if (amount > GIFT_CARD_MAX_AMOUNT) {
@@ -408,10 +415,7 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
 // GET /:id — Gift card details with transactions
 router.get('/:id', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const cardId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(cardId) || cardId <= 0) {
-    throw new AppError('Invalid gift card id', 400);
-  }
+  const cardId = validateId(req.params.id, 'id');
   const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
   if (!card) throw new AppError('Gift card not found', 404);
   const transactions = await adb.all(

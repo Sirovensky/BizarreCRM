@@ -2425,6 +2425,17 @@ Server-side fixes shipped + pushed to main. Flipped from todo.md per user overri
 - [x] SCAN-631. **portal /login rate bucket not cleared on success** — verified wave-30, clearRateLimit at portal.routes.ts:638.
 - [x] SCAN-632. **portal idle timezone drift** — verified wave-30 (previously fixed by wave-27 SCAN-720 parseLastUsed).
 - [x] SCAN-639. **portal embed-config dynamic import** — verified wave-30, uses static top-of-file import at portal.routes.ts:1496.
+
+## Closed 2026-04-23 (wave-31)
+- [x] SCAN-783. **giftCards expires_at null guard** — FIXED wave-31 via isExpired() helper + 2 migrated sites.
+- [x] SCAN-785. **paymentLinks 3 expires_at sites null guard** — FIXED wave-31 via isLinkExpired() helper + 3 sites.
+- [x] SCAN-792. **giftCards parseInt(req.params.id)** — FIXED wave-31 via validateId at 3 sites.
+- [x] SCAN-793. **deposits parseInt customer_id/ticket_id** — FIXED wave-31 via validateId with undefined passthrough.
+- [x] SCAN-798. **deposits INSERT no transaction** — FIXED wave-31 via adb.transaction wrap.
+- [x] SCAN-786. **pos CRN counter race** — verified wave-31, allocateCounter already uses sync tx + RETURNING + throw.
+- [x] SCAN-787. **pos audit silent console.error** — verified wave-31, already uses logger.error at pos.routes.ts:2164.
+- [x] SCAN-790. **pos cash-in/out race** — verified wave-31, cash_register is append-only INSERT; no balance race.
+- [x] SCAN-797. **webhooks CNAME-to-private SSRF bypass** — verified wave-31, SEC-H92 fix already uses dns.promises.lookup {all:true} + per-IP isPrivateIp check + redirect:'error'.
 - [x] SCAN-633. **db-worker.ts dead code** — verified wave-28, file already deleted in prior commit.
 - [x] SCAN-634. **blockchyp getClient db: any** — verified wave-28, already typed as Database.Database at blockchyp.ts:106.
 - [x] SCAN-635. **blockchyp sweepStuckPaymentIdempotency template literal** — verified wave-28, already parameterized at blockchyp.ts:814-841.

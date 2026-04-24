@@ -60,6 +60,14 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+// SCAN-785: null-safe expiry check. null/undefined means "never expires".
+function isLinkExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  if (Number.isNaN(ts)) return false;
+  return ts < Date.now();
+}
+
 function dollarsToCents(amount: unknown): number {
   const dollars = validatePositiveAmount(amount);
   return Math.round(dollars * 100);
@@ -249,7 +257,7 @@ publicRouter.get('/:token', asyncHandler(async (req: Request, res: Response) => 
   if (!row) throw new AppError('Payment link not found', 404);
 
   // Expire automatically if the expires_at has passed.
-  if (row.status === 'active' && row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (row.status === 'active' && isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     row.status = 'expired';
   }
@@ -278,7 +286,7 @@ publicRouter.post('/:token/click', asyncHandler(async (req: Request, res: Respon
   // SEC-M60: hard-fail a click on an active-but-expired row and flip the
   // status to 'expired' so subsequent requests are cheap-404d at the
   // status = 'active' filter above.
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
   }
@@ -332,7 +340,7 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   // status. 410 Gone signals a permanently unavailable resource so portal
   // UI can render a "contact shop for a new link" state instead of looking
   // like a transient failure.
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+  if (isLinkExpired(row.expires_at)) {
     await req.asyncDb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
   }

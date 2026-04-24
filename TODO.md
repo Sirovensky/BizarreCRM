@@ -1562,3 +1562,20 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
 - [ ] SCAN-797. **[MEDIUM SSRF] webhooks URL validation checks DNS for private IPs but not CNAME final target — public CNAME → private IP bypass** — `packages/server/src/services/webhooks.ts:141-200`. Fix: recursive CNAME resolution or fetch follow-redirect disabled.
 - [ ] SCAN-798. **deposits INSERT no transaction — audit-log failure leaves row committed** — `packages/server/src/routes/deposits.routes.ts:142-150`. Fix: adb.transaction wrap or audit-pre-insert.
 - [ ] SCAN-792. **giftCards `parseInt(req.params.id, 10)` no validateId — float/negative silently truncates** — `packages/server/src/routes/giftCards.routes.ts:292-294`. Fix: validateId helper.
+
+### Wave-31 scan-loop findings (2026-04-23) — OAuth + notifications + bench
+- [ ] SCAN-803. **oauthStates Map unbounded memory leak — 5-min TTL cleaned on 60s interval; attacker floods states faster than cleanup** — `packages/server/src/routes/import.routes.ts:1399`. Fix: hard-cap Map size; evict oldest on over-cap.
+- [ ] SCAN-804. **[HIGH] GET /oauth/callback missing requireAdmin — any authed user can exchange RD auth codes + steal API tokens** — `packages/server/src/routes/import.routes.ts:1420`. Fix: requireAdmin(req).
+- [ ] SCAN-805. **[HIGH] OAuth tokens persisted unencrypted in store_config — DB dump exposes integrations** — `packages/server/src/routes/import.routes.ts:1473-1474`. Fix: encryptConfigValue + include rd* in ENCRYPTED_CONFIG_KEYS.
+- [ ] SCAN-807. **[HIGH] OAuth CSRF state globally scoped not session-bound — state-injection theft possible** — `packages/server/src/routes/import.routes.ts:1412-1438`. Fix: bind state to req.user.id + verify in callback.
+- [ ] SCAN-808. **notifications `Number(req.params.id)` no validation — NaN or 0 matches unintended rows** — `packages/server/src/routes/notifications.routes.ts:87`. Fix: validateId helper.
+- [ ] SCAN-809. **bench timer PUT /stop labor cost write no tx — concurrent invoice-sync double-counts** — `packages/server/src/routes/bench.routes.ts:513-520`. Fix: adb.transaction wrap.
+- [ ] SCAN-810. **notifications /send-receipt no audit log — phishing receipts untraceable** — `packages/server/src/routes/notifications.routes.ts:176-276`. Fix: audit(req.db, {...}) before email send.
+- [ ] SCAN-811. **[HIGH] notifications POST /send-receipt no role gate — any authed user emails arbitrary recipients** — `packages/server/src/routes/notifications.routes.ts:176`. Fix: requireManagerOrAdmin + validate email is on customer record.
+- [ ] SCAN-812. **customers phone-placeholder SQL IN (...) unbounded — 10k phones → memory/timeout** — `packages/server/src/routes/customers.routes.ts:1557+`. Fix: chunk in batches of 1000.
+- [ ] SCAN-813. **notifications PUT /focus-policies no CSRF check — state-change via cross-site form POST** — `packages/server/src/routes/notifications.routes.ts:148`. Fix: CSRF helper or header validation.
+- [ ] SCAN-814. **bench defect photo upload — verify fileUploadValidator is mounted on /bench/defect/* routes** — `packages/server/src/routes/bench.routes.ts:119`. Fix: confirm validator presence.
+- [ ] SCAN-815. **stripe webhook event.created future-timestamp not rejected — attacker can backdate to bypass age check** — `packages/server/src/services/stripe.ts:711`. Fix: also assert event.created <= now.
+- [ ] SCAN-816. **scheduledReports resolveRecipients no email validation — past-admin personal email leaks reports indefinitely** — `packages/server/src/services/scheduledReports.ts:217-220`. Fix: validate domain or tenant-owned recipient.
+- [ ] SCAN-817. **bench timer elapsed seconds no cap — 100-yr sessions overflow labor cost** — `packages/server/src/routes/bench.routes.ts:207-222`. Fix: cap at 24h per session.
+- [ ] SCAN-822. **OAuth POST /oauth/refresh no rate-limit — hammer RD API** — `packages/server/src/routes/import.routes.ts:1492`. Fix: 1/min/user rate-limit.
