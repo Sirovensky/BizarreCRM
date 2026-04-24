@@ -2764,6 +2764,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback).
 - [ ] Split per ABI + density + language to cut download.
 - [ ] `android:extractNativeLibs="false"` to skip OBB.
+- [x] **16 KB page-size compatibility** (Android 16+ mandate). `packaging { jniLibs { useLegacyPackaging = false } }` in `app/build.gradle.kts` + `android.bundle.enableUncompressedNativeLibs=true` in `gradle.properties`. SQLCipher 4.6.1, ML Kit, CameraX all ship 16KB-aligned native libs. Pixel 6 Pro / Android 16 stops warning "this app isn't 16 KB compatible". (fix landed 2026-04-24)
 
 ### 33.5 Store listing
 - [ ] Title: "BizarreCRM — Repair Shop POS".

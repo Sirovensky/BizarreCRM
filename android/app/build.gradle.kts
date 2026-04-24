@@ -132,6 +132,16 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Android 16+ requires 16 KB page-size alignment for all native libs.
+    // useLegacyPackaging = false → AGP emits uncompressed .so files aligned
+    // on 16 KB boundaries so Android 16 / Pixel 6 Pro stops warning
+    // "this app isn't 16 KB compatible".
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 ksp {
