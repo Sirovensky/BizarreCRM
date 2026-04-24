@@ -18,7 +18,7 @@ import DesignSystem
 /// iPhone: push onto a `NavigationStack` or present as a sheet.
 /// iPad: same — the underlying `PencilAnnotationView` uses `Platform.isCompact`
 ///       to adapt the tool picker position.
-public struct PhotoAnnotationView: View {
+public struct PhotoAnnotationBindingView: View {
 
     @Binding private var image: UIImage?
     @Environment(\.dismiss) private var dismiss
@@ -30,7 +30,7 @@ public struct PhotoAnnotationView: View {
     public var body: some View {
         Group {
             if let base = image {
-                PencilAnnotationView(
+                PhotoAnnotationView(
                     baseImage: base,
                     onSave: { annotated in
                         image = annotated

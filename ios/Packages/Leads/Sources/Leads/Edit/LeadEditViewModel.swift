@@ -27,6 +27,14 @@ public final class LeadEditViewModel {
 
     // MARK: - Editable fields
 
+    /// Given name.
+    public var firstName: String
+    /// Family name.
+    public var lastName: String
+    /// Phone number (raw; normalised on server).
+    public var phone: String
+    /// Email address.
+    public var email: String
     /// Pipeline status: new | contacted | scheduled | qualified | proposal | lost
     public var status: String
     /// Free-text notes (supports @mentions per ActionPlan).
@@ -52,9 +60,13 @@ public final class LeadEditViewModel {
     public init(api: APIClient, lead: LeadDetail) {
         self.api = api
         self.leadId = lead.id
-        self.status = lead.status ?? "new"
-        self.notes = lead.notes ?? ""
-        self.source = lead.source ?? ""
+        self.firstName = lead.firstName ?? ""
+        self.lastName  = lead.lastName  ?? ""
+        self.phone     = lead.phone     ?? ""
+        self.email     = lead.email     ?? ""
+        self.status    = lead.status    ?? "new"
+        self.notes     = lead.notes     ?? ""
+        self.source    = lead.source    ?? ""
         self.assignedTo = nil   // not exposed in LeadDetail; user selects from picker
         self.lostReason = ""
     }
@@ -70,7 +82,11 @@ public final class LeadEditViewModel {
             notes:      notes.isEmpty ? nil : notes,
             assignedTo: assignedTo,
             source:     source.isEmpty ? nil : source,
-            lostReason: lostReason.isEmpty ? nil : lostReason
+            lostReason: lostReason.isEmpty ? nil : lostReason,
+            firstName:  firstName.isEmpty ? nil : firstName,
+            lastName:   lastName.isEmpty ? nil : lastName,
+            email:      email.isEmpty ? nil : email,
+            phone:      phone.isEmpty ? nil : phone
         )
         do {
             let updated = try await api.updateLead(id: leadId, body: body)

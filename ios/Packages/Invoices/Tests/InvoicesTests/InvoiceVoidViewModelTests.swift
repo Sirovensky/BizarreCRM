@@ -85,14 +85,16 @@ final class InvoiceVoidViewModelTests: XCTestCase {
     // MARK: - submitVoid: happy path
 
     func test_submitVoid_happyPath_transitionsToSuccess() async {
-        let vm = makeSut(api: .voidSuccess(id: 55), canVoid: true)
+        // invoiceId = 1 (from makeSut default). The VM synthesises VoidResult.id from invoiceId
+        // since the server void response is { message } not { id, status }.
+        let vm = makeSut(api: .voidSuccess(), invoiceId: 1, canVoid: true)
         vm.reason = "Customer changed mind"
         await vm.submitVoid()
         guard case let .success(result) = vm.state else {
             XCTFail("Expected .success, got \(vm.state)")
             return
         }
-        XCTAssertEqual(result.id, 55)
+        XCTAssertEqual(result.id, 1)
     }
 
     func test_submitVoid_success_statusIsVoid() async {

@@ -1,3 +1,4 @@
+import Foundation
 import Networking
 
 /// §16.5 — Maps a `Cart` into a `PosTransactionRequest` for `POST /pos/transaction`.

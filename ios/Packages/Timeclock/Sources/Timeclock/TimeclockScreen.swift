@@ -24,7 +24,7 @@ public struct TimeclockScreen: View {
     /// Controls whether the break sheet is presented.
     @State private var showBreakSheet = false
     /// iPad detail split selection — which section is shown on the right.
-    @State private var iPadDetailSection: iPadDetail = .history
+    @State private var iPadDetailSection: iPadDetail? = .history
 
     public enum iPadDetail: Hashable {
         case history
@@ -103,7 +103,7 @@ public struct TimeclockScreen: View {
             .frame(minWidth: 240, idealWidth: 300)
         } detail: {
             switch iPadDetailSection {
-            case .history:
+            case .history, .none:
                 shiftHistoryDetailView
             case .breaks:
                 BreakInOutView(vm: breakVM)

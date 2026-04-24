@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 
 /// §18.7 — Merges local FTS5 hits with remote server `GlobalSearchResults`.
 ///

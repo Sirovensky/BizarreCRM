@@ -158,10 +158,15 @@ public struct ExpensesChartCard: View {
 
     @ViewBuilder
     private var chartContent: some View {
-        guard let r = report, !r.dailyBreakdown.isEmpty else {
+        if let r = report, !r.dailyBreakdown.isEmpty {
+            chartBody(r)
+        } else {
             emptyState
-            return
         }
+    }
+
+    @ViewBuilder
+    private func chartBody(_ r: ExpensesReport) -> some View {
         Chart(r.dailyBreakdown) { day in
             // Revenue bar (teal)
             BarMark(
@@ -170,7 +175,7 @@ public struct ExpensesChartCard: View {
                 stacking: .standard
             )
             .foregroundStyle(Color.bizarreTeal.opacity(0.75))
-            .cornerRadius(DesignTokens.Radius.xxs)
+            .cornerRadius(DesignTokens.Radius.xs)
 
             // COGS bar (warning, stacked below revenue to show cost component)
             BarMark(
@@ -179,7 +184,7 @@ public struct ExpensesChartCard: View {
                 stacking: .standard
             )
             .foregroundStyle(Color.bizarreWarning.opacity(0.55))
-            .cornerRadius(DesignTokens.Radius.xxs)
+            .cornerRadius(DesignTokens.Radius.xs)
         }
         .chartForegroundStyleScale([
             "Revenue": Color.bizarreTeal.opacity(0.75),

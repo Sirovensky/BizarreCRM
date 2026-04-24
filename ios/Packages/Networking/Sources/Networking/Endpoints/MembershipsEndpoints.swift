@@ -313,19 +313,22 @@ public extension APIClient {
     /// Generate a BlockChyp payment link for remote membership signup.
     /// `POST /membership/payment-link`
     func createMembershipPaymentLink(tierId: Int, customerId: Int?) async throws -> MembershipPaymentLinkDTO {
-        struct Body: Encodable, Sendable {
-            let tierId: Int
-            let customerId: Int?
-            enum CodingKeys: String, CodingKey {
-                case tierId = "tier_id"
-                case customerId = "customer_id"
-            }
-        }
         return try await post(
             "/membership/payment-link",
-            body: Body(tierId: tierId, customerId: customerId),
+            body: MembershipPaymentLinkBody(tierId: tierId, customerId: customerId),
             as: MembershipPaymentLinkDTO.self
         )
+    }
+}
+
+// MARK: - Payment link body (hoisted — Swift 6 forbids nested types inside generic-call contexts)
+
+private struct MembershipPaymentLinkBody: Encodable, Sendable {
+    let tierId: Int
+    let customerId: Int?
+    enum CodingKeys: String, CodingKey {
+        case tierId = "tier_id"
+        case customerId = "customer_id"
     }
 }
 

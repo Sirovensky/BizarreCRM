@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 
 // MARK: - NotificationDaySection
 
@@ -25,13 +26,16 @@ public struct NotificationDaySection: Identifiable, Sendable {
 /// Intentionally free of side effects so it is trivially testable.
 public enum NotificationDaySectionBuilder {
 
-    private static let isoFull: ISO8601DateFormatter = {
+    // ISO8601DateFormatter is not Sendable. Marked `nonisolated(unsafe)` because
+    // the formatters are initialized once and only read afterward — read-only
+    // access to a configured formatter is safe in practice.
+    nonisolated(unsafe) private static let isoFull: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    private static let isoBasic: ISO8601DateFormatter = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let isoBasic: ISO8601DateFormatter = ISO8601DateFormatter()
 
     private static let sqlFmt: DateFormatter = {
         let f = DateFormatter()

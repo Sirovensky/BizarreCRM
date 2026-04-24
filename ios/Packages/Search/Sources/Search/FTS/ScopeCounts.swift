@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 
 /// §18 — Per-entity hit counts shown as badges on scope filter chips.
 ///

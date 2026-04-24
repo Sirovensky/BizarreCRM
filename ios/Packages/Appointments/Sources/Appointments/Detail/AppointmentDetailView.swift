@@ -37,7 +37,7 @@ public final class AppointmentDetailViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let req = UpdateAppointmentRequest(noShow: true, status: AppointmentStatus.noShow.rawValue)
+            let req = UpdateAppointmentRequest(status: AppointmentStatus.noShow.rawValue, noShow: true)
             appointment = try await api.updateAppointment(id: appointment.id, req)
             markedNoShow = true
         } catch {

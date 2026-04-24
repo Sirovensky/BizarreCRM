@@ -114,11 +114,12 @@ extension StubAPIClient {
     }
 
     /// Void success — POST /api/v1/invoices/:id/void
-    /// Server responds with { success:true, data: { message: "..." } } but VoidResult
-    /// decodes { id, status } — stub returns that shape to satisfy VoidResult.
-    static func voidSuccess(id: Int64 = 99) -> StubAPIClient {
+    /// Server responds with { success:true, data: { message: "Invoice voided, stock restored" } }.
+    /// InvoiceVoidResponse decodes { message: String? }. InvoiceVoidViewModel synthesises
+    /// VoidResult.id from its own invoiceId — the stub payload only needs the message field.
+    static func voidSuccess() -> StubAPIClient {
         let payload = """
-        {"id":\(id),"status":"void"}
+        {"message":"Invoice voided, stock restored"}
         """.data(using: .utf8)!
         return StubAPIClient(postResults: ["/void": .success(payload)])
     }

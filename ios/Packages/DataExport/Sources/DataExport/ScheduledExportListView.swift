@@ -68,11 +68,11 @@ public struct ScheduledExportListView: View {
             ProgressView("Loading schedules…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityLabel("Loading scheduled exports")
-        } else if viewModel.schedules.isEmpty {
+        } else if viewModel.legacySchedules.isEmpty {
             emptyState
         } else {
             List {
-                ForEach(viewModel.schedules) { schedule in
+                ForEach(viewModel.legacySchedules) { schedule in
                     scheduleRow(schedule)
                         .contextMenu {
                             Button(role: .destructive) {
@@ -83,7 +83,7 @@ public struct ScheduledExportListView: View {
                         }
                 }
                 .onDelete { indices in
-                    let ids = indices.map { viewModel.schedules[$0].id }
+                    let ids = indices.map { viewModel.legacySchedules[$0].id }
                     Task {
                         for id in ids { await viewModel.deleteSchedule(id: id) }
                     }

@@ -77,9 +77,6 @@ public enum BackgroundIndexJob {
         }
         // Actual scheduling is delegated to the app target which imports BackgroundTasks.
         // See `AppServices.swift` for the concrete BGAppRefreshTaskRequest call.
-        AppLog.background.debug(
-            "BackgroundIndexJob.schedule() called — actual scheduling deferred to app target",
-            privacy: .public
-        )
+        AppLog.app.debug("BackgroundIndexJob.schedule() called — actual scheduling deferred to app target")
     }
 }

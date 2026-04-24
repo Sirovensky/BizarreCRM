@@ -44,6 +44,9 @@ public struct BarcodeScannerView: View {
         self.mode = mode
         self.onScan = onScan
         self.onCancel = onCancel
+        self._coordinator = State(
+            wrappedValue: BarcodeCoordinator(mode: mode, onScan: onScan)
+        )
     }
 
     // MARK: - State
@@ -156,7 +159,7 @@ public struct BarcodeScannerView: View {
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.base)
-            .brandGlass(.thin, in: Rectangle())
+            .brandGlass(.regular, in: Rectangle())
 
             Spacer()
 

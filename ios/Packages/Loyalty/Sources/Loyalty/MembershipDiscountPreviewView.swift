@@ -112,7 +112,7 @@ public struct MembershipDiscountPreviewView: View {
         HStack(spacing: BrandSpacing.sm) {
             // Membership badge (glass on chrome — nav/badge context)
             memberBadge
-                .brandGlass(.ultraThin, in: Capsule())
+                .brandGlass(.regular, in: Capsule())
 
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                 Text(preview.plan?.name ?? "Member Discount")

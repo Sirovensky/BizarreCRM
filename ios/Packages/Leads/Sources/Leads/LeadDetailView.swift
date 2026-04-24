@@ -405,19 +405,27 @@ private struct LeadDeviceRow: View {
                 .frame(width: 20)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(displayName)
+                Text(device.displayName)
                     .font(.brandBodyLarge())
                     .foregroundStyle(.bizarreOnSurface)
                     .lineLimit(1)
-                if let issue = device.issueDescription, !issue.isEmpty {
-                    Text(issue)
+                // Show repair type as subtitle when present
+                if let repair = device.repairType, !repair.isEmpty {
+                    Text(repair.replacingOccurrences(of: "_", with: " ").capitalized)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                }
+                // Show problem description
+                if let problem = device.problem, !problem.isEmpty {
+                    Text(problem)
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(2)
                 }
             }
             Spacer(minLength: BrandSpacing.sm)
-            if let price = device.estimatedPrice {
+            if let price = device.price {
                 Text(currency(price))
                     .font(.brandTitleSmall())
                     .foregroundStyle(.bizarreOnSurface)
@@ -426,12 +434,6 @@ private struct LeadDeviceRow: View {
         }
         .padding(.vertical, BrandSpacing.sm)
         .accessibilityElement(children: .combine)
-    }
-
-    private var displayName: String {
-        let parts = [device.deviceMake, device.deviceModel, device.deviceColor]
-            .compactMap { $0?.isEmpty == false ? $0 : nil }
-        return parts.isEmpty ? "Device #\(device.id)" : parts.joined(separator: " ")
     }
 
     private func currency(_ value: Double) -> String {

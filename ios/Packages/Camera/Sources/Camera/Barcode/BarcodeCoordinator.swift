@@ -4,6 +4,7 @@ import VisionKit
 import AVFoundation
 import Observation
 import Core
+import DesignSystem
 
 // MARK: - ScanMode
 
@@ -130,7 +131,7 @@ public final class BarcodeCoordinator: NSObject {
     /// Also callable directly from tests without a real scanner.
     ///
     /// - Parameter item: A `RecognizedItem` from VisionKit.
-    public func handleScannedItem(_ item: DataScannerViewController.RecognizedItem) {
+    public func handleScannedItem(_ item: RecognizedItem) {
         guard case .barcode(let observation) = item else { return }
         guard let payload = observation.payloadStringValue, !payload.isEmpty else { return }
 
@@ -174,12 +175,16 @@ extension BarcodeCoordinator: DataScannerViewControllerDelegate {
 
     nonisolated public func dataScanner(
         _ dataScanner: DataScannerViewController,
-        didAdd addedItems: [DataScannerViewController.RecognizedItem],
-        allItems: [DataScannerViewController.RecognizedItem]
+        didAdd addedItems: [RecognizedItem],
+        allItems: [RecognizedItem]
     ) {
-        guard let first = addedItems.first else { return }
+        // Extract Sendable payload before crossing actor boundary; RecognizedItem is not Sendable.
+        guard let first = addedItems.first,
+              case .barcode(let observation) = first,
+              let payload = observation.payloadStringValue else { return }
+        let symbology = observation.observation.symbology.rawValue
         Task { @MainActor in
-            self.handleScannedItem(first)
+            self.handleRawPayload(payload, symbology: symbology)
         }
     }
 

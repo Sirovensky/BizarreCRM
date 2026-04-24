@@ -2,6 +2,7 @@
 import Foundation
 import Observation
 import Networking
+import DesignSystem
 
 /// Result of a successful cash transaction.
 public struct CashTenderResult: Sendable, Equatable {
@@ -48,7 +49,9 @@ public enum CashTenderPhase: Sendable, Equatable {
 /// - Posting to `/pos/transaction` and transitioning through phases.
 @MainActor
 @Observable
-public final class CashTenderViewModel {
+public final class CashTenderViewModel: Identifiable {
+    /// Stable identity for `.sheet(item:)` presentation.
+    public let id: UUID = UUID()
     public let totalCents: Int
     public let transactionRequest: PosTransactionRequest
 

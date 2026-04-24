@@ -43,7 +43,7 @@ public final class CustomerEditViewModel {
     public var notes: String
 
     // Custom fields
-    public private(set) var customFields: [EditableCustomField] = []
+    public var customFields: [EditableCustomField] = []
     public private(set) var isLoadingCustomFields: Bool = false
 
     // State

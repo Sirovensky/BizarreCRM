@@ -120,8 +120,6 @@ public struct AvgTicketValue: Codable, Sendable {
         case currentCents  = "current_cents"
         case previousCents = "previous_cents"
         case trendPct      = "trend_pct"
-        // Server-side fields for direct decode from /reports/tickets summary
-        case avgTicketValue = "avg_ticket_value"
     }
 
     public init(currentCents: Int64, previousCents: Int64, trendPct: Double) {

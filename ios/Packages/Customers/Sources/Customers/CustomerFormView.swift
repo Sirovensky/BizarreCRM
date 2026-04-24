@@ -215,7 +215,7 @@ private struct CustomFieldRow: View {
         case "textarea":
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                 Text(field.name)
-                    .font(.brandLabelMedium())
+                    .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityHidden(true)
                 TextField(field.name, text: $field.value, axis: .vertical)

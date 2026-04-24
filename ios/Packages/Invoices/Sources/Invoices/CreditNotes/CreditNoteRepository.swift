@@ -36,9 +36,10 @@ public extension APIClient {
         try await post("/api/v1/credit-notes", body: req, as: CreditNote.self)
     }
 
-    /// `POST /api/v1/credit-notes/apply`
+    /// `POST /api/v1/credit-notes/:id/apply`
+    /// Server: packages/server/src/routes/creditNotes.routes.ts:235
     func applyCreditNote(_ req: ApplyCreditNoteRequest) async throws -> CreditNote {
-        try await post("/api/v1/credit-notes/apply", body: req, as: CreditNote.self)
+        try await post("/api/v1/credit-notes/\(req.creditNoteId)/apply", body: req, as: CreditNote.self)
     }
 
     /// `POST /api/v1/credit-notes/:id/void`

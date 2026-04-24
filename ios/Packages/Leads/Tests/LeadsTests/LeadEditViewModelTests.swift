@@ -56,21 +56,25 @@ extension LeadDetail {
         id: Int64 = 99,
         firstName: String = "Ada",
         lastName: String = "Lovelace",
+        email: String? = nil,
+        phone: String? = nil,
         status: String = "new",
         notes: String? = nil,
         source: String? = nil,
         assignedTo: Int64? = nil
     ) -> LeadDetail {
-        let dict: [String: Any] = [
+        var dict: [String: Any] = [
             "id": id,
             "first_name": firstName,
             "last_name": lastName,
             "status": status,
-            "notes": notes as Any,
-            "source": source as Any,
             "devices": [Any](),
             "appointments": [Any](),
         ]
+        if let notes { dict["notes"] = notes }
+        if let source { dict["source"] = source }
+        if let email { dict["email"] = email }
+        if let phone { dict["phone"] = phone }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         return try! JSONDecoder().decode(LeadDetail.self, from: data)
     }
@@ -95,14 +99,27 @@ final class LeadEditViewModelTests: XCTestCase {
         let lead = LeadDetail.editFixture(
             firstName: "Ada",
             lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "5551234567",
             status: "qualified",
             notes: "Good lead",
             source: "referral"
         )
         let vm = LeadEditViewModel(api: MockLeadEditAPIClient(), lead: lead)
+        XCTAssertEqual(vm.firstName, "Ada")
+        XCTAssertEqual(vm.lastName, "Lovelace")
+        XCTAssertEqual(vm.email, "ada@example.com")
+        XCTAssertEqual(vm.phone, "5551234567")
         XCTAssertEqual(vm.status, "qualified")
         XCTAssertEqual(vm.notes, "Good lead")
         XCTAssertEqual(vm.source, "referral")
+    }
+
+    func test_init_emptyContactFields_whenLeadHasNone() {
+        let lead = LeadDetail.editFixture()  // no email/phone
+        let vm = LeadEditViewModel(api: MockLeadEditAPIClient(), lead: lead)
+        XCTAssertEqual(vm.phone, "")
+        XCTAssertEqual(vm.email, "")
     }
 
     // MARK: - Save success

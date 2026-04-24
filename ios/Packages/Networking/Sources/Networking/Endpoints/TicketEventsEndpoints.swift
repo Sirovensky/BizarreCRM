@@ -97,18 +97,14 @@ public struct TicketEvent: Decodable, Sendable, Identifiable, Hashable {
 
 // MARK: - Additional request types
 
-/// `PATCH /api/v1/tickets/:id/assign` body.
-public struct AssignTicketRequest: Encodable, Sendable {
-    public let employeeId: Int64
+// Note: there is no PATCH /tickets/:id/assign route on the server.
+// Reassignment is done via PUT /tickets/:id with { assigned_to }.
+// Similarly there is no POST /tickets/:id/archive — the server uses
+// DELETE /tickets/:id for soft-delete (sets is_deleted=1).
+// Both wrappers below delegate to the correct actual server routes.
 
-    public init(employeeId: Int64) { self.employeeId = employeeId }
-
-    enum CodingKeys: String, CodingKey {
-        case employeeId = "employeeId"
-    }
-}
-
-/// `POST /api/v1/tickets/:id/archive` — no body required.
+/// Response shape for ticket archive (soft-delete).
+/// Server: DELETE /api/v1/tickets/:id → { success: true, data: { id } }.
 public struct ArchiveTicketResponse: Decodable, Sendable {
     public let success: Bool
     public let message: String?
@@ -122,22 +118,27 @@ public extension APIClient {
         try await get("/api/v1/tickets/\(id)/events", as: [TicketEvent].self)
     }
 
-    /// `PATCH /api/v1/tickets/:id/assign` — reassign to a different employee.
+    /// Reassign ticket to a different employee.
+    /// Routes to `PUT /api/v1/tickets/:id` with `{ assigned_to }` — the server
+    /// has no dedicated PATCH /assign endpoint; assignment goes through the
+    /// standard ticket update route (tickets.routes.ts:1804).
     func assignTicket(id: Int64, employeeId: Int64) async throws -> CreatedResource {
-        try await patch(
-            "/api/v1/tickets/\(id)/assign",
-            body: AssignTicketRequest(employeeId: employeeId),
+        let req = UpdateTicketRequest(assignedTo: employeeId)
+        return try await put(
+            "/api/v1/tickets/\(id)",
+            body: req,
             as: CreatedResource.self
         )
     }
 
-    /// `POST /api/v1/tickets/:id/archive` — soft-archive a ticket.
+    /// Soft-archive (delete) a ticket.
+    /// Routes to `DELETE /api/v1/tickets/:id` — the server has no dedicated
+    /// POST /archive endpoint; soft-delete sets is_deleted=1 and returns
+    /// { success: true, data: { id } } (tickets.routes.ts:1948).
     func archiveTicket(id: Int64) async throws -> ArchiveTicketResponse {
-        return try await post(
-            "/api/v1/tickets/\(id)/archive",
-            body: _TicketArchiveEmptyBody(),
-            as: ArchiveTicketResponse.self
-        )
+        // DELETE returns { success: true, data: { id } } — we wrap it.
+        try await delete("/api/v1/tickets/\(id)")
+        return ArchiveTicketResponse(success: true, message: nil)
     }
 
     /// `PATCH /api/v1/tickets/:id/status` — update status via state machine

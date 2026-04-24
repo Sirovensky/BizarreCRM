@@ -51,8 +51,15 @@ final class LostReasonViewModel {
         guard case .idle = state else { return }
         state = .submitting
         do {
-            let body = LeadLoseBody(reason: selectedReason.rawValue, notes: notes)
-            _ = try await api.loseLead(id: leadId, body: body)
+            // Server has no /leads/:id/lose route. Lost reason is submitted via
+            // PUT /leads/:id with status=lost + lost_reason field
+            // (see leads.routes.ts line 770-782).
+            let body = LeadUpdateBody(
+                status: "lost",
+                notes: notes.isEmpty ? nil : notes,
+                lostReason: selectedReason.rawValue
+            )
+            _ = try await api.updateLead(id: leadId, body: body)
             state = .success
         } catch {
             AppLog.ui.error("Lead lose failed: \(error.localizedDescription, privacy: .public)")

@@ -40,7 +40,7 @@ public struct InvoicePaymentSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .onChange(of: vm.state, perform: handleStateChange)
+        .onChange(of: vm.state) { oldValue, newValue in handleStateChange(oldValue, newValue) }
         .alert("Payment Error", isPresented: failedBinding, actions: {
             Button("OK") { vm.resetToIdle() }
         }, message: {
@@ -61,7 +61,7 @@ public struct InvoicePaymentSheet: View {
         .frame(maxWidth: 540)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
-        .onChange(of: vm.state, perform: handleStateChange)
+        .onChange(of: vm.state) { oldValue, newValue in handleStateChange(oldValue, newValue) }
         .alert("Payment Error", isPresented: failedBinding, actions: {
             Button("OK") { vm.resetToIdle() }
         }, message: {

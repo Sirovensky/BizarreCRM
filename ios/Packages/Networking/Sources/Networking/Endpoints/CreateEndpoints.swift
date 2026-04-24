@@ -90,22 +90,6 @@ public struct UpdateCustomerRequest: Codable, Sendable {
     }
 }
 
-// MARK: - Expense create
-
-public struct CreateExpenseRequest: Encodable, Sendable {
-    public let category: String
-    public let amount: Double
-    public let description: String?
-    public let date: String?    // YYYY-MM-DD; server defaults to today if nil
-
-    public init(category: String, amount: Double, description: String? = nil, date: String? = nil) {
-        self.category = category
-        self.amount = amount
-        self.description = description
-        self.date = date
-    }
-}
-
 // MARK: - Appointment create
 
 public struct CreateAppointmentRequest: Encodable, Sendable {
@@ -263,9 +247,8 @@ public extension APIClient {
         try await put("/api/v1/customers/\(id)", body: req, as: CreatedResource.self)
     }
 
-    func createExpense(_ req: CreateExpenseRequest) async throws -> CreatedResource {
-        try await post("/api/v1/expenses", body: req, as: CreatedResource.self)
-    }
+    // Expense create wrapper lives in ExpensesEndpoints.swift
+    // (canonical version supports vendor/tax/paymentMethod/notes/isReimbursable)
 
     func createAppointment(_ req: CreateAppointmentRequest) async throws -> CreatedResource {
         try await post("/api/v1/leads/appointments", body: req, as: CreatedResource.self)

@@ -210,7 +210,7 @@ public struct StocktakeListView: View {
             .foregroundStyle(color)
             .padding(.horizontal, BrandSpacing.xs)
             .padding(.vertical, BrandSpacing.xxs)
-            .brandGlass(.thin, in: Capsule(), tint: color.opacity(0.2))
+            .brandGlass(.regular, in: Capsule(), tint: color.opacity(0.2))
             .accessibilityLabel("Status: \(label)")
     }
 

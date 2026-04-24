@@ -32,8 +32,11 @@ private let kLostReasons: [(value: String, label: String)] = [
 // MARK: - LeadEditView
 
 /// §9 Phase 4 — Edit sheet for a lead.
+/// Covers all writable fields: name, contact, pipeline status, lost reason,
+/// source, and notes. Calls `PUT /api/v1/leads/{id}` via `LeadEditViewModel`.
+///
 /// Phone: `.presentationDetents([.large])` bottom sheet.
-/// iPad: shown as a `.sheet` with fixed 540-pt width form in a split column.
+/// iPad: side-by-side form + status guide panel.
 public struct LeadEditView: View {
     @State private var vm: LeadEditViewModel
     private let onSaved: (LeadDetail) -> Void
@@ -119,6 +122,40 @@ public struct LeadEditView: View {
 
     @ViewBuilder
     private var formFields: some View {
+        // Name fields
+        fieldCard {
+            sectionLabel("Name")
+            leadTextField(
+                label: "First name",
+                text: $vm.firstName,
+                placeholder: "First name",
+                a11y: "First name field"
+            )
+            Divider().overlay(Color.bizarreOutline.opacity(0.3))
+            leadTextField(
+                label: "Last name",
+                text: $vm.lastName,
+                placeholder: "Last name",
+                a11y: "Last name field"
+            )
+        }
+
+        // Contact fields
+        fieldCard {
+            sectionLabel("Contact")
+            phoneTextField(
+                label: "Phone",
+                text: $vm.phone,
+                a11y: "Phone number field"
+            )
+            Divider().overlay(Color.bizarreOutline.opacity(0.3))
+            emailTextField(
+                label: "Email",
+                text: $vm.email,
+                a11y: "Email address field"
+            )
+        }
+
         // Status picker
         fieldCard {
             sectionLabel("Pipeline Status")
@@ -181,6 +218,80 @@ public struct LeadEditView: View {
                     }
                 }
         }
+    }
+
+    // MARK: - Text field helpers (platform-branched in body)
+
+    private func leadTextField(
+        label: String,
+        text: Binding<String>,
+        placeholder: String,
+        a11y: String
+    ) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .frame(width: 80, alignment: .leading)
+            TextField(placeholder, text: text)
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .frame(maxWidth: .infinity)
+                #if canImport(UIKit)
+                .textContentType(.name)
+                .textInputAutocapitalization(.words)
+                #endif
+                .accessibilityLabel(a11y)
+        }
+        .padding(.vertical, BrandSpacing.xs)
+    }
+
+    private func phoneTextField(
+        label: String,
+        text: Binding<String>,
+        a11y: String
+    ) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .frame(width: 80, alignment: .leading)
+            TextField(label, text: text)
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .frame(maxWidth: .infinity)
+                #if canImport(UIKit)
+                .textContentType(.telephoneNumber)
+                .keyboardType(.phonePad)
+                .textInputAutocapitalization(.never)
+                #endif
+                .accessibilityLabel(a11y)
+        }
+        .padding(.vertical, BrandSpacing.xs)
+    }
+
+    private func emailTextField(
+        label: String,
+        text: Binding<String>,
+        a11y: String
+    ) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .frame(width: 80, alignment: .leading)
+            TextField(label, text: text)
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .frame(maxWidth: .infinity)
+                #if canImport(UIKit)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                #endif
+                .accessibilityLabel(a11y)
+        }
+        .padding(.vertical, BrandSpacing.xs)
     }
 
     // MARK: - Save button

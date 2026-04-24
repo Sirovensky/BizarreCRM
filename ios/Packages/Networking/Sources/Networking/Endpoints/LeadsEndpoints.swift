@@ -134,21 +134,41 @@ public struct LeadDetail: Decodable, Sendable, Hashable {
     }
 }
 
+/// Device row from `lead_devices` table.
+/// Server columns (from leads.routes.ts): device_name, repair_type, service_type,
+/// service_id, price, tax, problem, customer_notes, security_code, start_time, end_time.
 public struct LeadDevice: Decodable, Sendable, Hashable, Identifiable {
     public let id: Int64
-    public let deviceMake: String?
-    public let deviceModel: String?
-    public let deviceColor: String?
-    public let issueDescription: String?
-    public let estimatedPrice: Double?
+    /// Human-readable device name (e.g. "iPhone 14 Pro").
+    public let deviceName: String?
+    /// Repair category (e.g. "screen", "battery").
+    public let repairType: String?
+    /// Service category string.
+    public let serviceType: String?
+    /// Linked service template ID.
+    public let serviceId: Int64?
+    /// Quoted repair price.
+    public let price: Double?
+    /// Tax on this line item.
+    public let tax: Double?
+    /// Problem description / customer notes about the fault.
+    public let problem: String?
+    /// Additional notes from the customer.
+    public let customerNotes: String?
+
+    /// Convenience display name for the device (falls back to id).
+    public var displayName: String {
+        if let n = deviceName, !n.isEmpty { return n }
+        return "Device #\(id)"
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case deviceMake = "device_make"
-        case deviceModel = "device_model"
-        case deviceColor = "device_color"
-        case issueDescription = "issue_description"
-        case estimatedPrice = "estimated_price"
+        case id, price, tax, problem
+        case deviceName    = "device_name"
+        case repairType    = "repair_type"
+        case serviceType   = "service_type"
+        case serviceId     = "service_id"
+        case customerNotes = "customer_notes"
     }
 }
 

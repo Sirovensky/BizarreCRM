@@ -325,7 +325,7 @@ public struct ExpenseCreateView: View {
         .listRowBackground(Color.bizarreSurface1)
     }
 
-    private func receiptButtonLabel(systemImage: String, title: String, subtitle: String) -> some View {
+    nonisolated private func receiptButtonLabel(systemImage: String, title: String, subtitle: String) -> some View {
         HStack(spacing: BrandSpacing.sm) {
             Image(systemName: systemImage)
                 .foregroundStyle(.bizarreOrange)
