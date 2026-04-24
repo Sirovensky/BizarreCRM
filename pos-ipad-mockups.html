@@ -1,0 +1,1873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, initial-scale=0.8">
+<title>Bizarre POS — iPad mockups (Liquid Glass, cream)</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     BIZARRE POS — iPad mockups
+     Built from docs/pos-redesign-plan.md §4 + 7 parallel research agents.
+     iPadOS native patterns (NOT a phone port, NOT a Mac port):
+       • Custom 64pt icon-only rail sidebar (no native SwiftUI rail mode)
+       • Persistent cart column right (420pt)
+       • Items area middle — NavigationSplitView(columnVisibility: .detailOnly)
+         to suppress default sidebar
+       • .inspector(isPresented:) for line-edit + device picker
+       • Side-panel tender (Shopify POS v11 idiom) — cart never hidden
+       • Scan primary in .toolbar(.primaryAction); Hold/Clear/Discount
+         auto-collapse into .secondaryAction ⋯ menu
+       • NO drag-drop catalog→cart (no production POS ships it; retail
+         reasons: gloves, speed)
+       • Context menus + preview on cart rows + customer card
+       • Keyboard shortcuts surfaced via Commands
+       • Post-sale: cart column collapses 420→0px, receipt expands to fill
+     ═════════════════════════════════════════════════════════════════════ */
+  :root {
+    --bg-deep: #0a0710;
+    --bg: #120c1a;
+    --surface-solid: #1a1422;
+    --surface-elev: #231a2e;
+    --surface-glass: rgba(36, 31, 46, 0.55);
+    --outline: rgba(255, 255, 255, 0.08);
+    --outline-bright: rgba(255, 255, 255, 0.16);
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --primary-soft: rgba(253, 238, 208, 0.14);
+    --on-primary: #2b1400;
+    --on: #f2eef9;
+    --muted: #b4adc5;
+    --muted-2: #7e778e;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse at 15% -10%, rgba(253,238,208,0.07), transparent 55%),
+      radial-gradient(ellipse at 110% 100%, rgba(77,184,201,0.08), transparent 60%),
+      var(--bg-deep);
+    color: var(--on);
+    font-family: var(--font-text);
+    font-size: 13.5px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 32px 16px 6px; margin: 0;
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #cfc3dd);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: var(--muted);
+    padding: 0 24px 16px; font-size: 14px; line-height: 1.55;
+    max-width: 920px; margin: 0 auto;
+  }
+  .intro code {
+    background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 12px; color: var(--primary);
+  }
+  .section-label {
+    text-align: center; color: var(--muted-2);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 28px 16px 10px;
+  }
+  .frame-caption {
+    text-align: center; color: var(--muted);
+    font-size: 12.5px; padding: 4px 24px 12px;
+    letter-spacing: 0.02em; max-width: 900px; margin: 0 auto;
+  }
+  .frame-caption code {
+    background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--primary);
+  }
+  .stage {
+    display: flex; flex-direction: column; gap: 44px;
+    padding: 12px 24px 56px;
+    align-items: center;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     iPad Pro 11" landscape frame (1194 × 834)
+     ───────────────────────────────────────────────────────────── */
+  .ipad {
+    position: relative;
+    width: 1194px; height: 834px;
+    background: var(--bg);
+    border: 12px solid #0a080d;
+    border-radius: 40px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 40px 100px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.04);
+  }
+  .ipad::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 8% -5%, rgba(253,238,208,0.12), transparent 55%),
+      radial-gradient(ellipse at 105% 110%, rgba(77,184,201,0.10), transparent 55%);
+    pointer-events: none;
+  }
+  .cam {
+    position: absolute;
+    top: -2px; left: 50%; transform: translate(-50%, -50%);
+    width: 9px; height: 9px; background: #050308; border-radius: 50%;
+    z-index: 100;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  }
+
+  .ipad-body {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 64px 1fr 420px;
+    grid-template-rows: 60px 1fr;
+    grid-template-areas:
+      "rail topbar topbar"
+      "rail items cart";
+    position: relative; overflow: hidden;
+  }
+  /* Cart-collapsed variant: 420 → 0px */
+  .ipad-body.cart-collapsed {
+    grid-template-columns: 64px 1fr 0px;
+  }
+  /* Inspector variant: cart 420 + inspector 360.
+     When inspector is active we treat the items area as the "one-level-back"
+     context and the cart as "adjacent-peer" context. Items get a stronger
+     Liquid-Glass blur + dim so the inspector visually owns the foreground;
+     cart dims slightly but stays readable because it's the referent being
+     edited. Pattern matches iOS 26 sheet/inspector stacking. */
+  .ipad-body.has-inspector {
+    grid-template-columns: 64px 1fr 420px 360px;
+    grid-template-areas:
+      "rail topbar topbar topbar"
+      "rail items cart inspector";
+  }
+  .ipad-body.has-inspector .items {
+    filter: blur(6px) saturate(0.75);
+    opacity: 0.55;
+    pointer-events: none;
+    transition: filter 180ms ease-out, opacity 180ms ease-out;
+  }
+  .ipad-body.has-inspector .items::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(18,12,26,0.2), rgba(18,12,26,0.35));
+    pointer-events: none;
+  }
+  .ipad-body.has-inspector .cart {
+    opacity: 0.88;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Rail sidebar — custom 64pt icon-only column (no native SwiftUI)
+     ───────────────────────────────────────────────────────────── */
+  .rail {
+    grid-area: rail;
+    background: rgba(18,12,26,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-right: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 12px 0 14px;
+    gap: 4px;
+    position: relative;
+  }
+  .rail::before {
+    content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.08) 80%, transparent);
+    pointer-events: none;
+  }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 12px;
+    background: linear-gradient(140deg, var(--primary-bright), var(--primary) 60%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.22), 0 6px 14px rgba(253,238,208,0.22);
+    color: var(--on-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .rail hr {
+    width: 32px; border: 0; border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 6px 0 2px;
+  }
+  .rail-item {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--muted);
+    position: relative;
+  }
+  .rail-item.active {
+    background: rgba(253,238,208,0.14);
+    color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .rail-item .dot {
+    position: absolute; top: 7px; right: 7px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 2px rgba(18,12,26,0.9);
+  }
+  .rail-spacer { flex: 1; }
+  .rail-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Topbar — translucent Liquid Glass nav chrome
+     ───────────────────────────────────────────────────────────── */
+  .topbar {
+    grid-area: topbar;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px;
+    background: rgba(18,12,26,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .topbar .t-title { font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
+  .topbar .t-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .topbar .t-left { display: flex; align-items: center; gap: 14px; }
+  .search {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    min-width: 420px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.09);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    font-size: 13px; color: var(--muted);
+  }
+  .search .s-kbd {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 2px 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+  }
+  .toolbar-row { display: flex; gap: 8px; align-items: center; }
+  .tb-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .tb-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 20px rgba(253,238,208,0.25);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .chip.success { background: rgba(52,196,126,0.14); border-color: rgba(52,196,126,0.38); color: var(--success); }
+  .chip.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+  .chip.warning { background: rgba(232,163,61,0.14); border-color: rgba(232,163,61,0.38); color: var(--warning); }
+
+  /* ─────────────────────────────────────────────────────────────
+     Items area (catalog + filters)
+     ───────────────────────────────────────────────────────────── */
+  .items {
+    grid-area: items;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: rgba(14, 9, 20, 0.4);
+  }
+  .items-filters {
+    display: flex; gap: 8px;
+    padding: 14px 20px 10px;
+    overflow-x: auto;
+  }
+  .items-filters::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    flex-shrink: 0;
+    padding: 7px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .filter-pill.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 6px 16px rgba(253,238,208,0.22);
+  }
+
+  .catalog {
+    flex: 1; overflow-y: auto;
+    padding: 8px 20px 20px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    align-content: start;
+  }
+  .catalog.wide { grid-template-columns: repeat(5, 1fr); }
+  .catalog::-webkit-scrollbar { display: none; }
+  .tile {
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 132px;
+    position: relative;
+  }
+  .tile:hover { border-color: rgba(253,238,208,0.28); }
+  .tile .t-icon { font-size: 22px; }
+  .tile .t-name { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+  .tile .t-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: auto;
+  }
+  .tile .t-price {
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+  .tile .t-stock { font-size: 10.5px; color: var(--success); }
+  .tile .t-stock.low { color: var(--warning); }
+  .tile .t-badge {
+    position: absolute; top: 9px; right: 9px;
+    background: var(--primary); color: var(--on-primary);
+    font-size: 10px; font-weight: 800;
+    padding: 3px 7px; border-radius: 99px;
+  }
+
+  /* Smart grid hero tile — dynamic (loyalty, ready-pickup, etc.) */
+  .smart-tile {
+    background:
+      linear-gradient(180deg, rgba(52,196,126,0.14), rgba(52,196,126,0.02)),
+      var(--surface-solid);
+    border: 1.5px solid rgba(52,196,126,0.45);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex; align-items: center; gap: 12px;
+    grid-column: span 2;
+    min-height: 90px;
+  }
+  .smart-tile.loyalty {
+    background:
+      linear-gradient(180deg, rgba(77,184,201,0.14), rgba(77,184,201,0.02)),
+      var(--surface-solid);
+    border-color: rgba(77,184,201,0.45);
+  }
+  .smart-tile .st-ico {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 900;
+    box-shadow: 0 6px 18px rgba(52,196,126,0.32);
+    flex-shrink: 0;
+  }
+  .smart-tile.loyalty .st-ico {
+    background: linear-gradient(180deg, #6ed4e3, #4db8c9);
+    color: #002d35;
+    box-shadow: 0 6px 18px rgba(77,184,201,0.3);
+  }
+  .smart-tile .st-name { font-size: 14px; font-weight: 700; }
+  .smart-tile .st-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  /* Home path picker (cold POS, 2 rows) */
+  .path-hero {
+    padding: 32px 32px 12px;
+    display: flex; justify-content: space-between; align-items: end;
+  }
+  .path-hero h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.015em; }
+  .path-hero .phm { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .path-grid {
+    padding: 10px 32px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .path-tile {
+    padding: 24px;
+    border-radius: 20px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; gap: 16px; align-items: center;
+    min-height: 110px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  }
+  .path-tile.primary {
+    border-color: rgba(253,238,208,0.5);
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.08), transparent 80%),
+      var(--surface-solid);
+    box-shadow: 0 12px 32px rgba(253,238,208,0.12);
+  }
+  .path-tile .pt-ico {
+    width: 58px; height: 58px; border-radius: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; flex-shrink: 0;
+  }
+  .path-tile.primary .pt-ico {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 22px rgba(253,238,208,0.3);
+  }
+  .path-tile .pt-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .path-tile .pt-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .path-tile .pt-chev {
+    color: var(--muted); font-size: 22px; font-weight: 300;
+    margin-left: auto;
+  }
+  .path-tile.primary .pt-chev { color: var(--primary); }
+
+  .sect-label {
+    color: var(--muted-2);
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 32px 4px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Cart column (right)
+     ───────────────────────────────────────────────────────────── */
+  .cart {
+    grid-area: cart;
+    background: rgba(18,12,26,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-left: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .cart-head {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; gap: 12px; align-items: center;
+  }
+  .cart-head .avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+  }
+  .cart-head .avatar.empty {
+    background: linear-gradient(160deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+    color: var(--muted); font-size: 20px; font-weight: 400;
+  }
+  .cart-head .ch-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .cart-head .ch-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .cart-body {
+    flex: 1; overflow-y: auto;
+    padding: 6px 0;
+  }
+  .cart-body::-webkit-scrollbar { display: none; }
+  .cart-row {
+    display: flex; gap: 12px; align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-row.editing {
+    background: rgba(253,238,208,0.06);
+    border-left: 3px solid var(--primary);
+  }
+  .cart-row .ci {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .cart-row .cn { font-size: 13.5px; font-weight: 600; }
+  .cart-row .cs { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .cart-row .cp {
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+
+  .cart-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 20px; gap: 10px;
+  }
+  .cart-empty .ce-big { font-size: 52px; opacity: 0.3; }
+  .cart-empty .ce-msg { font-size: 13px; color: var(--muted); text-align: center; max-width: 280px; line-height: 1.55; }
+
+  .totals {
+    padding: 14px 18px 6px;
+    display: flex; flex-direction: column; gap: 3px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .trow {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .ttotal {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 8px 0 4px;
+  }
+  .ttotal .tl {
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .ttotal .ta {
+    font-family: var(--font-display);
+    font-size: 32px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .tender-btn {
+    margin: 4px 18px 18px;
+    padding: 17px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 0;
+    font-weight: 800; font-size: 15px;
+    letter-spacing: -0.01em;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 14px 30px rgba(253,238,208,0.22);
+    min-height: 56px;
+  }
+  .tender-btn .tb-amount {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .tender-btn[disabled], .tender-btn.disabled { opacity: 0.42; box-shadow: none; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Inspector (right-most) — line-edit / device-pick
+     ───────────────────────────────────────────────────────────── */
+  .inspector {
+    grid-area: inspector;
+    background: rgba(28,22,37,0.85);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: inset 1px 0 0 rgba(255,255,255,0.05);
+  }
+  .inspector-head {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .inspector-head .ih-title { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .inspector-head .ih-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .inspector-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--muted); font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .inspector-body {
+    flex: 1; overflow-y: auto;
+    padding: 12px 0;
+  }
+  .inspector-body::-webkit-scrollbar { display: none; }
+  .inspector-row {
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .inspector-row .ir-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .inspector-row .ir-val { font-size: 14px; font-weight: 600; margin-top: 4px; }
+  .inspector-foot {
+    padding: 14px 18px 18px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    display: flex; gap: 10px;
+  }
+  .insp-btn {
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 13px; font-weight: 700;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--on);
+  }
+  .insp-btn.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary); border-color: rgba(255,255,255,0.25);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    flex: 2;
+  }
+  .insp-btn.destructive {
+    background: rgba(226,82,108,0.12); color: var(--error);
+    border-color: rgba(226,82,108,0.35);
+    flex: 1;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Stepper
+     ───────────────────────────────────────────────────────────── */
+  .stepper {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .stepper button {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--on); font-size: 17px; font-weight: 700;
+  }
+  .stepper button.plus {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(253,238,208,0.22);
+  }
+  .stepper .val {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 24px; text-align: center;
+  }
+
+  /* Device picker rows (inspector content) */
+  .device-row {
+    display: flex; gap: 14px; align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .device-row.selected {
+    background: rgba(253,238,208,0.08);
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+  .device-row .di {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Side-panel tender — replaces items area, keeps cart visible
+     ───────────────────────────────────────────────────────────── */
+  .tender-panel {
+    grid-area: items;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: rgba(14,9,20,0.4);
+  }
+  .tender-hero {
+    padding: 18px 24px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .tender-hero .th-title { font-size: 16px; font-weight: 700; }
+  .tender-hero .th-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tender-hero .th-amount {
+    font-family: var(--font-display);
+    font-size: 34px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .tender-methods {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    padding: 10px 24px;
+  }
+  .method {
+    padding: 16px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    text-align: center;
+  }
+  .method.selected {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 26px rgba(253,238,208,0.22);
+  }
+  .method .m-ico { font-size: 26px; margin-bottom: 4px; }
+  .method.selected .m-ico { color: var(--on-primary); }
+  .method .m-name { font-size: 13.5px; font-weight: 700; }
+  .method .m-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .method.selected .m-sub { color: rgba(43,20,0,0.7); }
+
+  .cash-panel-big {
+    margin: 14px 24px;
+    padding: 22px 26px;
+    border-radius: 18px;
+    background: rgba(36,31,46,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.1);
+    display: flex; justify-content: space-between; align-items: baseline;
+    position: relative;
+  }
+  .cash-panel-big::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%);
+    pointer-events: none;
+  }
+  .cp-col { position: relative; z-index: 2; }
+  .cp-col .cp-label {
+    font-size: 12px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .cp-col .cp-amount {
+    font-family: var(--font-display);
+    font-size: 48px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    margin-top: 4px;
+  }
+  .cp-col.change .cp-amount { color: var(--success); font-size: 34px; }
+
+  .quick-amounts {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    padding: 8px 24px;
+  }
+  .quick-amount {
+    padding: 12px 6px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+  }
+  .quick-amount.selected {
+    background: var(--primary-soft);
+    border-color: rgba(253,238,208,0.5);
+    color: var(--primary);
+  }
+
+  .numpad {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+    padding: 8px 24px 16px;
+  }
+  .numkey {
+    min-height: 54px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    color: var(--on);
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    letter-spacing: -0.01em;
+  }
+  .numkey.backspace { color: var(--error); font-family: var(--font-text); font-size: 18px; }
+  .numkey.dot { color: var(--muted); }
+
+  .tender-footer {
+    padding: 0 24px 18px;
+    display: flex; gap: 10px;
+  }
+  .tender-footer .tf-aux {
+    flex: 1;
+    padding: 13px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 13px; font-weight: 600;
+    color: var(--on);
+    text-align: center;
+  }
+  .tender-footer .tf-primary {
+    flex: 2;
+    padding: 13px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    font-size: 14px; font-weight: 800;
+    letter-spacing: -0.01em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 24px rgba(253,238,208,0.22);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tender-footer .tf-primary .tb-amount {
+    font-family: var(--font-display);
+    font-size: 19px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Receipt (cart collapsed) — full items area
+     ───────────────────────────────────────────────────────────── */
+  .receipt-stage {
+    grid-area: items;
+    padding: 32px 48px 24px;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 28px;
+    overflow: auto;
+  }
+  .receipt-stage::-webkit-scrollbar { display: none; }
+  .receipt-hero {
+    padding: 28px 32px;
+    border-radius: 22px;
+    background: rgba(36,31,46,0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.12);
+    text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .receipt-hero::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%);
+    pointer-events: none;
+  }
+  .receipt-hero .rh-check {
+    width: 76px; height: 76px; margin: 0 auto 14px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; font-weight: 900;
+    box-shadow: 0 14px 36px rgba(52,196,126,0.4);
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-amount {
+    font-family: var(--font-display);
+    font-size: 54px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    position: relative; z-index: 2;
+  }
+  .receipt-hero .rh-sub {
+    font-size: 13.5px; color: var(--muted); margin-top: 6px;
+    position: relative; z-index: 2;
+  }
+
+  .share-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-top: 20px;
+  }
+  .share-tile {
+    padding: 18px 10px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    text-align: center;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  .share-tile.primary {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 22px rgba(253,238,208,0.18);
+  }
+  .share-tile .st-ico { font-size: 24px; }
+  .share-tile .st-label { font-size: 12px; font-weight: 700; }
+
+  .receipt-list {
+    padding: 0;
+    border-radius: 18px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  .receipt-list .rl-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .receipt-list .rl-head .rl-title { font-size: 14px; font-weight: 700; }
+  .receipt-list .rl-head .rl-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
+  .receipt-list .rl-body { padding: 14px 22px; }
+  .receipt-list .rl-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .receipt-list .rl-row.total {
+    color: var(--on); font-weight: 800; font-size: 15px;
+    border-top: 1px dashed rgba(255,255,255,0.22);
+    margin-top: 8px; padding-top: 10px;
+  }
+  .receipt-list .rl-foot {
+    padding: 10px 22px 14px;
+    text-align: center; font-size: 11.5px; color: var(--muted);
+  }
+
+  .receipt-actions {
+    display: flex; gap: 10px; margin-top: 16px;
+  }
+  .receipt-actions .btn-sec {
+    flex: 1; padding: 13px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 13px; font-weight: 600;
+    color: var(--on);
+    text-align: center;
+  }
+  .receipt-actions .btn-destr {
+    flex: 1; padding: 13px;
+    border-radius: 14px;
+    background: rgba(226,82,108,0.12);
+    border: 1px solid rgba(226,82,108,0.35);
+    font-size: 13px; font-weight: 600;
+    color: var(--error);
+    text-align: center;
+  }
+
+  /* Dim backdrop + popover (not used on iPad; inspector is the idiom) */
+  .dim {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    z-index: 20;
+  }
+
+  @media (max-width: 1280px) {
+    .ipad { transform: scale(0.82); transform-origin: top center; margin-bottom: -180px; }
+  }
+  @media (max-width: 980px) {
+    .ipad { transform: scale(0.62); margin-bottom: -340px; }
+  }
+
+  .meta { text-align: center; color: var(--muted); font-size: 11px; padding: 20px 16px 40px; }
+  .meta code {
+    background: rgba(255,255,255,0.04); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--primary);
+  }
+</style>
+</head>
+<body>
+
+<h1>Bizarre POS — iPad mockups</h1>
+<p class="intro">
+  iPad Pro 11" landscape · iOS 26 Liquid Glass · cream primary <code>#fdeed0</code>. Native idioms: 64pt custom icon-only rail sidebar (no native SwiftUI rail mode), persistent cart column, <code>.inspector(isPresented:)</code> for line-edit / device-pick, side-panel tender (Shopify POS v11 pattern — cart never hidden), <code>.toolbar(.primaryAction)</code> Scan + <code>.secondaryAction</code> overflow <code>⋯</code> menu. No drag-drop catalog→cart (no production POS ships it; retail reasons).
+</p>
+
+<div class="section-label">Full flow · 5 iPad screens</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     1 — Customer gate · walk-in / existing / new · the mandatory first step
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">1 · Customer gate · the mandatory first step · items area shows 3 choices, cart column shows "no customer" card — every sale starts here</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <!-- Rail -->
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item" title="Dashboard">🏠</div>
+      <div class="rail-item" title="Tickets">🧾<span class="dot"></span></div>
+      <div class="rail-item" title="Customers">👥</div>
+      <div class="rail-item active" title="POS">🛒</div>
+      <div class="rail-item" title="Inventory">📦</div>
+      <div class="rail-item" title="SMS">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item" title="Reports">📊</div>
+      <div class="rail-item" title="Settings">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">POS · new sale</div>
+          <div class="t-meta">Register open · Pavel I. · Store #1 · $312.00 float</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search by name, phone, email, loyalty #, or scan customer card</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">● Online</span>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <!-- Items area — customer gate -->
+    <div class="items">
+      <div class="path-hero">
+        <div>
+          <h2>Who's this sale for?</h2>
+          <div class="phm">Every sale starts with a customer. Pick existing, create new, or walk-in (no record). Pick <b>Repair ticket</b> in the cart column to switch paths.</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <span class="chip warning">1 ready for pickup</span>
+          <span class="chip">18 open tickets</span>
+        </div>
+      </div>
+
+      <!-- Three gate tiles — existing / new / walk-in -->
+      <div style="padding: 10px 32px 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+
+        <div class="path-tile primary" style="flex-direction: column; align-items: flex-start; padding: 26px 22px; min-height: 200px; position: relative;">
+          <div class="pt-ico">👤</div>
+          <div style="margin-top: auto; width: 100%;">
+            <div class="pt-name">Find existing</div>
+            <div class="pt-sub">Search name, phone, email, or loyalty ID · scan customer card</div>
+          </div>
+          <div style="position: absolute; top: 22px; right: 22px; color: var(--primary); font-size: 22px;">›</div>
+          <div style="position: absolute; top: 22px; right: 60px; font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); padding: 3px 7px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;">⌘ F</div>
+        </div>
+
+        <div class="path-tile" style="flex-direction: column; align-items: flex-start; padding: 26px 22px; min-height: 200px; position: relative;">
+          <div class="pt-ico" style="background: linear-gradient(180deg, #6ed4e3, #4db8c9); color: #002d35; border-color: rgba(255,255,255,0.22); box-shadow: 0 8px 20px rgba(77,184,201,0.28);">＋</div>
+          <div style="margin-top: auto; width: 100%;">
+            <div class="pt-name">Create new</div>
+            <div class="pt-sub">Name + phone · one-tap add · extras later · auto-enroll in loyalty if enabled</div>
+          </div>
+          <div style="position: absolute; top: 22px; right: 22px; color: var(--muted); font-size: 22px;">›</div>
+          <div style="position: absolute; top: 22px; right: 60px; font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); padding: 3px 7px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;">⌘ ⇧ N</div>
+        </div>
+
+        <div class="path-tile" style="flex-direction: column; align-items: flex-start; padding: 26px 22px; min-height: 200px; border-style: dashed; position: relative;">
+          <div class="pt-ico" style="background: transparent; border: 1.5px dashed rgba(255,255,255,0.24);">🚶</div>
+          <div style="margin-top: auto; width: 100%;">
+            <div class="pt-name">Walk-in</div>
+            <div class="pt-sub">Quick retail sale · no loyalty, no history, no auto-receipt · SKIP only when needed</div>
+          </div>
+          <div style="position: absolute; top: 22px; right: 22px; color: var(--muted); font-size: 22px;">›</div>
+        </div>
+      </div>
+
+      <!-- Ready for pickup — tap to jump straight into that ticket's cart -->
+      <div class="sect-label" style="display: flex; justify-content: space-between; align-items: center; padding-right: 32px;">
+        <span>Ready for pickup · 3</span>
+        <span style="font-size: 10.5px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;">View all →</span>
+      </div>
+
+      <div style="padding: 0 32px 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+        <!-- Pickup card 1 -->
+        <div style="padding: 14px 16px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.12), rgba(52,196,126,0.02)), var(--surface-solid); border: 1.5px solid rgba(52,196,126,0.4); display: flex; gap: 12px; align-items: center; min-height: 88px; box-shadow: 0 8px 20px rgba(52,196,126,0.08); cursor: pointer; position: relative;">
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(180deg, #4ad088, #34c47e); color: #002817; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 6px 18px rgba(52,196,126,0.32); flex-shrink: 0;">✓</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+              <span>Sarah M.</span>
+              <span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 800;">★ GOLD</span>
+            </div>
+            <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4829 · iPhone 14 screen</div>
+            <div style="font-family: var(--font-display); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; margin-top: 2px;">$274.51</div>
+          </div>
+          <span style="color: var(--success); font-size: 18px; font-weight: 300;">›</span>
+        </div>
+
+        <!-- Pickup card 2 -->
+        <div style="padding: 14px 16px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 12px; align-items: center; min-height: 88px; cursor: pointer;">
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(52,196,126,0.2); color: var(--success); border: 1px solid rgba(52,196,126,0.45); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">✓</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 13px; font-weight: 700;">Marco D.</div>
+            <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4812 · iPad battery + port clean</div>
+            <div style="font-family: var(--font-display); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; margin-top: 2px;">$142.00</div>
+          </div>
+          <span style="color: var(--muted); font-size: 18px; font-weight: 300;">›</span>
+        </div>
+
+        <!-- Pickup card 3 -->
+        <div style="padding: 14px 16px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 12px; align-items: center; min-height: 88px; cursor: pointer;">
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(52,196,126,0.2); color: var(--success); border: 1px solid rgba(52,196,126,0.45); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">✓</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+              <span>Nora P.</span>
+              <span style="background: rgba(77,184,201,0.2); color: var(--teal); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 700;">SILVER</span>
+            </div>
+            <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">#4801 · Watch crown replace</div>
+            <div style="font-family: var(--font-display); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; margin-top: 2px;">$68.00</div>
+          </div>
+          <span style="color: var(--muted); font-size: 18px; font-weight: 300;">›</span>
+        </div>
+      </div>
+
+      <!-- Recent customers row -->
+      <div class="sect-label">Recent · today</div>
+
+      <div style="padding: 0 32px 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+        <div style="padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06); display: flex; gap: 10px; align-items: center;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">SM</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Sarah M. <span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 800; letter-spacing: 0.04em;">★ GOLD</span></div>
+            <div style="font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">#4829 ready · $42 credit</div>
+          </div>
+        </div>
+        <div style="padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06); display: flex; gap: 10px; align-items: center;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">JK</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12.5px; font-weight: 600;">James K.</div>
+            <div style="font-size: 10.5px; color: var(--muted);">(555) 888-1120 · 4d ago</div>
+          </div>
+        </div>
+        <div style="padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06); display: flex; gap: 10px; align-items: center;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.06); color: var(--muted); font-size: 14px; display: flex; align-items: center; justify-content: center;">🚶</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12.5px; font-weight: 600;">Walk-in · 15 min</div>
+            <div style="font-size: 10.5px; color: var(--muted);">Resume $42.00 draft</div>
+          </div>
+        </div>
+        <div style="padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06); display: flex; gap: 10px; align-items: center;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">AL</div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Alex L. <span style="background: rgba(77,184,201,0.2); color: var(--teal); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 700;">SILVER</span></div>
+            <div style="font-size: 10.5px; color: var(--muted);">2h ago · 1 past</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart column -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar empty">+</div>
+        <div style="flex: 1;">
+          <div class="ch-name">No customer</div>
+          <div class="ch-sub">Pick a gate option on the left →</div>
+        </div>
+      </div>
+
+      <div class="cart-empty" style="padding: 40px 20px 20px; flex: 0;">
+        <div style="font-size: 40px; opacity: 0.3;">👈</div>
+        <div class="ce-msg">Every sale needs a customer attached.</div>
+      </div>
+
+      <div class="cart-body" style="flex: 1;"></div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$0.00</span></div>
+        <div class="trow"><span>Tax</span><span>$0.00</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$0.00</span></div>
+      </div>
+      <button class="tender-btn disabled">Attach customer first</button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     2 — Active cart · customer attached · dynamic loyalty tile in Smart Grid
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">2 · Active cart · customer attached · Smart Grid shows dynamic loyalty tile (cart-state-aware)</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾<span class="dot"></span></div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬<span class="dot" style="background:var(--warning);"></span></div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div>
+          <div class="t-title">New sale · Sarah M.</div>
+          <div class="t-meta">iPhone 14 Pro · 3 lines · autocreating ticket #draft</div>
+        </div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">iPhone 14 Pro screen</span>
+        <span class="s-kbd">esc</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold (⌘H)</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">Matches · 4</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Batteries</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+        <div class="filter-pill">Services</div>
+        <div class="filter-pill">Warranty applied</div>
+      </div>
+
+      <div class="catalog">
+        <!-- Smart tile — loyalty (cart-state-aware) -->
+        <div class="smart-tile loyalty">
+          <div class="st-ico">★</div>
+          <div style="flex: 1;">
+            <div class="st-name">Loyalty · 230 pts available</div>
+            <div class="st-sub">Redeem 200 pts for $10 off · applied at tender</div>
+          </div>
+        </div>
+
+        <!-- Smart tile — ready-for-pickup shortcut -->
+        <div class="smart-tile">
+          <div class="st-ico">✓</div>
+          <div style="flex: 1;">
+            <div class="st-name">#4829 · Ready for pickup</div>
+            <div class="st-sub">Her last ticket · $274.51 due · tap to open</div>
+          </div>
+        </div>
+
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔧</div>
+          <div class="t-name">iPhone 14 Pro Screen</div>
+          <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">⚙️</div>
+          <div class="t-name">Labor · screen replace</div>
+          <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+        </div>
+        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+          <div class="t-badge">In cart</div>
+          <div class="t-icon">🔌</div>
+          <div class="t-name">USB-C 3 ft cable</div>
+          <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+        </div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector Pro</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile"><div class="t-icon">🎧</div><div class="t-name">Earbuds · Pro 2</div><div class="t-row"><div class="t-price">$49</div><div class="t-stock">14</div></div></div>
+      </div>
+    </div>
+
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name" style="display: flex; align-items: center; gap: 7px;">Sarah M. <span style="background: rgba(253,238,208,0.2); border: 1px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 9.5px; padding: 1.5px 6px; border-radius: 99px; font-weight: 800; letter-spacing: 0.05em;">★ GOLD</span></div>
+          <div class="ch-sub">(555) 214-8801 · 3 past tickets · 230 loyalty pts</div>
+        </div>
+        <span class="chip primary">3 lines</span>
+      </div>
+
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">IPH14P-S · Qty 1</div></div>
+          <div style="text-align: right;">
+            <div class="cp">$189.00</div>
+            <div class="cs" style="text-decoration: line-through;">$199</div>
+          </div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen replacement</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+
+        <!-- Member benefit banner inline -->
+        <div style="margin: 12px 18px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; gap: 10px; align-items: center;">
+          <span style="font-size: 18px;">★</span>
+          <div style="flex: 1;">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--primary);">GOLD · 10% off applied</div>
+            <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">Earning 55 pts · next tier at 500</div>
+          </div>
+          <span style="color: var(--teal); font-weight: 700; font-size: 11px;">REDEEM</span>
+        </div>
+
+        <!-- Coupon field pinned at bottom of cart body -->
+        <div style="padding: 4px 18px 14px;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(12px);">
+            <span style="color: var(--muted);">🏷️</span>
+            <span style="flex: 1; font-size: 12.5px; color: var(--muted);">Coupon code</span>
+            <span style="color: var(--teal); font-weight: 700; font-size: 12px;">APPLY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--primary);"><span>★ GOLD member · 10%</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Charge</span>
+        <span class="tb-amount">$274.51</span>
+        <span style="font-size: 14px;">⌘ P</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     3 — Inspector line-edit · cart stays visible · items area intact
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">3 · Inspector · tap a cart line → inspector slides in right with qty / price / discount / remove · cart + items stay visible</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body has-inspector">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">New sale · Sarah M.</div><div class="t-meta">Editing line · USB-C 3 ft cable</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <div class="tb-btn primary">📷 Scan</div>
+        <div class="tb-btn">⏸ Hold</div>
+        <div class="tb-btn">⋯</div>
+      </div>
+    </div>
+
+    <div class="items">
+      <div class="items-filters">
+        <div class="filter-pill active">All</div>
+        <div class="filter-pill">Screens</div>
+        <div class="filter-pill">Labor</div>
+        <div class="filter-pill">Accessories</div>
+      </div>
+      <div class="catalog" style="grid-template-columns: repeat(3, 1fr); opacity: 0.85;">
+        <div class="tile"><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · screen</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔌</div><div class="t-name">USB-C 3 ft cable</div><div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div></div>
+        <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
+        <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
+        <div class="tile"><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible; active line highlighted -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines</div>
+        </div>
+        <span class="chip">$274.51</span>
+      </div>
+      <div class="cart-body">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service · 45 min</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row editing">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft cable</div><div class="cs">USB-C3 · <span style="color: var(--primary);">editing ›</span></div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn disabled">Save edit first</button>
+    </div>
+
+    <!-- Inspector pane -->
+    <div class="inspector">
+      <div class="inspector-head">
+        <div>
+          <div class="ih-title">USB-C 3 ft cable</div>
+          <div class="ih-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+        </div>
+        <div class="inspector-close">✕</div>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Qty</div>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <div class="ir-label">Unit price</div>
+            <div style="font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;">$14.00</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="ir-label">Line discount</div>
+            <div style="color: var(--teal); font-size: 13px; font-weight: 700;">+ Apply</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Note</div>
+          <div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; color: var(--muted);">Add a note for the receipt…</div>
+        </div>
+        <div class="inspector-row">
+          <div class="ir-label">Audit</div>
+          <div style="margin-top: 8px; font-size: 11.5px; color: var(--muted); line-height: 1.6;">
+            Added 12:04 PM by Pavel I.<br>
+            No prior edits.
+          </div>
+        </div>
+      </div>
+      <div class="inspector-foot">
+        <button class="insp-btn destructive">Remove</button>
+        <button class="insp-btn primary">Save · $14.00</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     4 — Side-panel tender · items area replaced · cart stays right
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">4 · Tender · items area swaps to method + cash panel + numpad · cart stays locked on right (Shopify POS v11 idiom)</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Tender · Sarah M.</div><div class="t-meta">iPhone 14 Pro · awaiting payment</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip warning">Tendering</span>
+        <div class="tb-btn">← Cart (esc)</div>
+      </div>
+    </div>
+
+    <!-- Tender panel replaces items area -->
+    <div class="tender-panel">
+      <div class="tender-hero">
+        <div>
+          <div class="th-title">Payment method</div>
+          <div class="th-sub">Accepts split tender. Card is tap-to-pay on device.</div>
+        </div>
+        <div>
+          <div class="th-sub" style="text-align: right;">Due</div>
+          <div class="th-amount">$274.51</div>
+        </div>
+      </div>
+
+      <!-- Member benefit banner — confirms perks are applied, shows pts earned -->
+      <div style="margin: 0 24px 4px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(180deg, rgba(253,238,208,0.14), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.4); display: flex; gap: 14px; align-items: center; box-shadow: 0 6px 18px rgba(253,238,208,0.08);">
+        <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 900; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 6px 16px rgba(253,238,208,0.3);">★</div>
+        <div style="flex: 1;">
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">GOLD member · benefits applied</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">10% off auto · earning 55 pts · 230 pts available to redeem ($11.50)</div>
+        </div>
+        <span class="chip" style="font-family: var(--font-display); font-size: 14px; padding: 4px 12px;">SAVED $10</span>
+        <span style="color: var(--teal); font-weight: 700; font-size: 11.5px; letter-spacing: 0.04em;">REDEEM PTS</span>
+      </div>
+
+      <div class="tender-methods">
+        <div class="method">
+          <div class="m-ico">💳</div>
+          <div class="m-name">Card</div>
+          <div class="m-sub">Tap to Pay · BlockChyp</div>
+        </div>
+        <div class="method selected">
+          <div class="m-ico">💵</div>
+          <div class="m-name">Cash</div>
+          <div class="m-sub">Selected</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">🎁</div>
+          <div class="m-name">Gift card</div>
+          <div class="m-sub">Scan / enter</div>
+        </div>
+        <div class="method">
+          <div class="m-ico">💸</div>
+          <div class="m-name">Store credit</div>
+          <div class="m-sub">$42.00 avail.</div>
+        </div>
+      </div>
+
+      <div class="cash-panel-big">
+        <div class="cp-col">
+          <div class="cp-label">Received</div>
+          <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+        </div>
+        <div class="cp-col change">
+          <div class="cp-label">Change</div>
+          <div class="cp-amount">$25.49</div>
+        </div>
+      </div>
+
+      <div style="padding: 0 24px 4px; font-size: 11px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase;">Quick amount</div>
+
+      <div class="quick-amounts">
+        <div class="quick-amount">Exact</div>
+        <div class="quick-amount">$275</div>
+        <div class="quick-amount">$280</div>
+        <div class="quick-amount selected">$300</div>
+        <div class="quick-amount">$320</div>
+      </div>
+
+      <div class="numpad">
+        <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+        <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+        <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+        <div class="numkey dot">.</div><div class="numkey">0</div><div class="numkey backspace">⌫</div>
+      </div>
+
+      <div class="tender-footer">
+        <div class="tf-aux">Split payment</div>
+        <div class="tf-aux">Add tip</div>
+        <div class="tf-primary">
+          <span>Complete cash sale</span>
+          <span class="tb-amount">$274.51</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart stays visible, locked -->
+    <div class="cart">
+      <div class="cart-head">
+        <div class="avatar">SM</div>
+        <div style="flex: 1;">
+          <div class="ch-name">Sarah M.</div>
+          <div class="ch-sub">iPhone 14 Pro · 3 lines · locked</div>
+        </div>
+        <span class="chip warning">Locked</span>
+      </div>
+      <div class="cart-body" style="opacity: 0.82;">
+        <div class="cart-row">
+          <div class="ci">🔧</div>
+          <div style="flex: 1;"><div class="cn">iPhone 14 Pro Screen</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$189.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">⚙️</div>
+          <div style="flex: 1;"><div class="cn">Labor · screen</div><div class="cs">Service</div></div>
+          <div class="cp">$60.00</div>
+        </div>
+        <div class="cart-row">
+          <div class="ci">🔌</div>
+          <div style="flex: 1;"><div class="cn">USB-C 3 ft</div><div class="cs">Qty 1</div></div>
+          <div class="cp">$14.00</div>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><span>$263.00</span></div>
+        <div class="trow" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+        <div class="trow"><span>Tax · 8.5%</span><span>$21.51</span></div>
+        <div class="ttotal"><span class="tl">Total</span><span class="ta">$274.51</span></div>
+      </div>
+      <button class="tender-btn">
+        <span>Confirm</span>
+        <span class="tb-amount">$274.51</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     5 — Receipt · cart collapsed 420→0px · items area fills the canvas
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="frame-caption">5 · Receipt · cart column collapses 420→0px · items area expands to fill · Pencil signature support · next-sale CTA in toolbar re-expands cart</div>
+<div class="stage">
+<div class="ipad">
+  <div class="cam"></div>
+  <div class="ipad-body cart-collapsed">
+
+    <div class="rail">
+      <div class="brand-mark">B</div>
+      <hr>
+      <div class="rail-item">🏠</div>
+      <div class="rail-item">🧾</div>
+      <div class="rail-item">👥</div>
+      <div class="rail-item active">🛒</div>
+      <div class="rail-item">📦</div>
+      <div class="rail-item">💬</div>
+      <div class="rail-item">📊</div>
+      <div class="rail-item">⚙️</div>
+      <div class="rail-spacer"></div>
+      <div class="rail-avatar">PI</div>
+    </div>
+
+    <div class="topbar">
+      <div class="t-left">
+        <div><div class="t-title">Sale complete</div><div class="t-meta">Order #28014 · Sarah M. · 3:12 PM · cash · paid</div></div>
+      </div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex: 1;">Search…</span>
+        <span class="s-kbd">⌘ K</span>
+      </div>
+      <div class="toolbar-row">
+        <span class="chip success">✓ Paid · $274.51</span>
+        <div class="tb-btn primary">Next sale (⌘ N)</div>
+      </div>
+    </div>
+
+    <!-- Items area expanded to fill -->
+    <div class="receipt-stage">
+      <!-- Left: confirmation + share + actions -->
+      <div>
+        <div class="receipt-hero">
+          <div class="rh-check">✓</div>
+          <div class="rh-amount">$274.51 paid</div>
+          <div class="rh-sub">Cash · $300 received · $25.49 change · Pavel I. · 12 sec</div>
+        </div>
+
+        <div class="share-grid">
+          <div class="share-tile primary"><div class="st-ico">💬</div><div class="st-label">Text</div></div>
+          <div class="share-tile"><div class="st-ico">✉️</div><div class="st-label">Email</div></div>
+          <div class="share-tile"><div class="st-ico">🖨</div><div class="st-label">Print</div></div>
+          <div class="share-tile"><div class="st-ico">📡</div><div class="st-label">AirDrop</div></div>
+        </div>
+
+        <div class="receipt-actions">
+          <div class="btn-sec">View ticket #4829</div>
+          <div class="btn-sec">Customer profile</div>
+          <div class="btn-destr">Start refund</div>
+        </div>
+
+        <div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.1), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; gap: 12px; align-items: center;">
+          <span style="font-size: 22px;">★</span>
+          <div style="flex: 1;">
+            <div style="font-weight: 700; color: var(--primary); font-size: 13px;">+55 loyalty pts earned · GOLD unchanged</div>
+            <div style="font-size: 11.5px; margin-top: 3px; color: var(--muted);">Running total: 285 pts · 215 to reach <b style="color: var(--primary);">PLATINUM</b> (free diagnostic + 15% off).</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 10px; padding: 14px 16px; border-radius: 14px; background: rgba(77,184,201,0.08); border: 1px solid rgba(77,184,201,0.3); color: #9be0ea; font-size: 13px; display: flex; gap: 12px; align-items: center;">
+          <span style="font-size: 20px;">✍</span>
+          <div>
+            <div style="font-weight: 700;">Signature captured with Pencil</div>
+            <div style="font-size: 11.5px; margin-top: 3px; color: var(--muted);">Archived to ticket #4829 · PKCanvasView · PNG 142 KB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: receipt preview -->
+      <div class="receipt-list">
+        <div class="rl-head">
+          <div>
+            <div class="rl-title">Receipt · #28014</div>
+            <div class="rl-meta">2026-04-24 · 15:12 · Store #1 · Pavel I.</div>
+          </div>
+          <span class="chip success">Sent via SMS ✓</span>
+        </div>
+        <div class="rl-body">
+          <div class="rl-row"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+          <div class="rl-row"><span>Labor · screen replacement</span><span>$60.00</span></div>
+          <div class="rl-row"><span>USB-C 3 ft cable</span><span>$14.00</span></div>
+          <div class="rl-row" style="color: var(--primary);"><span>★ GOLD member · 10% off</span><span>− $10.00</span></div>
+          <div class="rl-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="rl-row total"><span>Total</span><span>$274.51</span></div>
+          <div class="rl-row" style="padding-top: 10px;"><span>Cash received</span><span>$300.00</span></div>
+          <div class="rl-row" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
+        </div>
+        <div class="rl-foot">Thank you · 30-day returns with receipt</div>
+      </div>
+    </div>
+
+    <!-- Cart column collapsed to 0px (grid-template-columns 64/1fr/0) -->
+
+  </div>
+</div>
+</div>
+
+
+<div class="section-label">Design principles · research-agent consensus</div>
+
+<div style="max-width: 1180px; margin: 0 auto; padding: 0 24px 60px;">
+  <div style="padding: 24px; border-radius: 22px; background: rgba(36,31,46,0.55); backdrop-filter: blur(22px) saturate(180%); border: 1px solid rgba(255,255,255,0.1); position: relative; overflow: hidden;">
+    <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%); pointer-events: none;"></div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; position: relative; z-index: 2;">
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Custom 64pt rail sidebar</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          SwiftUI has no native icon-only rail mode. Custom <code>HStack</code> of icon buttons + <code>NavigationSplitView(columnVisibility: .detailOnly)</code> suppresses the default sidebar. Rail width animates 64↔200pt on brand-mark tap. Active tab gets cream-tinted pill.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Inspector line-edit</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.inspector(isPresented:)</code> iOS 17+ with <code>.inspectorColumnWidth(min:280, ideal:320, max:400)</code>. Applied to detail view, not root. Auto-fall-back to sheet on compact. Cart never hidden during edit — inspector pushes detail, not overlay.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Side-panel tender</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Shopify POS v11 idiom. Items area swaps to tender UI; cart stays right, locked. Method grid + cash panel + quick-amounts + numpad, all inline scroll. Zero full-screen takeovers during a sale.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Cart collapses on paid</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Post-sale: <code>grid-template-columns: 64px 1fr 0</code>. Animate 420→0px (240ms spring, 150ms opacity with Reduce Motion). Receipt + share tiles + actions fill the canvas. Next-sale CTA triggers cart re-expand.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Toolbar placements</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Scan = <code>.toolbar(.primaryAction)</code>, <code>⌘F1</code>. Hold / Clear / Discount / Note / Misc = <code>.secondaryAction</code> — auto-collapse into trailing <code>⋯</code> menu on iPad. No bottom dock (Mac/Android pattern).
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Smart Grid dynamic tiles</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Catalog tiles respond to cart + customer state. Loyalty redeem tile when VIP customer attached. Ready-for-pickup shortcut surfaces her open ticket. Pattern from Shopify POS.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">No drag-drop catalog→cart</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          No production POS ships drag-from-catalog-to-cart. Retail reasons: gloves, wet hands, trained staff prefer tap. Drag is reserved for layout editing only. Tap on tile is the primary gesture.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Keyboard shortcuts</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Surfaced via <code>Commands</code>. <code>⌘N</code> new sale · <code>⌘⇧N</code> new ticket · <code>⌘K</code> search · <code>⌘P</code> pay · <code>⌘H</code> hold · <code>⌘⇧C</code> customer · <code>⌘⇧D</code> discount. Shown inline in menu labels.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Pencil + Scribble</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>PKCanvasView</code> for receipt signature + device photo annotation. Scribble free on every TextField (iPadOS 14+ automatic). <code>drawingPolicy = .anyInput</code> accepts finger + Pencil.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Hover + pointer</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.hoverEffect(.highlight)</code> on rail icons + toolbar buttons. <code>.hoverEffect(.lift)</code> on catalog tiles + customer card. <code>.pointerStyle(.grab)</code> only on layout-editor draggable tiles.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Multi-window</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>WindowGroup(id:for:)</code> opens parked carts as separate Stage Manager windows. Shared <code>@Observable</code> model; per-scene <code>@SceneStorage</code> for UI state. Keyboard <code>⌘T</code> = new window.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Compact fall-through</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          In Slide Over or 1/3 Split View (<code>horizontalSizeClass == .compact</code>) the iPad layout falls through to iPhone layout — rail hides, cart becomes a sheet. One SwiftUI view tree, two layouts.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="meta">
+  Self-contained preview · no JS · no network · tokens mirror <code>ios/Packages/DesignSystem/Sources/DesignSystem/BrandColors.swift</code> + <code>BrandFonts.swift</code>. Ports directly to SwiftUI.
+</div>
+
+</body>
+</html>

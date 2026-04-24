@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre POS — iPhone mockups (Liquid Glass, cream)</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     BIZARRE POS — iPhone mockups
+     Built from docs/pos-redesign-plan.md §3 + 7 parallel research agents.
+     Cream primary #fdeed0 on warm-dark-glass. iOS 26 Liquid Glass chrome.
+     iOS-native patterns (NOT a port of the Android mockups):
+       • .searchable(placement: .navigationBarDrawer(displayMode: .always))
+       • .safeAreaInset(edge: .bottom) tender CTA, 56pt min, cream fill
+       • No FAB. No bottom-docked search.
+       • Sheet detents for mid-flow editors.
+       • Barlow Condensed hero numerics.
+     ═════════════════════════════════════════════════════════════════════ */
+  :root {
+    --bg-deep: #0a0710;
+    --bg: #120c1a;
+    --surface-solid: #1a1422;
+    --surface-elev: #231a2e;
+    --surface-glass: rgba(36, 31, 46, 0.55);
+    --outline: rgba(255, 255, 255, 0.08);
+    --outline-bright: rgba(255, 255, 255, 0.16);
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --primary-soft: rgba(253, 238, 208, 0.14);
+    --on-primary: #2b1400;
+    --on: #f2eef9;
+    --muted: #b4adc5;        /* nudged up from #a79fb8 to clear AAA on glass */
+    --muted-2: #7e778e;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --on-success-chip: #145c37;
+    --on-warning-chip: #7a5200;
+    --radius-lg: 22px;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.06), transparent 50%),
+      radial-gradient(ellipse at 110% 100%, rgba(77,184,201,0.10), transparent 60%),
+      var(--bg-deep);
+    color: var(--on);
+    font-family: var(--font-text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 32px 16px 6px; margin: 0;
+    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #cfc3dd);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: var(--muted);
+    padding: 0 24px 16px; font-size: 14px; line-height: 1.55;
+    max-width: 780px; margin: 0 auto;
+  }
+  .intro code {
+    background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 12px; color: var(--primary);
+  }
+  .section-label {
+    text-align: center; color: var(--muted-2);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 28px 16px 12px;
+  }
+  .frame-caption {
+    text-align: center; color: var(--muted);
+    font-size: 12.5px; padding-bottom: 10px; letter-spacing: 0.02em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 36px; padding: 12px 24px 56px;
+    max-width: 1800px; margin: 0 auto;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     iPhone 16 Pro frame (390 × 844)
+     ───────────────────────────────────────────────────────────── */
+  .phone {
+    width: 390px; height: 844px; margin: 0 auto;
+    background: var(--bg);
+    border: 7px solid #0a080d;
+    border-radius: 52px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 30px 80px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.05);
+  }
+  .phone::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 22% 0%, rgba(253,238,208,0.10), transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(77,184,201,0.10), transparent 50%);
+    pointer-events: none;
+  }
+  .island {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 124px; height: 36px; background: #000;
+    border-radius: 22px; z-index: 50;
+  }
+  .home-indicator {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    width: 136px; height: 5px; background: rgba(255,255,255,0.5); border-radius: 3px; z-index: 45;
+  }
+  .phone-body {
+    width: 100%; height: 100%;
+    padding-top: 58px;
+    display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Liquid Glass primitives (iOS 26 approximation).
+     Values from research agent 1: blur(20) saturate(180%) over white 0.25
+     + top-edge highlight + hairline gradient border.
+     ───────────────────────────────────────────────────────────── */
+  .glass {
+    position: relative;
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-radius: var(--radius);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.12),
+      0 8px 22px rgba(0,0,0,0.28);
+  }
+  .glass::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg,
+      rgba(255,255,255,0.22),
+      rgba(255,255,255,0.04) 38%,
+      rgba(253,238,208,0.14) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+  }
+  .glass::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 55%);
+    pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Nav chrome — topbar + .searchable nav-bar-drawer pattern
+     ───────────────────────────────────────────────────────────── */
+  .nav {
+    position: relative;
+    padding: 8px 16px 4px;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(18,12,26,0.55);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .nav-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0 6px;
+  }
+  .nav-title { font-size: 17px; font-weight: 700; letter-spacing: -0.015em; }
+  .nav-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .nav-back {
+    color: var(--primary);
+    font-size: 17px; font-weight: 500;
+    display: flex; align-items: center; gap: 3px;
+    cursor: pointer;
+  }
+  .nav-ellipsis {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-weight: 700; font-size: 13px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 12.5px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  /* Search bar inside nav drawer — .navigationBarDrawer(displayMode: .always) */
+  .nav-search {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    font-size: 14px; color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .nav-search .s-icon { font-size: 14px; }
+  .nav-search .s-cap {
+    margin-left: auto; color: var(--primary);
+    font-size: 15px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Buttons + chips
+     ───────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 0; border-radius: 14px;
+    padding: 14px 18px;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.75),
+      0 10px 26px rgba(253,238,208,0.22);
+  }
+  .btn.secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--on);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: none;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--on);
+    border: 1px dashed rgba(255,255,255,0.14);
+    box-shadow: none;
+  }
+  .btn.destructive {
+    background: rgba(226,82,108,0.12);
+    color: var(--error);
+    border: 1px solid rgba(226,82,108,0.35);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 99px;
+    font-size: 11px; font-weight: 600;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .chip.primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+  }
+  .chip.success {
+    background: rgba(52,196,126,0.14);
+    border-color: rgba(52,196,126,0.38);
+    color: var(--success);
+  }
+  .chip.teal {
+    background: rgba(77,184,201,0.14);
+    border-color: rgba(77,184,201,0.38);
+    color: var(--teal);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Cart strip + rows
+     ───────────────────────────────────────────────────────────── */
+  .cart-strip {
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    background: rgba(36,31,46,0.35);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-strip .avatar-mini {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(160deg, #4db8c9, #2f6f78);
+    color: #002d35; font-weight: 700; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cart-strip .cs-name { font-size: 13.5px; font-weight: 700; }
+  .cart-strip .cs-meta { font-size: 11px; color: var(--muted); }
+  .cart-strip .cs-count {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-display); font-weight: 600;
+  }
+  .cart-strip .cs-total {
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Catalog tiles */
+  .chip-row {
+    display: flex; gap: 8px; padding: 10px 16px 8px;
+    overflow-x: auto;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0;
+    padding: 7px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--on);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .filter-chip.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+  }
+
+  .catalog {
+    flex: 1; overflow-y: auto;
+    padding: 4px 16px 16px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    align-content: start;
+  }
+  .catalog::-webkit-scrollbar { display: none; }
+  .tile {
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 110px;
+    position: relative;
+  }
+  .tile .t-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .tile .t-name {
+    font-size: 13px; font-weight: 600;
+    line-height: 1.25;
+  }
+  .tile .t-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: auto;
+  }
+  .tile .t-price {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+  .tile .t-stock { font-size: 10.5px; color: var(--success); }
+  .tile .t-stock.low { color: var(--warning); }
+  .tile .t-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--primary); color: var(--on-primary);
+    font-size: 10px; font-weight: 800;
+    padding: 2px 7px; border-radius: 99px;
+  }
+
+  /* Cart rows */
+  .cart-rows {
+    flex: 1; overflow-y: auto;
+    padding: 4px 0;
+  }
+  .cart-rows::-webkit-scrollbar { display: none; }
+  .cart-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .cart-row .cr-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .cart-row .cr-name { font-size: 14px; font-weight: 600; }
+  .cart-row .cr-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .cart-row .cr-price {
+    font-family: var(--font-display);
+    font-size: 18px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary);
+    letter-spacing: -0.01em;
+  }
+
+  /* Safe-area tender section */
+  .tender-safearea {
+    padding: 10px 16px 26px;
+    background: linear-gradient(180deg, rgba(18,12,26,0.0), rgba(18,12,26,0.88) 35%);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .totals-row {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px; color: var(--muted);
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-line {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 8px 0 10px;
+  }
+  .total-line .tl-label {
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .total-line .tl-amount {
+    font-family: var(--font-display);
+    font-size: 32px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+    letter-spacing: -0.02em;
+  }
+  .tender-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 18px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border: 0;
+    font-size: 17px; font-weight: 800;
+    letter-spacing: -0.01em;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 14px 30px rgba(253,238,208,0.25);
+    min-height: 56px;
+  }
+  .tender-btn .tb-amount {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .tender-btn[disabled], .tender-btn.disabled {
+    opacity: 0.45;
+    box-shadow: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Sheet — detent bottom-sheet
+     ───────────────────────────────────────────────────────────── */
+  .sheet-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    z-index: 30;
+  }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding-bottom: 22px;
+    background: rgba(24,18,32,0.85);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-top-left-radius: 28px; border-top-right-radius: 28px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 -24px 60px rgba(0,0,0,0.55);
+    z-index: 40;
+  }
+  .sheet-handle {
+    width: 40px; height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.22);
+    margin: 10px auto 6px;
+  }
+  .sheet-title {
+    padding: 6px 20px 4px;
+    font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  }
+  .sheet-sub {
+    padding: 0 20px 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  .sheet-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 14px;
+  }
+  .stepper {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .stepper button {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--on); font-size: 18px; font-weight: 700;
+  }
+  .stepper button.plus {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: 0 6px 16px rgba(253,238,208,0.2);
+  }
+  .stepper .val {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 26px; text-align: center;
+  }
+
+  /* Section label */
+  .sect-label {
+    color: var(--muted-2);
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 14px 16px 4px;
+  }
+
+  /* Path row (retail / repair / credit) as flat rows, not 4 big tiles */
+  .path-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    margin: 0 16px 8px;
+    min-height: 60px;
+  }
+  .path-row.primary {
+    border-color: rgba(253,238,208,0.35);
+    background:
+      linear-gradient(180deg, rgba(253,238,208,0.06), transparent),
+      var(--surface-solid);
+    box-shadow: 0 8px 22px rgba(253,238,208,0.08);
+  }
+  .path-row .p-icon {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .path-row.primary .p-icon {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: 0 6px 16px rgba(253,238,208,0.25);
+  }
+  .path-row .p-name { font-size: 14px; font-weight: 700; }
+  .path-row .p-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .path-row .p-chev { color: var(--muted); font-size: 18px; }
+  .path-row.primary .p-chev { color: var(--primary); }
+
+  /* Tender method grid */
+  .tender-methods {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 12px 16px;
+  }
+  .method {
+    padding: 14px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    text-align: center;
+  }
+  .method.selected {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 8px 22px rgba(253,238,208,0.18);
+  }
+  .method .m-icon { font-size: 22px; margin-bottom: 4px; }
+  .method.selected .m-icon { color: var(--on-primary); }
+  .method .m-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .method .m-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .method.selected .m-sub { color: rgba(43,20,0,0.7); }
+
+  /* Quick-amount strip — above numpad */
+  .quick-amounts {
+    display: flex; gap: 6px; padding: 10px 16px 4px;
+    overflow-x: auto;
+  }
+  .quick-amounts::-webkit-scrollbar { display: none; }
+  .quick-amount {
+    flex: 1; min-width: 68px;
+    padding: 12px 6px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on);
+    letter-spacing: -0.01em;
+    min-height: 44px;
+  }
+  .quick-amount.selected {
+    background: var(--primary-soft);
+    border-color: rgba(253,238,208,0.5);
+    color: var(--primary);
+  }
+
+  /* Numpad */
+  .numpad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    padding: 10px 16px 16px;
+  }
+  .numkey {
+    min-height: 56px;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    color: var(--on);
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    letter-spacing: -0.01em;
+  }
+  .numkey.backspace { color: var(--error); font-family: var(--font-text); font-size: 18px; }
+  .numkey.dot { color: var(--muted); }
+
+  /* Received / change panel */
+  .cash-panel {
+    margin: 10px 16px 2px;
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(36,31,46,0.55);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.1);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .cash-panel .cp-col .cp-label {
+    font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .cash-panel .cp-col .cp-amount {
+    font-family: var(--font-display);
+    font-size: 34px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .cash-panel .cp-col.change .cp-amount { color: var(--success); font-size: 26px; }
+
+  /* Hero pickup row on home screen */
+  .pickup-hero {
+    margin: 8px 16px;
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    background:
+      linear-gradient(180deg, rgba(52,196,126,0.12), rgba(52,196,126,0.02)),
+      var(--surface-solid);
+    border: 1.5px solid rgba(52,196,126,0.4);
+    border-radius: 14px;
+  }
+  .pickup-hero .ph-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900;
+    box-shadow: 0 6px 18px rgba(52,196,126,0.35);
+  }
+  .pickup-hero .ph-name { font-size: 13.5px; font-weight: 700; }
+  .pickup-hero .ph-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  /* Receipt */
+  .receipt-hero {
+    padding: 24px 18px; text-align: center;
+  }
+  .receipt-hero .rh-check {
+    width: 64px; height: 64px; margin: 0 auto 12px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: 900;
+    box-shadow: 0 14px 34px rgba(52,196,126,0.35);
+  }
+  .receipt-hero .rh-amount {
+    font-family: var(--font-display);
+    font-size: 42px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .receipt-hero .rh-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  .share-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;
+    padding: 8px 16px 4px;
+  }
+  .share-tile {
+    padding: 14px 6px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: center;
+    display: flex; flex-direction: column; gap: 4px;
+    align-items: center;
+  }
+  .share-tile.primary {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+  }
+  .share-tile .st-icon { font-size: 18px; }
+  .share-tile .st-label { font-size: 11px; font-weight: 700; }
+
+  .receipt-list {
+    margin: 10px 16px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--surface-solid);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .receipt-list .rl-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .receipt-list .rl-row.muted { color: var(--muted); }
+  .receipt-list .rl-row.total {
+    font-weight: 800; font-size: 14px;
+    border-top: 1px dashed rgba(255,255,255,0.22);
+    margin-top: 6px; padding-top: 8px;
+  }
+
+  /* Dynamic Island live activity */
+  .island.active {
+    background: #000;
+    width: 200px; height: 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; border-radius: 22px;
+  }
+  .island.active .ia-left { color: var(--primary); font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .island.active .ia-right {
+    color: var(--primary);
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scroll { flex: 1; overflow-y: auto; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  .meta { text-align: center; color: var(--muted); font-size: 11px; padding: 20px 16px 40px; }
+  .meta code {
+    background: rgba(255,255,255,0.04); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--primary);
+  }
+
+  @media (max-width: 500px) {
+    .grid { grid-template-columns: 1fr; }
+    .phone { transform: scale(0.85); transform-origin: top center; margin-bottom: -120px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Bizarre POS — iPhone mockups</h1>
+<p class="intro">
+  iPhone 16 Pro · iOS 26 Liquid Glass · cream primary <code>#fdeed0</code>. Not an Android port — native patterns only: <code>.searchable(.navigationBarDrawer(.always))</code>, <code>.safeAreaInset(edge: .bottom)</code> tender CTA, <code>.sheet</code> detents, no FAB, portrait lock. Built from <code>docs/pos-redesign-plan.md</code> + 7 parallel research agents (Liquid Glass specs, SwiftUI idioms, typography math, competitive UX, ergonomics).
+</p>
+
+<div class="section-label">Full flow · 6 iPhone screens</div>
+
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1 — Customer gate · the mandatory first step · walk-in / existing / new
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">1 · Customer gate · walk-in / existing / new · nothing else starts until this picks</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div>
+              <div class="nav-title">POS</div>
+              <div class="nav-sub">Register open · Pavel I.</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="chip success">● Online</span>
+              <div class="nav-ellipsis">⋯</div>
+            </div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">Search by name, phone, ticket, or loyalty #</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding: 14px 0 0;">
+
+          <div style="padding: 0 20px 8px;">
+            <div style="font-size: 20px; font-weight: 700; letter-spacing: -0.015em;">Who's this for?</div>
+            <div style="font-size: 12.5px; color: var(--muted); margin-top: 3px;">Every sale starts with a customer. Pick one to continue.</div>
+          </div>
+
+          <!-- Primary: search-result-forward pattern; search bar is tappable above -->
+          <div class="path-row primary" style="min-height: 78px; padding: 14px;">
+            <div class="p-icon">👤</div>
+            <div style="flex: 1;">
+              <div class="p-name">Find existing customer</div>
+              <div class="p-sub">Search by name, phone, email, or loyalty ID</div>
+            </div>
+            <span class="p-chev">›</span>
+          </div>
+
+          <div class="path-row" style="min-height: 78px; padding: 14px;">
+            <div class="p-icon" style="background: linear-gradient(180deg, #4db8c9, #2f6f78); color: #002d35; border-color: rgba(255,255,255,0.2);">＋</div>
+            <div style="flex: 1;">
+              <div class="p-name">Create new customer</div>
+              <div class="p-sub">Name + phone · one-tap add · attach later details</div>
+            </div>
+            <span class="p-chev">›</span>
+          </div>
+
+          <div class="path-row" style="min-height: 78px; padding: 14px; border-style: dashed;">
+            <div class="p-icon" style="background: transparent; border: 1.5px dashed rgba(255,255,255,0.2);">🚶</div>
+            <div style="flex: 1;">
+              <div class="p-name">Walk-in · no record</div>
+              <div class="p-sub">Quick retail sale · no loyalty, no history, no receipt auto-send</div>
+            </div>
+            <span class="p-chev">›</span>
+          </div>
+
+          <div class="sect-label" style="display: flex; justify-content: space-between; align-items: center; padding-right: 16px;">
+            <span>Ready for pickup · 3</span>
+            <span style="font-size: 10.5px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em;">VIEW ALL →</span>
+          </div>
+
+          <!-- Pickup strip — horizontally scrollable, tap to open cart + skip customer gate -->
+          <div style="display: flex; gap: 10px; overflow-x: auto; padding: 0 16px 10px;" class="chip-row">
+            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.14), rgba(52,196,126,0.02)), var(--surface-solid); border: 1.5px solid rgba(52,196,126,0.4); display: flex; gap: 10px; align-items: center; box-shadow: 0 6px 18px rgba(52,196,126,0.08);">
+              <div style="width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(180deg, #4ad088, #34c47e); color: #002817; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(52,196,126,0.3);">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;"><span>Sarah M.</span><span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 8.5px; padding: 1px 4px; border-radius: 99px; font-weight: 800;">★ GOLD</span></div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">#4829 · iPhone 14 screen</div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$274.51</div>
+              </div>
+              <span style="color: var(--success); font-size: 16px;">›</span>
+            </div>
+            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 10px; align-items: center;">
+              <div style="width: 38px; height: 38px; border-radius: 11px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700;">Marco D.</div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4812 · iPad battery</div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$142.00</div>
+              </div>
+              <span style="color: var(--muted); font-size: 16px;">›</span>
+            </div>
+            <div style="flex-shrink: 0; width: 230px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(52,196,126,0.08), rgba(52,196,126,0.02)), var(--surface-solid); border: 1px solid rgba(52,196,126,0.3); display: flex; gap: 10px; align-items: center;">
+              <div style="width: 38px; height: 38px; border-radius: 11px; background: rgba(52,196,126,0.18); color: var(--success); border: 1px solid rgba(52,196,126,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">✓</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px;"><span>Nora P.</span><span style="background: rgba(77,184,201,0.2); color: var(--teal); font-size: 8.5px; padding: 1px 4px; border-radius: 99px; font-weight: 700;">SILVER</span></div>
+                <div style="font-size: 10.5px; color: var(--muted); margin-top: 1px;">#4801 · Watch crown</div>
+                <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px;">$68.00</div>
+              </div>
+              <span style="color: var(--muted); font-size: 16px;">›</span>
+            </div>
+          </div>
+
+          <div class="sect-label">Recent customers · today</div>
+
+          <div style="padding: 0 16px 8px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">SM</div>
+              <div style="flex: 1;">
+                <div style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">Sarah M. <span class="chip" style="background: rgba(253,238,208,0.14); border-color: rgba(253,238,208,0.35); color: var(--primary); font-size: 9.5px; padding: 1px 6px;">★ GOLD</span></div>
+                <div style="font-size: 11px; color: var(--muted);">#4829 ready · 3 past tickets · $42 credit</div>
+              </div>
+              <span class="chip success" style="font-size: 10px;">Pickup</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.06); color: var(--muted); font-size: 14px; display: flex; align-items: center; justify-content: center;">🚶</div>
+              <div style="flex: 1;">
+                <div style="font-size: 13px; font-weight: 600;">Walk-in · 15 min ago</div>
+                <div style="font-size: 11px; color: var(--muted);">Resume drafted cart · $42.00</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.06);">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(160deg, #4db8c9, #2f6f78); color: #002d35; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center;">JK</div>
+              <div style="flex: 1;">
+                <div style="font-size: 13px; font-weight: 600;">James K.</div>
+                <div style="font-size: 11px; color: var(--muted);">(555) 888-1120 · last visit 4 days ago</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height: 20px;"></div>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       2 — Catalog · customer attached · cart strip · pinned tender
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">2 · Catalog · customer attached · 3 items in cart</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="nav-back">‹ Back</span>
+            </div>
+            <div class="nav-title">New sale</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+          <div class="nav-search">
+            <span class="s-icon">🔍</span>
+            <span style="flex: 1;">iPhone 14 Pro screen</span>
+            <span class="s-cap">📷</span>
+          </div>
+        </div>
+
+        <!-- Cart strip · membership chip surfaced -->
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name" style="display: flex; align-items: center; gap: 5px;">Sarah M. <span style="background: rgba(253,238,208,0.18); border: 1px solid rgba(253,238,208,0.4); color: var(--primary); font-size: 9px; padding: 1px 5px; border-radius: 99px; font-weight: 800; letter-spacing: 0.04em;">★ GOLD</span></div>
+            <div class="cs-meta">230 loyalty pts · 10% member discount auto</div>
+          </div>
+          <div class="cs-total">$274.51</div>
+        </div>
+
+        <div class="chip-row">
+          <div class="filter-chip active">Matches · 3</div>
+          <div class="filter-chip">Screens</div>
+          <div class="filter-chip">Labor</div>
+          <div class="filter-chip">Accessories</div>
+          <div class="filter-chip">Services</div>
+        </div>
+
+        <div class="catalog">
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔧</div>
+            <div class="t-name">iPhone 14 Pro Screen</div>
+            <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">⚙️</div>
+            <div class="t-name">Labor · screen replace</div>
+            <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
+          </div>
+          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+            <div class="t-badge">In cart</div>
+            <div class="t-icon">🔌</div>
+            <div class="t-name">USB-C 3ft cable</div>
+            <div class="t-row"><div class="t-price">$14</div><div class="t-stock">58</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🛡️</div>
+            <div class="t-name">Screen protector · Pro</div>
+            <div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🔋</div>
+            <div class="t-name">iPhone 14 Battery</div>
+            <div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div>
+          </div>
+          <div class="tile">
+            <div class="t-icon">🧽</div>
+            <div class="t-name">Cleaning service</div>
+            <div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div>
+          </div>
+        </div>
+
+        <!-- Pinned safe-area tender -->
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       3 — Cart tab · 3 items · tap line → sheet
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">3 · Cart view · 3 items · swipe to void, tap to edit</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip">
+          <div class="avatar-mini">SM</div>
+          <div>
+            <div class="cs-name">Sarah M.</div>
+            <div class="cs-meta">iPhone 14 Pro · repair draft</div>
+          </div>
+          <div class="cs-count"><span class="chip primary">Ticket auto</span></div>
+        </div>
+
+        <div class="cart-rows">
+          <div class="cart-row">
+            <div class="cr-icon">🔧</div>
+            <div style="flex: 1;">
+              <div class="cr-name">iPhone 14 Pro Screen</div>
+              <div class="cr-sub">SKU IPH14P-S · Qty 1</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="cr-price">$189.00</div>
+              <div class="cr-sub" style="text-decoration: line-through;">$199</div>
+            </div>
+          </div>
+          <div class="cart-row">
+            <div class="cr-icon">⚙️</div>
+            <div style="flex: 1;">
+              <div class="cr-name">Labor · screen replacement</div>
+              <div class="cr-sub">Service · 45 min</div>
+            </div>
+            <div class="cr-price">$60.00</div>
+          </div>
+          <div class="cart-row" style="background: rgba(253,238,208,0.06); border-left: 3px solid var(--primary);">
+            <div class="cr-icon">🔌</div>
+            <div style="flex: 1;">
+              <div class="cr-name">USB-C 3 ft cable</div>
+              <div class="cr-sub">SKU USB-C3 · Qty 1</div>
+            </div>
+            <div class="cr-price">$14.00</div>
+          </div>
+
+          <div style="padding: 14px 16px; display: flex; gap: 8px;">
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Misc</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Discount</div>
+            <div class="btn ghost" style="flex: 1; font-size: 12px; padding: 10px;">+ Note</div>
+          </div>
+
+          <div class="sect-label">Coupon</div>
+          <div style="padding: 0 16px 14px;">
+            <div class="nav-search" style="margin: 0;">
+              <span style="color: var(--muted);">🏷️</span>
+              <span style="flex: 1;">Enter code or scan</span>
+              <span class="s-cap">✓</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div class="totals-row"><span>Subtotal</span><span>$263.00</span></div>
+          <div class="totals-row" style="color: var(--success);"><span>★ GOLD member · 10%</span><span>− $10.00</span></div>
+          <div class="totals-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
+          <div class="total-line"><span class="tl-label">Total</span><span class="tl-amount">$274.51</span></div>
+          <button class="tender-btn">
+            <span>Charge</span>
+            <span class="tb-amount">$274.51</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       4 — Line-edit sheet · .height(300) detent
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">4 · Line edit · <code>.presentationDetents([.height(320), .medium])</code></div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body" style="position: relative;">
+
+        <div class="nav" style="opacity: 0.6;">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Catalog</span>
+            <div class="nav-title">Cart · 3</div>
+            <div class="nav-ellipsis">⋯</div>
+          </div>
+        </div>
+
+        <div class="cart-strip" style="opacity: 0.55;">
+          <div class="avatar-mini">SM</div>
+          <div><div class="cs-name">Sarah M.</div></div>
+          <div class="cs-total" style="margin-left: auto;">$274.51</div>
+        </div>
+
+        <div class="scroll" style="opacity: 0.45;">
+          <div class="cart-row"><div class="cr-icon">🔧</div><div style="flex:1;"><div class="cr-name">iPhone 14 Pro Screen</div></div><div class="cr-price">$189.00</div></div>
+          <div class="cart-row"><div class="cr-icon">⚙️</div><div style="flex:1;"><div class="cr-name">Labor</div></div><div class="cr-price">$60.00</div></div>
+        </div>
+
+        <div class="sheet-backdrop"></div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">USB-C 3 ft cable</div>
+          <div class="sheet-sub">SKU <span style="font-family: var(--font-mono);">USB-C3</span> · 22 in stock</div>
+
+          <div class="sheet-row">
+            <span>Qty</span>
+            <div class="stepper">
+              <button>−</button>
+              <div class="val">1</div>
+              <button class="plus">+</button>
+            </div>
+          </div>
+
+          <div class="sheet-row">
+            <span>Unit price</span>
+            <span style="font-family: var(--font-display); font-size: 18px; font-weight: 700;">$14.00</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Line discount</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Apply</span>
+          </div>
+
+          <div class="sheet-row">
+            <span>Note</span>
+            <span style="color: var(--teal); font-size: 13px; font-weight: 600;">+ Add</span>
+          </div>
+
+          <div style="padding: 16px 20px 6px; display: flex; gap: 10px;">
+            <button class="btn destructive" style="flex: 1;">Remove</button>
+            <button class="btn" style="flex: 2;">Save · $14.00</button>
+          </div>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5 — Tender · method grid + quick-amounts + numpad, single scroll
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">5 · Tender · methods + quick-amounts + numpad · one scroll</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Cart</span>
+            <div class="nav-title">Tender</div>
+            <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$274.51</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- Membership banner · applied perks + earned pts preview -->
+          <div style="margin: 10px 16px 0; padding: 10px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; gap: 10px; align-items: center;">
+            <span style="font-size: 20px;">★</span>
+            <div style="flex: 1;">
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member benefit active</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">10% off applied · will earn 55 pts on this sale</div>
+            </div>
+            <span class="chip" style="font-family: var(--font-display); font-size: 13px; padding: 4px 10px;">SAVED $10</span>
+          </div>
+
+          <div class="sect-label">Method</div>
+
+          <div class="tender-methods">
+            <div class="method">
+              <div class="m-icon">💳</div>
+              <div class="m-name">Card</div>
+              <div class="m-sub">Tap to Pay</div>
+            </div>
+            <div class="method selected">
+              <div class="m-icon">💵</div>
+              <div class="m-name">Cash</div>
+              <div class="m-sub">Selected</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">🎁</div>
+              <div class="m-name">Gift card</div>
+              <div class="m-sub">Scan / enter</div>
+            </div>
+            <div class="method">
+              <div class="m-icon">💸</div>
+              <div class="m-name">Store credit</div>
+              <div class="m-sub">$42.00 avail.</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Cash received</div>
+
+          <div class="cash-panel">
+            <div class="cp-col">
+              <div class="cp-label">Received</div>
+              <div class="cp-amount">$300<span style="color: var(--muted); font-weight: 500;">.00</span></div>
+            </div>
+            <div class="cp-col change">
+              <div class="cp-label">Change</div>
+              <div class="cp-amount">$25.49</div>
+            </div>
+          </div>
+
+          <div class="sect-label">Quick amount</div>
+
+          <div class="quick-amounts">
+            <div class="quick-amount">Exact</div>
+            <div class="quick-amount">$275</div>
+            <div class="quick-amount">$280</div>
+            <div class="quick-amount selected">$300</div>
+            <div class="quick-amount">$320</div>
+          </div>
+
+          <div class="numpad">
+            <div class="numkey">1</div><div class="numkey">2</div><div class="numkey">3</div>
+            <div class="numkey">4</div><div class="numkey">5</div><div class="numkey">6</div>
+            <div class="numkey">7</div><div class="numkey">8</div><div class="numkey">9</div>
+            <div class="numkey dot">.</div>
+            <div class="numkey">0</div>
+            <div class="numkey backspace">⌫</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <div style="display: flex; gap: 10px; padding-bottom: 8px;">
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Split payment</button>
+            <button class="btn secondary" style="flex: 1; font-size: 12.5px; padding: 10px;">Add tip</button>
+          </div>
+          <button class="tender-btn">
+            <span>Complete cash sale</span>
+            <span class="tb-amount">$274.51</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       6 — Receipt · full width · share grid · Dynamic Island live activity
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="frame-caption">6 · Receipt · cart collapsed · share grid · Live Activity</div>
+    <div class="phone">
+      <div class="island active">
+        <div class="ia-left">🛍 3 items</div>
+        <div class="ia-right">$274.51</div>
+      </div>
+      <div class="phone-body">
+
+        <div class="nav">
+          <div class="nav-title-row">
+            <span class="nav-back">‹ Done</span>
+            <div class="nav-title">Paid</div>
+            <span class="chip success" style="font-size: 11px;">✓ #28014</span>
+          </div>
+        </div>
+
+        <div class="scroll">
+
+          <div class="receipt-hero">
+            <div class="rh-check">✓</div>
+            <div class="rh-amount">$274.51</div>
+            <div class="rh-sub">Cash · $300 received · $25.49 change</div>
+          </div>
+
+          <div class="sect-label">Send receipt</div>
+
+          <div class="share-grid">
+            <div class="share-tile primary">
+              <div class="st-icon">💬</div>
+              <div class="st-label">Text</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">✉️</div>
+              <div class="st-label">Email</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">🖨</div>
+              <div class="st-label">Print</div>
+            </div>
+            <div class="share-tile">
+              <div class="st-icon">—</div>
+              <div class="st-label">Skip</div>
+            </div>
+          </div>
+
+          <div class="receipt-list">
+            <div class="rl-row muted"><span>iPhone 14 Pro Screen</span><span>$189.00</span></div>
+            <div class="rl-row muted"><span>Labor · screen</span><span>$60.00</span></div>
+            <div class="rl-row muted"><span>USB-C 3 ft cable</span><span>$14.00</span></div>
+            <div class="rl-row muted" style="color: var(--success);"><span>Discount</span><span>− $10.00</span></div>
+            <div class="rl-row muted"><span>Tax · 8.5%</span><span>$21.51</span></div>
+            <div class="rl-row total"><span>Total</span><span>$274.51</span></div>
+          </div>
+
+          <div style="padding: 0 16px;">
+            <div class="btn secondary" style="width: 100%; margin-bottom: 8px; font-size: 13px;">View ticket #4829</div>
+          </div>
+        </div>
+
+        <div class="tender-safearea">
+          <button class="tender-btn">
+            <span>Next sale</span>
+            <span style="font-size: 15px;">›</span>
+          </button>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<div class="section-label">Design principles · research-agent consensus</div>
+
+<div style="max-width: 1100px; margin: 0 auto; padding: 0 24px 60px;">
+  <div class="glass" style="padding: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; position: relative; z-index: 2;">
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Search in nav-bar drawer</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.searchable(placement: .navigationBarDrawer(displayMode: .always))</code>. Pinned under title, always visible — zero tap to begin. iOS 26 auto-moves this to bottom; `.always` keeps it at top on current iOS.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Tender in safe-area</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.safeAreaInset(edge: .bottom)</code>. 56pt min height, within 120pt of home indicator per thumb-reach research. Cream gradient, <code>on-primary #2b1400</code> text = AAA 15.23:1.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Sheet detents, not modals</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Line edit = <code>.height(320)</code>. Customer picker = <code>.medium</code>. Receipt = full-screen. Drag indicator on every multi-detent sheet.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Barlow Condensed hero numerics</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>$274.51</code> at 32–42pt with <code>font-variant-numeric: tabular-nums</code>. Size-locked — Dynamic Type caps at <code>.accessibility2</code> for layout-sensitive text.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Two primary actions on home</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <b>New sale</b> + <b>New repair ticket</b>. Separate upfront paths — not a convert-at-tender flow. Matches RepairDesk/RepairShopr ergonomics.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Customer attach optional</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Square/Shopify pattern: attach any time before tender, never blocking. Single-prompt at Charge tap if missing; 2s dismissible.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Quick-amount strip</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Above numpad on every cash screen. <code>Exact · +$5 · +$10 · +$20</code>. Removes the #1 cash entry error (wrong-denom field).
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Dynamic Island live activity</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>ActivityKit.Activity&lt;POSCartAttributes&gt;</code>. Compact leading = cart icon + count, trailing = total. iPhone 14 Pro+. Cleared immediately on Paid.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Liquid Glass on chrome only</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Topbar, cart strip, sheet, tender safe-area, connectivity chip. Content (cart rows, catalog tiles, receipt list) on solid <code>surface-solid</code>. Max 4–5 non-contained glass panels — GPU budget.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Portrait lock</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          Matches Square, Shopify POS, Toast Go. Numpad + tender button + cart are portrait-optimized. Use <code>UISupportedInterfaceOrientations</code>.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">Haptics</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>.sensoryFeedback</code> iOS 17+. Added to cart = <code>.impact(.light)</code>. Scan success = <code>.success</code>. Tender complete = <code>.success + .impact(.heavy, 0.8)</code>.
+        </p>
+      </div>
+
+      <div>
+        <h3 style="margin: 0 0 8px; font-size: 15px; font-weight: 700;">App Intents / Siri</h3>
+        <p style="color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0;">
+          <code>NewSaleIntent</code>, <code>AddItemIntent(sku:)</code>, <code>FindCustomerIntent(query:)</code>. Auto-appear in Shortcuts, Spotlight, Siri.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="meta">
+  Self-contained preview · no JS · no network. Tokens mirror <code>ios/Packages/DesignSystem/Sources/DesignSystem/BrandColors.swift</code> + <code>BrandFonts.swift</code> + <code>BrandSpacing.swift</code>. Ports directly to SwiftUI.
+</div>
+
+</body>
+</html>
