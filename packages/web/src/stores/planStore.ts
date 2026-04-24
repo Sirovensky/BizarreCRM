@@ -42,6 +42,19 @@ const DEFAULT_FEATURES: PlanFeatures = {
   exportReports: false,
 };
 
+// Allowlist of strings the server may send in a 403 `feature` field. Kept in
+// sync with `PlanFeatures` + the special `ticket_limit` key used for the
+// usage-cap gate. client.ts calls isUpgradeFeatureKey() to reject anything
+// else before passing it to openUpgradeModal.
+export type UpgradeFeatureKey = keyof PlanFeatures | 'ticket_limit';
+const UPGRADE_FEATURE_KEYS = new Set<string>([
+  ...Object.keys(DEFAULT_FEATURES),
+  'ticket_limit',
+]);
+export function isUpgradeFeatureKey(value: unknown): value is UpgradeFeatureKey {
+  return typeof value === 'string' && UPGRADE_FEATURE_KEYS.has(value);
+}
+
 // Singleton in-flight fetch promise — prevents concurrent calls from racing
 let inFlightFetch: Promise<void> | null = null;
 

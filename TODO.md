@@ -692,9 +692,13 @@ Verified working. Not TODOs.
   Surfaced from `ios/ActionPlan.md §60` / §89. Server has `/api/v1/stocktake` (`stocktake.routes.ts`) and web has `pages/inventory/StocktakePage.tsx`. Android only references stocktake in a dashboard widget placeholder. Full Android parity: sessions list, per-session count UI, barcode-scan loop, variance resolution, adjust on commit. Follows same cursor-based pagination contract the other list surfaces use.
 
 ### Wave-48 scan-loop findings (2026-04-23) — web/api + web/stores
-- [ ] SCAN-940. **Server-supplied upgrade-feature string passed unvalidated into the plan store — type guarantee breaks at runtime on malformed 403.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:226-227; fix=validate-against-union -->
-- [ ] SCAN-942. **POS checkout line-item types use `unknown[]` — no compile-time guarantee the shape the server expects matches what the UI sends.**
-  <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
+
+### Wave-50 scan-loop findings (2026-04-23) — web/pages
+- [ ] SCAN-954. **Invoice list typed as any[] — no compile-time guarantees on row shape.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:108; fix=define-Invoice-interface -->
+- [ ] SCAN-957. **POS customer step fans out 3 parallel queries every session open — consolidate or hoist with stale cache.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:965-1057; fix=consolidate-or-hoist -->
+- [ ] SCAN-960. **Ticket wizard labels not associated with their inputs — click-label and screen readers broken.**
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx:140; fix=htmlFor+id -->

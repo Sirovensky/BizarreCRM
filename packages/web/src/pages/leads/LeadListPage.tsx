@@ -299,10 +299,10 @@ export function LeadListPage() {
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
-    onError: (err: any) => {
-      console.error('Lead convert failed:', err);
-      const msg = err?.response?.data?.message
-        || err?.message
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      const msg = e?.response?.data?.message
+        || e?.message
         || 'Failed to convert lead. Please try again.';
       toast.error(msg);
     },
@@ -323,7 +323,6 @@ export function LeadListPage() {
       successMessage: 'Lead deleted',
       errorMessage: (_a, err: unknown) => {
         const e = err as { response?: { data?: { message?: string } }; message?: string };
-        console.error('Lead delete failed:', err);
         return e?.response?.data?.message || e?.message || 'Failed to delete lead. Please try again.';
       },
       onUndo: () => {

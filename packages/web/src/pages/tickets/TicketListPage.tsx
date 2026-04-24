@@ -1037,9 +1037,14 @@ export function TicketListPage() {
   // TicketRow callback handlers (stable references for memo)
   const handlePin = useCallback((id: number) => pinMut.mutate(id), [pinMut]);
   const handleAddNote = useCallback(async (ticketId: number, content: string) => {
-    await ticketApi.addNote(ticketId, { type: 'internal', content });
-    toast.success('Note added');
-    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    try {
+      await ticketApi.addNote(ticketId, { type: 'internal', content });
+      toast.success('Note added');
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      toast.error(e?.response?.data?.message || e?.message || 'Failed to add note');
+    }
   }, [queryClient]);
   const handleSendSms = useCallback(async (to: string, message: string, ticketId: number) => {
     try {

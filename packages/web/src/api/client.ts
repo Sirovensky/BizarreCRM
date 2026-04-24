@@ -228,9 +228,17 @@ client.interceptors.response.use(
     if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
       // Lazy import to avoid circular deps with planStore
       import('@/stores/planStore')
-        .then(({ usePlanStore }) => {
-          const feature = error.response.data.feature;
-          usePlanStore.getState().openUpgradeModal(feature);
+        .then(({ usePlanStore, isUpgradeFeatureKey }) => {
+          const rawFeature = error.response?.data?.feature;
+          // Validate the feature string against the known union before handing
+          // it to openUpgradeModal(). Without this, a malformed or attacker-
+          // controlled 403 body could inject an arbitrary string and break
+          // the type guarantee at runtime.
+          if (!isUpgradeFeatureKey(rawFeature)) {
+            console.warn('Ignoring 403 upgrade_required with unknown feature:', rawFeature);
+            return;
+          }
+          usePlanStore.getState().openUpgradeModal(rawFeature);
         })
         .catch((err) => {
           console.warn('Failed to open upgrade modal:', err);
