@@ -50,6 +50,7 @@ export function SerialNumbersPage() {
       return res.data.data;
     },
     enabled: !!itemId,
+    staleTime: 30_000,
   });
   const serials: SerialRow[] = serialsData || [];
 

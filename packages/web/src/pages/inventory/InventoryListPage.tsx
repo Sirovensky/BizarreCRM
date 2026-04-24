@@ -185,21 +185,25 @@ export function InventoryListPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['inventory', queryParams],
     queryFn: () => inventoryApi.list(queryParams),
+    staleTime: 30_000,
   });
 
   const { data: lowStockData } = useQuery({
     queryKey: ['inventory-low-stock'],
     queryFn: () => inventoryApi.lowStock(),
+    staleTime: 30_000,
   });
 
   const { data: manufacturersData } = useQuery({
     queryKey: ['inventory-manufacturers'],
     queryFn: () => inventoryApi.manufacturers(),
+    staleTime: 30_000,
   });
 
   const { data: suppliersData } = useQuery({
     queryKey: ['inventory-suppliers'],
     queryFn: () => inventoryApi.listSuppliers(),
+    staleTime: 30_000,
   });
 
   const items: any[] = data?.data?.data?.items || [];

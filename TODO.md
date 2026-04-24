@@ -706,8 +706,6 @@ Verified working. Not TODOs.
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
 - [ ] SCAN-984. **Estimate convert mutation navigates away while concurrent send/approve mutations may still be pending — race condition.**
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
-- [ ] SCAN-985. **Inventory + estimates queries missing staleTime — focus events re-fetch 250-row pages unnecessarily.**
-  <!-- meta: scope=web/pages/inventory,estimates; files=InventoryListPage.tsx,EstimateListPage.tsx,PurchaseOrdersPage.tsx,SerialNumbersPage.tsx; fix=staleTime-30000 -->
 - [ ] SCAN-986. **Inventory detail standalone `<button>` elements missing type="button" — parent form risk.**
   <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryDetailPage.tsx:147-168; fix=add-type-button -->
 - [ ] SCAN-987. **Inventory detail `form` state typed as `any` — save mutation ships untyped object.**

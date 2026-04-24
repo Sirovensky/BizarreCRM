@@ -78,6 +78,7 @@ function CreateEstimateModal({
     queryKey: ['customer-search', customerSearch],
     queryFn: () => customerApi.search(customerSearch),
     enabled: customerSearch.length >= 2,
+    staleTime: 30_000,
   });
   const customerResults: any[] = customerData?.data?.data || [];
 
@@ -363,6 +364,7 @@ export function EstimateListPage() {
     queryKey: ['estimates', estimateParams],
     queryFn: () => estimateApi.list(estimateParams),
     placeholderData: (prev: any) => prev,
+    staleTime: 30_000,
   });
 
   const estimates: any[] = estData?.data?.data?.estimates || [];

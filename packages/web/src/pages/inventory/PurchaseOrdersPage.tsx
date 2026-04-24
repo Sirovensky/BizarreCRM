@@ -38,12 +38,14 @@ export function PurchaseOrdersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-orders', page],
     queryFn: () => inventoryApi.listPurchaseOrders({ page, pagesize: 25 }),
+    staleTime: 30_000,
   });
 
   const { data: suppliersData } = useQuery({
     queryKey: ['suppliers'],
     queryFn: () => inventoryApi.listSuppliers(),
     enabled: showCreate,
+    staleTime: 30_000,
   });
   const suppliers: Array<{ id: number; name: string }> = suppliersData?.data?.data || [];
 
@@ -51,6 +53,7 @@ export function PurchaseOrdersPage() {
     queryKey: ['inventory-items-select'],
     queryFn: () => inventoryApi.list({ pagesize: 250 }),
     enabled: showCreate,
+    staleTime: 30_000,
   });
   const inventoryItems: Array<{ id: number; name: string; sku: string; cost_price: number }> =
     inventoryData?.data?.data?.items || [];
