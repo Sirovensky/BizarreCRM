@@ -58,6 +58,24 @@ function formatInvoiceId(orderId: string | number | null | undefined): string {
   return s.startsWith('INV') ? s : `INV-${s}`;
 }
 
+// Matches the subset of invoice row fields the list UI reads. Nullable per
+// server shape. Keeping the interface loose (optional fields + a permissive
+// extras bag) lets the server grow without breaking the client.
+interface InvoiceRow {
+  id: number;
+  order_id?: string | number | null;
+  status?: string | null;
+  due_on?: string | null;
+  customer_name?: string | null;
+  customer_id?: number | null;
+  total?: number | string | null;
+  paid_amount?: number | string | null;
+  balance_due?: number | string | null;
+  created_at?: string | null;
+  payment_method?: string | null;
+  currency_code?: string | null;
+}
+
 export function InvoiceListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -108,11 +126,12 @@ export function InvoiceListPage() {
     queryFn: () => invoiceApi.stats(),
   });
 
-  const invoices: any[] = data?.data?.data?.invoices || [];
+  const rawInvoices = data?.data?.data?.invoices;
+  const invoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
   const pagination = data?.data?.data?.pagination;
   const overdueCount = useMemo(() => {
     if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
-    return invoices.filter((inv: any) => {
+    return invoices.filter((inv) => {
       if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
       if (!inv.due_on) return false;
       const ts = Date.parse(inv.due_on);
@@ -121,8 +140,8 @@ export function InvoiceListPage() {
   }, [invoices, status]);
   const stats = statsData?.data?.data;
   const kpis = stats?.kpis;
-  const statusDist: any[] = stats?.status_distribution || [];
-  const methodDist: any[] = stats?.method_distribution || [];
+  const statusDist: Array<{ status: string; count: number }> = stats?.status_distribution || [];
+  const methodDist: Array<{ method: string | null; count: number }> = stats?.method_distribution || [];
 
   const statusPieData = useMemo(
     () => statusDist.map(s => ({ name: s.status, value: s.count })),

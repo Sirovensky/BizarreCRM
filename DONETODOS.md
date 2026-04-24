@@ -1,4 +1,10 @@
 
+## Closed 2026-04-23 (wave-50 web/pages — main-branch-only phase)
+
+First batch after switching to direct-on-main commits (no feature branches).
+
+- [x] SCAN-954. **InvoiceListPage rows were `any[]`** — fixed in commit `<pending>`. Added a local `InvoiceRow` interface covering the fields the list actually reads; wrapped payload access in `Array.isArray(...)` narrow before casting; tightened `statusDist` / `methodDist` to explicit array types.
+
 ## Closed 2026-04-23 (wave-47/48/49 web orchestration — hooks + utils + api + stores + components)
 
 Autonomous web-improvement loop. Each item below was implemented, typechecked, and committed atomically. Moved out of TODO.md so the backlog reflects only open work.
