@@ -14,9 +14,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import timber.log.Timber
 
@@ -26,23 +29,31 @@ import timber.log.Timber
 //   1. Printer sub-screen entry (routes to PrinterDiscoveryScreen)
 //   2. BlockChyp terminal pairing:
 //      - LAN IP manual entry
-//      - mDNS discovery stub (NsdManager)
-//      - Actions: charge / refund / void / capture / adjust (stubbed — SDK dep absent)
-//      - Firmware update banner when firmware info is available
+//      - mDNS discovery stub (NsdManager) — untouched (lines 199-264 equivalent)
+//      - Actions: charge / void / capture / adjust — wired to BlockChypClient via ViewModel
+//      - Firmware update banner when firmware is below minimum version
+
+private const val MINIMUM_FIRMWARE_VERSION = "1.0.0"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HardwareSettingsScreen(
     onBack: () -> Unit,
     onNavigateToPrinters: () -> Unit,
+    viewModel: HardwareSettingsViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+
     Scaffold(
         topBar = {
             BrandTopAppBar(
                 title = "Hardware",
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics { contentDescription = "Back" },
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
             )
@@ -57,8 +68,11 @@ fun HardwareSettingsScreen(
         ) {
             // Printers section
             item {
-                Text("PRINTERS", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "PRINTERS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             item {
                 Card(
@@ -81,47 +95,63 @@ fun HardwareSettingsScreen(
             // BlockChyp terminal section
             item {
                 Spacer(Modifier.height(8.dp))
-                Text("PAYMENT TERMINAL (BLOCKCHYP)", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "PAYMENT TERMINAL (BLOCKCHYP)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             item {
-                BlockChypTerminalCard()
+                BlockChypTerminalCard(
+                    uiState = uiState,
+                    onPair = viewModel::savePairing,
+                    onClearPairing = viewModel::clearPairing,
+                    onTestConnection = viewModel::testConnection,
+                    onCharge = viewModel::testCharge,
+                    onVoid = viewModel::voidLast,
+                    onCapture = viewModel::captureSignature,
+                    onAdjustTip = viewModel::adjustTip,
+                    onCheckFirmware = viewModel::checkFirmware,
+                    onDismissFirmwareBanner = viewModel::dismissFirmwareBanner,
+                    onClearFeedback = viewModel::clearFeedback,
+                )
             }
         }
     }
 }
 
-/**
- * §17.5 L1895-L1898 — BlockChyp terminal pairing card.
- *
- * Supports:
- * - Manual LAN IP entry for local pairing
- * - mDNS discovery stub via [NsdManager] (service type "_blockchyp._tcp")
- * - Action buttons: Charge / Refund / Void / Capture / Adjust (all stubbed —
- *   BlockChyp SDK dep is not yet available; calls are no-ops with a toast).
- * - Firmware update banner surfaced when a newer firmware version is detected.
- */
+// ─── Card composable ──────────────────────────────────────────────────────────
+
 @Composable
-private fun BlockChypTerminalCard() {
+private fun BlockChypTerminalCard(
+    uiState: HardwareSettingsUiState,
+    onPair: (String) -> Unit,
+    onClearPairing: () -> Unit,
+    onTestConnection: () -> Unit,
+    onCharge: () -> Unit,
+    onVoid: () -> Unit,
+    onCapture: () -> Unit,
+    onAdjustTip: () -> Unit,
+    onCheckFirmware: () -> Unit,
+    onDismissFirmwareBanner: () -> Unit,
+    onClearFeedback: () -> Unit,
+) {
     val context = LocalContext.current
-    var lanIp by rememberSaveable { mutableStateOf("") }
-    var isPaired by rememberSaveable { mutableStateOf(false) }
+    var lanIp by rememberSaveable { mutableStateOf(uiState.pairedIp ?: "") }
     var isDiscovering by rememberSaveable { mutableStateOf(false) }
     var discoveredTerminals by remember { mutableStateOf<List<String>>(emptyList()) }
-    var firmwareUpdateAvailable by remember { mutableStateOf(false) } // stub
-    var actionFeedback by remember { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(actionFeedback) {
-        val msg = actionFeedback
+    LaunchedEffect(uiState.feedback) {
+        val msg = uiState.feedback
         if (msg != null) {
             snackbarHostState.showSnackbar(msg)
-            actionFeedback = null
+            onClearFeedback()
         }
     }
 
-    // mDNS discovery stub
+    // ── mDNS discovery (lines 199-264 equivalent — untouched logic) ─────────
     fun startMdnsDiscovery() {
         isDiscovering = true
         discoveredTerminals = emptyList()
@@ -145,6 +175,7 @@ private fun BlockChypTerminalCard() {
             isDiscovering = false
         }
     }
+    // ── end mDNS block ───────────────────────────────────────────────────────
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -155,7 +186,7 @@ private fun BlockChypTerminalCard() {
                 Icon(Icons.Default.CreditCard, contentDescription = null)
                 Text("BlockChyp Terminal", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
-                if (isPaired) {
+                if (uiState.isPaired) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -172,8 +203,8 @@ private fun BlockChypTerminalCard() {
 
             Spacer(Modifier.height(12.dp))
 
-            // Firmware update banner (stub — shown when firmwareUpdateAvailable = true)
-            if (firmwareUpdateAvailable) {
+            // Firmware update banner — shown when firmware is below minimum
+            if (uiState.firmwareUpdateAvailable) {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -187,10 +218,20 @@ private fun BlockChypTerminalCard() {
                     ) {
                         Icon(Icons.Default.SystemUpdate, contentDescription = null)
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Firmware update available", style = MaterialTheme.typography.labelMedium)
-                            Text("Update from terminal settings", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Update terminal firmware",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            val current = uiState.firmwareVersion ?: "unknown"
+                            Text(
+                                "Current: $current — minimum required: $MINIMUM_FIRMWARE_VERSION",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
-                        TextButton(onClick = { firmwareUpdateAvailable = false }) { Text("Dismiss") }
+                        TextButton(
+                            onClick = onDismissFirmwareBanner,
+                            modifier = Modifier.semantics { contentDescription = "Dismiss firmware update warning" },
+                        ) { Text("Dismiss") }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -211,8 +252,11 @@ private fun BlockChypTerminalCard() {
                 leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null) },
                 trailingIcon = {
                     if (lanIp.isNotBlank()) {
-                        IconButton(onClick = { lanIp = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        IconButton(
+                            onClick = { lanIp = "" },
+                            modifier = Modifier.semantics { contentDescription = "Clear IP address" },
+                        ) {
+                            Icon(Icons.Default.Clear, contentDescription = null)
                         }
                     }
                 },
@@ -220,11 +264,12 @@ private fun BlockChypTerminalCard() {
 
             Spacer(Modifier.height(8.dp))
 
-            // mDNS discover button
+            // mDNS discover + Pair buttons
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { startMdnsDiscovery() },
                     enabled = !isDiscovering,
+                    modifier = Modifier.semantics { contentDescription = "Discover terminals on network" },
                 ) {
                     if (isDiscovering) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -236,26 +281,34 @@ private fun BlockChypTerminalCard() {
                 }
 
                 Button(
-                    onClick = {
-                        if (lanIp.isNotBlank()) {
-                            isPaired = true
-                            actionFeedback = "Terminal paired at $lanIp"
-                        }
-                    },
+                    onClick = { if (lanIp.isNotBlank()) onPair(lanIp) },
                     enabled = lanIp.isNotBlank(),
+                    modifier = Modifier.semantics { contentDescription = "Pair terminal at entered IP" },
                 ) {
                     Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Pair")
                 }
+
+                if (uiState.isPaired) {
+                    OutlinedButton(
+                        onClick = onClearPairing,
+                        modifier = Modifier.semantics { contentDescription = "Unpair terminal" },
+                    ) {
+                        Text("Unpair")
+                    }
+                }
             }
 
-            // Discovered terminals
+            // Discovered terminals from mDNS
             if (discoveredTerminals.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Text("Discovered:", style = MaterialTheme.typography.labelSmall)
                 discoveredTerminals.forEach { name ->
-                    TextButton(onClick = { lanIp = name }) {
+                    TextButton(
+                        onClick = { lanIp = name },
+                        modifier = Modifier.semantics { contentDescription = "Select terminal $name" },
+                    ) {
                         Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(name)
@@ -263,61 +316,83 @@ private fun BlockChypTerminalCard() {
                 }
             }
 
-            // Terminal actions (stub — BlockChyp SDK not yet available)
-            if (isPaired) {
+            // Terminal actions — wired to BlockChypClient (lines 266-324 replacement)
+            if (uiState.isPaired) {
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
-                Text("TERMINAL ACTIONS", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "TERMINAL ACTIONS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.height(8.dp))
 
-                // Stub action notice
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        "BlockChyp SDK integration is stubbed — charge, refund, void, capture, " +
-                            "and adjust actions are pending SDK dependency.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp),
-                    )
+                if (uiState.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
                 }
 
-                Spacer(Modifier.height(8.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    listOf("Charge", "Refund", "Void").forEach { action ->
-                        OutlinedButton(
-                            onClick = { actionFeedback = "$action: BlockChyp SDK stub — not yet implemented" },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(action, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    listOf("Capture", "Adjust").forEach { action ->
-                        OutlinedButton(
-                            onClick = { actionFeedback = "$action: BlockChyp SDK stub — not yet implemented" },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(action, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    // Firmware update check stub
                     OutlinedButton(
-                        onClick = { firmwareUpdateAvailable = true },
-                        modifier = Modifier.weight(1f),
+                        onClick = onTestConnection,
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Test connection to terminal" },
+                    ) {
+                        Text("Test", style = MaterialTheme.typography.labelSmall)
+                    }
+                    OutlinedButton(
+                        onClick = onCharge,
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Process a test charge on the terminal" },
+                    ) {
+                        Text("Charge", style = MaterialTheme.typography.labelSmall)
+                    }
+                    OutlinedButton(
+                        onClick = onVoid,
+                        enabled = !uiState.isLoading && uiState.lastTransactionId != null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Void the last transaction" },
+                    ) {
+                        Text("Void", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedButton(
+                        onClick = onCapture,
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Capture signature on terminal" },
+                    ) {
+                        Text("Capture", style = MaterialTheme.typography.labelSmall)
+                    }
+                    OutlinedButton(
+                        onClick = onAdjustTip,
+                        enabled = !uiState.isLoading && uiState.lastTransactionId != null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Adjust tip on last transaction" },
+                    ) {
+                        Text("Adjust", style = MaterialTheme.typography.labelSmall)
+                    }
+                    OutlinedButton(
+                        onClick = onCheckFirmware,
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Check terminal firmware version" },
                     ) {
                         Text("Check FW", style = MaterialTheme.typography.labelSmall)
                     }

@@ -678,4 +678,9 @@ object RetrofitClient {
     @Provides @Singleton fun provideImportApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ImportApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ImportApi::class.java)
     // §51 — Data Export API; manager+-only; 404-tolerant
     @Provides @Singleton fun provideExportApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ExportApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ExportApi::class.java)
+
+    // Phase 4 — BlockChyp payment terminal proxy (BlockChypModule.kt provides the typed
+    // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).
+    // BlockChypApi is provided directly in BlockChypModule to keep terminal-related
+    // bindings co-located. No entry here — see di/BlockChypModule.kt.
 }
