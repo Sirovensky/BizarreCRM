@@ -222,6 +222,7 @@ internal fun draftTypeLabel(type: DraftStore.DraftType): String = when (type) {
     DraftStore.DraftType.TICKET -> "ticket"
     DraftStore.DraftType.CUSTOMER -> "customer"
     DraftStore.DraftType.SMS -> "SMS draft"
+    DraftStore.DraftType.EXPENSE -> "expense"
 }
 
 // ---------------------------------------------------------------------------
