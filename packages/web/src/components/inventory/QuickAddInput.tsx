@@ -52,8 +52,12 @@ export function QuickAddInput({ onAdded, autoFocus, placeholder }: QuickAddInput
       inputRef.current?.focus();
       setTimeout(() => setLastAdded(null), 2000);
     },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.message || 'Failed to add');
+    onError: (e: unknown) => {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      toast.error(msg || 'Failed to add');
     },
   });
 

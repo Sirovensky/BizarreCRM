@@ -1471,6 +1471,4 @@ Do NOT flip `[x]` — web UI consumption still needed to fully close these items
   <!-- meta: scope=web/api; files=packages/web/src/api/types.ts:335-336; fix=define-PosLineItem -->
 
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
-- [ ] SCAN-950. **Several onError callbacks in team/inventory components type the error as `any` — bypasses safe narrowing.**
-  <!-- meta: scope=web/components; files=team/CommissionPeriodLock.tsx:62,73,team/TicketHandoffModal.tsx:65,inventory/QuickAddInput.tsx:55; fix=unknown-and-narrow -->
 
