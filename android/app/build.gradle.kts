@@ -238,6 +238,11 @@ dependencies {
     // codes on-device without a network round-trip. No Android view dependency.
     implementation(libs.zxing.core)
 
+    // SMS Retriever — reads the incoming OTP SMS without READ_SMS permission.
+    // Used by SmsRetrieverHelper + SmsOtpBroadcastReceiver to autofill the
+    // TwoFaVerifyStep field (§2.4 L302).
+    implementation(libs.play.services.auth.api.phone)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

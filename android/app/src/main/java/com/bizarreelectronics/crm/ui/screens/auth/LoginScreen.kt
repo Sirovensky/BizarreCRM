@@ -43,9 +43,12 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
+import android.app.Activity
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
+import com.bizarreelectronics.crm.util.SmsOtpBus
+import com.bizarreelectronics.crm.util.SmsRetrieverHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1869,6 +1872,32 @@ private fun TwoFaVerifyStep(
     onSuccess: () -> Unit,
     onBackupCodeRecovery: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
+
+    // §2.4 L302 — Start the SMS Retriever session when the verify step is shown.
+    // Play Services will deliver the OTP SMS to SmsOtpBroadcastReceiver within
+    // 5 minutes; if it doesn't arrive the user types the code manually (already
+    // works). startRetriever is safe to call multiple times — Play Services
+    // ignores duplicates within an active 5-minute window.
+    LaunchedEffect(Unit) {
+        val activity = context as? Activity
+        if (activity != null) {
+            SmsRetrieverHelper.startRetriever(activity)
+                .addOnFailureListener { e ->
+                    android.util.Log.w("TwoFaVerifyStep", "SmsRetriever start failed", e)
+                }
+        }
+    }
+
+    // §2.4 L302 — Collect OTP codes published by SmsOtpBroadcastReceiver and
+    // auto-fill the TOTP field. The flow is hot (no replay), so only codes
+    // that arrive while this composable is in the backstack are received.
+    LaunchedEffect(Unit) {
+        SmsOtpBus.events.collect { code ->
+            viewModel.updateTotpCode(code)
+        }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
