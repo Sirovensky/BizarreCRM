@@ -579,4 +579,93 @@ class AppPreferences @Inject constructor(
                 encryptedPrefs.edit().putLong("shared_device_current_user_id", value).apply()
             }
         }
+
+    // --- §36 L585–L588 — Morning-open checklist state -----------------------
+    //
+    // Three pref groups track the daily morning-checklist lifecycle:
+    //
+    //  1. [lastMorningChecklistDate]   — ISO-date of the last day a checklist
+    //     session was started (or the date for which the banner was dismissed).
+    //     Used by [MorningOpenCard] to decide whether to show today's banner.
+    //
+    //  2. [morningChecklistDismissedFor] — whether the user dismissed the
+    //     checklist banner without completing it for a given date.
+    //
+    //  3. [morningChecklistCompletedSteps] — set of step IDs that were checked
+    //     off during the checklist session for a given date. Serialised as a
+    //     comma-separated integer string under key
+    //     "morning_checklist_steps_<dateKey>".
+    //
+    // All three keys are plain prefs (not encrypted) — they contain business
+    // operational metadata, not credentials.
+
+    /**
+     * §36 L585 — ISO-date string (yyyy-MM-dd) of the last day the morning
+     * checklist was started or dismissed.  Null on a fresh install.
+     *
+     * Written by [MorningChecklistViewModel] on first screen open or banner
+     * dismiss. Read by [MorningOpenCard] to gate the banner's visibility.
+     */
+    var lastMorningChecklistDate: String?
+        get() = prefs.getString("morning_checklist_last_date", null)
+        set(value) = prefs.edit().putString("morning_checklist_last_date", value).apply()
+
+    /**
+     * §36 L585 — Returns true if the morning-checklist banner was dismissed
+     * (without fully completing it) for [date].
+     *
+     * [date] should be an ISO-date string (yyyy-MM-dd).
+     */
+    fun morningChecklistDismissedFor(date: String): Boolean =
+        prefs.getBoolean("morning_checklist_dismissed_$date", false)
+
+    /**
+     * Mark the morning-checklist banner as dismissed for [date].
+     *
+     * Idempotent. Updates [lastMorningChecklistDate] as a side-effect so
+     * the next comparison does not re-show the banner on the same day.
+     */
+    fun setMorningChecklistDismissed(date: String) {
+        prefs.edit()
+            .putBoolean("morning_checklist_dismissed_$date", true)
+            .putString("morning_checklist_last_date", date)
+            .apply()
+    }
+
+    /**
+     * §36 L588 — Returns the set of step IDs checked off during the morning
+     * checklist for [date].  Empty set when no steps have been completed or
+     * when the pref key is absent.
+     *
+     * [date] should be an ISO-date string (yyyy-MM-dd).
+     */
+    fun morningChecklistCompletedSteps(date: String): Set<Int> {
+        val raw = prefs.getString("morning_checklist_steps_$date", null)
+            ?: return emptySet()
+        return runCatching {
+            raw.split(",")
+                .mapNotNull { it.trim().toIntOrNull() }
+                .toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    /**
+     * §36 L588 — Persist the completion state for the morning checklist.
+     *
+     * Stores [completedSteps] for [dateKey] and records the latest
+     * [lastMorningChecklistDate] for the dashboard trigger check.
+     *
+     * @param dateKey        ISO-date string (yyyy-MM-dd).
+     * @param staffId        ID of the staff member completing the checklist
+     *                       (stored alongside the steps for audit purposes).
+     * @param completedSteps Set of step IDs that were checked off.
+     */
+    fun setMorningChecklistCompleted(dateKey: String, staffId: Long, completedSteps: Set<Int>) {
+        val serialized = completedSteps.joinToString(",")
+        prefs.edit()
+            .putString("morning_checklist_steps_$dateKey", serialized)
+            .putString("morning_checklist_last_date", dateKey)
+            .putLong("morning_checklist_last_staff_$dateKey", staffId)
+            .apply()
+    }
 }

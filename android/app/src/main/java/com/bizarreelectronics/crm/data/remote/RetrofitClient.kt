@@ -648,4 +648,6 @@ object RetrofitClient {
     @Provides @Singleton fun provideDashboardApi(retrofit: Retrofit): DashboardApi = retrofit.create(DashboardApi::class.java)
     // §14.3 L1626-L1631 — break/timesheet/admin-action endpoints (404-tolerant)
     @Provides @Singleton fun provideEmployeeApi(retrofit: Retrofit): EmployeeApi = retrofit.create(EmployeeApi::class.java)
+    // §36 L585–L588 — morning-open checklist; both endpoints 404-tolerant
+    @Provides @Singleton fun provideMorningChecklistApi(retrofit: Retrofit): MorningChecklistApi = retrofit.create(MorningChecklistApi::class.java)
 }

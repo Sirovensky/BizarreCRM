@@ -321,6 +321,9 @@ sealed class Screen(val route: String) {
 
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
+
+    // §36 L585–L588 — Morning-open checklist (staff role, shown once per day).
+    data object MorningChecklist : Screen("morning/checklist")
 }
 
 data class BottomNavItem(
@@ -1363,6 +1366,13 @@ fun AppNavGraph(
                             launchSingleTop = true
                         }
                     },
+                )
+            }
+            // §36 L585–L588 — Morning-open checklist (staff role, shown once per day).
+            composable(Screen.MorningChecklist.route) {
+                com.bizarreelectronics.crm.ui.screens.morning.MorningChecklistScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToRoute = { route -> navController.navigate(route) },
                 )
             }
             composable(Screen.CrashReports.route) {
