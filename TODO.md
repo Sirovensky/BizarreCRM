@@ -706,10 +706,6 @@ Verified working. Not TODOs.
 ### Wave-53 scan-loop findings (2026-04-23) — web/pages inventory+estimates + shared
 - [ ] SCAN-984. **Estimate convert mutation navigates away while concurrent send/approve mutations may still be pending — race condition.**
   <!-- meta: scope=web/pages/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-76,EstimateListPage.tsx:392-394; fix=mutually-disable-all-action-buttons -->
-- [ ] SCAN-986. **Inventory detail standalone `<button>` elements missing type="button" — parent form risk.**
-  <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryDetailPage.tsx:147-168; fix=add-type-button -->
-- [ ] SCAN-987. **Inventory detail `form` state typed as `any` — save mutation ships untyped object.**
-  <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryDetailPage.tsx:23,53,85; fix=define-InventoryItem-interface -->
 - [ ] SCAN-988. **Inventory list icon-only row actions missing aria-label — view/edit/delete unreadable to screen readers.**
   <!-- meta: scope=web/pages/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:~680-720; fix=aria-label-per-action -->
 

@@ -7,6 +7,25 @@ import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
+// Covers every field the detail form reads or writes. Loose `number | string`
+// types on numeric columns mirror the edit-field state shape (inputs return
+// strings before `parseFloat` / `parseInt` finalise them on blur).
+interface InventoryFormItem {
+  id?: number;
+  item_type?: string;
+  name?: string;
+  sku?: string | null;
+  upc?: string | null;
+  description?: string | null;
+  retail_price?: number | string | null;
+  cost_price?: number | string | null;
+  wholesale_price?: number | string | null;
+  tax_class_id?: number | string | null;
+  quantity?: number | string | null;
+  reorder_level?: number | string | null;
+  [key: string]: unknown;
+}
+
 export function InventoryDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -20,7 +39,7 @@ export function InventoryDetailPage() {
   const [adjustType, setAdjustType] = useState('adjustment');
   const [adjustNotes, setAdjustNotes] = useState('');
   const [showAdjust, setShowAdjust] = useState(false);
-  const [form, setForm] = useState<any>(null);
+  const [form, setForm] = useState<InventoryFormItem | null>(null);
   const [barcodeUrl, setBarcodeUrl] = useState<string | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
 
@@ -50,7 +69,7 @@ export function InventoryDetailPage() {
   const taxClasses: any[] = taxData?.data?.data || [];
 
   const updateMutation = useMutation({
-    mutationFn: (d: any) => inventoryApi.update(itemId, d),
+    mutationFn: (d: InventoryFormItem) => inventoryApi.update(itemId, d as Parameters<typeof inventoryApi.update>[1]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -82,6 +101,7 @@ export function InventoryDetailPage() {
   const f = form || item;
 
   const handleSave = () => {
+    if (!form) return;
     updateMutation.mutate(form);
   };
 
@@ -153,10 +173,10 @@ export function InventoryDetailPage() {
           <div className="flex items-center gap-2">
             {editMode ? (
               <>
-                <button onClick={() => { setEditMode(false); setForm(item); }} className="px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                <button type="button" aria-label="Cancel edit" onClick={() => { setEditMode(false); setForm(item); }} className="px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
-                <button onClick={handleSave} disabled={updateMutation.isPending} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                <button type="button" onClick={handleSave} disabled={updateMutation.isPending} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                   {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save
                 </button>
@@ -164,17 +184,17 @@ export function InventoryDetailPage() {
             ) : (
               <>
                 {(item.sku || item.upc) && (
-                  <button onClick={handlePrintBarcode} disabled={barcodeLoading} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+                  <button type="button" onClick={handlePrintBarcode} disabled={barcodeLoading} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
                     {barcodeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                     Print Barcode
                   </button>
                 )}
                 {item.item_type !== 'service' && (
-                  <button onClick={() => setShowAdjust(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                  <button type="button" onClick={() => setShowAdjust(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                     Adjust Stock
                   </button>
                 )}
-                <button onClick={() => { setForm(item); setEditMode(true); }} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={() => { setForm(item); setEditMode(true); }} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
                   <Pencil className="h-4 w-4" /> Edit
                 </button>
               </>
@@ -333,8 +353,8 @@ export function InventoryDetailPage() {
                   <input value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-                  <button onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
+                  <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                     {adjustMutation.isPending ? 'Saving...' : 'Apply'}
                   </button>
                 </div>
