@@ -125,20 +125,25 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
   // SEC-M45: reject idle sessions. IDLE_LIMIT_MS = 4 h. last_used_at
   // is updated on every request below, so active users are never
   // kicked. Null last_used_at (shouldn't happen — column is set on
-  // insert) is treated as 'never used' and passes through.
+  // insert) is treated as expired (fail-safe).
   const IDLE_LIMIT_MS = 4 * 60 * 60 * 1000;
-  if (session.last_used_at) {
-    // SCAN-632: last_used_at is stored as datetime('now','utc') which always
-    // produces UTC text (e.g. "2024-01-02 15:30:00"). Replace space→'T' and
-    // append 'Z' so Date.parse treats it as UTC regardless of host timezone.
-    const lastUsedMs = Date.parse(String(session.last_used_at).replace(' ', 'T') + 'Z');
-    if (Number.isFinite(lastUsedMs) && Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
-      // Evict the stale session so reuse of the token still fails on
-      // the next request even if the expiry hasn't hit.
-      await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
-      res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
-      return;
-    }
+  // SCAN-720: robust parse — handles "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM:SS",
+  // with or without 'Z'. All DB values are assumed UTC. Parse failure → null → expire.
+  function parseLastUsed(raw: string | null): number | null {
+    if (!raw) return null;
+    let iso = raw.includes('T') ? raw : raw.replace(' ', 'T');
+    if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) iso += 'Z';
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return null;
+    return ts;
+  }
+  const lastUsedMs = parseLastUsed(session.last_used_at as string | null);
+  if (lastUsedMs === null || Date.now() - lastUsedMs > IDLE_LIMIT_MS) {
+    // Evict the stale session so reuse of the token still fails on
+    // the next request even if the expiry hasn't hit.
+    await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
+    res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
+    return;
   }
 
   // Update last_used_at

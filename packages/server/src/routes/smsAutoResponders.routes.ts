@@ -58,6 +58,38 @@ function validateId(raw: unknown, field = 'id'): number {
 }
 
 // ---------------------------------------------------------------------------
+// ReDoS guard helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Heuristic ReDoS guard: reject patterns with nested-quantifier "(…+)+" /
+ * "(…*)+" shapes or excessive alternations that commonly cause catastrophic
+ * backtracking. Not exhaustive — a proper safe-regex library (e.g., safe-regex2)
+ * is preferable but would require a dep bump.
+ */
+function validateMatchPattern(raw: unknown): RegExp {
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new AppError('match pattern is required', 400);
+  }
+  if (raw.length > 500) {
+    throw new AppError('match pattern exceeds 500 chars', 400);
+  }
+  // Reject nested quantifiers: (X+)+, (X*)+, (X+)*, (X*)*
+  if (/\([^)]*[+*][^)]*\)[+*]/.test(raw)) {
+    throw new AppError('match pattern has nested quantifiers (ReDoS risk)', 400);
+  }
+  // Reject excessive alternation with overlapping branches
+  if (/(\|[^|]*){10,}/.test(raw)) {
+    throw new AppError('match pattern has too many alternations (ReDoS risk)', 400);
+  }
+  try {
+    return new RegExp(raw, 'i');
+  } catch {
+    throw new AppError('match pattern is not a valid regex', 400);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Validate rule_json shape and serialize
 // ---------------------------------------------------------------------------
 
@@ -99,11 +131,7 @@ function validateAndSerializeRuleJson(raw: unknown): string {
     throw new AppError('rule_json.match exceeds 500 characters', 400);
   }
   if (obj.type === 'regex') {
-    try {
-      new RegExp(obj.match);
-    } catch {
-      throw new AppError('rule_json.match is not a valid regular expression', 400);
-    }
+    validateMatchPattern(obj.match);
   }
   if (obj.case_sensitive !== undefined && typeof obj.case_sensitive !== 'boolean') {
     throw new AppError('rule_json.case_sensitive must be a boolean', 400);
