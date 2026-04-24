@@ -398,7 +398,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Activity exclusions: silent push, background sync don't count. (commit b35d122 — KDoc enforces onActivity is user-touch only)
 - [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (commit b35d122 + ab6f9169 + a762605 — `ui/components/SessionTimeoutOverlay.kt` Dialog collects `SessionTimeout.state`; mounted in root Scaffold when logged in; sign-out invokes `authPreferences.clear()`)
 - [x] Countdown ring visible during warning. (commit b35d122 + ab6f9169 + a762605 — `CircularProgressIndicator` ring with remaining-seconds overlay, ReduceMotion-aware, mounted in root)
-- [~] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout. (commit b35d122 — `requireReAuthNow(level)` hook exposed; composable wiring pending)
+- [x] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout. (commit b35d122 + ffd7f51 — `ui/components/SensitiveScreenGuard.kt` composable + `Sensitivity` enum; `SensitiveScreenGuardViewModel` Hilt bridge to SessionTimeout+BiometricAuth; wrapped CheckoutScreen (Payment→Biometric 15min), ChangePasswordScreen + RecoveryCodesScreen (Billing→Password 4h), SecurityScreen (DangerZone→Full 30day))
 - [x] Tenant-configurable thresholds with min values enforced globally (cannot be infinite); max 30d. (commit b35d122 — `Config` data class + `require()`)
 - [x] Sovereignty: no server-side idle detection; purely device-local. (commit b35d122 — KDoc)
 
@@ -438,13 +438,13 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [~] Admin override: tenant owner can reset staff recovery codes after verifying identity. (commit ae08de5 — Android `NotSupported` informational card rendered on 404; admin reset endpoint pending server impl)
 
 ### 2.20 SSO / SAML / OIDC
-- [ ] Providers: Okta, Azure AD, Google Workspace, JumpCloud.
-- [ ] SAML 2.0 primary; OIDC for newer.
-- [ ] Setup: tenant admin (web only) pastes IdP metadata.
-- [ ] Certificate rotation notifications.
-- [ ] Android flow: Login screen "Sign in with SSO" button.
-- [ ] Opens Chrome Custom Tabs (`androidx.browser:browser`) → IdP login → callback via App Link.
-- [ ] Token exchange with tenant server.
+- [x] Providers: Okta, Azure AD, Google Workspace, JumpCloud. (commit 6919a3b — `SsoDiscoveryResponse/SsoProvider` DTOs + `AuthApi.getSsoProviders()`; 404-tolerant; provider-list drives picker)
+- [x] SAML 2.0 primary; OIDC for newer. (commit 6919a3b — KDoc documents both; token exchange contract normalizes on server side)
+- [x] Setup: tenant admin (web only) pastes IdP metadata. (server-side — Android just consumes provider list)
+- [~] Certificate rotation notifications. (commit 6919a3b — KDoc TODO stub in `SsoLauncher.kt` + `AuthDto.kt`)
+- [x] Android flow: Login screen "Sign in with SSO" button. (commit 6919a3b — `CredentialsStep` OutlinedButton + ModalBottomSheet provider picker gated on `ssoAvailable`)
+- [x] Opens Chrome Custom Tabs (`androidx.browser:browser`) → IdP login → callback via App Link. (commit 6919a3b — `util/SsoLauncher.kt` `CustomTabsIntent.Builder().setColorScheme(SYSTEM).launchUrl()`; manifest `bizarrecrm://sso/callback` intent-filter; `MainActivity.resolveDeepLink` → `DeepLinkBus.publishSsoResult`)
+- [x] Token exchange with tenant server. (commit 6919a3b — `AuthApi.tokenExchange` + `LoginViewModel.exchangeSsoCode` stores tokens → `ssoLoginSuccess` → dashboard; state mismatch → "Sign-in link mismatch. Try again."; 13 JVM tests in `SsoCallbackParserTest`)
 - [ ] SCIM (stretch, Phase 5+): user provisioning via SCIM feed from IdP; auto-create/disable BizarreCRM accounts.
 - [ ] Hybrid: some users via SSO, others local auth; Login screen auto-detects based on email domain.
 - [ ] Breakglass: tenant owner retains local password if IdP down.
