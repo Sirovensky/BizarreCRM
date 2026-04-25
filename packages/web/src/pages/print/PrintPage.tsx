@@ -905,6 +905,13 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
   const customer: PrintCustomer = ticket.customer || {};
   const devices: PrintDevice[] = ticket.devices || [];
   const storeName = config?.store_name || 'Repair Shop';
+  // WEB-FJ-005 (Fixer-A5 2026-04-25): honor a `receipt_cfg_redact_phone_label`
+  // store-config toggle so the 2-inch device label can drop the customer
+  // phone — it sticks to the device on the workshop bench and is visible
+  // to anyone who handles or finds the device after pickup. Default OFF
+  // (phone shown) to match prior behaviour; opt-in for CCPA/GDPR
+  // data-minimization or per-shop policy.
+  const redactPhoneOnLabel = (config?.['receipt_cfg_redact_phone_label'] ?? '0') === '1';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '2in', justifyContent: 'space-between', padding: '3mm', fontFamily: 'Arial, sans-serif', fontSize: 9 }}>
@@ -912,7 +919,7 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
         <div>
           <div style={{ fontWeight: 'bold', fontSize: '1.3em' }}>{ticket.order_id}</div>
           <div style={{ fontWeight: 'bold' }}>{customer.first_name} {customer.last_name}</div>
-          <div>{formatPhone(customer.mobile || customer.phone)}</div>
+          {!redactPhoneOnLabel && <div>{formatPhone(customer.mobile || customer.phone)}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <div>{formatDate(ticket.created_at)}</div>

@@ -45,7 +45,17 @@ export function formatStorePhoneAsYouType(value: string): string {
   }
   // More than 10 digits and doesn't fit the US pattern — don't try to format,
   // let the user enter whatever they need (international, extensions, etc.)
-  if (digits.length > 11) return value;
+  // WEB-FD-024 (Fixer-C5 2026-04-25): require an explicit "+" prefix for
+  // non-US numbers so a paste of "447911123456" (UK without +) becomes
+  // "+447911123456" instead of being silently echoed without country-code
+  // semantics. If the user already typed a "+", preserve their input
+  // verbatim (we don't presume to reformat international patterns we don't
+  // own).
+  if (digits.length > 11) {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('+')) return trimmed;
+    return `+${digits}`;
+  }
 
   if (digits.length === 0) return '';
   if (digits.length <= 3) return `+1 (${digits}`;

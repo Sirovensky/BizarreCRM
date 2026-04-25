@@ -243,6 +243,23 @@ export function useWebSocket() {
     const token = getToken();
     if (!token) return; // Not authenticated
 
+    // WEB-FD-003 (Fixer-A5 2026-04-25): refuse to ship the access-token as
+    // a plaintext frame over `ws:`. In production builds we hard-fail any
+    // non-https origin so the JWT is never put on an unencrypted socket
+    // (was: token in `JSON.stringify({type:'auth',token})` valid for the
+    // full refresh window if intercepted by a corporate-MITM/proxy).
+    // `localhost` and `127.0.0.1` stay permitted so dev/Vite still works.
+    if (
+      import.meta.env.PROD &&
+      window.location.protocol === 'http:' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      // eslint-disable-next-line no-console
+      console.error('[ws] refusing to connect over plaintext ws: in production');
+      return;
+    }
+
     // Clean up any existing connection
     if (wsRef.current) {
       wsRef.current.onclose = null; // Prevent reconnect loop

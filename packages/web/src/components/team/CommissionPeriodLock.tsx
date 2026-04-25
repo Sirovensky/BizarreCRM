@@ -93,10 +93,33 @@ export function CommissionPeriodLock() {
     },
   });
 
-  function downloadCsv(periodId: number) {
-    // Open in a new tab — the server returns text/csv with Content-Disposition.
-    const url = `/api/v1/team/payroll/export.csv?period=${periodId}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  async function downloadCsv(periodId: number) {
+    // WEB-FD-021 (Fixer-C5 2026-04-25): replaced `window.open(/api/v1/...)`
+    // with an axios blob fetch + anchor-trigger download so the request
+    // carries the bearer header that the rest of the app uses. The previous
+    // new-tab approach relied on cookie auth, which 401s in bearer-only
+    // tenants. Same pattern used by other CSV/PDF exports per WEB-FB-006.
+    try {
+      const res = await api.get(`/team/payroll/export.csv`, {
+        params: { period: periodId },
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data as BlobPart], { type: 'text/csv' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `payroll-period-${periodId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after the click so the navigation/download has a chance to
+      // start; 60s mirrors WEB-FJ-017 wallet-pass blob-revoke cadence.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[CommissionPeriodLock] CSV export failed', err);
+      toast.error('CSV export failed');
+    }
   }
 
   return (

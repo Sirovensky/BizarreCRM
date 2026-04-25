@@ -53,12 +53,34 @@ function TvStatusBadge({ status }: { status: { name: string; color: string } }) 
 }
 
 // ─── Main Component ─────────────────────────────────────────────────
+// WEB-FK-011 (Fixer-B5 2026-04-25): pause polling when the lobby TV cabinet is
+// asleep / the tab is hidden. Always-on lobby boards previously fired 2880
+// polls/day per tenant per location regardless of whether the screen was lit;
+// `document.visibilityState` listening cuts that to ~zero while hidden, then
+// resumes the 30s cadence on visibility-change. Saves server quota on the
+// multi-tenant deployment AND iPad battery for iPad-as-POS deployments.
+function useIsDocumentVisible(): boolean {
+  const [visible, setVisible] = useState(
+    typeof document === 'undefined' ? true : document.visibilityState !== 'hidden',
+  );
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handler = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+  return visible;
+}
+
 export function TvDisplayPage() {
   const now = useLiveClock();
+  const isVisible = useIsDocumentVisible();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tv-display'],
     queryFn: () => ticketApi.tvDisplay(),
-    refetchInterval: 30000,
+    // Pass `false` while hidden so React Query halts the polling timer.
+    refetchInterval: isVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
   });
   const { data: storeData } = useQuery({
     queryKey: ['store-info-tv'],

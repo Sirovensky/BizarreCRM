@@ -122,15 +122,12 @@ export function CatalogPage() {
     catSearchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 350);
   };
 
-  // Queries
-  const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ['catalog-stats'],
-    queryFn: catalogApi.getStats,
-    refetchInterval: 5000, // poll while syncing
-    staleTime: 4500, // just under the 5s interval — no redundant refetch on remount
-  });
-  const stats = (statsData?.data?.data as any) || {};
-
+  // WEB-FH-020 (Fixer-B5 2026-04-25): only poll catalog-stats while there is
+  // an active job. Previously the page burned a stats refetch every 5s for the
+  // entire session length even after sync finished — wasted server quota for
+  // multi-tenant deployments + drained iPad battery on POS-as-iPad. We still
+  // need jobs to poll (so we discover NEW jobs spawned externally) but the
+  // expensive stats roll-up sleeps when nothing is running/pending.
   const { data: jobsData } = useQuery({
     queryKey: ['catalog-jobs'],
     queryFn: catalogApi.getJobs,
@@ -138,6 +135,16 @@ export function CatalogPage() {
     staleTime: 2500, // just under the 3s interval
   });
   const jobs: CatalogJob[] = Array.isArray(jobsData?.data?.data) ? (jobsData?.data?.data as CatalogJob[]) : [];
+  const hasActiveJob = jobs.some((j) => j.status === 'running' || j.status === 'pending');
+
+  // Queries
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ['catalog-stats'],
+    queryFn: catalogApi.getStats,
+    refetchInterval: hasActiveJob ? 5000 : false, // sleep when no sync in flight
+    staleTime: 4500, // just under the 5s interval — no redundant refetch on remount
+  });
+  const stats = (statsData?.data?.data as any) || {};
 
   const { data: catalogData, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog-search', debouncedSearch, activeSource, deviceModelId],

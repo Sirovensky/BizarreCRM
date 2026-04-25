@@ -60,7 +60,7 @@ export function ExpensesPage() {
   // WEB-FF-007 (Fixer-A2 2026-04-25): track field-level errors so screen
   // readers get aria-invalid + aria-describedby on bad inputs instead of a
   // toast.error that's invisible to AT.
-  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; category?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -98,13 +98,20 @@ export function ExpensesPage() {
   });
 
   const handleSubmit = () => {
-    const errs: { amount?: string; category?: string } = {};
+    const errs: { amount?: string; category?: string; date?: string } = {};
     if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Valid amount required';
     if (!form.category) errs.category = 'Category required';
-    if (errs.amount || errs.category) {
+    // WEB-FK-013: belt-and-suspenders date guard — `max=` HTML attr is only a
+    // browser hint; reject future-dated and pre-1900 expenses server-side too.
+    if (form.date) {
+      const today = localToday();
+      if (form.date > today) errs.date = 'Date cannot be in the future';
+      else if (form.date < '1900-01-01') errs.date = 'Date must be on or after 1900-01-01';
+    }
+    if (errs.amount || errs.category || errs.date) {
       setFieldErrors(errs);
       // Toast preserved for sighted users; AT users now also get the inline message.
-      toast.error(errs.amount || errs.category || 'Validation failed');
+      toast.error(errs.amount || errs.category || errs.date || 'Validation failed');
       return;
     }
     setFieldErrors({});
@@ -201,8 +208,17 @@ export function ExpensesPage() {
                 className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.amount ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
               {fieldErrors.amount && <p id="expense-amount-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.amount}</p>}
             </div>
-            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+            {/* WEB-FK-013 (Fixer-B5 2026-04-25): clamp date input to [1900-01-01, today]
+                so a stray keystroke can't record an expense dated 2099 (polluting next-
+                year drill-downs forever) or 1700 (slipping past audit windows). */}
+            <div>
+              <input type="date" value={form.date} min="1900-01-01" max={localToday()}
+                onChange={(e) => { setForm({ ...form, date: e.target.value }); if (fieldErrors.date) setFieldErrors((p) => ({ ...p, date: undefined })); }}
+                aria-invalid={fieldErrors.date ? true : undefined}
+                aria-describedby={fieldErrors.date ? 'expense-date-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.date ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
+              {fieldErrors.date && <p id="expense-date-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.date}</p>}
+            </div>
             <input type="text" placeholder="Description" value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />

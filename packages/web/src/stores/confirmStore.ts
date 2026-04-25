@@ -37,9 +37,19 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
       // and any code awaiting it leaks its closure over the session. The
       // "cancel previous" semantics match what users perceive — the second
       // call visually replaces the first dialog.
+      //
+      // WEB-FD-019 (Fixer-C5 2026-04-25): defer the prior-resolver settlement
+      // to a microtask via `queueMicrotask` so the new dialog state is set
+      // and React commits its mount before the prior `await confirm(...)`
+      // chain resumes. If the awaiter synchronously triggers another
+      // confirm() in its `.then(...)` continuation, the second confirm()
+      // runs against the freshly-mounted slot rather than overwriting it
+      // before the user sees the first dialog.
       const prev = get().resolve;
       if (prev) {
-        try { prev(false); } catch { /* best-effort */ }
+        queueMicrotask(() => {
+          try { prev(false); } catch { /* best-effort */ }
+        });
       }
       set({
         open: true,

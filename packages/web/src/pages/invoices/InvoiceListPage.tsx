@@ -1,8 +1,14 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+// WEB-FW-003 (Fixer-A5 2026-04-25): split recharts (~500kB) into its own
+// chunk so it loads AFTER the invoice list is paintable. The pies render
+// inside a fixed 7rem box that we keep reserved during Suspense fallback,
+// so dropping the chart in late doesn't cause layout shift.
+const InvoicePieChart = lazy(() =>
+  import('./InvoicePieCharts').then((m) => ({ default: m.InvoicePieChart })),
+);
 import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -250,19 +256,12 @@ export function InvoiceListPage() {
               <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Status</h3>
               <div className="flex items-center gap-4">
                 <div className="w-28 h-28">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {/* WEB-FF-021: key by entry.name (status, e.g. "paid"/"unpaid") so React reconciles cell→color
-                            pairings stably across poll-driven refreshes. Index keys flicker when the dataset shrinks
-                            (e.g. all "draft" rows resolve and the slice drops out). */}
-                        {statusPieData.map((entry) => (
-                          <Cell key={entry.name} fill={PIE_COLORS_STATUS[entry.name] || '#94a3b8'} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [value, 'Count']} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={<div className="w-full h-full" aria-hidden="true" />}>
+                    <InvoicePieChart
+                      data={statusPieData}
+                      colorFor={(entry) => PIE_COLORS_STATUS[entry.name] || '#94a3b8'}
+                    />
+                  </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
                   {statusPieData.map((s, i) => (
@@ -281,18 +280,12 @@ export function InvoiceListPage() {
               <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Methods</h3>
               <div className="flex items-center gap-4">
                 <div className="w-28 h-28">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={methodPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {/* WEB-FF-021: key by entry.name (method, e.g. "card"/"cash") so slice→color identity is
-                            stable when one method drops to zero on refresh. Color still cycles by index for variety. */}
-                        {methodPieData.map((entry, i) => (
-                          <Cell key={entry.name} fill={PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [value, 'Count']} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={<div className="w-full h-full" aria-hidden="true" />}>
+                    <InvoicePieChart
+                      data={methodPieData}
+                      colorFor={(_entry, i) => PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]}
+                    />
+                  </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
                   {methodPieData.map((m, i) => (
