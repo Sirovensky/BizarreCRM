@@ -494,6 +494,23 @@ fun AppNavGraph(
     // destination — so we keep the boolean here rather than in the back-stack.
     var showCommandPalette by remember { mutableStateOf(false) }
 
+    // POS session reset confirmation. When the cashier is already inside the
+    // POS sub-flow (cart / tender / receipt) and taps the POS bottom-nav tab,
+    // we prompt: 'Continue' (pop back to entry, keep session) vs 'Start over'
+    // (resetSession + nav to entry). Without this prompt, the bottom nav's
+    // restoreState=true just put them right back on the cart.
+    var showPosResetDialog by remember { mutableStateOf(false) }
+    val posCoordinator = remember(navController) {
+        runCatching {
+            val ctx = navController.context
+            val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                ctx.applicationContext,
+                com.bizarreelectronics.crm.ui.navigation.PosCoordinatorEntryPoint::class.java,
+            )
+            entry.posCoordinator()
+        }.getOrNull()
+    }
+
     // §32.5 — log every nav route change so the breadcrumb tail in any
     // future crash log shows the user's path leading up to the throwable.
     LaunchedEffect(currentRoute) {
@@ -707,6 +724,18 @@ fun AppNavGraph(
                                         launchSingleTop = true
                                         restoreState = false
                                     }
+                                } else if (item.screen == Screen.Pos &&
+                                    currentRoute in setOf(
+                                        Screen.PosCart.route,
+                                        Screen.PosTender.route,
+                                        Screen.Scanner.route,
+                                    )
+                                ) {
+                                    // Already deep in POS sub-flow — surface
+                                    // the reset/continue prompt instead of
+                                    // restoring the cart screen straight back
+                                    // (which is what restoreState=true did).
+                                    showPosResetDialog = true
                                 } else {
                                     navController.navigate(item.screen.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {
@@ -2224,6 +2253,42 @@ fun AppNavGraph(
                     navController.navigate(route)
                 },
                 onDismiss = { showCommandPalette = false },
+            )
+        }
+
+        if (showPosResetDialog) {
+            val session = posCoordinator?.session?.collectAsState()?.value
+            val lineCount = session?.lines?.size ?: 0
+            val total = session?.totalCents ?: 0L
+            val totalLabel = "${'$'}${total / 100}.${(total % 100).toString().padStart(2, '0')}"
+            AlertDialog(
+                onDismissRequest = { showPosResetDialog = false },
+                title = { Text("POS session in progress") },
+                text = {
+                    Text(
+                        if (lineCount == 0) "Cart is empty. Restart with a fresh customer?"
+                        else "$lineCount item${if (lineCount == 1) "" else "s"} · $totalLabel in cart. " +
+                                "Continue the current sale or start over with a fresh cart?"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        // Start over: clear coordinator session + nav to entry root.
+                        posCoordinator?.resetSession()
+                        showPosResetDialog = false
+                        navController.navigate(Screen.Pos.route) {
+                            popUpTo(Screen.Pos.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }) { Text("Start over") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        // Continue: pop back to PosEntry, keep session intact.
+                        showPosResetDialog = false
+                        navController.popBackStack(Screen.Pos.route, inclusive = false)
+                    }) { Text("Continue") }
+                },
             )
         }
     }
