@@ -1788,12 +1788,25 @@ fun AppNavGraph(
             }
             composable(Screen.GlobalSearch.route) {
                 GlobalSearchScreen(
-                    onResult = { type, id ->
+                    onResult = { type, id, secondaryKey ->
                         when (type) {
-                            "ticket" -> navController.navigate(Screen.TicketDetail.createRoute(id))
-                            "customer" -> navController.navigate(Screen.CustomerDetail.createRoute(id))
-                            "invoice" -> navController.navigate(Screen.InvoiceDetail.createRoute(id))
-                            "inventory" -> navController.navigate(Screen.InventoryDetail.createRoute(id))
+                            "ticket"      -> navController.navigate(Screen.TicketDetail.createRoute(id))
+                            "customer"    -> navController.navigate(Screen.CustomerDetail.createRoute(id))
+                            "invoice"     -> navController.navigate(Screen.InvoiceDetail.createRoute(id))
+                            "inventory"   -> navController.navigate(Screen.InventoryDetail.createRoute(id))
+                            "employee"    -> navController.navigate(Screen.EmployeeDetail.createRoute(id))
+                            "lead"        -> navController.navigate(Screen.LeadDetail.createRoute(id))
+                            // Appointment — no detail route yet; land on list
+                            "appointment" -> navController.navigate(Screen.Appointments.route)
+                            // SMS thread — keyed by phone number, not numeric id
+                            "sms"         -> {
+                                val phone = secondaryKey
+                                if (!phone.isNullOrBlank()) {
+                                    navController.navigate(Screen.SmsThread.createRoute(phone))
+                                } else {
+                                    navController.navigate(Screen.Messages.route)
+                                }
+                            }
                         }
                     },
                 )

@@ -1,11 +1,16 @@
 package com.bizarreelectronics.crm.ui.screens.search
 
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -20,284 +25,168 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
-import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
-import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
-import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
-import com.bizarreelectronics.crm.data.remote.api.SearchApi
+import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
-import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
-import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
-import com.bizarreelectronics.crm.util.formatPhoneDisplay
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-data class SearchResult(
-    val type: String,
-    val id: Long,
-    val title: String,
-    val subtitle: String,
-)
+// ---------------------------------------------------------------------------
+// GlobalSearchScreen
+// ---------------------------------------------------------------------------
 
-data class GlobalSearchUiState(
-    val query: String = "",
-    val results: List<SearchResult> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null,
-    val hasSearched: Boolean = false,
-    /**
-     * §18.1 recent-searches cache. Rendered as chips on the idle state so
-     * users can re-run a prior lookup in one tap. See
-     * [com.bizarreelectronics.crm.util.RecentSearches] for dedupe + cap.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlobalSearchScreen(
+    /** Called when the user taps a result.
+     *  [type] one of: customer | ticket | invoice | inventory | employee | lead | appointment | sms
+     *  [id] numeric PK (0 for sms — use [secondaryKey] instead)
+     *  [secondaryKey] phone number for sms results, null for all others
      */
-    val recentSearches: List<String> = emptyList(),
-)
+    onResult: (type: String, id: Long, secondaryKey: String?) -> Unit,
+    viewModel: GlobalSearchViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
-@OptIn(FlowPreview::class)
-@HiltViewModel
-class GlobalSearchViewModel @Inject constructor(
-    private val searchApi: SearchApi,
-    private val serverMonitor: ServerReachabilityMonitor,
-    private val ticketDao: TicketDao,
-    private val customerDao: CustomerDao,
-    private val inventoryDao: InventoryDao,
-    private val appPreferences: AppPreferences,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(
-        // §18.1 — seed with whatever the last session cached so the chips
-        // appear instantly when the user opens search.
-        GlobalSearchUiState(recentSearches = appPreferences.recentSearches),
-    )
-    val state = _state.asStateFlow()
-
-    private val _queryFlow = MutableStateFlow("")
-
-    init {
-        viewModelScope.launch {
-            _queryFlow
-                .debounce(300L)
-                .distinctUntilChanged()
-                .filter { it.isNotBlank() }
-                .collectLatest { query -> performSearch(query) }
+    // Voice search launcher — item 6
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val text = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+        if (!text.isNullOrBlank()) {
+            viewModel.updateQuery(text)
+            viewModel.executeSearch()
         }
     }
 
-    /** §18.1 — user tapped a recent-search chip; hydrate the field + run. */
-    fun onRecentTapped(query: String) {
-        updateQuery(query)
-        executeSearch()
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
     }
 
-    /** §18.1 — user tapped "Clear" on the recent-searches row. */
-    fun clearRecentSearches() {
-        appPreferences.clearRecentSearches()
-        _state.value = _state.value.copy(recentSearches = emptyList())
+    // Save-query dialog — item 8
+    if (state.showSaveQueryDialog) {
+        SaveQueryDialog(
+            initialName = state.query.take(40),
+            onSave = { name -> viewModel.saveQuery(name) },
+            onDismiss = { viewModel.dismissSaveQueryDialog() },
+        )
     }
 
-    fun updateQuery(value: String) {
-        _state.value = _state.value.copy(query = value)
-        _queryFlow.value = value
-        if (value.isBlank()) {
-            _state.value = _state.value.copy(
-                results = emptyList(),
-                hasSearched = false,
-                error = null,
+    Scaffold(
+        modifier = Modifier.imePadding(),
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+                title = {
+                    InlineSearchField(
+                        query = state.query,
+                        onQueryChange = viewModel::updateQuery,
+                        onSearch = {
+                            focusManager.clearFocus()
+                            viewModel.executeSearch()
+                        },
+                        onVoice = {
+                            val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Say something to search…")
+                            }
+                            runCatching { voiceLauncher.launch(intent) }
+                        },
+                        focusRequester = focusRequester,
+                    )
+                },
+                actions = {
+                    if (state.query.isNotBlank()) {
+                        // Pin/save the current query — item 8
+                        IconButton(onClick = { viewModel.requestSaveCurrentQuery() }) {
+                            Icon(
+                                Icons.Default.PushPin,
+                                contentDescription = "Save search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
             )
-        }
-    }
-
-    /**
-     * D5-6: trigger an immediate search bypassing the 300ms debounce. Wired
-     * to KeyboardActions(onSearch = ...) so tapping the magnifying glass on
-     * the native keyboard executes the search instead of doing nothing. The
-     * standard reactive debounced path keeps running for typed input; this
-     * just short-circuits the wait.
-     */
-    fun executeSearch() {
-        val current = _state.value.query.trim()
-        if (current.isBlank()) return
-        viewModelScope.launch { performSearch(current) }
-    }
-
-    private suspend fun performSearch(query: String) {
-        _state.value = _state.value.copy(isLoading = true, error = null)
-
-        if (serverMonitor.isEffectivelyOnline.value) {
-            try {
-                val response = searchApi.globalSearch(query)
-                val data = response.data
-                val results = mutableListOf<SearchResult>()
-
-                if (data != null) {
-                    parseResultList(data["customers"], "customer")?.let { results.addAll(it) }
-                    parseResultList(data["tickets"], "ticket")?.let { results.addAll(it) }
-                    parseResultList(data["inventory"], "inventory")?.let { results.addAll(it) }
-                    parseResultList(data["invoices"], "invoice")?.let { results.addAll(it) }
-                }
-
-                // §18.1 — only cache the query once we know it returned a
-                // server response. Zero results is still a valid "I asked
-                // for this" signal, so no result-count gate here.
-                appPreferences.addRecentSearch(query)
-                _state.value = _state.value.copy(
-                    results = results,
-                    isLoading = false,
-                    hasSearched = true,
-                    recentSearches = appPreferences.recentSearches,
-                )
-                return
-            } catch (_: Exception) {
-                // Fall through to offline search
-            }
-        }
-
-        // Offline: search across local Room DAOs
-        try {
-            val results = mutableListOf<SearchResult>()
-
-            // Search customers
-            customerDao.search(query).firstOrNull()?.forEach { c ->
-                val name = listOfNotNull(c.firstName, c.lastName).joinToString(" ").trim().ifBlank { "Customer #${c.id}" }
-                // CROSS8: display phone with the canonical +1 (XXX)-XXX-XXXX format.
-                val formattedPhone = (c.phone ?: c.mobile)?.let { formatPhoneDisplay(it) }?.takeIf { it.isNotBlank() }
-                val contact = listOfNotNull(formattedPhone, c.email).joinToString(" | ").ifBlank { "No contact info" }
-                results.add(SearchResult(type = "customer", id = c.id, title = name, subtitle = contact))
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            // item 11 — offline banner
+            if (!state.isOnline) {
+                OfflineBanner()
             }
 
-            // Search tickets
-            ticketDao.search(query).firstOrNull()?.forEach { t ->
-                val title = t.orderId.ifBlank { "T-${t.id}" }
-                val subtitle = listOfNotNull(t.statusName, t.customerName).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Ticket" }
-                results.add(SearchResult(type = "ticket", id = t.id, title = title, subtitle = subtitle))
-            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    // Idle
+                    state.query.isBlank() -> {
+                        IdleState(
+                            recentSearches = state.recentSearches,
+                            savedQueries = state.savedQueries,
+                            onRecentTapped = viewModel::onRecentTapped,
+                            onClearRecents = viewModel::clearRecentSearches,
+                            onSavedQueryTapped = viewModel::onSavedQueryTapped,
+                            onRemoveSavedQuery = viewModel::removeSavedQuery,
+                        )
+                    }
 
-            // Search inventory
-            inventoryDao.search(query).firstOrNull()?.forEach { i ->
-                val title = i.name.ifBlank { "Item #${i.id}" }
-                val subtitle = listOfNotNull(
-                    i.sku?.let { "SKU: $it" },
-                    "Stock: ${i.inStock}",
-                ).joinToString(" | ").ifBlank { "Inventory item" }
-                results.add(SearchResult(type = "inventory", id = i.id, title = title, subtitle = subtitle))
-            }
+                    // item 10 — shimmer while loading
+                    state.isLoading -> {
+                        BrandSkeleton(
+                            rows = 8,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
 
-            // §18.1 — also cache the offline-path query; a user who's
-            // offline still benefits from the chip next time.
-            appPreferences.addRecentSearch(query)
-            _state.value = _state.value.copy(
-                results = results,
-                isLoading = false,
-                hasSearched = true,
-                recentSearches = appPreferences.recentSearches,
-            )
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                error = e.message ?: "Search failed",
-                hasSearched = true,
-            )
-        }
-    }
+                    state.error != null -> {
+                        ErrorState(
+                            message = state.error ?: "Search failed",
+                            onRetry = { viewModel.executeSearch() },
+                        )
+                    }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun parseResultList(raw: Any?, type: String): List<SearchResult>? {
-        val list = raw as? List<*> ?: return null
-        return list.mapNotNull { item ->
-            val map = item as? Map<String, Any> ?: return@mapNotNull null
-            val id = when (val rawId = map["id"]) {
-                is Number -> rawId.toLong()
-                is String -> rawId.toLongOrNull()
-                else -> null
-            } ?: return@mapNotNull null
+                    // item 9 — no results
+                    state.hasSearched && state.results.isEmpty() -> {
+                        NoResultsState(query = state.query)
+                    }
 
-            val title: String
-            val subtitle: String
-
-            when (type) {
-                "customer" -> {
-                    val first = map["first_name"]?.toString().orEmpty()
-                    val last = map["last_name"]?.toString().orEmpty()
-                    title = "$first $last".trim().ifBlank { "Customer #$id" }
-                    // CROSS8: display phone via shared helper for canonical format.
-                    val phone = (map["phone"]?.toString() ?: map["mobile"]?.toString())
-                        ?.let { formatPhoneDisplay(it) }
-                        ?.takeIf { it.isNotBlank() }
-                    val email = map["email"]?.toString()
-                    subtitle = listOfNotNull(phone, email).joinToString(" | ").ifBlank { "No contact info" }
-                }
-                "ticket" -> {
-                    val orderId = map["order_id"]?.toString() ?: "T-$id"
-                    title = orderId
-                    val status = map["status_name"]?.toString() ?: map["status"]?.toString() ?: ""
-                    val customer = map["customer_name"]?.toString() ?: ""
-                    subtitle = listOf(status, customer).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Ticket" }
-                }
-                "inventory" -> {
-                    title = map["name"]?.toString() ?: "Item #$id"
-                    val sku = map["sku"]?.toString()
-                    val stock = map["in_stock"]?.toString()
-                    subtitle = listOfNotNull(
-                        sku?.let { "SKU: $it" },
-                        stock?.let { "Stock: $it" },
-                    ).joinToString(" | ").ifBlank { "Inventory item" }
-                }
-                "invoice" -> {
-                    val orderId = map["order_id"]?.toString() ?: "INV-$id"
-                    title = orderId
-                    val status = map["status"]?.toString() ?: ""
-                    // @audit-fixed: was "$$it" which renders as "$$value" — use locale-aware
-                    // currency formatter so totals show as "$12.34" instead of garbled "$$12.34"
-                    val total = (map["total"] as? Number)?.toDouble()
-                    subtitle = listOfNotNull(
-                        status.ifBlank { null },
-                        total?.let { com.bizarreelectronics.crm.util.CurrencyFormatter.format(it) },
-                    ).joinToString(" - ").ifBlank { "Invoice" }
-                }
-                else -> {
-                    title = map["name"]?.toString() ?: "#$id"
-                    subtitle = type
+                    // item 3 — grouped results with count chip
+                    else -> {
+                        ResultsList(
+                            grouped = state.results,
+                            onResult = onResult,
+                        )
+                    }
                 }
             }
-
-            SearchResult(type = type, id = id, title = title, subtitle = subtitle)
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Inline search field matching Wave 2 SearchBar visual spec, with focus support
+// Search field
 // ---------------------------------------------------------------------------
 
-/**
- * Search field styled to Wave 2 spec: filled surfaceVariant bg, 16dp radius,
- * teal leading icon, muted clear icon, no underline indicator.
- * Accepts [focusRequester] and [keyboardOptions] for the TopAppBar inline use case
- * where the shared [SearchBar] composable cannot be used directly (it lacks those
- * parameters). Visually identical to the shared component.
- */
 @Composable
 private fun InlineSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onVoice: () -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -309,7 +198,7 @@ private fun InlineSearchField(
             .focusRequester(focusRequester),
         placeholder = {
             Text(
-                "Search everything...",
+                "Search everything…",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -317,26 +206,36 @@ private fun InlineSearchField(
         leadingIcon = {
             Icon(
                 Icons.Default.Search,
-                // decorative — leadingIcon on a labeled TextField; the placeholder announces the purpose
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary, // teal
+                tint = MaterialTheme.colorScheme.secondary,
             )
         },
         trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            Icons.Default.Clear,
+                            contentDescription = "Clear",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                // item 6 — voice button
+                IconButton(onClick = onVoice) {
                     Icon(
-                        Icons.Default.Clear,
-                        contentDescription = "Clear",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Icons.Default.Mic,
+                        contentDescription = "Voice search",
+                        tint = if (query.isEmpty())
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        // D5-6: the IME Search key now actually submits. Without this the user
-        // taps the magnifying glass on the keyboard and nothing happens.
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         shape = RoundedCornerShape(16.dp),
         colors = TextFieldDefaults.colors(
@@ -351,81 +250,206 @@ private fun InlineSearchField(
 }
 
 // ---------------------------------------------------------------------------
-// Recent searches — §18.1 idle-state chips above the EmptyState
+// item 11 — offline banner
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun OfflineBanner() {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Default.WifiOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                "Showing cached results",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Idle state — recents + saved queries
 // ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecentSearchesRow(
-    recent: List<String>,
+private fun IdleState(
+    recentSearches: List<String>,
+    savedQueries: List<SavedQuery>,
     onRecentTapped: (String) -> Unit,
-    onClear: () -> Unit,
+    onClearRecents: () -> Unit,
+    onSavedQueryTapped: (SavedQuery) -> Unit,
+    onRemoveSavedQuery: (String) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Recent",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onClear) {
-                Text("Clear")
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // item 8 — saved/pinned queries at top
+        if (savedQueries.isNotEmpty()) {
+            item(key = "saved-header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.PushPin,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Saved searches",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            item(key = "saved-chips") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    savedQueries.forEach { sq ->
+                        InputChip(
+                            selected = false,
+                            onClick = { onSavedQueryTapped(sq) },
+                            label = { Text(sq.name) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { onRemoveSavedQuery(sq.id) },
+                                    modifier = Modifier.size(18.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove saved search",
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+            item(key = "saved-divider") {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             }
         }
-        androidx.compose.foundation.lazy.LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(items = recent, key = { it }) { query ->
-                AssistChip(
-                    onClick = { onRecentTapped(query) },
-                    label = { Text(query) },
-                    leadingIcon = {
+
+        // item 7 — recent searches
+        if (recentSearches.isNotEmpty()) {
+            item(key = "recent-header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Recent",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onClearRecents) { Text("Clear") }
+                }
+            }
+            items(items = recentSearches, key = { "recent-$it" }) { query ->
+                ListItem(
+                    modifier = Modifier.clickable { onRecentTapped(query) },
+                    headlineContent = { Text(query, style = MaterialTheme.typography.bodyMedium) },
+                    leadingContent = {
                         Icon(
                             Icons.Default.History,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                 )
             }
+            item(key = "recent-divider") {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            }
+        }
+
+        // item 9 — search tips in empty state
+        item(key = "tips") {
+            SearchTips()
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Result-group header — display-condensed ALL-CAPS (sanctioned use)
+// item 9 — empty / tips
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun GroupHeader(type: String) {
-    val label = when (type) {
-        "customer"  -> "CUSTOMERS"
-        "ticket"    -> "TICKETS"
-        "inventory" -> "INVENTORY"
-        "invoice"   -> "INVOICES"
-        else        -> type.uppercase()
+private fun SearchTips() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Default.Search,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+        )
+        Text(
+            "Search everything",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            "Search across tickets, customers, invoices, inventory, employees, leads, appointments and SMS threads in one go.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        val tips = listOf(
+            "Try a ticket ID like #1042 or T-1042",
+            "Search by phone number or email",
+            "SKU or part name finds inventory fast",
+            "Tap the 🎤 mic for voice search",
+            "Pin a search with the 📌 icon to save it",
+        )
+        tips.forEach { tip ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text("•", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                Text(tip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
-    Text(
-        text = label,
-        style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold via Typography.kt
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
 }
-
-// ---------------------------------------------------------------------------
-// No-results placeholder — EmptyState visual layout without the WaveDivider
-// (wave is reserved for the idle/prompt state)
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun NoResultsState(query: String) {
@@ -438,206 +462,237 @@ private fun NoResultsState(query: String) {
     ) {
         Icon(
             Icons.Default.SearchOff,
-            // decorative — illustrative empty-state icon; sibling "No results" + query Text carry the announcement
             contentDescription = null,
             modifier = Modifier.size(36.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         Text(
             "No results",
-            style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold
+            style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
             "Nothing matched \"$query\"",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary, // teal
+            color = MaterialTheme.colorScheme.secondary,
         )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Try a different search",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Tips even on no-results
+        val tips = listOf(
+            "Check the spelling",
+            "Try a shorter or broader term",
+            "Search by ID, phone, or email",
+        )
+        tips.forEach { tip ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text("•", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                Text(tip, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
-// GlobalSearchScreen
+// item 3 — grouped results list with count chip
 // ---------------------------------------------------------------------------
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GlobalSearchScreen(
-    onResult: (String, Long) -> Unit,
-    viewModel: GlobalSearchViewModel = hiltViewModel(),
+private fun ResultsList(
+    grouped: Map<String, List<SearchResult>>,
+    onResult: (type: String, id: Long, secondaryKey: String?) -> Unit,
 ) {
-    val state by viewModel.state.collectAsState()
-    val focusRequester = remember { FocusRequester() }
-    // D5-6: the IME Search action clears focus (dismissing the keyboard) and
-    // fires an immediate search, bypassing the 300ms debounce.
-    val focusManager = LocalFocusManager.current
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
-    Scaffold(
-        modifier = Modifier.imePadding(),
-        topBar = {
-            // Keep the inline-search-in-TopAppBar pattern; re-skin to Wave 2 spec.
-            // Field bg = surfaceVariant (surface2), teal leading icon, no outline border
-            // since it sits inside the bar surface. TopAppBar uses surface1 container
-            // so the field's surfaceVariant bg provides a subtle lift.
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-                title = {
-                    InlineSearchField(
-                        query = state.query,
-                        onQueryChange = viewModel::updateQuery,
-                        onSearch = {
-                            focusManager.clearFocus()
-                            viewModel.executeSearch()
-                        },
-                        focusRequester = focusRequester,
-                    )
-                },
-            )
-        },
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            when {
-                // Idle — user hasn't typed anything yet. Show recent-searches
-                // chips (§18.1) above the canonical EmptyState so the user
-                // can re-run a prior lookup in one tap.
-                state.query.isBlank() -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (state.recentSearches.isNotEmpty()) {
-                            RecentSearchesRow(
-                                recent = state.recentSearches,
-                                onRecentTapped = viewModel::onRecentTapped,
-                                onClear = viewModel::clearRecentSearches,
-                            )
-                        }
-                        EmptyState(
-                            icon = Icons.Default.Search,
-                            title = "Search",
-                            subtitle = "Tickets, customers, inventory, invoices",
-                        )
-                    }
-                }
-
-                // Loading — in-toolbar spinner style (search is a focused action, not a list load)
-                state.isLoading -> {
-                    LoadingIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-
-                // Error
-                state.error != null -> {
-                    ErrorState(
-                        message = state.error ?: "Search failed",
-                        onRetry = null,
-                    )
-                }
-
-                // No results — EmptyState layout without WaveDivider (wave reserved for idle)
-                state.hasSearched && state.results.isEmpty() -> {
-                    NoResultsState(query = state.query)
-                }
-
-                // Results grouped by type
-                else -> {
-                    val groupedResults = state.results.groupBy { it.type }
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        // CROSS16-ext: defensive contentPadding so the last
-                        // result can scroll above system bars / gesture area.
-                        contentPadding = PaddingValues(bottom = 96.dp),
-                    ) {
-                        groupedResults.forEach { (type, results) ->
-                            item(key = "header-$type") {
-                                GroupHeader(type = type)
-                            }
-                            items(
-                                items = results,
-                                key = { "${it.type}-${it.id}" },
-                                contentType = { it.type },
-                            ) { result ->
-                                val icon = when (result.type) {
-                                    "ticket"    -> Icons.Default.ConfirmationNumber
-                                    "customer"  -> Icons.Default.Person
-                                    "inventory" -> Icons.Default.Inventory2
-                                    "invoice"   -> Icons.Default.Receipt
-                                    else        -> Icons.Default.Article
-                                }
-                                ListItem(
-                                    modifier = Modifier.clickable { onResult(result.type, result.id) },
-                                    headlineContent = {
-                                        Text(
-                                            result.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
-                                    },
-                                    supportingContent = {
-                                        Text(
-                                            result.subtitle,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    leadingContent = {
-                                        // CROSS44: customer search hits show an
-                                        // initial-circle avatar matching CustomerList
-                                        // row style so they're visually scannable.
-                                        // Other types keep the generic glyph icon.
-                                        if (result.type == "customer") {
-                                            val initial = result.title
-                                                .firstOrNull { it.isLetter() }
-                                                ?.uppercaseChar()?.toString() ?: "?"
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(36.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Text(
-                                                    initial,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                )
-                                            }
-                                        } else {
-                                            Icon(
-                                                icon,
-                                                contentDescription = result.type,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    },
-                                    trailingContent = {
-                                        // Type badge: surfaceVariant bg + single-hue text
-                                        BrandStatusBadge(
-                                            label = when (result.type) {
-                                                "customer"  -> "Customer"
-                                                "ticket"    -> "Ticket"
-                                                "inventory" -> "Inventory"
-                                                "invoice"   -> "Invoice"
-                                                else        -> result.type.replaceFirstChar { it.uppercase() }
-                                            },
-                                            status = result.type,
-                                        )
-                                    },
-                                )
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                    thickness = 1.dp,
-                                )
-                            }
-                        }
-                    }
-                }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 96.dp),
+    ) {
+        grouped.forEach { (type, results) ->
+            item(key = "header-$type") {
+                GroupHeader(type = type, count = results.size)
+            }
+            items(
+                items = results,
+                key = { r -> "${r.type}-${r.id}-${r.secondaryKey.orEmpty()}" },
+                contentType = { it.type },
+            ) { result ->
+                ResultRow(result = result, onResult = onResult)
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    thickness = 1.dp,
+                )
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Group header with count chip
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun GroupHeader(type: String, count: Int) {
+    val label = when (type) {
+        "customer"    -> "Customers"
+        "ticket"      -> "Tickets"
+        "inventory"   -> "Inventory"
+        "invoice"     -> "Invoices"
+        "employee"    -> "Employees"
+        "lead"        -> "Leads"
+        "appointment" -> "Appointments"
+        "sms"         -> "SMS Threads"
+        else          -> type.replaceFirstChar { it.uppercase() }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.headlineMedium, // Barlow Condensed SemiBold
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Count chip — item 3
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+        ) {
+            Text(
+                text = "$count",
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Single result row
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ResultRow(
+    result: SearchResult,
+    onResult: (type: String, id: Long, secondaryKey: String?) -> Unit,
+) {
+    val icon: ImageVector = when (result.type) {
+        "ticket"      -> Icons.Default.ConfirmationNumber
+        "customer"    -> Icons.Default.Person
+        "inventory"   -> Icons.Default.Inventory2
+        "invoice"     -> Icons.Default.Receipt
+        "employee"    -> Icons.Default.Badge
+        "lead"        -> Icons.Default.PersonSearch
+        "appointment" -> Icons.Default.CalendarToday
+        "sms"         -> Icons.Default.Sms
+        else          -> Icons.Default.Article
+    }
+
+    ListItem(
+        modifier = Modifier.clickable { onResult(result.type, result.id, result.secondaryKey) },
+        headlineContent = {
+            Text(result.title, style = MaterialTheme.typography.bodyMedium)
+        },
+        supportingContent = {
+            Text(
+                result.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        leadingContent = {
+            if (result.type == "customer") {
+                // Initial-circle avatar matching CustomerList style
+                val initial = result.title.firstOrNull { it.isLetter() }
+                    ?.uppercaseChar()?.toString() ?: "?"
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        initial,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            } else {
+                Icon(
+                    icon,
+                    contentDescription = result.type,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        trailingContent = {
+            BrandStatusBadge(
+                label = when (result.type) {
+                    "customer"    -> "Customer"
+                    "ticket"      -> "Ticket"
+                    "inventory"   -> "Inventory"
+                    "invoice"     -> "Invoice"
+                    "employee"    -> "Employee"
+                    "lead"        -> "Lead"
+                    "appointment" -> "Appt"
+                    "sms"         -> "SMS"
+                    else          -> result.type.replaceFirstChar { it.uppercase() }
+                },
+                status = result.type,
+            )
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// item 8 — save-query dialog
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun SaveQueryDialog(
+    initialName: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.PushPin, contentDescription = null) },
+        title = { Text("Save search") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Name this search so you can find it quickly later.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onSave(name) },
+                enabled = name.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }

@@ -1928,13 +1928,13 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ## 18. Search (Global + Scoped)
 
 ### 18.1 Global search
-- [ ] Top bar search icon → full-screen search Activity.
-- [ ] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
+- [x] Top bar search icon → full-screen search Activity.
+- [x] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
 - [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert.
-- [ ] Debounced 300ms; results grouped by entity type with count chip.
-- [ ] Tap result → deep link.
+- [x] Debounced 300ms; results grouped by entity type with count chip.
+- [x] Tap result → deep link.
 - [x] Recent searches cached in DataStore.
-- [ ] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
+- [x] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
 
 ### 18.2 Scoped search per screen
 - [ ] Each list has its own `SearchBar` (Material 3) at top.
@@ -1945,12 +1945,12 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars).
 
 ### 18.4 Voice search
-- [ ] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
-- [ ] Requires `RECORD_AUDIO` at tap-time.
+- [x] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
+- [x] Requires `RECORD_AUDIO` at tap-time.
 
 ### 18.5 Recent + saved searches
-- [ ] Recent 10 shown under empty state.
-- [ ] Pin a query — named chip at top of search screen.
+- [x] Recent 10 shown under empty state.
+- [x] Pin a query — named chip at top of search screen.
 
 ### 18.6 Natural-language query (stretch)
 - [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter.
@@ -1962,9 +1962,9 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] Opt-out per tenant.
 
 ### 18.8 Empty / loading states
-- [ ] Empty: "Try a different search" + tips.
-- [ ] Loading: shimmer rows.
-- [ ] No network: "Showing cached results" banner.
+- [x] Empty: "Try a different search" + tips.
+- [x] Loading: shimmer rows.
+- [x] No network: "Showing cached results" banner.
 
 ---
 ## 19. Settings
