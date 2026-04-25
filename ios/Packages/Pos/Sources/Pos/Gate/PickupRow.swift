@@ -73,6 +73,8 @@ public struct PickupRow: View {
             )
         }
         .buttonStyle(.plain)
+        // CLAUDE.md: .hoverEffect(.highlight) on tappable rows (no-op on iPhone)
+        .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(pickup.customerName), ready for pickup, ticket \(pickup.orderId), \(pickup.totalFormatted)"
