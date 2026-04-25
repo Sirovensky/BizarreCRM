@@ -44,6 +44,7 @@ public struct PosReceiptView: View {
 
     @State private var showReceiptPreview: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     public init(
         vm: PosReceiptViewModel,
@@ -76,6 +77,11 @@ public struct PosReceiptView: View {
                 heroSection
                 shareTileGrid
                 loyaltyCelebration
+                // Pencil signature banner — gated on signedTicketId != nil
+                // AND iPad regular size class only (mockup screen 5).
+                if let ticketId = vm.payload.signedTicketId, hSizeClass == .regular {
+                    pencilSignatureBanner(ticketId: ticketId)
+                }
                 if receiptText != nil {
                     receiptPreviewToggle
                 }
@@ -85,6 +91,36 @@ public struct PosReceiptView: View {
             .padding(.horizontal, BrandSpacing.base)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    // MARK: - Pencil signature banner
+
+    private func pencilSignatureBanner(ticketId: Int64) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "pencil.and.scribble")
+                .font(.system(size: 22))
+                .foregroundStyle(.bizarreTeal)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("Signature captured with Pencil")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Archived to ticket #\(ticketId)")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Pencil signature captured and archived to ticket \(ticketId)")
+        .accessibilityIdentifier("pos.receipt.pencilSignatureBanner")
     }
 
     // MARK: - Hero

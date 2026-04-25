@@ -49,6 +49,13 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// occurred. `nil` when no account.
     public let loyaltyTierAfter: String?
 
+    // MARK: - Pencil signature
+
+    /// Ticket ID to which an Apple Pencil signature was archived (iPad only).
+    /// When non-nil, `PosReceiptView` shows the "Signature captured with Pencil"
+    /// banner (only on iPad regular-width size class, per mockup screen 5).
+    public let signedTicketId: Int64?
+
     // MARK: - Init
 
     public init(
@@ -60,7 +67,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         customerEmail: String? = nil,
         loyaltyDelta: Int? = nil,
         loyaltyTierBefore: String? = nil,
-        loyaltyTierAfter: String? = nil
+        loyaltyTierAfter: String? = nil,
+        signedTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
@@ -71,5 +79,6 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyDelta = loyaltyDelta
         self.loyaltyTierBefore = loyaltyTierBefore
         self.loyaltyTierAfter = loyaltyTierAfter
+        self.signedTicketId = signedTicketId
     }
 }
