@@ -197,10 +197,17 @@ export function TeamChatPage() {
                 value={draft}
                 onChange={(e) => handleDraftChange(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && draft.trim()) {
-                    e.preventDefault();
-                    sendMut.mutate();
-                  }
+                  // Slack/Discord-style send shortcut:
+                  //   Enter           → send (when the draft isn't empty)
+                  //   Shift+Enter     → newline
+                  //   Ctrl/Cmd+Enter  → send (power-user muscle memory)
+                  // IME composition is respected so mid-composition Enter still
+                  // commits the candidate instead of firing the message.
+                  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                  if (e.shiftKey) return;
+                  if (!draft.trim()) return;
+                  e.preventDefault();
+                  sendMut.mutate();
                 }}
               />
               <button

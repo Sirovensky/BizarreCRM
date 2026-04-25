@@ -201,19 +201,32 @@ export function SignupPage() {
 
     setSubmitting(true);
     try {
+      // Gate the dev-captcha fallback strictly on Vite's DEV flag so production
+      // builds never ship a token the backend test-mode would accept. When no
+      // site key is configured in production, send an empty string and let the
+      // backend reject the request — failing closed is safer than failing open.
+      const captchaTokenToSend = captchaSiteKey
+        ? captchaToken
+        : import.meta.env.DEV
+          ? 'dev-captcha-token'
+          : '';
       const res = await signupApi.createShop({
         slug: slug.toLowerCase().trim(),
         shop_name: shopName.trim(),
         admin_email: email.trim(),
         admin_password: password,
-        captcha_token: captchaSiteKey ? captchaToken : 'dev-captcha-token',
+        captcha_token: captchaTokenToSend,
       });
       const { message } = res.data.data;
       setSuccess({ slug: slug.toLowerCase().trim(), message });
       // Redirect after brief success message is no longer performed automatically,
       // as the user needs to check their email for the token URL.
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || 'Something went wrong. Please try again.';
+      const apiErr = err as { response?: { data?: { message?: string; error?: string } } } | undefined;
+      const msg = apiErr?.response?.data?.message
+        || apiErr?.response?.data?.error
+        || (err instanceof Error ? err.message : '')
+        || 'Something went wrong. Please try again.';
       setApiError(msg);
       if (captchaWidgetIdRef.current !== null) {
         window.hcaptcha?.reset(captchaWidgetIdRef.current);

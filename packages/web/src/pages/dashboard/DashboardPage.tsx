@@ -64,6 +64,21 @@ interface MissingPart {
   image_url: string | null;
 }
 
+// WEB-FA-021: shape of `GET /catalog/order-queue/summary` response.body.data.
+// Server returns aggregate counts + cost across pending order-queue rows.
+interface OrderQueueSummary {
+  total_items: number;
+  estimated_cost: number;
+}
+
+// Minimal row shape consumed by MissingPartsCard from the order-queue list
+// endpoint. Only fields the card actually reads are typed; extra fields
+// are tolerated at runtime.
+interface OrderQueueItem {
+  supplier_url?: string | null;
+  source?: string | null;
+}
+
 // ─── Date Range Helpers ──────────────────────────────────────────────────────
 
 type DatePreset = 'today' | 'yesterday' | 'last7' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all';
@@ -199,7 +214,7 @@ const SUPPLIER_LABELS: Record<string, string> = {
   unknown: 'Supplier',
 };
 
-function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: MissingPart[]; queueSummary: any; queueItems?: any[] }) {
+function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: MissingPart[]; queueSummary: OrderQueueSummary | null; queueItems?: OrderQueueItem[] }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -398,8 +413,8 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
           {needsOrderCount > 0
             ? `${needsOrderCount} part${needsOrderCount !== 1 ? 's' : ''} needed across open tickets`
             : `${pendingCount} part${pendingCount !== 1 ? 's' : ''} in order queue`}
-          {queueSummary?.estimated_cost > 0 && (
-            <> · Queue cost: <strong>${(queueSummary.estimated_cost as number).toFixed(2)}</strong></>
+          {(queueSummary?.estimated_cost ?? 0) > 0 && (
+            <> · Queue cost: <strong>${(queueSummary!.estimated_cost).toFixed(2)}</strong></>
           )}
         </p>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -1672,8 +1687,8 @@ function AdminOrManagerDashboard() {
   const techWorkload: any[] = workloadData?.data?.data ?? [];
 
   const missingParts: MissingPart[] = missingData?.data?.data ?? [];
-  const queueSummary = queueData?.data?.data ?? null;
-  const queueItems: any[] = queueItemsData?.data?.data?.items || queueItemsData?.data?.data || [];
+  const queueSummary: OrderQueueSummary | null = queueData?.data?.data ?? null;
+  const queueItems: OrderQueueItem[] = queueItemsData?.data?.data?.items || queueItemsData?.data?.data || [];
   const hasMissingParts = missingParts.length > 0 || (queueSummary?.total_items ?? 0) > 0;
 
   // Day-1 onboarding state (audit section 42). Renders above KPIs when

@@ -253,7 +253,20 @@ export default function LandingPage() {
         transition: 'all .3s', padding: '0 24px',
       }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
-          <span className="display" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ fontSize: 28, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
+          <span
+            className="display"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            role="button"
+            tabIndex={0}
+            aria-label="BizarreCRM — scroll to top"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            style={{ fontSize: 28, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}
+          >BIZARRECRM</span>
           <div className="hidden md:flex" style={{ alignItems: 'center', gap: 24 }}>
             {[{ l: 'Features', id: 'features' }, { l: 'Pricing', id: 'pricing' }, { l: 'Why Switch', id: 'switch' }].map(n => (
               <button key={n.id} onClick={() => scrollTo(n.id)} className="display" style={{ background: 'none', border: 'none', color: '#333', fontSize: 20, cursor: 'pointer', letterSpacing: 2 }}>{n.l}</button>
@@ -261,10 +274,18 @@ export default function LandingPage() {
             <button className="btn-outline" onClick={() => setShowLogin(true)} style={{ padding: '8px 20px', fontSize: 14 }}>Login</button>
             <button className="btn-cyan" onClick={() => navigate('/signup')} style={{ padding: '10px 24px', fontSize: 14 }}>Get Started Free</button>
           </div>
-          <button onClick={() => setMobileMenu(!mobileMenu)} className="md:hidden" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 24 }}>{mobileMenu ? '\u2715' : '\u2630'}</button>
+          <button
+            type="button"
+            onClick={() => setMobileMenu(!mobileMenu)}
+            className="md:hidden"
+            aria-label={mobileMenu ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileMenu}
+            aria-controls="landing-mobile-menu"
+            style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 24 }}
+          >{mobileMenu ? '\u2715' : '\u2630'}</button>
         </div>
         {mobileMenu && (
-          <div className="md:hidden" style={{ padding: '8px 24px 16px', background: '#FBF3DB' }}>
+          <div id="landing-mobile-menu" className="md:hidden" style={{ padding: '8px 24px 16px', background: '#FBF3DB' }}>
             {[{ l: 'Features', id: 'features' }, { l: 'Pricing', id: 'pricing' }, { l: 'Why Switch', id: 'switch' }].map(n => (
               <button key={n.id} onClick={() => scrollTo(n.id)} className="display" style={{ display: 'block', background: 'none', border: 'none', color: '#333', fontSize: 20, padding: '10px 0', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{n.l}</button>
             ))}

@@ -153,10 +153,12 @@ function TicketCard({ ticket }: { ticket: TvTicket }) {
         <TvStatusBadge status={ticket.status} />
       </div>
 
-      {/* Customer name */}
+      {/* Customer initial — show only first letter to avoid PII leak on a public lobby screen */}
       <div className="mb-2">
         <span className="text-lg text-surface-300">
-          {ticket.customer_first_name || 'Walk-in'}
+          {ticket.customer_first_name
+            ? `${ticket.customer_first_name.charAt(0).toUpperCase()}.`
+            : 'Walk-in'}
         </span>
       </div>
 

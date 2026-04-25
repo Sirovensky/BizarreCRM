@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -57,6 +57,28 @@ function LeadCard({
   onNavigate: (id: number) => void;
 }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Close on Esc and restore focus to the trigger so keyboard nav stays predictable.
+  useEffect(() => {
+    if (!showMoveMenu) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setShowMoveMenu(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    // Auto-focus the first menu option for keyboard users.
+    const t = setTimeout(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    }, 10);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      clearTimeout(t);
+    };
+  }, [showMoveMenu]);
 
   return (
     <div
@@ -97,24 +119,41 @@ function LeadCard({
         </span>
         <div className="relative">
           <button
+            ref={triggerRef}
             onClick={() => setShowMoveMenu(!showMoveMenu)}
-            className="rounded p-1 text-surface-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-100 dark:hover:bg-surface-700"
+            // @audit-fixed WEB-FC-006: always visible (no opacity-0 hover trap) so
+            // touch + keyboard users can move cards. Subtle styling keeps the card calm.
+            className="rounded p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-surface-700 dark:hover:text-surface-200"
+            aria-label="Move lead to another stage"
+            aria-haspopup="menu"
+            aria-expanded={showMoveMenu}
             title="Move to stage"
           >
             <ArrowRightLeft className="h-3.5 w-3.5" />
           </button>
           {showMoveMenu && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMoveMenu(false)} />
-              <div className="absolute right-0 bottom-full z-20 mb-1 w-36 rounded-lg border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-800">
+              {/* Click-outside scrim — Esc handled at the document level for true dismissibility. */}
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setShowMoveMenu(false)}
+                aria-hidden="true"
+              />
+              <div
+                ref={menuRef}
+                role="menu"
+                aria-label="Move to stage"
+                className="absolute right-0 bottom-full z-20 mb-1 w-36 rounded-lg border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-800"
+              >
                 {PIPELINE_STAGES.filter((s) => s.key !== lead.status).map((stage) => (
                   <button
                     key={stage.key}
+                    role="menuitem"
                     onClick={() => {
                       onMove(lead.id, stage.key);
                       setShowMoveMenu(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:hover:bg-surface-700 dark:focus:bg-surface-700"
                   >
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} />
                     <span className="text-surface-700 dark:text-surface-300">{stage.label}</span>
