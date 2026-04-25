@@ -62,6 +62,7 @@ public struct PosGateView: View {
 
                     pickupStripSection
                         .padding(.horizontal, 16)
+                        .padding(.top, 24)
                         .padding(.bottom, 20)
                 }
             }
@@ -69,8 +70,30 @@ public struct PosGateView: View {
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text("POS")
+                            .font(.headline)
+                            .foregroundStyle(Color.bizarreOnSurface)
+                        Text("Register open · Pavel I.")
+                            .font(.caption2)
+                            .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    onlineChip
+                    HStack(spacing: 8) {
+                        onlineChip
+                        Button {
+                            // TODO: overflow menu (settings, end register session)
+                        } label: {
+                            Text("⋯")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(Color.bizarreOnSurface)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("More options")
+                    }
                 }
             }
             .searchable(
@@ -114,8 +137,9 @@ public struct PosGateView: View {
                     fallbackOrLabel
                         .padding(.bottom, 10)
 
-                    fallbackButtons(minHeight: 72)
+                    fallbackButtons(minHeight: 72, cornerRadius: 18)
                         .frame(maxWidth: 680)
+                        .keyboardShortcut("n", modifiers: [.command, .shift])
 
                     pickupStripSection
                         .frame(maxWidth: 680)
@@ -155,11 +179,12 @@ public struct PosGateView: View {
 
     // MARK: - Shared sub-views
 
-    /// "Who's this sale for?" hero title block.
+    /// "Who's this for?" hero title block (matches mockup Frame 1 wording exactly).
     private var heroHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Who's this sale for?")
-                .font(.title2.weight(.bold))
+            Text("Who's this for?")
+                .font(.system(size: 22, weight: .bold))
+                .kerning(-0.33)   // letter-spacing: -0.015em @ 22pt
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .foregroundStyle(Color.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
@@ -179,14 +204,17 @@ public struct PosGateView: View {
     }
 
     /// Two side-by-side fallback buttons.
-    private func fallbackButtons(minHeight: CGFloat) -> some View {
+    /// - Parameters:
+    ///   - minHeight: Minimum row height (64 iPhone, 72 iPad per mockup).
+    ///   - cornerRadius: Card corner radius (16 iPhone, 18 iPad per mockup).
+    private func fallbackButtons(minHeight: CGFloat, cornerRadius: CGFloat = 16) -> some View {
         HStack(spacing: 10) {
             // Create new customer
             Button {
                 createNewTapTrigger += 1
                 vm.selectCreateNew()
             } label: {
-                Text("+ Create new customer")
+                Text("＋ Create new customer")
                     .font(.subheadline.weight(.bold))
                     .multilineTextAlignment(.center)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
@@ -194,11 +222,15 @@ public struct PosGateView: View {
                     .padding(.horizontal, 14)
                     .foregroundStyle(Color.bizarreOnSurface)
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.bizarreSurface1)
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(Color(white: 1, opacity: 0.06))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.bizarreOutline.opacity(1.5), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: cornerRadius)
+                                    .stroke(Color(white: 1, opacity: 0.12), lineWidth: 1)
+                            )
+                            .shadow(
+                                color: Color.white.opacity(0.08),
+                                radius: 0, x: 0, y: -1
                             )
                     )
             }
@@ -219,14 +251,14 @@ public struct PosGateView: View {
                     .padding(.horizontal, 14)
                     .foregroundStyle(Color.bizarreOnSurfaceMuted)
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.bizarreSurface1.opacity(0.5))
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(Color(white: 1, opacity: 0.04))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                RoundedRectangle(cornerRadius: cornerRadius)
                                     .strokeBorder(
                                         style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
                                     )
-                                    .foregroundStyle(Color.bizarreOutline)
+                                    .foregroundStyle(Color(white: 1, opacity: 0.18))
                             )
                     )
             }
@@ -242,7 +274,7 @@ public struct PosGateView: View {
         if !vm.pickupTickets.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Ready for pickup · \(vm.totalPickupCount)")
+                    Text("Recent Ready for pickup · \(vm.totalPickupCount)")
                         .font(.caption.weight(.semibold))
                         .textCase(.uppercase)
                         .tracking(1.4)

@@ -21,16 +21,16 @@ public struct PickupRow: View {
     public var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // Checkmark badge
+                // Checkmark badge — 32×32 per mockup, corner radius 9
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
-                        .fill(Color.bizarreSuccess.opacity(0.2))
+                        .fill(Color.bizarreSuccess.opacity(0.20))
                         .overlay(
                             RoundedRectangle(cornerRadius: 9)
                                 .stroke(Color.bizarreSuccess.opacity(0.35), lineWidth: 1)
                         )
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "checkmark")
+                        .frame(width: 32, height: 32)
+                    Text("✓")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.bizarreSuccess)
                 }
@@ -39,25 +39,25 @@ public struct PickupRow: View {
                 // Name + ticket info
                 VStack(alignment: .leading, spacing: 2) {
                     Text(pickup.customerName)
-                        .font(.subheadline.weight(.bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.bizarreOnSurface)
                         .lineLimit(1)
                     if let device = pickup.deviceSummary {
                         Text("#\(pickup.orderId) · \(device)")
-                            .font(.caption)
+                            .font(.system(size: 11))
                             .foregroundStyle(Color.bizarreOnSurfaceMuted)
                             .lineLimit(1)
                     } else {
                         Text("#\(pickup.orderId)")
-                            .font(.caption)
+                            .font(.system(size: 11))
                             .foregroundStyle(Color.bizarreOnSurfaceMuted)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Amount
+                // Amount — Barlow Condensed 17pt bold, cream/orange per mockup var(--primary)
                 Text(pickup.totalFormatted)
-                    .font(.system(.title3, design: .default).weight(.bold))
+                    .font(.custom("BarlowCondensed-SemiBold", size: 17))
                     .foregroundStyle(Color.bizarreOrange)
                     .accessibilityLabel("Total: \(pickup.totalFormatted)")
             }

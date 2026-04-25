@@ -66,4 +66,31 @@ public enum PosDeviceOption: Equatable, Sendable, Identifiable {
             return "plus.circle.fill"
         }
     }
+
+    /// Emoji icon used in the card-style device picker rows (mockup 1b).
+    /// Heuristic: prefer a watch emoji if the label mentions "Watch",
+    /// otherwise use the phone emoji.
+    public var emojiIcon: String {
+        switch self {
+        case .asset(_, let label, _):
+            let lower = label.lowercased()
+            if lower.contains("watch") { return "⌚" }
+            if lower.contains("ipad") { return "📱" }
+            if lower.contains("mac") { return "💻" }
+            return "📱"
+        case .noSpecificDevice:
+            return "❓"
+        case .addNew:
+            return "+"
+        }
+    }
+
+    /// Optional warranty/serial status line shown in the device picker card.
+    /// Populated from the subtitle field if it contains warranty information.
+    /// For MVP, returns `nil` — callers can set this via subtitle.
+    public var warrantyLine: String? {
+        // The warranty line lives in the subtitle in the current data model.
+        // Return nil here; callers parsing the subtitle can split it out.
+        nil
+    }
 }

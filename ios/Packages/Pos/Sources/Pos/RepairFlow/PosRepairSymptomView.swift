@@ -65,34 +65,60 @@ public struct PosRepairSymptomView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
-                progressHeader
-
-                symptomTextSection
-
-                conditionSection
-
-                quickChipsSection
-
-                internalNotesSection
+        VStack(spacing: 0) {
+            // Step 2/4 progress bar pinned directly below nav bar (3pt strip, 33%)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color(white: 1, opacity: 0.06))
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.bizarreOrange, Color.bizarreOrange.opacity(0.7)],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * 0.33)
+                }
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.bottom, BrandSpacing.xxl)
+            .frame(height: 3)
+            .accessibilityLabel("Step 2 of 4, 33% complete")
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    symptomTextSection
+                        .padding(.top, 14)
+
+                    conditionSection
+                        .padding(.top, 8)
+
+                    quickChipsSection
+                        .padding(.top, 8)
+
+                    internalNotesSection
+                        .padding(.top, 8)
+
+                    Spacer().frame(height: 16)
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.xxl)
+            }
         }
         .safeAreaInset(edge: .bottom) {
             ctaBar
         }
-        .navigationTitle(RepairStep.describeIssue.navigationTitle)
+        .navigationTitle("Issue · Step 2/4")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Back") {
-                    vm.commitToDraft(coordinator: coordinator)
-                    coordinator.goBack()
-                }
-                .accessibilityLabel("Back to device picker")
-                .accessibilityIdentifier("repairFlow.symptom.back")
+            ToolbarItem(placement: .topBarTrailing) {
+                Text("Auto-save")
+                    .font(.caption)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.bizarreSurface1, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5))
+                    .accessibilityHidden(true)
             }
         }
         .onAppear {
@@ -106,38 +132,28 @@ public struct PosRepairSymptomView: View {
 
     // MARK: - Sub-views
 
-    private var progressHeader: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            ProgressView(value: RepairStep.describeIssue.progressPercent, total: 100)
-                .progressViewStyle(.linear)
-                .tint(.bizarreOrange)
-                .accessibilityLabel(RepairStep.describeIssue.accessibilityDescription)
-                .accessibilityValue("\(Int(RepairStep.describeIssue.progressPercent))%")
-
-            Text("Describe the issue")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityAddTraits(.isHeader)
-        }
-        .padding(.top, BrandSpacing.md)
-    }
-
     private var symptomTextSection: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Label("What's wrong?", systemImage: "text.bubble")
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+            // Section label: "What's the problem?" (matches mockup)
+            Text("What's the problem?")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
 
             TextEditor(text: $symptomText)
-                .frame(minHeight: 100, maxHeight: 160)
-                .font(.brandBodyMedium())
+                .frame(minHeight: 80, maxHeight: 160)
+                .font(.system(size: 13.5))
+                .lineSpacing(3) // line-height: 1.5 on 13px
                 .foregroundStyle(.bizarreOnSurface)
-                .padding(BrandSpacing.sm)
-                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
-                    symptomText.isEmpty ? Color.bizarreOutline.opacity(0.4) : Color.bizarreOrange,
-                    lineWidth: 1
+                .padding(12)
+                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
+                    symptomText.isEmpty
+                        ? Color.bizarreOrange.opacity(0.35)
+                        : Color.bizarreOrange.opacity(0.35),
+                    lineWidth: 1.5
                 ))
                 .onChange(of: symptomText) { _, _ in
                     vm.symptomText = symptomText
@@ -145,14 +161,38 @@ public struct PosRepairSymptomView: View {
                 .accessibilityLabel("Symptom description")
                 .accessibilityHint("Describe the issue reported by the customer")
                 .accessibilityIdentifier("repairFlow.symptom.text")
+
+            // Char count row (87 / 2000 style per mockup)
+            HStack {
+                // Dictate button — teal color per mockup
+                Button {
+                    // TODO: trigger speech recognition
+                } label: {
+                    Label("Dictate", systemImage: "mic.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.bizarreTeal)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dictate symptom")
+
+                Spacer()
+
+                Text("\(symptomText.count) / 2000")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+            .padding(.top, 4)
         }
     }
 
     private var conditionSection: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Label("Device condition", systemImage: "gauge.medium")
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("Device condition")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
 
             Menu {
@@ -164,18 +204,19 @@ public struct PosRepairSymptomView: View {
                 }
             } label: {
                 HStack {
-                    Text(selectedCondition?.displayName ?? "Select condition…")
-                        .font(.brandBodyMedium())
+                    Text(selectedCondition.map { "\($0.displayName) — visible damage" } ?? "Select condition…")
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(selectedCondition == nil ? .bizarreOnSurfaceMuted : .bizarreOnSurface)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text("⌄")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 }
-                .padding(BrandSpacing.sm)
-                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
             }
             .accessibilityLabel("Device condition: \(selectedCondition?.displayName ?? "not selected")")
             .accessibilityHint("Tap to choose the physical condition of the device")
@@ -185,12 +226,14 @@ public struct PosRepairSymptomView: View {
 
     private var quickChipsSection: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Label("Quick picks", systemImage: "bolt.horizontal")
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("Quick-pick symptom")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
 
-            FlowLayout(spacing: BrandSpacing.sm) {
+            FlowLayout(spacing: 8) {
                 ForEach(RepairSymptomChip.allCases, id: \.self) { chip in
                     chipButton(chip)
                 }
@@ -209,19 +252,26 @@ public struct PosRepairSymptomView: View {
             vm.selectedChips = selectedChips
             BrandHaptics.tap()
         } label: {
-            Label(chip.displayLabel, systemImage: chip.systemImage)
-                .font(.brandLabelLarge())
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.xs)
+            // Label text only (no system icon) to match mockup chip style
+            Text(chip.displayLabel)
+                .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
                 .background(
-                    isSelected ? Color.bizarreOrange : Color.bizarreSurface2,
+                    isSelected
+                        ? Color.bizarreOrange.opacity(0.14)
+                        : Color(white: 1, opacity: 0.04),
                     in: Capsule()
                 )
-                .foregroundStyle(isSelected ? Color.white : Color.bizarreOnSurface)
-                .overlay(Capsule().strokeBorder(
-                    isSelected ? Color.clear : Color.bizarreOutline.opacity(0.4),
-                    lineWidth: 1
-                ))
+                .foregroundStyle(isSelected ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                .overlay(
+                    Capsule().strokeBorder(
+                        isSelected
+                            ? Color.bizarreOrange.opacity(0.45)
+                            : Color(white: 1, opacity: 0.1),
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+                )
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }
         .buttonStyle(.plain)
@@ -234,18 +284,27 @@ public struct PosRepairSymptomView: View {
 
     private var internalNotesSection: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Label("Internal notes", systemImage: "lock.doc")
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("Internal notes (tech-only)")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
 
             TextEditor(text: $internalNotes)
-                .frame(minHeight: 72, maxHeight: 120)
-                .font(.brandBodyMedium())
+                .frame(minHeight: 60, maxHeight: 100)
+                .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
-                .padding(BrandSpacing.sm)
-                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 1))
+                .padding(12)
+                // Dashed amber border per mockup: rgba(232,163,61,0.45)
+                .background(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 3])
+                        )
+                        .foregroundStyle(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.45))
+                )
                 .onChange(of: internalNotes) { _, _ in
                     vm.internalNotes = internalNotes
                 }
@@ -275,7 +334,7 @@ public struct PosRepairSymptomView: View {
                         ProgressView()
                             .tint(.white)
                     } else {
-                        Text("Continue → quote")
+                        Text("Next → diagnostic quote")
                             .font(.brandTitleSmall())
                         Image(systemName: "chevron.right")
                     }

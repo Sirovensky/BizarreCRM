@@ -7,12 +7,9 @@ import DesignSystem
 //
 // Step 3: Diagnostic notes + parts/labor checklist with running estimate.
 //
-// Pre-population: When Agent F's ServiceBundleResolver is available the
-// coordinator can inject pre-populated lines; this view treats them as
-// read-write toggles so the cashier can exclude unrelevant items.
-//
-// Server wiring: diagnostic notes are persisted via
-// POST /api/v1/tickets/:id/notes (type=diagnostic) in commitQuoteStep().
+// Visual spec: scroll view with card-style rows (NOT List.insetGrouped),
+// running estimate hero card with large price, split footer CTA.
+// Progress bar pinned below nav bar at 66%.
 
 @MainActor
 @Observable
@@ -31,6 +28,10 @@ public final class PosRepairQuoteViewModel {
 
     public var estimateFormatted: String {
         Self.formatCurrency(cents: estimateCents)
+    }
+
+    public var includedCount: Int {
+        lines.filter { $0.isIncluded }.count
     }
 
     // MARK: - Actions
@@ -56,7 +57,7 @@ public final class PosRepairQuoteViewModel {
 
     // MARK: - Helpers
 
-    static func formatCurrency(cents: Int) -> String {
+    public static func formatCurrency(cents: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
@@ -80,29 +81,57 @@ public struct PosRepairQuoteView: View {
     }
 
     public var body: some View {
-        List {
-            progressSection
+        VStack(spacing: 0) {
+            // Step 3/4 progress bar pinned below nav (66%)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color(white: 1, opacity: 0.06))
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.bizarreOrange, Color.bizarreOrange.opacity(0.7)],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * 0.66)
+                }
+            }
+            .frame(height: 3)
+            .accessibilityLabel("Step 3 of 4, 66% complete")
 
-            diagnosticNotesSection
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    diagnosticNotesSection
+                        .padding(.top, 12)
 
-            partsLaborSection
+                    partsLaborSection
+                        .padding(.top, 8)
 
-            estimateSection
+                    estimateHeroCard
+                        .padding(.top, 10)
+                        .padding(.horizontal, 16)
+
+                    Spacer().frame(height: 16)
+                }
+                .padding(.bottom, 100) // room for split CTA
+            }
         }
-        .listStyle(.insetGrouped)
         .safeAreaInset(edge: .bottom) {
             ctaBar
         }
-        .navigationTitle(RepairStep.diagnosticQuote.navigationTitle)
+        .navigationTitle("Quote · Step 3/4")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Back") {
-                    vm.commitToDraft(coordinator: coordinator)
-                    coordinator.goBack()
-                }
-                .accessibilityLabel("Back to describe issue")
-                .accessibilityIdentifier("repairFlow.quote.back")
+            ToolbarItem(placement: .topBarTrailing) {
+                Text("Auto-save")
+                    .font(.caption)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.bizarreSurface1, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5))
+                    .accessibilityHidden(true)
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -118,7 +147,6 @@ public struct PosRepairQuoteView: View {
             addLineSheet
         }
         .onAppear {
-            // Restore from draft on back-navigation.
             vm.diagnosticNotes = coordinator.draft.diagnosticNotes
             vm.lines = coordinator.draft.quoteLines
         }
@@ -126,118 +154,169 @@ public struct PosRepairQuoteView: View {
 
     // MARK: - Sections
 
-    private var progressSection: some View {
-        Section {
-            ProgressView(value: RepairStep.diagnosticQuote.progressPercent, total: 100)
-                .progressViewStyle(.linear)
-                .tint(.bizarreOrange)
-                .accessibilityLabel(RepairStep.diagnosticQuote.accessibilityDescription)
-                .accessibilityValue("\(Int(RepairStep.diagnosticQuote.progressPercent))%")
-        }
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-    }
-
     private var diagnosticNotesSection: some View {
-        Section("Diagnostic notes") {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Diagnostic notes")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .padding(.horizontal, 16)
+
             TextEditor(text: $vm.diagnosticNotes)
-                .frame(minHeight: 100)
-                .font(.brandBodyMedium())
+                .frame(minHeight: 60)
+                .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
+                .padding(10)
+                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
+                .padding(.horizontal, 16)
                 .accessibilityLabel("Diagnostic notes")
-                .accessibilityHint("Technical notes about the issue found during diagnosis")
                 .accessibilityIdentifier("repairFlow.quote.diagnosticNotes")
         }
     }
 
     @ViewBuilder
     private var partsLaborSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Suggested parts + labor")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .padding(.horizontal, 16)
+
             if vm.lines.isEmpty {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "tray")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .accessibilityHidden(true)
                     Text("No parts or labor added yet.")
-                        .font(.brandBodyMedium())
+                        .font(.system(size: 13))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
-                .padding(.vertical, BrandSpacing.sm)
-                // TODO: pre-populate via Agent F ServiceBundleResolver when available
-                // Call: ServiceBundleResolver.shared.paired(for: serviceItemId, device: customerAsset)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
                 .accessibilityLabel("No parts or labor added. Tap + to add items.")
             } else {
-                ForEach(vm.lines) { line in
-                    quoteLineRow(line)
+                VStack(spacing: 6) {
+                    ForEach(vm.lines) { line in
+                        quoteLineCard(line)
+                    }
                 }
-                .onDelete { offsets in
-                    vm.removeLine(at: offsets)
-                }
-            }
-        } header: {
-            HStack {
-                Text("Parts & labor")
-                    .font(.brandLabelLarge())
-                Spacer(minLength: 0)
-                Text("Included")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.horizontal, 16)
             }
         }
     }
 
-    private func quoteLineRow(_ line: RepairQuoteLine) -> some View {
-        HStack(spacing: BrandSpacing.sm) {
+    private func quoteLineCard(_ line: RepairQuoteLine) -> some View {
+        let isIncluded = line.isIncluded
+        return HStack(spacing: 10) {
+            // Checkbox
             Button {
                 vm.toggleLine(line)
                 BrandHaptics.tap()
             } label: {
-                Image(systemName: line.isIncluded ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(line.isIncluded ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(line.isIncluded ? "Included: \(line.name)" : "Excluded: \(line.name)")
-            .accessibilityHint("Tap to toggle")
-
-            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(line.name)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(line.isIncluded ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
-                    .strikethrough(!line.isIncluded)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-
-                if line.isPrePopulated {
-                    Text("Suggested")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOrange)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isIncluded ? Color.bizarreOrange : Color.clear)
+                        .frame(width: 22, height: 22)
+                    if isIncluded {
+                        Text("✓")
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(Color.black.opacity(0.7))
+                    } else {
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(white: 1, opacity: 0.2), lineWidth: 1.5)
+                            .frame(width: 22, height: 22)
+                    }
                 }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isIncluded ? "Included" : "Excluded")
 
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(line.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isIncluded ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
+                    .strikethrough(!isIncluded)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                if let subtitle = lineSubtitle(line) {
+                    Text(subtitle)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(
+                            subtitle.contains("low") ? Color.bizarreWarning : Color.bizarreOnSurfaceMuted
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(PosRepairQuoteViewModel.formatCurrency(cents: line.priceCents))
-                .font(.brandLabelLarge().monospacedDigit())
-                .foregroundStyle(line.isIncluded ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
+                .font(.custom("BarlowCondensed-SemiBold", size: 16).monospacedDigit())
+                .foregroundStyle(isIncluded ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.bizarreSurface1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            isIncluded
+                                ? Color.bizarreOrange.opacity(0.35)
+                                : Color(white: 1, opacity: 0.07),
+                            lineWidth: isIncluded ? 1.5 : 1
+                        )
+                )
+        )
+        .opacity(isIncluded ? 1 : 0.65)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("repairFlow.quote.line.\(line.id.uuidString.prefix(8))")
     }
 
-    private var estimateSection: some View {
-        Section {
-            HStack {
-                Text("Running estimate")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurface)
-                Spacer(minLength: 0)
-                Text(vm.estimateFormatted)
-                    .font(.brandTitleMedium().monospacedDigit())
-                    .foregroundStyle(.bizarreOrange)
+    /// Running estimate hero card — large price + gradient background (mockup 1d).
+    private var estimateHeroCard: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Estimate · \(vm.includedCount) item\(vm.includedCount == 1 ? "" : "s")")
+                    .font(.system(size: 11, weight: .semibold))
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                Text("+tax · final at pickup")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
             }
-            .padding(.vertical, BrandSpacing.xs)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Running estimate: \(vm.estimateFormatted)")
+            Spacer()
+            // Large price display (30pt font-weight 800, tabular nums per mockup)
+            Text(vm.estimateFormatted)
+                .font(.system(size: 30, weight: .heavy).monospacedDigit())
+                .kerning(-0.6)
+                .foregroundStyle(Color.bizarreOrange)
+                .accessibilityLabel("Estimate: \(vm.estimateFormatted)")
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.bizarreOrange.opacity(0.10), location: 0),
+                            .init(color: Color.bizarreOrange.opacity(0.02), location: 1),
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .overlay(Color.bizarreSurface1.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.bizarreOrange.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Add line sheet
@@ -290,58 +369,72 @@ public struct PosRepairQuoteView: View {
     // MARK: - CTA bar
 
     private var ctaBar: some View {
-        VStack(spacing: BrandSpacing.xs) {
+        VStack(spacing: 8) {
             if let error = coordinator.errorMessage {
                 Text(error)
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreError)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, BrandSpacing.md)
+                    .padding(.horizontal, 16)
             }
 
-            HStack(spacing: BrandSpacing.sm) {
-                Button {
-                    vm.commitToDraft(coordinator: coordinator)
-                    BrandHaptics.tapMedium()
-                } label: {
-                    Text("Save as quote")
-                        .font(.brandTitleSmall())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrandSpacing.sm)
-                }
-                .buttonStyle(.bordered)
-                .tint(.bizarreOrange)
-                .accessibilityLabel("Save as draft quote")
-                .accessibilityIdentifier("repairFlow.quote.saveQuote")
-
-                Button {
-                    vm.commitToDraft(coordinator: coordinator)
-                    coordinator.advance()
-                    BrandHaptics.tapMedium()
-                } label: {
-                    HStack {
-                        if coordinator.isLoading {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("Continue to deposit")
-                                .font(.brandTitleSmall())
-                            Image(systemName: "chevron.right")
-                        }
-                    }
+            // "Save as quote" secondary button — full width above primary
+            Button {
+                vm.commitToDraft(coordinator: coordinator)
+                BrandHaptics.tapMedium()
+            } label: {
+                Text("Save as quote")
+                    .font(.system(size: 12.5, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, BrandSpacing.sm)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-                .disabled(coordinator.isLoading)
-                .accessibilityLabel("Continue to deposit")
-                .accessibilityHint("Advances to step 4 of 4")
-                .accessibilityIdentifier("repairFlow.quote.continue")
+                    .padding(.vertical, 12)
+                    .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
+                    .foregroundStyle(Color.bizarreOnSurface)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Save as draft quote")
+            .accessibilityIdentifier("repairFlow.quote.saveQuote")
+
+            // Primary CTA
+            Button {
+                vm.commitToDraft(coordinator: coordinator)
+                coordinator.advance()
+                BrandHaptics.tapMedium()
+            } label: {
+                HStack {
+                    if coordinator.isLoading {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("Continue → deposit")
+                            .font(.subheadline.weight(.bold))
+                        Image(systemName: "chevron.right")
+                            .font(.subheadline.weight(.bold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.bizarreOrange, in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(Color.white)
+            }
+            .buttonStyle(.plain)
+            .disabled(coordinator.isLoading)
+            .accessibilityLabel("Continue to deposit")
+            .accessibilityHint("Advances to step 4 of 4")
+            .accessibilityIdentifier("repairFlow.quote.continue")
         }
-        .padding(.horizontal, BrandSpacing.base)
-        .padding(.bottom, BrandSpacing.md)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
         .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Helpers
+
+    private func lineSubtitle(_ line: RepairQuoteLine) -> String? {
+        // Stock info would come from the line metadata in a real impl.
+        // For now, show "Suggested" for pre-populated items.
+        if line.isPrePopulated { return "Suggested" }
+        return nil
     }
 }
 #endif
