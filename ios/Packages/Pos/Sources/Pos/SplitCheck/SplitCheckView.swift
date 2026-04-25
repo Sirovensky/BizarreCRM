@@ -265,6 +265,7 @@ private struct PartyColumn: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .accessibilityLabel("\(item.name), \(CartMath.formatCents(item.lineSubtotalCents)), \(assigned ? "assigned" : "unassigned")")
                 .accessibilityHint("Double tap to \(assigned ? "unassign" : "assign to \(party.label)")")
                 .listRowBackground(Color.bizarreSurface1)
