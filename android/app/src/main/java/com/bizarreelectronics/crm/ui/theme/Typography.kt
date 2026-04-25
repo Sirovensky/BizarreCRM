@@ -79,6 +79,13 @@ val BizarreTypography = Typography(
         fontSize = 24.sp,
         lineHeight = 32.sp,
     ),
+    headlineSmall = TextStyle(
+        fontFamily = BarlowCondensedFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp,
+        lineHeight = 32.sp,
+        letterSpacing = 0.sp,
+    ),
     titleLarge = TextStyle(
         fontFamily = InterFamily,
         fontWeight = FontWeight.SemiBold,
@@ -120,6 +127,13 @@ val BizarreTypography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
+    ),
+    labelMedium = TextStyle(
+        fontFamily = InterFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.5.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = InterFamily,
