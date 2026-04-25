@@ -633,8 +633,21 @@ export function InventoryListPage() {
                           // (counts as the gesture's allowed popup), then queue
                           // the rest into a panel where each item is opened by
                           // its own click — one user gesture per tab.
-                          const plpItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts');
-                          const msItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'mobilesentrix');
+                          // WEB-FB-014 (Fixer-B10 2026-04-25): drop `any` cast in
+                          // bulk supplier filter — define the minimal shape used
+                          // here so a backend rename of `supplier_url` /
+                          // `supplier_source` surfaces at typecheck instead of
+                          // silently yielding empty filter results.
+                          interface SupplierItemRow {
+                            id: number | string;
+                            name?: string;
+                            sku?: string;
+                            supplier_url?: string | null;
+                            supplier_source?: string | null;
+                          }
+                          const supplierRows = items as SupplierItemRow[];
+                          const plpItems = supplierRows.filter((i) => i.supplier_url && i.supplier_source === 'phonelcdparts');
+                          const msItems = supplierRows.filter((i) => i.supplier_url && i.supplier_source === 'mobilesentrix');
                           const validated: Array<{ id: number; name: string; url: string; supplier: string }> = [];
                           let skipped = 0;
                           for (const item of [...plpItems, ...msItems]) {

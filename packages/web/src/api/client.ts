@@ -416,6 +416,37 @@ export { client as api };
 export const SUPER_ADMIN_TOKEN_KEY = 'superAdminToken';
 export const SUPER_ADMIN_LOGOUT_EVENT = 'bizarre-crm:super-admin-logout';
 
+// WEB-FG-001 / FIXED-by-Fixer-A10 2026-04-25 — decode the unverified payload of
+// a JWT and read its `exp` (seconds since epoch). We do NOT trust this for
+// authorization decisions (the server still verifies signature on every
+// request); we only use it to gate `superAdminTokenStore.get()` so a stale,
+// expired-but-not-yet-purged token cannot flip `isAuthenticated=true` for one
+// render before the next API call surfaces the 401. Returns `null` when the
+// payload is unparseable so `get()` can fall back to its previous behavior
+// (treat as live; let the server reject it).
+function readJwtExpiryMs(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    // base64url → base64
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    const json = atob(padded);
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp !== 'number') return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+}
+
+function isExpiredSuperAdminToken(token: string): boolean {
+  const expMs = readJwtExpiryMs(token);
+  if (expMs == null) return false;
+  // 5s skew so a token that expires mid-render isn't briefly considered live.
+  return Date.now() >= expMs - 5_000;
+}
+
 export const superAdminTokenStore = {
   get(): string | null {
     if (typeof window === 'undefined') return null;
@@ -426,9 +457,21 @@ export const superAdminTokenStore = {
       if (legacy) {
         window.sessionStorage.setItem(SUPER_ADMIN_TOKEN_KEY, legacy);
         window.localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
-        return legacy;
+        // Fall through to the same expiry check as the sessionStorage path.
       }
-      return window.sessionStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+      const token = legacy ?? window.sessionStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+      if (!token) return null;
+      // WEB-FG-001: drop expired tokens at read time so a single render
+      // can't briefly trust an expired bearer. The server is still the
+      // source of truth — this just stops the UI from flickering authed.
+      if (isExpiredSuperAdminToken(token)) {
+        try {
+          window.sessionStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+          window.localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+        } catch { /* ignore */ }
+        return null;
+      }
+      return token;
     } catch {
       return null;
     }

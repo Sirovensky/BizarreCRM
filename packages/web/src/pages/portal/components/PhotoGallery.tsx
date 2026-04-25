@@ -9,6 +9,7 @@
  * rather than dropping the row, so the tech audit trail is preserved.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import {
   getPortalPhotos,
   hidePortalPhoto,
@@ -46,13 +47,19 @@ export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElemen
       try {
         await hidePortalPhoto(ticketId, path);
         setPhotos((prev) => (prev ? prev.filter((p) => p.path !== path) : prev));
-      } catch {
-        /* swallow — UI already shows the photo; next load will reconcile */
+      } catch (err) {
+        // WEB-FC-013 (Fixer-B10 2026-04-25): surface the failure so the
+        // customer doesn't think the photo was deleted when it wasn't.
+        // Reload from server so the gallery reflects truth, and toast the
+        // operator so they know to retry.
+        toast.error(t('photos.delete_failed') || 'Could not remove photo');
+        load().catch(() => { /* best-effort reconciliation */ });
+        if (import.meta.env.DEV) console.warn('[PhotoGallery] hide failed', err);
       } finally {
         setHidingPath(null);
       }
     },
-    [ticketId, t],
+    [ticketId, t, load],
   );
 
   if (photos === null || photos.length === 0) return null;

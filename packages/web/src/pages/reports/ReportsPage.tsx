@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -1150,7 +1150,24 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
 // ─── Main ReportsPage ─────────────────────────────────────────────────────────
 
 export function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('sales');
+  // WEB-FK-010 (Fixer-B10 2026-04-25): persist activeTab to URL search params
+  // so refresh / shared link keeps the user on the tab they drilled into.
+  // Refresh on `tickets` tab no longer kicks back to `sales`; managers can
+  // copy-paste a permalink to a colleague.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const TAB_KEYS = TABS.map(t => t.key) as Tab[];
+  const isValidTab = (v: string | null): v is Tab => !!v && (TAB_KEYS as string[]).includes(v);
+  const initialTab: Tab = isValidTab(searchParams.get('tab')) ? (searchParams.get('tab') as Tab) : 'sales';
+  const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
+  const setActiveTab = useCallback((next: Tab) => {
+    setActiveTabState(next);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      if (next === 'sales') sp.delete('tab');
+      else sp.set('tab', next);
+      return sp;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string; preset?: string }>({
     preset: 'last_30',
   });

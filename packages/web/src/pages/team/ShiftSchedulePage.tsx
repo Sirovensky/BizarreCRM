@@ -173,12 +173,12 @@ export function ShiftSchedulePage() {
     <div className="p-6 max-w-7xl mx-auto">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Shift Schedule</h1>
-          <p className="text-sm text-gray-500">Week of {weekStart.toLocaleDateString()}</p>
+          <h1 className="text-2xl font-bold text-surface-800 dark:text-surface-100">Shift Schedule</h1>
+          <p className="text-sm text-surface-500">Week of {weekStart.toLocaleDateString()}</p>
         </div>
         <div className="flex gap-2">
           <button
-            className="px-3 py-1.5 bg-white border rounded text-sm hover:bg-gray-50"
+            className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-700"
             onClick={() => {
               const d = new Date(weekStart);
               d.setDate(d.getDate() - 7);
@@ -188,13 +188,13 @@ export function ShiftSchedulePage() {
             ← Prev
           </button>
           <button
-            className="px-3 py-1.5 bg-white border rounded text-sm hover:bg-gray-50"
+            className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-700"
             onClick={() => setWeekStart(startOfWeek(new Date()))}
           >
             This week
           </button>
           <button
-            className="px-3 py-1.5 bg-white border rounded text-sm hover:bg-gray-50"
+            className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-700"
             onClick={() => {
               const d = new Date(weekStart);
               d.setDate(d.getDate() + 7);
@@ -214,14 +214,14 @@ export function ShiftSchedulePage() {
         </div>
       </header>
       {!canManageSchedule && (
-        <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="mb-4 rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-4 py-3 text-sm text-surface-700 dark:text-surface-200">
           You can view the schedule and pending time-off requests. Shift and time-off changes are limited to admins and managers.
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
         <div className="bg-white rounded-lg shadow border overflow-hidden">
-          <div className="grid grid-cols-7 border-b text-xs font-semibold uppercase text-gray-600">
+          <div className="grid grid-cols-7 border-b text-xs font-semibold uppercase text-surface-600 dark:text-surface-300">
             {days.map((d) => (
               <div key={d.toISOString()} className="px-3 py-2 border-r last:border-r-0">
                 {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -234,7 +234,7 @@ export function ShiftSchedulePage() {
               return (
                 <div key={d.toISOString()} className="border-r last:border-r-0 p-2 space-y-1">
                   {dayShifts.length === 0 && (
-                    <div className="text-xs text-gray-300 text-center py-4">no shifts</div>
+                    <div className="text-xs text-surface-300 dark:text-surface-600 text-center py-4">no shifts</div>
                   )}
                   {dayShifts.map((s) => (
                     <div key={s.id} className="bg-primary-50 border border-primary-200 rounded p-2 text-xs">
@@ -267,19 +267,19 @@ export function ShiftSchedulePage() {
 
         <aside className="space-y-4">
           <div className="bg-white rounded-lg shadow border p-4">
-            <h2 className="text-sm font-semibold text-gray-800 mb-3">Pending time-off</h2>
+            <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100 mb-3">Pending time-off</h2>
             {timeOffPending.length === 0 && (
-              <p className="text-xs text-gray-500">No pending requests.</p>
+              <p className="text-xs text-surface-500">No pending requests.</p>
             )}
             {timeOffPending.map((r) => (
               <div key={r.id} className="border-b last:border-b-0 py-2 text-xs">
-                <div className="font-semibold text-gray-800">
+                <div className="font-semibold text-surface-800 dark:text-surface-100">
                   {r.first_name} {r.last_name}
                 </div>
-                <div className="text-gray-500">
+                <div className="text-surface-500">
                   {r.start_date} → {r.end_date}
                 </div>
-                {r.reason && <div className="text-gray-600 italic mt-1 line-clamp-2">{r.reason}</div>}
+                {r.reason && <div className="text-surface-600 dark:text-surface-300 italic mt-1 line-clamp-2">{r.reason}</div>}
                 {canManageSchedule ? (
                   <div className="flex gap-2 mt-2">
                     <button
@@ -310,7 +310,7 @@ export function ShiftSchedulePage() {
             <h2 id="new-shift-title" className="text-lg font-bold mb-4">New shift</h2>
             <div className="space-y-3">
               <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Employee</span>
+                <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Employee</span>
                 <select
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                   value={newUserId}
@@ -325,7 +325,7 @@ export function ShiftSchedulePage() {
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Start</span>
+                <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Start</span>
                 <input
                   type="datetime-local"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -334,7 +334,7 @@ export function ShiftSchedulePage() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-semibold text-gray-600">End</span>
+                <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">End</span>
                 <input
                   type="datetime-local"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -343,7 +343,7 @@ export function ShiftSchedulePage() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Role (optional)</span>
+                <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Role (optional)</span>
                 <input
                   type="text"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
@@ -355,7 +355,7 @@ export function ShiftSchedulePage() {
             </div>
             <div className="flex gap-2 mt-5">
               <button
-                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                className="flex-1 px-3 py-2 border border-surface-200 dark:border-surface-700 rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-800"
                 onClick={() => setShowNew(false)}
                 disabled={createMut.isPending}
               >
