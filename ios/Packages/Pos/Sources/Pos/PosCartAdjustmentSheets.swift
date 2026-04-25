@@ -123,6 +123,7 @@ struct PosCartDiscountSheet: View {
                 .background(Color.bizarreOrangeContainer, in: Capsule())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
     }
 
     private var inputRow: some View {
@@ -314,6 +315,7 @@ struct PosCartTipSheet: View {
                     .background(isSelected ? Color.bizarreOrange : Color.bizarreOrangeContainer, in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .accessibilityLabel("\(Int(p * 100))% tip, \(CartMath.formatCents(Int((Double(cart.subtotalCents) * p).rounded())))")
             }
         }
