@@ -67,7 +67,11 @@ fun PosEntryScreen(
             EntryContent(
                 state = state,
                 onRetailSale = onNavigateToCart,
-                onRepairTicket = { onNavigateToCheckin(state.attachedCustomer?.id?.takeIf { it > 0L }) },
+                // Pass the attached customer's id verbatim (incl. id=0 for
+                // walk-in). CheckInEntry's preFillCustomer treats id<=0 as a
+                // walk-in marker and skips its Customer step so the cashier
+                // doesn't pick the customer twice.
+                onRepairTicket = { onNavigateToCheckin(state.attachedCustomer?.id) },
                 onStoreCredit = onNavigateToCart,
                 onOpenPickup = { ticketId ->
                     // Mockup PHONE 1 'Open cart →' hero pill: skip the cart
@@ -77,8 +81,12 @@ fun PosEntryScreen(
                     onNavigateToTender()
                 },
                 onWalkIn = {
+                    // Mockup PHONE 1 post-attach: walk-in still routes through
+                    // the path picker (Retail / Repair / Store credit) so the
+                    // cashier picks intent. Auto-nav to cart skipped that
+                    // picker for walk-ins; restore parity with named-customer
+                    // flow.
                     viewModel.attachWalkIn()
-                    onNavigateToCart()
                 },
             )
         }
@@ -160,17 +168,22 @@ private fun EntryContent(
             onOpenTicket = { /* recent ticket tap — no-op pre-attach for now */ },
         )
     } else {
-        LazyColumn(
+        // Post-attach: header pinned top, 3 path tiles vertically biased to
+        // upper-middle (mockup PHONE 1 0.6/0.4 spacers), Ready-for-pickup
+        // hero + Past/Recent ticket list pinned bottom under the docked
+        // search bar. Reachable + balanced.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(top = 24.dp, bottom = 120.dp),
+                .padding(horizontal = 14.dp)
+                .padding(bottom = 88.dp),
         ) {
-            // Post-attach state — customer is already attached
-            item { CustomerHeaderBanner(customer = state.attachedCustomer!!) }
+            CustomerHeaderBanner(customer = state.attachedCustomer!!)
+            Spacer(modifier = Modifier.height(8.dp))
 
-            item {
+            Spacer(modifier = Modifier.weight(0.4f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PathTile(
                     emoji = "🛒",
                     title = "Retail sale",
@@ -178,8 +191,6 @@ private fun EntryContent(
                     isPrimary = true,
                     onClick = onRetailSale,
                 )
-            }
-            item {
                 PathTile(
                     emoji = "🔧",
                     title = "Create repair ticket",
@@ -187,45 +198,48 @@ private fun EntryContent(
                     isPrimary = false,
                     onClick = onRepairTicket,
                 )
-            }
-            item {
-                // Mockup PHONE 1 post-attach: subtitle reads
-                // 'Balance: <green $X> · add funds'. When balance is zero
-                // we fall back to 'Add funds' so the tile doesn't imply
-                // there's money already loaded.
-                val credit = state.attachedCustomer?.storeCreditCents ?: 0L
-                val storeCreditSubtitle = if (credit > 0L) {
-                    "Balance: ${credit.toDollarString()} · add funds"
-                } else {
-                    "Add funds"
-                }
-                PathTile(
-                    emoji = "💳",
-                    title = "Store credit · payment",
-                    subtitle = storeCreditSubtitle,
-                    isPrimary = false,
-                    onClick = onStoreCredit,
-                )
-            }
-
-            // Ready-for-pickup hero + past repairs — only meaningful once a
-            // customer is attached.
-            items(state.readyForPickupTickets) { ticket ->
-                ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
-            }
-
-            // Past repairs (or recent tickets if ready-for-pickup is empty).
-            if (state.pastRepairs.isNotEmpty()) {
-                item {
-                    Text(
-                        if (state.readyForPickupTickets.isEmpty()) "RECENT TICKETS" else "PAST REPAIRS",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                run {
+                    val credit = state.attachedCustomer?.storeCreditCents ?: 0L
+                    val storeCreditSubtitle = if (credit > 0L) {
+                        "Balance: ${credit.toDollarString()} · add funds"
+                    } else "Add funds"
+                    PathTile(
+                        emoji = "💳",
+                        title = "Store credit · payment",
+                        subtitle = storeCreditSubtitle,
+                        isPrimary = false,
+                        onClick = onStoreCredit,
                     )
                 }
-                items(state.pastRepairs) { repair ->
-                    PastRepairRow(repair = repair)
+            }
+
+            Spacer(modifier = Modifier.weight(0.6f))
+
+            // Ready-for-pickup hero(s) + recent/past ticket list pinned at
+            // the bottom of the column so they don't push the path tiles
+            // off-screen and the cashier always sees recent activity for
+            // this customer right above the docked search bar.
+            if (state.readyForPickupTickets.isNotEmpty() || state.pastRepairs.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(state.readyForPickupTickets) { ticket ->
+                        ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
+                    }
+                    if (state.pastRepairs.isNotEmpty()) {
+                        item {
+                            Text(
+                                if (state.readyForPickupTickets.isEmpty()) "RECENT TICKETS" else "PAST REPAIRS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(state.pastRepairs) { repair ->
+                            PastRepairRow(repair = repair)
+                        }
+                    }
                 }
             }
         }

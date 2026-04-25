@@ -254,7 +254,16 @@ class CheckInEntryViewModel @Inject constructor(
      * non-positive or the fetch fails — user can still search manually.
      */
     fun preFillCustomer(customerId: Long) {
-        if (customerId <= 0L || _step1.value.attachedCustomer != null) return
+        if (_step1.value.attachedCustomer != null) return
+        // Walk-in sentinel: customerId == 0 means POS attached a walk-in
+        // customer earlier; mirror that here and advance to step 2 so the
+        // cashier doesn't pick the customer twice (UX feedback 2026-04-24).
+        if (customerId == 0L) {
+            attachWalkIn()
+            advance()
+            return
+        }
+        if (customerId < 0L) return
         loadOnFileDevices(customerId)
         viewModelScope.launch {
             runCatching { customerApi.getCustomer(customerId) }
@@ -270,6 +279,11 @@ class CheckInEntryViewModel @Inject constructor(
                     )
                     _step1.update { it.copy(attachedCustomer = entry) }
                     appPreferences.addRecentCheckinCustomerId(entry.id)
+                    // Auto-advance to step 2 (Device) — when CheckInEntry is
+                    // launched with a customerId pre-fill, the cashier already
+                    // picked the customer in POS; making them re-tap Next on
+                    // step 1 reads as a duplicate gate.
+                    advance()
                 }
         }
     }

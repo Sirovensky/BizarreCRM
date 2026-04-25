@@ -4684,3 +4684,76 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 - [ ] **Legacy 7-step ticket-create package** — `ui/screens/tickets/create/steps/*` remains in the codebase. Removal blocked until the new 6-step check-in flow has been validated in production. Track as a follow-up cleanup task.
 - [ ] **SMS receipt (POS-SMS-001)** — server-side endpoint for sending a receipt via SMS is not yet implemented. `PosReceiptViewModel.kt` has the client call site stubbed; requires `packages/server/src/routes/pos.routes.ts` to expose `POST /api/v1/pos/receipts/:id/sms`. Track as POS-SMS-001 in `TODO.md`.
 - [ ] **Cash drawer real driver** — `pos/CashDrawerControllerStub.kt` sends no actual ESC/POS command. Needs hardware integration work tied to the supported receipt-printer model.
+# POS Audit Wave — 2026-04-24 (10 parallel sonnet agents)
+
+> Aggregated findings from 10 parallel POS-code audit agents. Each item cites
+> concrete `file:line` evidence. Items are unchecked = open, `[x]` = shipped
+> in this wave. Categories tagged per item. Append fix commits inline.
+
+## Bugs
+
+- [ ] **POS-AUDIT-001 (Bug). `toDollarString()` mangles negative values.** `dollars = this / 100` keeps signed division but `cents = Math.abs(this % 100)`, so `-50L` -> `$0.50` (sign lost) and `-274L` -> `$-2.74` (sign inside dollar mark). Fix: compute sign separately, take abs of both halves, prepend `-$` only when negative. `PosModels.kt:92-96`. (10/10 agents)
+- [ ] **POS-AUDIT-002 (Bug). `isFullyPaid` blocks $0.00 finalization.** `remainingCents == 0L && totalCents > 0L` — fully-discounted or fully-store-credit-covered sale can never finalize; Charge button stays disabled with no explanation. `PosCoordinator.kt:35`, `PosTenderViewModel.kt:28`.
+- [ ] **POS-AUDIT-003 (Bug). PosTenderScreen snackbar host never wired.** `remember { SnackbarHostState() }` is inside `state.errorMessage?.let { ... }` but `Scaffold` has no `snackbarHost = ...` slot. Card-charge / network errors silently swallowed. `PosTenderScreen.kt:50, 136-142`.
+- [ ] **POS-AUDIT-004 (Bug). `PreAttachContent` second `hiltViewModel()` call.** `PreAttachContent` is private composable inside `EntryContent` inside `PosEntryScreen` (which already injects). Re-injecting at line 243 silently creates a different VM if composable is ever hoisted. Pass VM or `onCreateCustomer` lambda. `PosEntryScreen.kt:243`.
+- [ ] **POS-AUDIT-005 (Bug). `openReadyForPickup` doesn't attach customer.** Sets `linkedTicketId` + `setLines(...)` but skips `attachCustomer`. Tender finalize sends `customerId = null` for a ticket with a real owner. `PosEntryViewModel.kt:149-164`, `PosTenderViewModel.kt:122-125`.
+- [ ] **POS-AUDIT-006 (Bug). Ready-for-pickup line uses `taxRate = 0.0`.** `openReadyForPickup` builds `CartLine(...)` with default tax. Tender skips Cart, `PosCartViewModel.init` never seeds rate. Client-side total in Tender hero shows lower than server invoice. `PosEntryViewModel.kt:149-163`.
+- [ ] **POS-AUDIT-007 (Bug). `CartLineBottomSheet` qty stepper bypasses Save.** `-` and `+` taps fire `onQtyChange(qty)` immediately, mutating coordinator before Save. Comment says "applied to VM only on Save" but implementation contradicts — Cancel/dismiss does NOT revert qty. `CartLineBottomSheet.kt:79-111`.
+- [ ] **POS-AUDIT-008 (Bug). `DiscountChip.FLAT` and `DiscountChip.CUSTOM` apply $0 silently.** Only `FIVE_PCT` and `TEN_PCT` compute real values; other two fall to `else -> 0L` branch. UI highlights chip but writes 0 with no flat-amount or custom-percent input. `CartLineBottomSheet.kt:161-166`.
+- [ ] **POS-AUDIT-009 (Bug). Discount chip percent doesn't recompute on qty change.** Chip stores absolute cents at selection time using local `qty`. Stepper updates qty but chip's `discountCents` stays stale until user re-taps. `CartLineBottomSheet.kt:44, 157-172`.
+- [ ] **POS-AUDIT-010 (Bug). `sendEmail()` optimistic SENT with no API call.** `emailSentState = SendState.SENT` set synchronously, no network call. If server-side email fails, cashier sees check permanently and row becomes non-tappable. `PosReceiptViewModel.kt:114-118`.
+- [ ] **POS-AUDIT-011 (Bug). `parkCart()` empty stub.** Method body is comment-only. Tile fires nothing — no error, no snackbar, no navigation. `PosTenderViewModel.kt:99-102`.
+- [ ] **POS-AUDIT-012 (Bug). `CartDiscountDialog` Apply has no canApply guard / no overflow check.** Tapping Apply with empty input writes `cartDiscountCents = 0L`; entering amount > subtotal silently zeroes sale via `coerceAtLeast(0L)`. Add `canApply = cents > 0` + `cents <= subtotalCents`. `PosCartScreen.kt:610-631`.
+- [ ] **POS-AUDIT-013 (Bug). `PastRepairRow` clickable but no-op.** `clickable(onClickLabel = "Open ticket ${id}") { /* navigate to ticket */ }` — false TalkBack affordance. Wire to `Screen.TicketDetail` nav OR remove `clickable`. `PosEntryScreen.kt:614`.
+- [ ] **POS-AUDIT-014 (Bug). `RecentTicketChip` clickable but no-op.** Caller passes `onOpenTicket = { /* no-op */ }`. Same false-affordance. `PosEntryScreen.kt:239, 291-293`.
+- [ ] **POS-AUDIT-015 (Bug). `TicketResultRow` is not clickable.** No `clickable` modifier, no `onClick` parameter; ticket search hits in POS entry are inert. Wire to ticket detail OR cart-seed. `PosEntryScreen.kt:719-733`.
+- [ ] **POS-AUDIT-016 (Bug). `CustomerResultRow` subtitle drops ticket count when email is null.** Logic gates count on email presence. Mockup shows count regardless. Move ticket-count formatter outside `email?.let`. `PosEntryScreen.kt:712`.
+- [ ] **POS-AUDIT-017 (Bug). `CustomerResult.initials` uses raw `name.take(2)`.** "Sarah M.".take(2) = "Sa", not "SM". Avatar circle shows wrong characters in any consumer using default initials. `PosModels.kt:62`.
+- [ ] **POS-AUDIT-018 (Bug). "Search customer" path tile is a no-op.** `onClick = { /* search bar drives flow; tap is hint */ }`. Tile has chevron + ripple but does nothing. Wire to `searchExpanded = true` + focus the SearchBar. `PosEntryScreen.kt:259-265`.
+- [ ] **POS-AUDIT-019 (Bug). PosEntry `errorMessage` consumed but never displayed.** `LaunchedEffect` calls `viewModel.clearError()` without showing snackbar/dialog. Customer-create / search failures swallowed. Add SnackbarHost to Scaffold. `PosEntryScreen.kt:133-138`.
+- [ ] **POS-AUDIT-020 (Bug). `ReceiptNotificationApi` defined inline in VM, not in Hilt graph.** Interface declared at top of `PosReceiptViewModel.kt` and referenced via `@Inject` constructor. No `@Provides`/`@Binds` in any module. Move to `data/remote/api/` and bind via Retrofit module. `PosReceiptViewModel.kt:28-31, 52-56`.
+- [ ] **POS-AUDIT-021 (Bug). Tracking URL is always client-built `/track/<orderId>`, never server-supplied.** `PosCoordinator.completeOrder` called with `trackingUrl = null`; PosReceipt synthesizes a relative path. Receipt screen renders it underlined but with no `clickable` modifier. `PosTenderViewModel.kt:158-159`, `PosReceiptViewModel.kt:74-76`, `PosReceiptScreen.kt:119-127`.
+
+## Mockup deviations
+
+- [ ] **POS-AUDIT-022 (Mockup). `+ Note` dashed slot missing on cart screen.** Mockup PHONE 3 shows three slots; Android renders only two. Wire cart-level note -> coordinator + `PosSaleRequest.notes`. `PosCartScreen.kt:191-195` vs mockup line 851.
+- [ ] **POS-AUDIT-023 (Mockup). Cart summary strip missing on PosEntry post-attach.** Mockup PHONE 1 line 641 shows a `Cart - empty / $0.00` strip between topbar and path tiles. Add compact row under `CustomerHeaderBanner`. `PosEntryScreen.kt:163-232`.
+- [ ] **POS-AUDIT-024 (Mockup). `CartPathTabs` underline + border use hardcoded hex.** Active underline `Color(0xFFFDEED0)` and inactive border `Color(0xFF332C3F)` bypass theme tokens. Replace with `MaterialTheme.colorScheme.primary` / `outline`. `PosCartScreen.kt:464-475`.
+- [ ] **POS-AUDIT-025 (Mockup). Cart top-bar overflow menu missing.** Mockup PHONE 3 shows a kebab menu in cart top-bar. Android renders inoperative `Icons.Outlined.Person` "Attach customer" no-op. Replace with `MoreVert` overflow opening sheet (Detach customer, Apply discount, Add note, Park cart). `PosCartScreen.kt:125-128`.
+- [ ] **POS-AUDIT-026 (Mockup). Store-credit tile absent from `PaymentMethodGrid`.** `applyStoreCredit()` exists in VM but no tile invokes it. Add tile labeled `Store credit - $X available` when `attachedCustomer.storeCreditCents > 0`. `PosTenderViewModel.kt:53-65`, `PosTenderScreen.kt:244-295`.
+- [ ] **POS-AUDIT-027 (Mockup). Cart tab label shows post-tax total; mockup uses pre-tax subtotal.** `state.totalCents` includes tax + discount; mockup PHONE 3 reads `Cart - 3 - $262` matching subtotal. Switch to `state.subtotalCents`. `PosCartScreen.kt:451-453`.
+- [ ] **POS-AUDIT-028 (Mockup). Search bar placeholder is the same string in both attach states.** Mockup PHONE 1 swaps placeholder to `Scan or search parts...` once a customer is attached. Branch placeholder on `state.attachedCustomer != null`. `PosEntryScreen.kt:93`.
+- [ ] **POS-AUDIT-029 (Mockup). `CartLineBottomSheet` doesn't show stock qty.** Mockup PHONE 4 sheet header reads `SKU USB-C3 - Stock 22`. Add `stockQty` to `CartLine` from inventory lookup. `CartLineBottomSheet.kt:63-65`, `PosModels.kt:7-25`.
+- [ ] **POS-AUDIT-030 (Mockup). "Store credit - payment" path tile routes to retail Cart.** `onStoreCredit = onNavigateToCart` — tile lands cashier on empty retail cart. Build dedicated store-credit screen. `PosEntryScreen.kt:71`.
+- [ ] **POS-AUDIT-031 (Mockup). `ReadyForPickupCard` Cookie12Sided shape clips border at concave notches.** Border + clip on same `Cookie12Sided` produces "bitten cookie" silhouette + tap-target gaps. Mockup uses plain 12dp radius. Drop Cookie12Sided here OR move shape to non-bordered child. `PosEntryScreen.kt:565-572`.
+
+## UI / UX
+
+- [ ] **POS-AUDIT-032 (UX). Bottom nav stays visible on Cart + Tender + Receipt.** `showBottomNav` predicate at `AppNavGraph.kt:619` excludes only Scanner. Add `Screen.PosCart.route`, `Screen.PosTender.route`, `Screen.PosReceipt.route` to hide list.
+- [ ] **POS-AUDIT-033 (UX). `CartLineBottomSheet` `skipPartiallyExpanded = false` produces snap jitter.** Sheet content overflows partial-peek height on most phones, snapping immediately to full. Set `skipPartiallyExpanded = true`. `CartLineBottomSheet.kt:39`.
+- [ ] **POS-AUDIT-034 (UX). Cart-line bottom sheet doesn't dim the topBar.** Sheet rendered outside Scaffold content lambda; topBar stays bright while everything below dims. Move sheet inside Scaffold. `PosCartScreen.kt:222-234`.
+- [ ] **POS-AUDIT-035 (UX). `CartDiscountDialog` doesn't validate `cents <= subtotal`.** Discount > subtotal silently zeroes sale. Surface validation error + disable Apply. `PosCartScreen.kt:610-631`.
+- [ ] **POS-AUDIT-036 (UX). `CartLineBottomSheet` chip state doesn't reflect existing line discount on open.** `selectedChip` initializes to `null` regardless of `line.discountCents`. Compute initial `selectedChip` from existing discount value vs known thresholds. `CartLineBottomSheet.kt:43-44`.
+
+## Accessibility
+
+- [ ] **POS-AUDIT-037 (A11y). `CartLineBottomSheet` qty stepper buttons 34dp < 48dp min.** Bump to 48.dp. `CartLineBottomSheet.kt:85, 101`.
+- [ ] **POS-AUDIT-038 (A11y). `PastRepairRow` subtitle bodySmall 12sp may fall below AA contrast.** `onSurfaceVariant` (#a79fb8) on Surface1 (#1a1722) ~= 4.1:1, fails AA-small. Bump to bodyMedium or increase color contrast. `PosEntryScreen.kt:629-633`.
+- [ ] **POS-AUDIT-039 (A11y). `CustomerHeaderBanner` + `ReadyForPickupCard` lack merged `contentDescription`.** TalkBack announces avatar + name + subtitle as 3 separate focusables. Add `Modifier.semantics(mergeDescendants = true)`. `PosEntryScreen.kt:395-422, 560-606`.
+- [ ] **POS-AUDIT-040 (A11y). `ReadyForPickupCard` lacks `Role.Button` semantics.** `clickable` with `onClickLabel` only, no `role = Role.Button`. Add to Row's semantics. `PosEntryScreen.kt:565-606`.
+
+## Code quality
+
+- [ ] **POS-AUDIT-041 (Code). `CheckoutScreen` + `TicketSuccessScreen` are routable Phase-3 stubs.** Both reachable from real nav, render placeholder strings. Either delete routes (now that new check-in flow handles tickets) OR replace with proper screens. `CheckoutScreen.kt`, `TicketSuccessScreen.kt`, `AppNavGraph.kt:1120-1129`.
+- [ ] **POS-AUDIT-042 (Code). `CheckoutScreen` uses `Button` as `TopAppBar.navigationIcon`.** M3 contract requires `IconButton` (48dp, no fill). Filled `Button` renders incorrectly. `CheckoutScreen.kt:36-37`.
+
+## User-flagged (this wave)
+
+- [x] **POS-AUDIT-101 (Flow). Walk-in customer skipped path picker, dumped to cart.** Fixed in this wave: `onWalkIn` no longer auto-navigates — cashier stays on path picker after walk-in attaches.
+- [x] **POS-AUDIT-102 (UX). Three post-attach path tiles top-aligned, not centered.** Fixed: post-attach Column uses Spacer weight 0.4f / 0.6f to bias tiles upper-middle (matches pre-attach pattern + mockup PHONE 1).
+- [x] **POS-AUDIT-103 (Flow). Walk-in -> Create repair ticket re-asks for customer.** Fixed: `onNavigateToCheckin` passes id verbatim incl. 0L sentinel; `CheckInEntryViewModel.preFillCustomer(0L)` calls `attachWalkIn() + advance()` so cashier jumps straight to device step. Real-customer pre-fill also auto-advances.
+- [ ] **POS-AUDIT-104 (UX). Post-attach customer header has no contentDescription / status-bar overlap.** Earlier fixed via `statusBarsPadding()`. Verify on device after centering refactor.
+
+## Aggregator note
+
+Findings produced by 10 parallel sonnet code-audit agents, deduped. Each item is independently checkable. Cron `pos-fix-loop-reminder` fires every 10 minutes nudging continuation; remove the cron when this section is empty.

@@ -180,6 +180,12 @@ sealed class Screen(val route: String) {
             "checkin/$customerId/$deviceId?customerName=${Uri.encode(customerName)}&deviceName=${Uri.encode(deviceName)}"
     }
     /** Pre-step that collects customer + device info before launching [CheckIn]. */
+    /**
+     * customerId arg sentinels:
+     *   null      → no pre-fill; cashier picks customer in step 1
+     *   0L        → walk-in pre-fill (skip step 1, jump to device step)
+     *   >0L       → real customer pre-fill
+     */
     data object CheckInEntry : Screen("checkin-entry?customerId={customerId}") {
         /**
          * Optional pre-fill: when the entry is launched from a customer
@@ -187,7 +193,7 @@ sealed class Screen(val route: String) {
          * Bare route (no customerId) still works via default.
          */
         fun createRoute(customerId: Long? = null): String =
-            if (customerId != null && customerId > 0L) "checkin-entry?customerId=$customerId" else "checkin-entry"
+            if (customerId != null) "checkin-entry?customerId=$customerId" else "checkin-entry"
     }
     data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
         fun createRoute(ticketId: Long, total: Double, customerName: String): String {
@@ -1197,6 +1203,9 @@ fun AppNavGraph(
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
                     onNavigateToCheckin = { customerId ->
+                        // customerId can be null (no attach), 0L (walk-in), or >0
+                        // (real customer). Pass through verbatim so CheckInEntry's
+                        // preFillCustomer can switch on the sentinel.
                         navController.navigate(
                             if (customerId != null) Screen.CheckInEntry.createRoute(customerId)
                             else Screen.CheckInEntry.route

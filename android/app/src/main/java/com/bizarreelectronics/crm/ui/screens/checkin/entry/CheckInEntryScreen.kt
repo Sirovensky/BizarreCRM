@@ -88,11 +88,14 @@ fun CheckInEntryScreen(
     val step2 by viewModel.step2.collectAsState()
     val currentStep by viewModel.currentStep.collectAsState()
 
-    // Pre-fill once when launched from CustomerDetail with a customerId arg.
-    // viewModel.preFillCustomer guards against repeat / invalid ids so this
-    // is safe on recomposition.
+    // Pre-fill once when launched with a customerId arg. Sentinels:
+    //   -1L → bare route, no pre-fill (default in nav graph)
+    //    0L → walk-in pre-fill (POS attached walk-in)
+    //   >0L → real customer pre-fill
+    // viewModel.preFillCustomer guards against repeat calls so this is
+    // safe on recomposition.
     LaunchedEffect(preFillCustomerId) {
-        if (preFillCustomerId > 0L) viewModel.preFillCustomer(preFillCustomerId)
+        if (preFillCustomerId >= 0L) viewModel.preFillCustomer(preFillCustomerId)
     }
 
     Scaffold(
