@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.bizarreelectronics.crm.data.blockchyp.BlockChypClient
 import com.bizarreelectronics.crm.data.remote.api.BlockChypApi
+import com.bizarreelectronics.crm.data.remote.api.ReceiptNotificationApi
 import com.bizarreelectronics.crm.util.SignaturePromptHost
 import com.bizarreelectronics.crm.util.SignatureRouter
 import dagger.Module
@@ -48,6 +49,11 @@ object BlockChypModule {
     @Singleton
     fun provideBlockChypApi(retrofit: Retrofit): BlockChypApi =
         retrofit.create(BlockChypApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideReceiptNotificationApi(retrofit: Retrofit): ReceiptNotificationApi =
+        retrofit.create(ReceiptNotificationApi::class.java)
 
     @Provides
     @Singleton

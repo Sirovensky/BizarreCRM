@@ -38,6 +38,11 @@ data class ReadyForPickupTicket(
     val orderId: String,
     val deviceName: String,
     val dueCents: Long,
+    // AUDIT-005: carry customer identity so openReadyForPickup can attach the
+    // customer to the coordinator even when the cashier taps a ticket before
+    // the customer-attach step (e.g. future global ticket queue view).
+    val customerId: Long = 0L,
+    val customerName: String = "",
 )
 
 data class PastRepair(

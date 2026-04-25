@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.pos
 
+import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -29,7 +35,18 @@ fun PosReceiptScreen(
     onNewSale: () -> Unit,
     viewModel: PosReceiptViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
+
+    fun launchTrackingUrl(url: String) {
+        val uri = Uri.parse(url)
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(context, uri)
+        } catch (_: Exception) {
+            // Chrome Custom Tabs unavailable — fall back to system browser
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.snackbarMessage) {
@@ -115,7 +132,7 @@ fun PosReceiptScreen(
                         )
                     }
                 }
-                // Tracking URL
+                // Tracking URL — tappable, opens Chrome Custom Tab
                 state.trackingUrl?.let { url ->
                     val displayUrl = if (url.startsWith("/")) "https://…$url" else url
                     Text(
@@ -123,6 +140,12 @@ fun PosReceiptScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalExtendedColors.current.info,
                         textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .clickable(onClickLabel = "Track order") { launchTrackingUrl(url) }
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Track order: $displayUrl"
+                            },
                     )
                 }
             }

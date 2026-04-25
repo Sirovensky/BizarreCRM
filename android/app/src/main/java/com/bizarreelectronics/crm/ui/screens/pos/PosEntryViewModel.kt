@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.pos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,11 +26,15 @@ data class PosEntryUiState(
     val readyForPickupTickets: List<ReadyForPickupTicket> = emptyList(),
     val pastRepairs: List<PastRepair> = emptyList(),
     val errorMessage: String? = null,
+    // AUDIT-006: default tax rate loaded on init so openReadyForPickup can
+    // seed the CartLine with the correct rate rather than leaving it at 0.0.
+    val defaultTaxRate: Double = 0.0,
 )
 
 @HiltViewModel
 class PosEntryViewModel @Inject constructor(
     private val customerApi: CustomerApi,
+    private val inventoryApi: InventoryApi,
     private val coordinator: PosCoordinator,
 ) : ViewModel() {
 
@@ -40,6 +45,18 @@ class PosEntryViewModel @Inject constructor(
 
     init {
         wireSearchDebounce()
+        // AUDIT-006: pre-load the default tax rate so openReadyForPickup can
+        // seed the CartLine.taxRate — same logic as PosCartViewModel.init.
+        viewModelScope.launch {
+            runCatching { inventoryApi.getTaxClasses() }
+                .onSuccess { resp ->
+                    val classes = resp.data.orEmpty()
+                    val ratePercent = classes.firstOrNull { it.isDefault == 1 }?.rate
+                        ?: classes.firstOrNull()?.rate
+                        ?: 0.0
+                    _uiState.update { it.copy(defaultTaxRate = ratePercent / 100.0) }
+                }
+        }
     }
 
     @OptIn(FlowPreview::class)
@@ -145,11 +162,32 @@ class PosEntryViewModel @Inject constructor(
      * total. We don't try to re-hydrate every part / labor row here — the
      * customer already approved the quote at check-in time, so the relevant
      * artefact is the outstanding balance, not the line breakdown.
+     *
+     * AUDIT-005: attaches the customer carried on the ticket so the tender
+     * screen shows the customer name and store-credit balance even when the
+     * cashier reaches this path without manually attaching via search.
+     * AUDIT-006: seeds CartLine.taxRate from the loaded default so the
+     * Tender screen's total reflects real tax math (previously always 0.0).
      */
     fun openReadyForPickup(ticketId: Long) {
         coordinator.setLinkedTicket(ticketId)
         val ticket = _uiState.value.readyForPickupTickets.firstOrNull { it.ticketId == ticketId }
         if (ticket != null) {
+            // AUDIT-005: attach the customer if not already attached or if
+            // the attached customer differs from the ticket's owner.
+            val currentCustomer = coordinator.session.value.customer
+            if (ticket.customerId > 0L &&
+                (currentCustomer == null || currentCustomer.id != ticket.customerId)
+            ) {
+                val customer = PosAttachedCustomer(
+                    id = ticket.customerId,
+                    name = ticket.customerName.ifBlank { "Customer #${ticket.customerId}" },
+                )
+                coordinator.attachCustomer(customer)
+                _uiState.update { it.copy(attachedCustomer = customer) }
+            }
+            // AUDIT-006: apply the pre-loaded default tax rate to the line.
+            val taxRate = _uiState.value.defaultTaxRate
             coordinator.setLines(
                 listOf(
                     CartLine(
@@ -157,6 +195,7 @@ class PosEntryViewModel @Inject constructor(
                         itemId = null,
                         name = "Ticket #${ticket.orderId} · ${ticket.deviceName}",
                         unitPriceCents = ticket.dueCents,
+                        taxRate = taxRate,
                     )
                 )
             )
@@ -218,6 +257,9 @@ class PosEntryViewModel @Inject constructor(
                 .getOrNull()?.data?.tickets
                 ?: return@launch
 
+            // AUDIT-005: capture the customer name at map time so
+            // openReadyForPickup can attach without an extra API call.
+            val customerName = _uiState.value.attachedCustomer?.name.orEmpty()
             val ready = tickets.filter { t ->
                 val name = t.statusName?.lowercase().orEmpty()
                 val isClosed = (t.status?.isClosed ?: 0) == 1
@@ -235,6 +277,8 @@ class PosEntryViewModel @Inject constructor(
                     // total when the JOIN returned no row (legacy tickets
                     // without an invoice attached).
                     dueCents = Math.round((t.amountDue ?: t.total ?: 0.0) * 100),
+                    customerId = customerId,
+                    customerName = customerName,
                 )
             }
 

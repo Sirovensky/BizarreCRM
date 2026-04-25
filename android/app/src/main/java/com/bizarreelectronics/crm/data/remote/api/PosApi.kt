@@ -54,6 +54,8 @@ data class PosSaleData(
     @SerializedName("change_cents") val changeCents: Long = 0L,
     @SerializedName("approval_code") val approvalCode: String? = null,
     @SerializedName("last_four") val lastFour: String? = null,
+    /** Server-supplied absolute tracking URL (POS-RECEIPT-001). Null until deployed. */
+    @SerializedName("tracking_url") val trackingUrl: String? = null,
 )
 
 data class PosInvoiceLaterRequest(

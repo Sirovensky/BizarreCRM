@@ -693,9 +693,9 @@ object RetrofitClient {
     // Phase 2 — POS sale + receipt endpoints (PosApi shared with earlier Wave-36 entry)
     @Provides @Singleton fun providePosApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PosApi =
         retrofit.create(com.bizarreelectronics.crm.data.remote.api.PosApi::class.java)
-    // POS-SMS-001: client stub for SMS receipt endpoint (server not yet deployed; 404 degrades gracefully)
-    @Provides @Singleton fun provideReceiptNotificationApi(retrofit: Retrofit): com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi =
-        retrofit.create(com.bizarreelectronics.crm.ui.screens.pos.ReceiptNotificationApi::class.java)
+    // POS-SMS-001 ReceiptNotificationApi binding lives in di/BlockChypModule.kt
+    // (co-located with other Phase-2 POS receipt-side bindings). Don't add a
+    // duplicate @Provides here — Hilt rejects duplicate bindings.
 
     // Phase 4 — BlockChyp payment terminal proxy (BlockChypModule.kt provides the typed
     // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).

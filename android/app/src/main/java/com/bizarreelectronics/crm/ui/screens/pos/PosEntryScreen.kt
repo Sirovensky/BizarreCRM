@@ -28,7 +28,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,16 +52,23 @@ fun PosEntryScreen(
     onNavigateToCart: () -> Unit,
     onNavigateToCheckin: (Long?) -> Unit,
     onNavigateToTender: () -> Unit,
+    onNavigateToTicket: (Long) -> Unit = {},
     viewModel: PosEntryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val searchFocusRequester = remember { FocusRequester() }
 
     BackHandler(enabled = searchExpanded) { searchExpanded = false }
 
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0),
+    ) { innerPadding ->
     // statusBarsPadding pushes the entire POS-entry surface below the
     // system status bar so the customer banner / clock no longer overlap.
-    Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(innerPadding)) {
         // ── Content layer ───────────────────────────────────────────────────
         AnimatedVisibility(
             visible = !searchExpanded,
@@ -88,6 +99,19 @@ fun PosEntryScreen(
                     // flow.
                     viewModel.attachWalkIn()
                 },
+                onNavigateToTicket = onNavigateToTicket,
+                onSearchTap = {
+                    searchExpanded = true
+                    searchFocusRequester.requestFocus()
+                },
+                onCreateCustomer = { firstName, lastName, phone, email ->
+                    viewModel.createCustomerAndAttach(
+                        firstName = firstName,
+                        lastName = lastName,
+                        phone = phone,
+                        email = email,
+                    )
+                },
             )
         }
 
@@ -116,7 +140,8 @@ fun PosEntryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(if (searchExpanded) Alignment.TopCenter else Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = if (searchExpanded) 0.dp else 14.dp),
+                .padding(horizontal = 14.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
+                .focusRequester(searchFocusRequester),
         ) {
             SearchResultsContent(
                 results = state.searchResults,
@@ -134,13 +159,18 @@ fun PosEntryScreen(
                     // the cashier can choose Retail / Repair / Store credit.
                     // (Walk-in still navigates straight to cart.)
                 },
+                onOpenTicket = { id ->
+                    searchExpanded = false
+                    onNavigateToTicket(id)
+                },
             )
         }
     }
+    } // end Scaffold content lambda
 
-    state.errorMessage?.let { msg ->
-        LaunchedEffect(msg) {
-            // Surface error to snackbar — host scaffold handles display
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
             viewModel.clearError()
         }
     }
@@ -156,6 +186,9 @@ private fun EntryContent(
     onStoreCredit: () -> Unit,
     onOpenPickup: (Long) -> Unit,
     onWalkIn: () -> Unit,
+    onNavigateToTicket: (Long) -> Unit,
+    onSearchTap: () -> Unit,
+    onCreateCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
 ) {
     if (state.attachedCustomer == null) {
         // Pre-attach: vertically center the 3 path tiles in the available
@@ -165,7 +198,9 @@ private fun EntryContent(
         PreAttachContent(
             recentTickets = state.pastRepairs,
             onWalkIn = onWalkIn,
-            onOpenTicket = { /* recent ticket tap — no-op pre-attach for now */ },
+            onOpenTicket = onNavigateToTicket,
+            onSearchTap = onSearchTap,
+            onCreateCustomer = onCreateCustomer,
         )
     } else {
         // Post-attach: header pinned top, 3 path tiles vertically biased to
@@ -237,7 +272,7 @@ private fun EntryContent(
                             )
                         }
                         items(state.pastRepairs) { repair ->
-                            PastRepairRow(repair = repair)
+                            PastRepairRow(repair = repair, onOpen = { onNavigateToTicket(repair.ticketId) })
                         }
                     }
                 }
@@ -253,8 +288,9 @@ private fun PreAttachContent(
     recentTickets: List<PastRepair>,
     onWalkIn: () -> Unit,
     onOpenTicket: (Long) -> Unit,
+    onSearchTap: () -> Unit,
+    onCreateCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
 ) {
-    val viewModel: PosEntryViewModel = hiltViewModel()
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -275,7 +311,7 @@ private fun PreAttachContent(
                 title = "Search customer",
                 subtitle = "Tap or use search below",
                 isPrimary = false,
-                onClick = { /* search bar drives flow; tap is hint */ },
+                onClick = onSearchTap,
             )
             PathTile(
                 emoji = "+",
@@ -312,11 +348,11 @@ private fun PreAttachContent(
     if (showCreateDialog) {
         CreateCustomerDialog(
             onSubmit = { firstName, lastName, phone, email ->
-                viewModel.createCustomerAndAttach(
-                    firstName = firstName,
-                    lastName = lastName.takeIf { it.isNotBlank() },
-                    phone = phone.takeIf { it.isNotBlank() },
-                    email = email.takeIf { it.isNotBlank() },
+                onCreateCustomer(
+                    firstName,
+                    lastName.takeIf { it.isNotBlank() },
+                    phone.takeIf { it.isNotBlank() },
+                    email.takeIf { it.isNotBlank() },
                 )
                 showCreateDialog = false
             },
@@ -620,12 +656,12 @@ private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit)
 }
 
 @Composable
-private fun PastRepairRow(repair: PastRepair) {
+private fun PastRepairRow(repair: PastRepair, onOpen: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 44.dp)     // 44dp hit area
-            .clickable(onClickLabel = "Open ticket ${repair.ticketId}") { /* navigate to ticket */ }
+            .clickable(onClickLabel = "Open ticket ${repair.ticketId}") { onOpen() }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -654,6 +690,7 @@ private fun SearchResultsContent(
     results: SearchResultGroup,
     isSearching: Boolean,
     onCustomerSelected: (CustomerResult) -> Unit,
+    onOpenTicket: (Long) -> Unit,
 ) {
     if (isSearching) {
         Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -689,7 +726,7 @@ private fun SearchResultsContent(
                 )
             }
             items(results.tickets) { t ->
-                TicketResultRow(ticket = t)
+                TicketResultRow(ticket = t, onClick = { onOpenTicket(t.id) })
             }
         }
         if (results.customers.isEmpty() && results.tickets.isEmpty() && results.parts.isEmpty()) {
@@ -723,17 +760,27 @@ private fun CustomerResultRow(customer: CustomerResult, onClick: () -> Unit) {
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(customer.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Text(listOfNotNull(customer.phone, customer.email?.let { "${customer.ticketCount} tickets" }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                listOfNotNull(
+                    customer.phone,
+                    customer.email,
+                    if (customer.ticketCount > 0) "${customer.ticketCount} tickets" else null,
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
     HorizontalDivider()
 }
 
 @Composable
-private fun TicketResultRow(ticket: TicketResult) {
+private fun TicketResultRow(ticket: TicketResult, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClickLabel = "Open ticket ${ticket.id}") { onClick() }
+            .semantics { role = Role.Button }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,

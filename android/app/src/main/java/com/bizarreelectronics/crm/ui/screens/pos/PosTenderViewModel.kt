@@ -2,10 +2,13 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
+import com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.PosCartLineDto
 import com.bizarreelectronics.crm.data.remote.api.PosPaymentDto
 import com.bizarreelectronics.crm.data.remote.api.PosSaleRequest
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,13 +28,16 @@ data class PosTenderUiState(
     val paidCents: Long get() = appliedTenders.sumOf { it.amountCents }
     val remainingCents: Long get() = (totalCents - paidCents).coerceAtLeast(0L)
     val paidPercent: Float get() = if (totalCents > 0) (paidCents.toFloat() / totalCents).coerceIn(0f, 1f) else 0f
-    val isFullyPaid: Boolean get() = remainingCents == 0L && totalCents > 0L
+    // POS-AUDIT-002: mirror PosCoordinator — $0.00 cart is finalizable when
+    // tenders cover it (or total is already 0); cart-empty guard lives in coordinator.
+    val isFullyPaid: Boolean get() = remainingCents == 0L && totalCents >= 0L
 }
 
 @HiltViewModel
 class PosTenderViewModel @Inject constructor(
     private val coordinator: PosCoordinator,
     private val posApi: PosApi,
+    private val parkedCartDao: ParkedCartDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosTenderUiState())
@@ -96,9 +102,39 @@ class PosTenderViewModel @Inject constructor(
         )
     }
 
+    /**
+     * AUDIT-011: snapshot the current session into Room so the cashier can
+     * resume it later from the Parked Carts screen.  After persisting, the
+     * active session is reset so the POS returns to its idle state.
+     *
+     * cart_json stores the full PosSession as Gson-serialized JSON; the
+     * unparking side deserialises it and calls coordinator.setLines /
+     * attachCustomer to restore state (Phase 3 follow-up).
+     */
     fun parkCart() {
-        // Parking stores the cart for later retrieval — stub for Phase 2
-        // Full layaway mode implemented in Phase 3 alongside check-in
+        val session = coordinator.session.value
+        if (session.lines.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Nothing to park — cart is empty") }
+            return
+        }
+        viewModelScope.launch {
+            val id = UUID.randomUUID().toString()
+            val label = session.customer
+                ?.name?.takeIf { it.isNotBlank() }
+                ?: "Cart ${id.take(6).uppercase()}"
+            val entity = ParkedCartEntity(
+                id = id,
+                label = label,
+                cartJson = Gson().toJson(session),
+                parkedAt = System.currentTimeMillis(),
+                customerId = session.customer?.id?.takeIf { it > 0L },
+                customerName = session.customer?.name,
+                subtotalCents = session.subtotalCents,
+            )
+            parkedCartDao.upsert(entity)
+            coordinator.resetSession()
+            _uiState.update { it.copy(errorMessage = "Cart parked — ${session.lines.size} item(s) saved") }
+        }
     }
 
     fun removeTender(tenderId: String) = coordinator.removeTender(tenderId)
@@ -155,7 +191,7 @@ class PosTenderViewModel @Inject constructor(
                     coordinator.completeOrder(
                         orderId = data.orderId,
                         invoiceId = data.invoiceId,
-                        trackingUrl = null, // server embeds tracking URL after POS-RECEIPT-001
+                        trackingUrl = data.trackingUrl, // null until POS-RECEIPT-001 deployed; VM falls back to /track/<orderId>
                     )
                     _uiState.update { it.copy(isProcessing = false, completedOrderId = data.orderId) }
                 } else {

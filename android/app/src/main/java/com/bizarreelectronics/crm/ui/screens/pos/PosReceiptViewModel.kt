@@ -4,8 +4,9 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
-import com.google.gson.annotations.SerializedName
+import com.bizarreelectronics.crm.data.remote.api.ReceiptNotificationApi
+import com.bizarreelectronics.crm.data.remote.api.SendReceiptEmailRequest
+import com.bizarreelectronics.crm.data.remote.api.SendReceiptSmsRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,22 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
-import retrofit2.http.Body
-import retrofit2.http.POST
 import javax.inject.Inject
-
-// ─── Client-side DTO for the not-yet-deployed SMS receipt endpoint ────────────
-
-data class SendReceiptSmsRequest(
-    @SerializedName("invoice_id") val invoiceId: Long,
-    @SerializedName("phone") val phone: String,
-)
-
-/** Retrofit interface stub — server endpoint POS-SMS-001 not yet deployed. */
-interface ReceiptNotificationApi {
-    @POST("notifications/send-receipt-sms")
-    suspend fun sendReceiptSms(@Body request: SendReceiptSmsRequest): ApiResponse<Unit>
-}
 
 // ─── UI state ─────────────────────────────────────────────────────────────────
 
@@ -42,7 +28,9 @@ data class PosReceiptUiState(
     val linkedTicketId: Long? = null,
     val trackingUrl: String? = null,
     val smsSentState: SendState = SendState.IDLE,
+    val smsError: String? = null,
     val emailSentState: SendState = SendState.IDLE,
+    val emailError: String? = null,
     val snackbarMessage: String? = null,
 )
 
@@ -71,6 +59,8 @@ class PosReceiptViewModel @Inject constructor(
                         customerPhone = session.customer?.phone,
                         customerEmail = session.customer?.email,
                         linkedTicketId = session.linkedTicketId,
+                        // Use server-supplied URL when available; fall back to
+                        // client-built path only when the server didn't provide one.
                         trackingUrl = session.trackingUrl
                             ?: session.completedOrderId?.let { id -> "/track/$id" },
                     )
@@ -82,39 +72,50 @@ class PosReceiptViewModel @Inject constructor(
     fun sendSms() {
         val phone = _uiState.value.customerPhone ?: return
         val invoiceId = _uiState.value.invoiceId ?: return
-        _uiState.update { it.copy(smsSentState = SendState.SENDING) }
+        _uiState.update { it.copy(smsSentState = SendState.SENDING, smsError = null) }
 
         viewModelScope.launch {
             runCatching {
                 receiptApi.sendReceiptSms(SendReceiptSmsRequest(invoiceId = invoiceId, phone = phone))
-            }.onSuccess { resp ->
+            }.onSuccess {
                 _uiState.update {
                     it.copy(smsSentState = SendState.SENT, snackbarMessage = "SMS sent to $phone")
                 }
             }.onFailure { e ->
                 val is404 = e is HttpException && e.code() == 404
-                if (is404) {
+                val message = if (is404) {
                     // POS-SMS-001: endpoint not yet deployed on this server version
                     Log.w("PosReceipt", "receipt_sms_unavailable: server returned 404 for send-receipt-sms")
-                    _uiState.update {
-                        it.copy(
-                            smsSentState = SendState.ERROR,
-                            snackbarMessage = "SMS receipt not yet available",
-                        )
-                    }
+                    "SMS receipt not yet available"
                 } else {
-                    _uiState.update {
-                        it.copy(smsSentState = SendState.ERROR, snackbarMessage = "SMS failed: ${e.message}")
-                    }
+                    e.message ?: "SMS failed"
+                }
+                _uiState.update {
+                    it.copy(smsSentState = SendState.ERROR, smsError = message, snackbarMessage = "SMS failed: $message")
                 }
             }
         }
     }
 
     fun sendEmail() {
-        // Email receipt is handled server-side on invoice finalize (POS-RECEIPT-001).
-        // The Android app shows sent state optimistically; real confirmation via webhook.
-        _uiState.update { it.copy(emailSentState = SendState.SENT, snackbarMessage = "Email queued") }
+        val email = _uiState.value.customerEmail ?: return
+        val invoiceId = _uiState.value.invoiceId ?: return
+        _uiState.update { it.copy(emailSentState = SendState.SENDING, emailError = null) }
+
+        viewModelScope.launch {
+            runCatching {
+                receiptApi.sendReceiptEmail(SendReceiptEmailRequest(invoiceId = invoiceId, recipientEmail = email))
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(emailSentState = SendState.SENT, snackbarMessage = "Email sent to $email")
+                }
+            }.onFailure { e ->
+                val message = e.message ?: "Email failed"
+                _uiState.update {
+                    it.copy(emailSentState = SendState.ERROR, emailError = message, snackbarMessage = "Email failed: $message")
+                }
+            }
+        }
     }
 
     fun clearSnackbar() = _uiState.update { it.copy(snackbarMessage = null) }

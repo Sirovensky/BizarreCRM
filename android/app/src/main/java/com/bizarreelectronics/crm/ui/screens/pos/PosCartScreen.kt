@@ -211,6 +211,7 @@ fun PosCartScreen(
     if (showDiscountDialog) {
         CartDiscountDialog(
             currentCents = state.discountCents,
+            subtotalCents = state.subtotalCents,
             onApply = { cents ->
                 viewModel.setCartDiscount(cents)
                 showDiscountDialog = false
@@ -602,12 +603,25 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
 
 // ─── Cart-wide discount dialog ───────────────────────────────────────────────
 
+/**
+ * AUDIT-012 / AUDIT-035: added [subtotalCents] cap so a cashier cannot apply
+ * a discount that exceeds the cart subtotal, which would produce a negative
+ * total.  Apply button is disabled and an inline error is shown when the
+ * entered amount is out of range.
+ */
 @Composable
-private fun CartDiscountDialog(currentCents: Long, onApply: (Long) -> Unit, onDismiss: () -> Unit) {
+private fun CartDiscountDialog(
+    currentCents: Long,
+    subtotalCents: Long,
+    onApply: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
     var input by remember(currentCents) {
         mutableStateOf(if (currentCents > 0) "%.2f".format(currentCents / 100.0) else "")
     }
     val cents = Math.round((input.toDoubleOrNull() ?: 0.0) * 100)
+    val overflow = cents > subtotalCents
+    val canApply = cents > 0L && !overflow
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -619,13 +633,19 @@ private fun CartDiscountDialog(currentCents: Long, onApply: (Long) -> Unit, onDi
                 label = { Text("Amount") },
                 prefix = { Text("$") },
                 singleLine = true,
+                isError = overflow,
+                supportingText = if (overflow) {
+                    { Text("Discount cannot exceed subtotal ${subtotalCents.toDollarString()}") }
+                } else null,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { TextButton(onClick = { onApply(cents) }) { Text("Apply") } },
+        confirmButton = {
+            TextButton(onClick = { onApply(cents) }, enabled = canApply) { Text("Apply") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

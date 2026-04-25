@@ -32,7 +32,9 @@ class PosCoordinator @Inject constructor() {
         val totalCents: Long get() = (subtotalCents + taxCents - cartDiscountCents).coerceAtLeast(0L)
         val paidCents: Long get() = appliedTenders.sumOf { it.amountCents }
         val remainingCents: Long get() = (totalCents - paidCents).coerceAtLeast(0L)
-        val isFullyPaid: Boolean get() = remainingCents == 0L && totalCents > 0L
+        // POS-AUDIT-002: allow $0.00 totals (fully-discounted / store-credit-covered).
+        // Guard on lines.isNotEmpty() to keep the empty-cart case un-finalizable.
+        val isFullyPaid: Boolean get() = remainingCents == 0L && lines.isNotEmpty()
     }
 
     private val _session = MutableStateFlow(PosSession())

@@ -1212,6 +1212,7 @@ fun AppNavGraph(
                         )
                     },
                     onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
+                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                 )
             }
             composable(Screen.PosCart.route) { backStack ->
