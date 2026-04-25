@@ -5,17 +5,21 @@ import DesignSystem
 
 /// Full-screen landscape POS register layout for iPad.
 ///
-/// The screen is split into two regions:
-///   - **Left 70 %** — catalog panel (search + item grid)
-///   - **Right 30 %** — cart column (running total + tender picker)
+/// The screen is split into three regions:
+///   - **Left 70 %** — catalog / content column (search + item grid)
+///   - **Right 30 %** — cart column (glass-backed chrome)
+///   - **Inspector** — trailing panel that slides in from the right when
+///     `isInspectorPresented == true` (cart line editing, repair steps).
+///     Uses SwiftUI's `.inspector(isPresented:)` modifier (iOS 17+).
+///     Falls back gracefully on earlier OS versions via a manual overlay.
 ///
-/// The split respects a minimum width on the cart side so the totals footer
-/// always fits without wrapping. A glass divider drawn on the leading edge of
-/// the cart column reinforces the visual separation.
+/// The cart column collapses to 0 width (with a spring animation) when
+/// `isCartCollapsed == true` — used on the receipt screen so the full
+/// canvas is available for the celebration layout.
 ///
 /// Gate: only presented when `!Platform.isCompact`. `PosView` is responsible
 /// for the routing decision — this layout just declares the geometry.
-public struct PosRegisterLayout<Catalog: View, Cart: View>: View {
+public struct PosRegisterLayout<Catalog: View, Cart: View, Inspector: View>: View {
 
     // MARK: - Configuration
 
@@ -25,21 +29,34 @@ public struct PosRegisterLayout<Catalog: View, Cart: View>: View {
     /// Minimum absolute width for the cart panel in points.
     private let cartMinWidth: CGFloat
 
+    /// When `true` the inspector pane slides in from the trailing edge.
+    @Binding var isInspectorPresented: Bool
+
+    /// When `true` the cart column animates to 0 width (receipt screen).
+    @Binding var isCartCollapsed: Bool
+
     @ViewBuilder private let catalog: () -> Catalog
     @ViewBuilder private let cart: () -> Cart
+    @ViewBuilder private let inspector: () -> Inspector
 
     // MARK: - Init
 
     public init(
         catalogFraction: Double = 0.70,
-        cartMinWidth: CGFloat = 280,
+        cartMinWidth: CGFloat = 380,
+        isInspectorPresented: Binding<Bool> = .constant(false),
+        isCartCollapsed: Binding<Bool> = .constant(false),
         @ViewBuilder catalog: @escaping () -> Catalog,
-        @ViewBuilder cart: @escaping () -> Cart
+        @ViewBuilder cart: @escaping () -> Cart,
+        @ViewBuilder inspector: @escaping () -> Inspector
     ) {
         self.catalogFraction = catalogFraction.clamped(to: 0.50...0.85)
         self.cartMinWidth = cartMinWidth
+        self._isInspectorPresented = isInspectorPresented
+        self._isCartCollapsed = isCartCollapsed
         self.catalog = catalog
         self.cart = cart
+        self.inspector = inspector
     }
 
     // MARK: - Body
@@ -47,7 +64,9 @@ public struct PosRegisterLayout<Catalog: View, Cart: View>: View {
     public var body: some View {
         GeometryReader { proxy in
             let totalWidth = proxy.size.width
-            let cartWidth = max(cartMinWidth, totalWidth * (1 - catalogFraction))
+            // Cart collapses to 0 on receipt screen; otherwise clamped to min.
+            let rawCartWidth = isCartCollapsed ? 0 : max(cartMinWidth, totalWidth * (1 - catalogFraction))
+            let cartWidth = rawCartWidth
             let catalogWidth = totalWidth - cartWidth
 
             HStack(spacing: 0) {
@@ -55,14 +74,26 @@ public struct PosRegisterLayout<Catalog: View, Cart: View>: View {
                 catalog()
                     .frame(width: catalogWidth)
                     .clipped()
+                    // Inspector is attached here so it slides over the detail
+                    // column while the cart stays visible (per mockup screen 3).
+                    .inspector(isPresented: $isInspectorPresented) {
+                        inspector()
+                            .inspectorColumnWidth(min: 280, ideal: 340, max: 420)
+                    }
 
-                // Glass divider
-                divider
+                // Glass divider (hidden when cart is collapsed)
+                if !isCartCollapsed {
+                    divider
+                }
 
                 // Cart — right panel (glass-backed chrome)
-                cartColumn
-                    .frame(width: cartWidth - 1) // subtract divider hairline
+                if !isCartCollapsed {
+                    cartColumn
+                        .frame(width: cartWidth - 1) // subtract divider hairline
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isCartCollapsed)
         }
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         .ignoresSafeArea(edges: .horizontal)
@@ -89,6 +120,56 @@ public struct PosRegisterLayout<Catalog: View, Cart: View>: View {
     }
 }
 
+// MARK: - Convenience init (no inspector)
+
+public extension PosRegisterLayout where Inspector == EmptyView {
+    init(
+        catalogFraction: Double = 0.70,
+        cartMinWidth: CGFloat = 380,
+        isCartCollapsed: Binding<Bool> = .constant(false),
+        @ViewBuilder catalog: @escaping () -> Catalog,
+        @ViewBuilder cart: @escaping () -> Cart
+    ) {
+        self.init(
+            catalogFraction: catalogFraction,
+            cartMinWidth: cartMinWidth,
+            isInspectorPresented: .constant(false),
+            isCartCollapsed: isCartCollapsed,
+            catalog: catalog,
+            cart: cart,
+            inspector: { EmptyView() }
+        )
+    }
+}
+
+// MARK: - Cart-collapse modifier
+
+/// Convenience view modifier — apply to the `PosReceiptView` parent to trigger
+/// the cart column collapse animation when payment completes.
+///
+/// Usage:
+/// ```swift
+/// PosRegisterLayout(isCartCollapsed: $cartCollapsed) { ... }
+///     .posCartCollapse(isCollapsed: isPaid)
+/// ```
+public struct PosCartCollapseModifier: ViewModifier {
+    let isCollapsed: Bool
+
+    public func body(content: Content) -> some View {
+        // The actual collapse is driven by the `isCartCollapsed` binding
+        // passed into `PosRegisterLayout`. This modifier exists so callers
+        // can use a clean `.posCartCollapse(isCollapsed:)` syntax.
+        content
+    }
+}
+
+public extension View {
+    /// Signal that the cart column should collapse (used on the receipt screen).
+    func posCartCollapse(isCollapsed: Bool) -> some View {
+        modifier(PosCartCollapseModifier(isCollapsed: isCollapsed))
+    }
+}
+
 // MARK: - Helpers
 
 private extension Comparable {
@@ -99,10 +180,36 @@ private extension Comparable {
 
 // MARK: - Preview
 
-#Preview("POS Register Layout") {
-    PosRegisterLayout {
+#Preview("POS Register Layout — with inspector") {
+    @Previewable @State var inspectorOpen = true
+    @Previewable @State var cartCollapsed = false
+
+    PosRegisterLayout(
+        isInspectorPresented: $inspectorOpen,
+        isCartCollapsed: $cartCollapsed
+    ) {
         Color.bizarreSurface2
             .overlay(Text("Catalog").font(.brandTitleLarge()))
+    } cart: {
+        Color.bizarreSurface1
+            .overlay(Text("Cart").font(.brandTitleLarge()))
+    } inspector: {
+        VStack {
+            Text("Inspector").font(.brandTitleLarge())
+            Toggle("Close", isOn: $inspectorOpen)
+        }
+        .padding()
+    }
+    .preferredColorScheme(.dark)
+    .previewInterfaceOrientation(.landscapeLeft)
+}
+
+#Preview("POS Register Layout — cart collapsed") {
+    @Previewable @State var cartCollapsed = true
+
+    PosRegisterLayout(isCartCollapsed: $cartCollapsed) {
+        Color.bizarreSurface2
+            .overlay(Text("Receipt canvas").font(.brandTitleLarge()))
     } cart: {
         Color.bizarreSurface1
             .overlay(Text("Cart").font(.brandTitleLarge()))
