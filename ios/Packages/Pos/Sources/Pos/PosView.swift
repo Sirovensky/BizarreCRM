@@ -723,41 +723,39 @@ public struct PosView: View {
     ///   - Trailing overlay — inspector pane (slides over the cart column)
     private var regularLayout: some View {
         NavigationStack {
-            ZStack(alignment: .trailing) {
-                PosRegisterLayout(catalogFraction: 0.65) {
-                    // ── Catalog slot ──────────────────────────────────────
-                    PosSearchPanel(
-                        search: search,
-                        onPick: pick,
-                        onAddCustom: { showingCustomLine = true },
-                        showsCustomerCTAs: !cart.hasCustomer,
-                        onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
-                        onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                        onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
-                    )
-                } cart: {
-                    // ── Cart slot (condensed iPad panel) ──────────────────
-                    PosIPadCartPanel(
-                        cart: cart,
-                        onCharge: startChargeV5,
-                        onSelectTender: { showingTenderSelect = true }
-                    )
-                }
-
-                // ── Inspector pane (trailing slide-in) ────────────────────
-                if editingCartItem != nil {
-                    Color.black.opacity(0.25)
-                        .ignoresSafeArea()
-                        .onTapGesture { editingCartItem = nil }
-                        .transition(.opacity)
-                        .zIndex(1)
-                }
-
+            PosRegisterLayout(
+                catalogFraction: 0.65,
+                inspectorActive: editingCartItem != nil
+            ) {
+                // ── Topbar slot ───────────────────────────────────────
+                // Empty: SwiftUI nav-bar already hosts posToolbar below.
+                Color.clear.frame(height: 0)
+            } catalog: {
+                // ── Catalog slot ──────────────────────────────────────
+                PosSearchPanel(
+                    search: search,
+                    onPick: pick,
+                    onAddCustom: { showingCustomLine = true },
+                    showsCustomerCTAs: !cart.hasCustomer,
+                    onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
+                    onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
+                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                )
+            } cart: {
+                // ── Cart slot (condensed iPad panel) ──────────────────
+                // Cart-row tap → opens inspector pane (W2-MIGRATE gap).
+                PosIPadCartPanel(
+                    cart: cart,
+                    onCharge: startChargeV5,
+                    onEditItem: { item in editingCartItem = item },
+                    editingItemId: editingCartItem?.id
+                )
+            } inspector: {
+                // ── Inspector slot (sliding pane) ─────────────────────
                 if let item = editingCartItem {
                     iPadInspectorPane(item: item)
-                        .frame(width: 320)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        .zIndex(2)
+                } else {
+                    Color.clear
                 }
             }
             .animation(BrandMotion.snappy, value: editingCartItem?.id)
