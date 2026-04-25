@@ -44,6 +44,10 @@ const EstimateDetailPage = lazy(() => import('./pages/estimates/EstimateDetailPa
 // const PosPage = lazy(() => import('./pages/pos/PosPage').then(m => ({ default: m.PosPage })));
 const UnifiedPosPage = lazy(() => import('./pages/unified-pos/UnifiedPosPage').then(m => ({ default: m.UnifiedPosPage })));
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage').then(m => ({ default: m.ReportsPage })));
+// WEB-FL-002 (Fixer-UU 2026-04-25): wire previously unrouted partner + tax
+// reports so audit 47.13 / 47.15 deliverables are reachable from /reports.
+const PartnerReportPage = lazy(() => import('./pages/reports/PartnerReportPage').then(m => ({ default: m.PartnerReportPage })));
+const TaxReportPage = lazy(() => import('./pages/reports/TaxReportPage').then(m => ({ default: m.TaxReportPage })));
 const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
 const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })));
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
@@ -90,10 +94,13 @@ const VoiceCallsListPage = lazy(() => import('./pages/voice/VoiceCallsListPage')
 const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 
 function NotFoundPage() {
+  // Fixer-WW (WEB-FE-022): swap raw `text-gray-*` for surface tokens with dark
+  // partners so the 404 doesn't render as a white-on-dark eyesore. Primary
+  // button left as-is until brand-surface-ramp swap (FE-007) lands.
   return (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-      <h1 className="text-4xl font-bold text-gray-800 mb-2">404</h1>
-      <p className="text-lg text-gray-600 mb-6">Page not found</p>
+      <h1 className="text-4xl font-bold text-surface-800 dark:text-surface-100 mb-2">404</h1>
+      <p className="text-lg text-surface-600 dark:text-surface-400 mb-6">Page not found</p>
       <Link
         to="/"
         className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
@@ -424,6 +431,8 @@ export default function App() {
                     <Route path="/estimates/:id" element={<EstimateDetailPage />} />
                     <Route path="/pos" element={<UnifiedPosPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/reports/partner" element={<PartnerReportPage />} />
+                    <Route path="/reports/tax" element={<TaxReportPage />} />
                     <Route path="/expenses" element={<ExpensesPage />} />
                     <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                     <Route path="/cash-register" element={<CashRegisterPage />} />

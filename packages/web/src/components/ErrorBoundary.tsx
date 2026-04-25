@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="text-center max-w-md">
             <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Something went wrong</h1>
             <p className="text-sm text-surface-500 mb-4">This page encountered an error. Your data is safe.</p>
-            <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            <button onClick={() => window.location.reload()}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
               Reload Page
             </button>

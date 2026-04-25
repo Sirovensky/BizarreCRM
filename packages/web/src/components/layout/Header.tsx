@@ -46,6 +46,27 @@ const notifEntityIcons: Record<string, React.ReactNode> = {
   sms: <MessageSquare className="h-4 w-4" />,
 };
 
+// FD-016: lightweight role-label map. Server stores roles as English keys; the
+// UI used to render them raw, leaving non-English tenants reading "admin" /
+// "manager" / "technician" untranslated. This object is the single point of
+// presentation. Keep server-key-as-fallback so brand-new roles still render
+// (capitalised) instead of going blank.
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  technician: 'Technician',
+  cashier: 'Cashier',
+  owner: 'Owner',
+  staff: 'Staff',
+};
+
+function formatRoleLabel(role: string | undefined | null): string {
+  if (!role) return 'Unknown';
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  // Capitalise unknown roles so we never emit raw lower-case slugs to users.
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
 interface Notification {
   id: number;
   type: string;
@@ -401,7 +422,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                 {user ? `${user.first_name} ${user.last_name}` : 'User'}
               </p>
               <p className="text-xs leading-tight text-surface-400 dark:text-surface-500">
-                {user?.role ?? 'Unknown'}
+                {formatRoleLabel(user?.role)}
               </p>
             </div>
             <ChevronDown

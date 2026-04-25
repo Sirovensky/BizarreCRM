@@ -7,6 +7,19 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 
+// FF-012: previously the form pre-filled `new Date().toISOString().slice(0,10)`
+// which returns the *UTC* day. After ~4-5pm local in any timezone west of UTC
+// the picker showed tomorrow's date — staff entering an expense at 7pm PST
+// would record it on the next day. Build a YYYY-MM-DD string in the user's
+// local timezone instead so the picker always matches the wall clock.
+function localToday(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 const EXPENSE_CATEGORIES = [
   'Rent', 'Utilities', 'Parts & Supplies', 'Tools & Equipment', 'Marketing',
   'Insurance', 'Payroll', 'Software', 'Office Supplies', 'Shipping',
@@ -43,7 +56,7 @@ export function ExpensesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: localToday() });
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -69,7 +82,7 @@ export function ExpensesPage() {
       toast.success(editingId ? 'Expense updated' : 'Expense added');
       setShowAdd(false);
       setEditingId(null);
-      setForm({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) });
+      setForm({ category: 'Other', amount: '', description: '', date: localToday() });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
@@ -100,7 +113,7 @@ export function ExpensesPage() {
           <p className="text-sm text-surface-500 dark:text-surface-400">Track business expenses</p>
         </div>
         <button
-          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) }); setShowAdd(true); }}
+          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: localToday() }); setShowAdd(true); }}
           className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add Expense
@@ -138,7 +151,7 @@ export function ExpensesPage() {
                 searchRef.current = setTimeout(() => { setKeyword(e.target.value); setPage(1); }, 400);
               }}
               placeholder="Search expenses..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
           </div>
           <select

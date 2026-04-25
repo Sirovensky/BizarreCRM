@@ -4,8 +4,8 @@
   "description": "Repair shop CRM for Bizarre Electronics",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FBF3DB",
-  "theme_color": "#bc398f",
+  "background_color": "#fdeed0",
+  "theme_color": "#fdeed0",
   "orientation": "any",
   "icons": [
     {

@@ -65,7 +65,7 @@ export function TrialBanner() {
           type="button"
           onClick={dismissExpired}
           aria-label="Dismiss trial expired notice"
-          className="ml-1 rounded p-1 transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
+          className="ml-1 rounded p-1 transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -96,7 +96,7 @@ export function TrialBanner() {
           type="button"
           onClick={dismissWarn3}
           aria-label="Dismiss trial 3-day warning"
-          className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/50"
+          className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -120,7 +120,7 @@ export function TrialBanner() {
         type="button"
         onClick={dismissWarnUrgent}
         aria-label="Dismiss trial urgent warning"
-        className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/50"
+        className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
       >
         <X className="h-4 w-4" />
       </button>

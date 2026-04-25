@@ -92,6 +92,16 @@ function CreateEstimateModal({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showCustomerDropdown]);
 
+  // Esc-to-close (gated on `open`)
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const createMut = useMutation({
     mutationFn: (data: any) => estimateApi.create(data),
     onSuccess: () => {
@@ -132,10 +142,16 @@ function CreateEstimateModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-estimate-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Estimate</h2>
+          <h2 id="new-estimate-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Estimate</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>

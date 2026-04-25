@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
@@ -51,6 +51,20 @@ export function InvoiceDetailPage() {
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
   // normal "record payment" flow. Opens only on demand, once per invoice.
   const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
+
+  // Esc-to-close for the inline payment + credit-note modals (Fixer-TT a11y).
+  // The other modals on this page either use ConfirmDialog (which already wires
+  // its own Esc) or are tiny prompts; these two are the long-lived dialogs.
+  useEffect(() => {
+    if (!showPayment && !showCreditNote) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (showCreditNote) setShowCreditNote(false);
+      else if (showPayment) setShowPayment(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPayment, showCreditNote]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -568,9 +582,15 @@ export function InvoiceDetailPage() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="record-payment-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 id="record-payment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
@@ -706,10 +726,16 @@ export function InvoiceDetailPage() {
 
       {/* Credit Note Modal */}
       {showCreditNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="credit-note-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCreditNote(false); }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
+              <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
               <button aria-label="Close" onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>

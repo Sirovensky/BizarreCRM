@@ -34,7 +34,8 @@ export function BulkActionBar({
         'flex items-center justify-between gap-4 px-6 py-3',
         'border-t border-surface-200 bg-white shadow-lg',
         'dark:border-surface-700 dark:bg-surface-800',
-        'animate-in slide-in-from-bottom duration-200',
+        // Fixer-WW: motion-safe gate honours WCAG 2.3.3 prefers-reduced-motion.
+        'motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-200',
       )}
     >
       {/* Left: count + clear */}

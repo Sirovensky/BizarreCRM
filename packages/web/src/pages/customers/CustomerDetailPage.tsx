@@ -564,8 +564,23 @@ function CustomerMergeModal({
     searchRef.current?.focus();
   }, []);
 
+  // Esc-to-close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="merge-customer-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
@@ -574,7 +589,7 @@ function CustomerMergeModal({
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <div className="flex items-center gap-2">
             <GitMerge className="h-5 w-5 text-primary-600" />
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+            <h2 id="merge-customer-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
               Merge Customer
             </h2>
           </div>

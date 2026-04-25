@@ -17,6 +17,10 @@ import { cn } from '@/utils/cn';
 // stripped out so a poisoned server value can't execute in the user's tab.
 function safeHref(raw: string | null | undefined): string | null {
   if (!raw) return null;
+  // Fixer-WW (WEB-FB-015): reject protocol-relative `//attacker/foo` first —
+  // browsers treat those as absolute cross-origin even though they pass a
+  // naive `startsWith('/')` allow-list.
+  if (raw.startsWith('//')) return null;
   if (raw.startsWith('/')) return raw;
   try {
     const parsed = new URL(raw);

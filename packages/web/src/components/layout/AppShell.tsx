@@ -100,13 +100,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     if (isTypingInField()) return;
 
+    // WEB-FL-005 (Fixer-UU 2026-04-25): on /pos, F2/F3/F4/F6 belong to
+    // usePosKeyboardShortcuts (POS tab switching + customer search + returns)
+    // and the command palette. Both listeners used to fire — F2 switched the
+    // POS tab AND triggered navigate('/pos') (idempotent but masking bugs);
+    // F4 mid-checkout yanked the cashier off /pos to /tickets. Skip global
+    // F-key handling entirely while POS is mounted.
+    if (location.pathname.startsWith('/pos')) return;
+
     switch (e.key) {
       case 'F2': e.preventDefault(); navigate('/pos'); break;
       case 'F3': e.preventDefault(); navigate('/customers/new'); break;
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
       case 'F6': e.preventDefault(); setCommandPaletteOpen(true); break;
     }
-  }, [navigate, setCommandPaletteOpen]);
+  }, [navigate, setCommandPaletteOpen, location.pathname]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleGlobalKeys);

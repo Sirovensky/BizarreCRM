@@ -1015,6 +1015,12 @@ ${pageCss[size] || pageCss.receipt80}
 }
 @media print {
   .print-buttons { display: none !important; }
+  /* Fixer-WW (WEB-FH-025): keep table rows whole at page breaks and repeat
+     the header on each page so long letter-sized invoice prints don't split
+     a line item across pages or lose the column header on overflow. */
+  tr { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
 }
 `;
 

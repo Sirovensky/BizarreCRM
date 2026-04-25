@@ -9,9 +9,15 @@
     --header-height: 56px;
   }
 
-  /* Smooth theme transitions */
-  html {
-    transition: background-color 0.2s ease, color 0.2s ease;
+  /* Smooth theme transitions
+   * Fixer-WW (WEB-FE-024): blanket html transition fired on every navigation
+   * (200ms paint cost + flash on theme toggle). Gate behind .theme-transition
+   * class so the cost only applies when the dark-mode toggle adds it briefly,
+   * and skip entirely when prefers-reduced-motion is set. */
+  @media (prefers-reduced-motion: no-preference) {
+    html.theme-transition {
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
   }
 
   /* Custom scrollbar */

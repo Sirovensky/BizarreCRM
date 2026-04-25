@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
@@ -104,10 +104,25 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
     },
   });
 
+  // Esc-to-close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-sm">
-        <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-4">Reload gift card</h2>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gift-card-reload-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 id="gift-card-reload-title" className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-4">Reload gift card</h2>
         <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount ($)</label>
         <input
           type="number"
@@ -303,7 +318,10 @@ export function GiftCardDetailPage() {
                   <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
                   <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
                   <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type)}`}>
-                    {tx.amount >= 0 ? '+' : '-'}{formatCurrency(tx.amount)}
+                    {/* Fixer-WW: sign driven by tx.type so redemptions always
+                        render `-$X` (matches POS convention) and -0 amounts
+                        no longer flash as `+$0.00` (Math.abs trips -0). */}
+                    {tx.type === 'redemption' ? '-' : tx.amount > 0 ? '+' : tx.amount < 0 ? '-' : ''}{formatCurrency(tx.amount)}
                   </td>
                 </tr>
               ))}

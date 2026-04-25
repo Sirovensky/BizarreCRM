@@ -25,7 +25,11 @@
     <title>BizarreCRM</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#FBF3DB" />
+    <!-- WEB-FE-004 (Fixer-UU 2026-04-25): aligned with manifest.json theme_color
+         + tailwind primary-200 brand cream (#fdeed0). Was #FBF3DB while manifest
+         had #bc398f magenta — three-way mismatch caused chrome address-bar to
+         flicker on PWA install. -->
+    <meta name="theme-color" content="#fdeed0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- WEB-FQ-001 / WEB-FE-003 (Fixer-Z 2026-04-25): canonical brand fonts per

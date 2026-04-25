@@ -66,7 +66,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             value={address}
             onChange={(e) => onUpdate({ store_address: e.target.value })}
             placeholder="123 Main St, City, State ZIP"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
 
@@ -83,7 +83,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               placeholder="+1 (555)-123-4567"
               inputMode="tel"
               autoComplete="tel"
-              className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:outline-none focus:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
+              className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
                 !phoneLooksValid
                   ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60'
                   : 'border-surface-300 focus:border-primary-500 focus:ring-primary-500/20 dark:border-surface-600'
@@ -103,7 +103,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               value={email}
               onChange={(e) => onUpdate({ store_email: e.target.value })}
               placeholder="shop@example.com"
-              className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:outline-none focus:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
+              className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
                 !emailLooksValid
                   ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60'
                   : 'border-surface-300 focus:border-primary-500 focus:ring-primary-500/20 dark:border-surface-600'
@@ -124,7 +124,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             <select
               value={timezone}
               onChange={(e) => onUpdate({ store_timezone: e.target.value })}
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             >
               {TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>{tz.replace('_', ' ')}</option>
@@ -139,7 +139,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             <select
               value={currency}
               onChange={(e) => onUpdate({ store_currency: e.target.value })}
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             >
               {CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>{c.label}</option>

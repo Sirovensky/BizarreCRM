@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus, RefreshCw, Trash2, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { crmApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { formatCents } from '@/utils/format';
 
 /**
@@ -168,7 +169,16 @@ export function SegmentsPage() {
                       </button>
                       {s.is_auto === 0 && (
                         <button
-                          onClick={() => remove.mutate(s.id)}
+                          onClick={async () => {
+                            // FC-007: themed confirm prevents single-click destruction of a hand-built
+                            // segment that may be referenced by running campaigns. Auto segments are
+                            // protected by the is_auto guard above.
+                            const ok = await confirm(
+                              `Delete segment "${s.name}"? Campaigns referencing it will fail to send to its members.`,
+                              { title: 'Delete segment', confirmLabel: 'Delete', danger: true },
+                            );
+                            if (ok) remove.mutate(s.id);
+                          }}
                           disabled={remove.isPending && remove.variables === s.id}
                           className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-40"
                           title="Delete"

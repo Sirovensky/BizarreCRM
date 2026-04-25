@@ -251,6 +251,14 @@ export default function LandingPage() {
         .feat-card { transition: box-shadow .25s, transform .25s; }
         .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
 
+        /* FA-012: footer link/button hover — pure CSS replaces per-link
+           onMouseEnter/Leave that mutated .style.color (anti-pattern: forced
+           reflow + new function ref every render + no keyboard parity). */
+        .footer-link { color: #888; text-decoration: none; font-family: 'League Spartan', sans-serif; font-weight: 500; transition: color .15s ease; }
+        .footer-link:hover, .footer-link:focus-visible { color: #bc398f; }
+        .footer-btn { background: none; border: none; color: #666; cursor: pointer; font-family: 'League Spartan', sans-serif; font-weight: 500; font-size: 14px; padding: 0; transition: color .15s ease; }
+        .footer-btn:hover, .footer-btn:focus-visible { color: #bc398f; }
+
         @keyframes wave-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
         html { scroll-behavior: smooth; }
@@ -518,15 +526,11 @@ export default function LandingPage() {
           </div>
           <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
             {['Features', 'Pricing', 'Contact', 'Privacy'].map(l => (
-              <a key={l} href={`#${l.toLowerCase()}`} style={{ color: '#666', textDecoration: 'none', fontFamily: "'League Spartan', sans-serif", fontWeight: 500 }}
-                onMouseEnter={e => (e.target as HTMLElement).style.color = '#bc398f'}
-                onMouseLeave={e => (e.target as HTMLElement).style.color = '#888'}>
+              <a key={l} href={`#${l.toLowerCase()}`} className="footer-link">
                 {l}
               </a>
             ))}
-            <button onClick={() => setShowLogin(true)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontFamily: "'League Spartan', sans-serif", fontWeight: 500, fontSize: 14, padding: 0 }}
-              onMouseEnter={e => (e.target as HTMLElement).style.color = '#bc398f'}
-              onMouseLeave={e => (e.target as HTMLElement).style.color = '#666'}>
+            <button onClick={() => setShowLogin(true)} className="footer-btn">
               Login
             </button>
           </div>

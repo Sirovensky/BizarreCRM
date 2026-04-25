@@ -134,6 +134,12 @@ export function CampaignsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     },
+    // WEB-FF-005 (Fixer-UU 2026-04-25): pause/resume failures used to be silent
+    // — operator saw a stale list with no feedback. Surface server rejection
+    // (rate-limit, segment deleted, validation error) via toast.
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error ?? 'Failed to update campaign status');
+    },
   });
 
   const preview = useMutation({

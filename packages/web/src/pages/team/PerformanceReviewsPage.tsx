@@ -119,7 +119,7 @@ export function PerformanceReviewsPage() {
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
-                    className="focus:outline-none"
+                    className="focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 rounded"
                     onClick={() => setDraftRating(n)}
                   >
                     <Star
