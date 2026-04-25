@@ -48,17 +48,18 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
-// @audit-flag: these locale-formatters bypass the shared formatDate/formatDateTime
-// helpers in utils/format.ts, which means they ignore the shop's currency/locale
-// settings. The calendar grid is space-constrained so a compact format is needed,
-// but ideally the shared helpers should grow a "compact" mode rather than each
-// page rolling its own. Left as-is to avoid layout regressions in this audit pass.
+// WEB-FF-011 (Fixer-FFF 2026-04-25): drop hardcoded 'en-US' so non-US tenants
+// see locale-appropriate compact dates (e.g. "24 Apr" instead of "Apr 24") and
+// 24h time where the locale prefers it. `undefined` lets Intl pick the
+// browser's runtime locale — the same behaviour the shared formatDate helpers
+// in utils/format.ts use. The compact format-options stay so the calendar grid
+// keeps its tight layout.
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatDateShort(date: Date) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -666,14 +667,14 @@ export function CalendarPage() {
   // Title
   const title = useMemo(() => {
     if (viewMode === 'month') {
-      return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     }
     if (viewMode === 'week') {
       const ws = startOfWeek(currentDate);
       const we = addDays(ws, 6);
       return `${formatDateShort(ws)} - ${formatDateShort(we)}, ${we.getFullYear()}`;
     }
-    return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    return currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }, [currentDate, viewMode]);
 
   return (

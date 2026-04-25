@@ -145,8 +145,16 @@ export function CustomerCreatePage() {
     if (!form.first_name.trim()) {
       newErrors.first_name = 'First name is required';
     }
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      newErrors.email = 'Invalid email';
+    // WEB-FF-018 (Fixer-FFF 2026-04-25): RFC 5321 caps the entire address at
+     // 254 chars (local-part 64 + '@' + domain 253 — practical limit 254). Without
+     // this, a 5KB string passes the loose regex and bombs at the server.
+    if (form.email.trim()) {
+      const trimmed = form.email.trim();
+      if (trimmed.length > 254) {
+        newErrors.email = 'Email is too long (max 254 characters)';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        newErrors.email = 'Invalid email';
+      }
     }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);

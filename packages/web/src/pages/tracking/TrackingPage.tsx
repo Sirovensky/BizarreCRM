@@ -581,7 +581,7 @@ export function TrackingPage() {
                         placeholder="Type your message here..."
                         maxLength={2000}
                         rows={4}
-                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent resize-none"
                       />
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{messageText.length}/2000</span>
@@ -640,7 +640,7 @@ export function TrackingPage() {
                   placeholder="Phone number or last 4 digits"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent"
                   autoFocus
                 />
                 <button

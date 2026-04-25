@@ -195,7 +195,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
             'w-full rounded-lg border border-surface-200 dark:border-surface-700',
             'bg-white dark:bg-surface-800 pl-9 pr-3 py-2 text-sm',
             'text-surface-900 dark:text-surface-100 placeholder:text-surface-400',
-            'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500',
             'transition-colors',
           )}
         />

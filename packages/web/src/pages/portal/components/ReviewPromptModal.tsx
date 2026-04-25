@@ -98,7 +98,7 @@ export function ReviewPromptModal({
                   onMouseEnter={() => setHover(n)}
                   onMouseLeave={() => setHover(0)}
                   onClick={() => setRating(n)}
-                  className="text-3xl transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-400 rounded"
+                  className="text-3xl transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded"
                 >
                   <span className={n <= displayRating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}>
                     {'\u2605'}
@@ -118,7 +118,7 @@ export function ReviewPromptModal({
               onChange={(e) => setComment(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-primary-400"
+              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
             <div className="flex gap-2">
               <button

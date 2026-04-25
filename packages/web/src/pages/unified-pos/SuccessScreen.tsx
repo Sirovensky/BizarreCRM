@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
 import { serverInfoApi, smsApi, notificationApi, ticketApi, settingsApi } from '@/api/endpoints';
+import { formatCurrency } from '@/utils/format';
 // FA-L4: QrReceiptCode on the POS success screen lets the customer scan the
 // receipt URL from the counter. It's a secondary channel — email/SMS remain
 // the primary delivery — but works offline for walk-up customers.
@@ -98,7 +99,11 @@ export function SuccessScreen() {
     try {
       const shopName = storeConfig['store_name'] || 'our shop';
       const smsFooter = storeConfig['receipt_thermal_footer'] || storeConfig['receipt_footer'] || '';
-      const msg = `Receipt for Invoice #${invoiceOrderId || invoiceId}: Total $${total.toFixed(2)}. Paid: $${total.toFixed(2)}. Thank you for choosing ${shopName}!${smsFooter ? ` ${smsFooter}` : ''}`;
+      // WEB-FB-010 (Fixer-FFF 2026-04-25): use shared formatCurrency so the
+      // SMS receipt picks up the tenant's configured currency/locale (EUR/GBP/
+      // CAD) instead of always sending a US dollar sign.
+      const totalFmt = formatCurrency(total);
+      const msg = `Receipt for Invoice #${invoiceOrderId || invoiceId}: Total ${totalFmt}. Paid: ${totalFmt}. Thank you for choosing ${shopName}!${smsFooter ? ` ${smsFooter}` : ''}`;
       await smsApi.send({ to: customerPhone, message: msg, entity_type: 'invoice', entity_id: invoiceId });
       toast.success('Receipt sent via SMS');
     } catch {

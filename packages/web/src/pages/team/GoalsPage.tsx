@@ -138,9 +138,11 @@ export function GoalsPage() {
 
       <div className="space-y-3">
         {goals.map((g) => {
-          const pct = g.target_value > 0
-            ? Math.min(100, (g.progress / g.target_value) * 100)
-            : 0;
+          const target = Number(g.target_value);
+          const progress = Number(g.progress);
+          const ratio = target > 0 ? (progress / target) * 100 : 0;
+          // Guard NaN/Infinity (string targets, missing fields, denominator==0) so width never renders as `NaN%`.
+          const pct = Number.isFinite(ratio) ? Math.max(0, Math.min(100, ratio)) : 0;
           const done = pct >= 100;
           return (
             <div key={g.id} className="bg-white rounded-lg shadow border p-4">

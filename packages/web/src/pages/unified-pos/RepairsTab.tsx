@@ -60,7 +60,7 @@ const ISSUE_MACROS: Record<string, string[]> = {
   quick: ['Quick diagnostic', 'Data transfer', 'Software issue'],
 };
 
-const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500';
 
 // Breadcrumb removed — using dot progress bar with back button instead
 
@@ -965,6 +965,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState({ first_name: '', last_name: '', phone: '', email: '', referred_by: '' });
   const [creating, setCreating] = useState(false);
@@ -1001,10 +1002,11 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   }, [recentTicketsData]);
 
   useEffect(() => {
-    if (query.length < 2) { setResults([]); setLoading(false); return; }
+    if (query.length < 2) { setResults([]); setLoading(false); setSearchError(false); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      setSearchError(false);
       try {
         const res = await customerApi.search(query);
         const data = res.data?.data;
@@ -1013,6 +1015,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         // Surface the error so users know an empty list means "search failed"
         // rather than "no matches" — silent failure used to lie to the cashier.
         setResults([]);
+        setSearchError(true);
         console.warn('[POS customer search]', err);
         toast.error('Customer search failed. Please try again.');
       }
@@ -1070,7 +1073,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   // Fetch open tickets for the inline list
   const { data: ticketsData } = useQuery({
     queryKey: ['pos-open-tickets'],
-    queryFn: () => ticketApi.list({ pagesize: 30, sort_by: 'created_at', sort_order: 'desc', status_id: 'active' as any }),
+    queryFn: () => ticketApi.list({ pagesize: 30, sort_by: 'created_at', sort_order: 'desc', status_group: 'active' }),
     staleTime: 30000,
   });
   const openTicketsList: any[] = ticketsData?.data?.data?.tickets || ticketsData?.data?.tickets || [];
@@ -1132,7 +1135,12 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
       )}
 
       {query.length >= 2 && results.length === 0 && !loading && (
-        <p className="text-center text-sm text-surface-400 py-2">No customers found</p>
+        <p
+          className={`text-center text-sm py-2 ${searchError ? 'text-red-500 dark:text-red-400' : 'text-surface-400'}`}
+          role={searchError ? 'alert' : undefined}
+        >
+          {searchError ? 'Search failed — check your connection and try again.' : 'No customers found'}
+        </p>
       )}
 
       {/* Divider */}

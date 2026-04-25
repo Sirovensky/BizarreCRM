@@ -1287,6 +1287,11 @@ export const privacyApi = {
 // ==================== Super-Admin ====================
 interface ImpersonateResponse {
   token: string;
+  // WEB-FN-003 / FIXED-by-Fixer-EEE 2026-04-25 — server already returns `jti`
+  // (super-admin.routes.ts:2292). Without it on the client type we cannot
+  // call `POST /tenants/:slug/impersonate/:jti/end` to revoke an active
+  // impersonation early; super-admin had to wait the 15-minute JWT TTL.
+  jti?: string;
   tenant_slug: string;
   expires_in_seconds: number;
   target_user: { id: number; username: string; role: string };
@@ -1329,5 +1334,12 @@ export const superAdminApi = {
     superAdminClient.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate`,
       reason ? { reason } : undefined,
+    ),
+  // WEB-FN-003 / FIXED-by-Fixer-EEE 2026-04-25 — pair the now-typed `jti`
+  // with a revocation method so super-admin can terminate an impersonation
+  // session immediately instead of waiting 15 minutes for the JWT TTL.
+  endImpersonation: (slug: string, jti: string) =>
+    superAdminClient.post<{ success: boolean; message?: string }>(
+      `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
 };

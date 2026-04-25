@@ -339,6 +339,12 @@ function PartsSearchModal({
     return () => clearTimeout(timer);
   }, [query]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const { data: searchData, isLoading: searching } = useQuery({
     queryKey: ['parts-search', debouncedQuery, deviceModelId],
     queryFn: () => catalogApi.partsSearch({ q: debouncedQuery, device_model_id: deviceModelId }),
@@ -414,8 +420,15 @@ function PartsSearchModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/40" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-800 shadow-2xl border border-surface-200 dark:border-surface-700 max-h-[70vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="parts-search-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-800 shadow-2xl border border-surface-200 dark:border-surface-700 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <h2 id="parts-search-title" className="sr-only">Search parts</h2>
         <div className="flex items-center gap-3 p-4 border-b border-surface-200 dark:border-surface-700">
           <Search className="h-5 w-5 text-surface-400" />
           <input

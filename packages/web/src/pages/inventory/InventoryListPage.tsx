@@ -350,6 +350,18 @@ export function InventoryListPage() {
     setImportPreview(rows);
   };
 
+  // WEB-FX-003: shared Esc-to-close for the page-level modals on this page.
+  // Closes the most-recently-opened first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showBulkPriceModal) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); return; }
+      if (showImportModal) { setShowImportModal(false); setImportText(''); setImportPreview([]); return; }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showBulkPriceModal, showImportModal]);
+
   // Price preview for bulk update
   const pricePreviewItems = useMemo(() => {
     const pct = parseFloat(priceAdjustPct);
@@ -879,10 +891,16 @@ export function InventoryListPage() {
 
       {/* Bulk Price Update Modal */}
       {showBulkPriceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bulk-price-title"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); } }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
+              <h3 id="bulk-price-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
               <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
@@ -954,10 +972,16 @@ export function InventoryListPage() {
 
       {/* Import CSV Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="import-csv-title"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowImportModal(false); setImportText(''); setImportPreview([]); } }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Inventory CSV</h3>
+              <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Inventory CSV</h3>
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>

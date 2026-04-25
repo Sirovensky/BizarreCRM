@@ -144,7 +144,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (setupError && !setupData) {
     return <SetupFailedScreen error={setupErrorObj} onRetry={() => refetchSetup()} />;
   }
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // WEB-FI-007 (Fixer-FFF 2026-04-25): pass the originating `location` via
+  // router state so LoginPage can deep-link the user back after re-auth.
+  // State is the safe channel here (NOT a `?from=` query string) — the value
+  // is never echoed into the DOM, dodging the open-redirect/XSS angle the
+  // audit guidelines warn about.
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
 
   const setupCompleted = setupData?.data?.data?.setup_completed;
   const wizardCompleted = setupData?.data?.data?.wizard_completed;

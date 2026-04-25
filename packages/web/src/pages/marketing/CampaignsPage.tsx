@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Megaphone,
@@ -371,6 +371,12 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
     template_body: '',
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const create = useMutation({
     mutationFn: async () => {
       const payload: any = {
@@ -394,9 +400,15 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4">
-        <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">New campaign</h2>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-campaign-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <h2 id="new-campaign-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">New campaign</h2>
 
         <div>
           <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Name</label>
@@ -501,11 +513,23 @@ interface PreviewProps {
 }
 
 function PreviewModal({ data, onClose }: PreviewProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="campaign-preview-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div>
-          <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+          <h2 id="campaign-preview-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <BarChart3 className="h-5 w-5" /> Preview: {data.campaign.name}
           </h2>
           <p className="text-xs text-surface-500 mt-1">

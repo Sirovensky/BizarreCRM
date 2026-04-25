@@ -20,6 +20,15 @@ const STATUS_COLORS: Record<string, string> = {
   converted: '#8b5cf6',
 };
 
+// ENR-LE6 estimate version row — minimal shared shape (id + version + timestamp).
+// Server returns more fields (snapshot blob, author, diff metadata) but the UI
+// only renders the version number + created_at, so keep this narrow.
+interface EstimateVersion {
+  id: number;
+  version_number: number;
+  created_at: string;
+}
+
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -45,8 +54,9 @@ export function EstimateDetailPage() {
     queryKey: ['estimate-versions', id],
     queryFn: () => estimateApi.versions(Number(id)),
     enabled: showVersions,
+    staleTime: 60_000, // versions of completed/sent estimates rarely change minute-to-minute
   });
-  const versions: any[] = versionsData?.data?.data || [];
+  const versions: EstimateVersion[] = versionsData?.data?.data || [];
 
   const sendMut = useMutation({
     mutationFn: () => estimateApi.send(Number(id)),
@@ -383,7 +393,7 @@ export function EstimateDetailPage() {
                   <p className="text-xs text-surface-400 dark:text-surface-500 italic">No previous versions</p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {versions.map((v: any) => (
+                    {versions.map((v) => (
                       <div
                         key={v.id}
                         className="flex items-center justify-between rounded-lg bg-surface-50 dark:bg-surface-800/50 px-3 py-2"

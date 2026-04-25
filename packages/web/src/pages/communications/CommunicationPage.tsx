@@ -2006,6 +2006,11 @@ export function CommunicationPage() {
                     }}
                     placeholder="Type a message..."
                     rows={1}
+                    /* WEB-FK-006 / FIXED-by-Fixer-EEE 2026-04-25 — hard-cap at
+                     * 1530 chars (10 GSM-7 segments) to prevent runaway-billing
+                     * fan-out and provider-side rejection. Per-segment count
+                     * displayed in the bottom-right counter. */
+                    maxLength={1530}
                     className="max-h-24 min-h-[2.5rem] w-full resize-none rounded-xl border border-surface-300 px-4 py-2.5 pr-16 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     style={{ height: 'auto' }}
                     onInput={(e) => {

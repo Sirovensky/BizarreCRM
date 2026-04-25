@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -87,6 +87,18 @@ type Step = 'password' | 'setPassword' | 'setup' | 'verify' | 'firstTimeSetup';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  // WEB-FI-007 (Fixer-FFF 2026-04-25): ProtectedRoute now passes the originating
+  // `location` via router state. Pull the pathname (+search) so we can bounce the
+  // user back to their deep-link after successful auth instead of landing them
+  // on `/`. Sanity-checked to start with `/` (and not `//`) so a poisoned state
+  // value can't redirect off-origin.
+  const routerLocation = useLocation() as { state?: { from?: { pathname?: string; search?: string } } };
+  const fromPath = (() => {
+    const fp = routerLocation.state?.from?.pathname;
+    if (typeof fp !== 'string' || !fp.startsWith('/') || fp.startsWith('//')) return '/';
+    const fs = routerLocation.state?.from?.search;
+    return fp + (typeof fs === 'string' ? fs : '');
+  })();
   const { isAuthenticated, completeLogin } = useAuthStore();
 
   const [step, setStep] = useState<Step>('password');
@@ -170,7 +182,7 @@ export function LoginPage() {
   // Combined auth check: if already authenticated redirect immediately,
   // otherwise try to restore session from a valid refresh token cookie.
   useEffect(() => {
-    if (isAuthenticated) { navigate('/'); return; }
+    if (isAuthenticated) { navigate(fromPath, { replace: true }); return; }
     if (step === 'firstTimeSetup') return; // Skip auth check during setup
 
     let cancelled = false;
@@ -258,7 +270,7 @@ export function LoginPage() {
         const token = localStorage.getItem('accessToken');
         if (token) {
           completeLogin(token, '', meUser as Parameters<typeof completeLogin>[2]);
-          navigate('/');
+          navigate(fromPath, { replace: true });
           return;
         }
       }
@@ -266,7 +278,7 @@ export function LoginPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [isAuthenticated, navigate, completeLogin, step]);
+  }, [isAuthenticated, navigate, completeLogin, step, fromPath]);
 
   async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -337,7 +349,7 @@ export function LoginPage() {
       const res = await authApi.verify2fa(challengeToken, totpCode, trustDevice);
       const data = res.data.data;
       completeLogin(data.accessToken, data.refreshToken, data.user);
-      navigate('/');
+      navigate(fromPath, { replace: true });
     } catch (err: unknown) {
       const msg = formatApiError(err) || 'Invalid code';
       const e = err as { response?: { data?: { data?: { challengeToken?: string } } } } | undefined;
@@ -582,7 +594,7 @@ export function LoginPage() {
                   aria-invalid={!!fieldErrors.username}
                   aria-describedby={fieldErrors.username ? 'login-username-error' : undefined}
                   className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
-                {fieldErrors.username && <p id="login-username-error" className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
+                {fieldErrors.username && <p id="login-username-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
               </div>
               <div>
                 <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
@@ -596,7 +608,7 @@ export function LoginPage() {
                     {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                   </button>
                 </div>
-                {fieldErrors.password && <p id="login-password-error" className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
+                {fieldErrors.password && <p id="login-password-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
               </div>
               <div className="flex justify-end">
                 <button type="button" onClick={() => setShowForgot(!showForgot)} className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">

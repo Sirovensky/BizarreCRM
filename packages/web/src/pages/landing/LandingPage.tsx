@@ -131,8 +131,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             type="text"
             value={slug}
             onChange={e => { setSlug(e.target.value); setError(''); }}
-            onKeyDown={e => e.key === 'Enter' && handleGo()}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                // preventDefault stops Enter from bubbling to any parent form / global listener (WCAG 3.3.2).
+                e.preventDefault();
+                handleGo();
+              }
+            }}
             placeholder="yourshop"
+            aria-label="Shop name"
             autoFocus
             style={{
               flex: 1, padding: '12px 14px', fontSize: 16, border: '2px solid #ddd', borderRight: 'none',

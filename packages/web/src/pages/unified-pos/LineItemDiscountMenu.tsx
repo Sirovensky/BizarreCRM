@@ -124,7 +124,7 @@ export function LineItemDiscountMenu({
           step="1"
           value={percent}
           onChange={(e) => setPercent(e.target.value)}
-          className="w-full rounded-md border border-surface-300 px-2 py-1 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+          className="w-full rounded-md border border-surface-300 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
           autoFocus
         />
       </label>
@@ -137,7 +137,7 @@ export function LineItemDiscountMenu({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Reason"
-            className="w-full rounded-md border border-surface-300 px-2 py-1 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+            className="w-full rounded-md border border-surface-300 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
           />
         </label>
       )}
