@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import Core
 import DesignSystem
+// POSThemeOverride is defined in DesignSystem (POSThemeModifier.swift)
 
 // MARK: - Models
 
@@ -62,6 +63,9 @@ public final class AppearanceViewModel: Sendable {
     var isCompact: Bool = false
     var fontScale: Double = 1.0
     var reduceMotion: Bool = false
+    /// §wave-5 — persists to `@AppStorage("pos.theme.override")` so
+    /// `POSThemeModifier` in `RootView` resolves the right token set.
+    var posThemeOverride: POSThemeOverride = .system
 
     private let defaults: UserDefaults
 
@@ -76,6 +80,7 @@ public final class AppearanceViewModel: Sendable {
         isCompact = defaults.bool(forKey: "appearance.compact")
         fontScale = defaults.object(forKey: "appearance.fontScale") as? Double ?? 1.0
         reduceMotion = defaults.bool(forKey: "appearance.reduceMotion")
+        posThemeOverride = POSThemeOverride(rawValue: defaults.string(forKey: "pos.theme.override") ?? "") ?? .system
     }
 
     func save() {
@@ -84,6 +89,7 @@ public final class AppearanceViewModel: Sendable {
         defaults.set(isCompact, forKey: "appearance.compact")
         defaults.set(fontScale, forKey: "appearance.fontScale")
         defaults.set(reduceMotion, forKey: "appearance.reduceMotion")
+        defaults.set(posThemeOverride.rawValue, forKey: "pos.theme.override")
 
         #if canImport(UIKit)
         applyTheme()
@@ -182,6 +188,27 @@ public struct AppearancePage: View {
                 Toggle("Reduce motion (override system)", isOn: $vm.reduceMotion)
                     .accessibilityIdentifier("appearance.reduceMotion")
             }
+
+            // §wave-5 — POS-specific theme override. Stored in
+            // `@AppStorage("pos.theme.override")` and read by
+            // `POSThemeModifier` which is applied at the authenticated
+            // shell level in `RootView`.
+            Section {
+                Picker("POS theme", selection: $vm.posThemeOverride) {
+                    Text("System").tag(POSThemeOverride.system)
+                    Text("Light").tag(POSThemeOverride.light)
+                    Text("Dark").tag(POSThemeOverride.dark)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("POS theme override")
+                .accessibilityIdentifier("appearance.posTheme")
+            } header: {
+                Text("Point of Sale")
+            } footer: {
+                Text("Overrides the device appearance for the POS screen only. \"System\" follows your device setting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .navigationTitle("Appearance")
         #if canImport(UIKit)
@@ -196,5 +223,6 @@ public struct AppearancePage: View {
             }
         }
         .onChange(of: vm.theme) { _, _ in vm.save() }
+        .onChange(of: vm.posThemeOverride) { _, _ in vm.save() }
     }
 }

@@ -9,8 +9,47 @@ import Sync
 import Inventory
 import Customers
 
+// MARK: - PosPhase
+
+/// Wave-5 phase machine for the POS root screen.
+///
+/// State transitions:
+/// ```
+///   .gate → .cart (customer selected/created/walk-in, or pickup loaded)
+///   .cart → .tender(coordinator)
+///   .tender → .receipt(payload)
+///   .receipt → .gate ("New sale" button)
+///   .gate / .cart → .repair(coordinator)
+///   .repair → .cart (or .tender if deposit tendered inline)
+/// ```
+public enum PosPhase {
+    /// Frame 1 — Customer gate (who is this sale for?).
+    case gate
+    /// Frame 2/3 — Items search + cart panel.
+    case cart
+    /// Frame 4 — Repair intake flow (4-step).
+    case repair(PosRepairFlowCoordinator)
+    /// Frame 5 — Tender method + amount entry.
+    case tender(PosTenderCoordinator)
+    /// Frame 6 — Receipt / post-sale confirmation.
+    case receipt(PosReceiptPayload)
+}
+
 /// POS root screen. §16.4 wires the customer attach flow.
+/// Wave-5 phase machine drives customer gate → cart → tender → receipt.
 public struct PosView: View {
+    // MARK: - Wave-5 phase machine
+
+    /// Active POS phase. Default is `.gate` so every new session starts
+    /// by asking "who is this sale for?".
+    @State private var phase: PosPhase = .gate
+
+    /// Tracks when the transaction settled so `PosReceiptView` can fire
+    /// its success haptic (`.sensoryFeedback(.success, trigger: paidAt)`).
+    @State private var paidAt: Date = Date()
+
+    // MARK: - Existing cart + session state
+
     @State private var cart = Cart()
     /// §16.12 — offline-aware checkout + cart persistence.
     @State private var cartVM = CartViewModel()
@@ -49,7 +88,7 @@ public struct PosView: View {
     @State private var showingNoSalePin: Bool = false
     /// §16.11 — Audit log viewer.
     @State private var showingAuditLog: Bool = false
-    /// §16.5 — Tender select + cash tender flow.
+    /// §16.5 — v1 tender select + cash tender flow (retained, not deleted).
     @State private var showingTenderSelect: Bool = false
     @State private var cashTenderVM: CashTenderViewModel?
     @State private var tenderErrorMessage: String?
@@ -90,10 +129,8 @@ public struct PosView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if registerSession == nil {
                 registerLockedPlaceholder
-            } else if Platform.isCompact {
-                compactLayout
             } else {
-                regularLayout
+                phaseBody
             }
         }
         .task { await search.load() }
@@ -258,6 +295,8 @@ public struct PosView: View {
                     )
                     cart.attach(customer: attached)
                     BrandHaptics.success()
+                    // When arriving from the gate, advance to cart.
+                    if case .gate = phase { phase = .cart }
                 }
             }
         }
@@ -265,7 +304,7 @@ public struct PosView: View {
             NavigationStack {
                 PosCartPanel(
                     cart: cart,
-                    onCharge: { showingCartSheet = false; startCharge() },
+                    onCharge: { showingCartSheet = false; startChargeV5() },
                     onOpenDrawer: openDrawer,
                     onChangeCustomer: customerRepo == nil ? nil : {
                         showingCartSheet = false
@@ -363,6 +402,212 @@ public struct PosView: View {
         }
     }
 
+    // MARK: - Wave-5 phase body
+
+    /// Routes to the correct surface for the active `PosPhase`.
+    @ViewBuilder
+    private var phaseBody: some View {
+        switch phase {
+        case .gate:
+            gateView
+
+        case .cart:
+            if Platform.isCompact {
+                compactLayout
+            } else {
+                regularLayout
+            }
+
+        case .repair(let coordinator):
+            if let api {
+                RepairFlowAdapter(
+                    coordinator: coordinator,
+                    devicePickerVM: PosDevicePickerViewModel(
+                        repository: PosDevicePickerRepositoryImpl(api: api)
+                    )
+                )
+            } else {
+                // No API — cannot run repair flow; fall back to cart.
+                Color.clear.onAppear { phase = .cart }
+            }
+
+        case .tender(let coordinator):
+            tenderView(coordinator: coordinator)
+
+        case .receipt(let payload):
+            receiptView(payload: payload)
+        }
+    }
+
+    // MARK: - Gate view (Frame 1)
+
+    private var gateView: some View {
+        PosGateView(vm: makeGateVM())
+    }
+
+    private func makeGateVM() -> PosGateViewModel {
+        let customerRepo: any CustomerRepository = self.customerRepo ?? PosGateNullCustomerRepository()
+        let ticketsRepo: any GateTicketsRepository = {
+            if let api { return DefaultGateTicketsRepository(api: api) }
+            return PosGateNullTicketsRepository()
+        }()
+        let vm = PosGateViewModel(customerRepo: customerRepo, ticketsRepo: ticketsRepo)
+        vm.onRouteSelected = { route in
+            self.handleGateRoute(route)
+        }
+        return vm
+    }
+
+    @MainActor
+    private func handleGateRoute(_ route: PosGateRoute) {
+        switch route {
+        case .existing(let id):
+            // Load the customer detail and advance to .cart.
+            Task { @MainActor in
+                if let api, let detail = try? await api.customer(id: id) {
+                    let customer = PosCustomer(
+                        id: detail.id,
+                        displayName: detail.displayName,
+                        email: detail.email,
+                        phone: detail.phone ?? detail.mobile
+                    )
+                    self.cart.attach(customer: customer)
+                    BrandHaptics.success()
+                }
+                phase = .cart
+            }
+
+        case .createNew:
+            // Present create-customer sheet; on success attach + advance.
+            showingCreateCustomer = true
+            // Phase transitions to .cart inside the sheet's onComplete closure
+            // (see CustomerCreateView integration below).
+
+        case .walkIn:
+            self.cart.attach(customer: .walkIn)
+            BrandHaptics.success()
+            phase = .cart
+
+        case .openPickup(let ticketId):
+            // Load the ticket as a pre-built cart and advance to .cart.
+            Task { @MainActor in
+                // The cart is pre-loaded from the ticket; advance to cart phase.
+                // Full ticket→cart mapping requires the Tickets package which
+                // PosView does not import. We advance to .cart and let the
+                // CartViewModel / PosCartPanel surface the ticket context.
+                _ = ticketId // consumed by the pickup coordinator when implemented
+                phase = .cart
+            }
+        }
+    }
+
+    // MARK: - Tender view (Frame 5)
+
+    @ViewBuilder
+    private func tenderView(coordinator: PosTenderCoordinator) -> some View {
+        Group {
+            if coordinator.stage == .confirmed {
+                // Confirmed — build receipt payload and advance.
+                Color.clear
+                    .onAppear {
+                        advanceToReceipt(from: coordinator)
+                    }
+            } else if coordinator.method != nil {
+                PosTenderAmountEntryView(coordinator: coordinator)
+                    .onChange(of: coordinator.stage) { _, new in
+                        if new == .confirmed {
+                            advanceToReceipt(from: coordinator)
+                        }
+                    }
+            } else {
+                PosTenderMethodPickerView(
+                    coordinator: coordinator,
+                    loyaltyTierLabel: nil,
+                    bottomBar: AnyView(EmptyView())
+                )
+            }
+        }
+    }
+
+    private func advanceToReceipt(from coordinator: PosTenderCoordinator) {
+        guard let result = coordinator.confirmResult else { return }
+        let methodLabel = coordinator.appliedTenders.first.map { $0.method.displayName } ?? "Card"
+        let changeCents = result.changeCents > 0 ? result.changeCents : nil
+        let payload = PosReceiptPayload(
+            invoiceId: result.invoiceId,
+            amountPaidCents: result.totalCents,
+            changeGivenCents: changeCents,
+            methodLabel: methodLabel,
+            customerPhone: cart.customer?.phone,
+            customerEmail: cart.customer?.email
+        )
+        paidAt = Date()
+        phase = .receipt(payload)
+    }
+
+    // MARK: - Receipt view (Frame 6)
+
+    private func receiptView(payload: PosReceiptPayload) -> some View {
+        let receiptText = PosReceiptRenderer.text(
+            PosReceiptPayloadBuilder.build(
+                cart: cart,
+                methodLabel: payload.methodLabel,
+                methodAmountCents: payload.amountPaidCents
+            )
+        )
+        let vm = PosReceiptViewModel(
+            payload: payload,
+            api: api,
+            onNextSale: {
+                self.cart.clear()
+                self.phase = .gate
+            }
+        )
+        return PosReceiptView(vm: vm, receiptText: receiptText, paidAt: paidAt)
+            .posCartCollapse(isCollapsed: true)
+    }
+
+    // MARK: - v5 charge entry point
+
+    /// Called from cart's "Charge" button when the wave-5 phase machine is active.
+    private func startChargeV5() {
+        guard !cart.isEmpty, let api else {
+            // Fall back to v1 flow when API not available.
+            startCharge()
+            return
+        }
+        BrandHaptics.tapMedium()
+        Task { @MainActor in
+            let handledOffline = await cartVM.checkoutIfOffline(
+                cart: cart,
+                cashSession: registerSession
+            )
+            if handledOffline {
+                BrandHaptics.success()
+                await cartVM.saveSnapshot(cart: cart, cashSessionId: registerSession?.id)
+                return
+            }
+            let idempKey = UUID().uuidString
+            guard let request = try? PosTransactionMapper.request(
+                from: cart,
+                paymentMethod: "card",
+                paymentAmountCents: cart.totalCents,
+                idempotencyKey: idempKey
+            ) else {
+                tenderErrorMessage = "Cart contains custom lines that cannot be processed."
+                return
+            }
+            let coordinator = PosTenderCoordinator(
+                totalCents: cart.totalCents,
+                baseRequest: request,
+                api: api
+            )
+            phase = .tender(coordinator)
+        }
+    }
+
+    // MARK: - Cart layouts (Frame 2/3)
+
     private var compactLayout: some View {
         NavigationStack {
             PosSearchPanel(
@@ -417,7 +662,7 @@ public struct PosView: View {
 
                 PosCartPanel(
                     cart: cart,
-                    onCharge: startCharge,
+                    onCharge: startChargeV5,
                     onOpenDrawer: openDrawer,
                     onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
                     onRemoveCustomer: { cart.detachCustomer() },
@@ -872,5 +1117,22 @@ private struct CartPillCustomerChip: View {
 
 private struct PosDisabledRepository: InventoryRepository {
     func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
+}
+
+// MARK: - Wave-5 null stubs (build-safe fallbacks when DI not fully wired)
+
+/// Null customer repository — returns empty results. Used when no real
+/// `CustomerRepository` is injected (preview / unit test contexts).
+private struct PosGateNullCustomerRepository: CustomerRepository {
+    func list(keyword: String?) async throws -> [CustomerSummary] { [] }
+    func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
+        throw URLError(.unsupportedURL)
+    }
+}
+
+/// Null tickets repository — returns empty pickup list. Used when no
+/// `APIClient` is available in preview / test contexts.
+private struct PosGateNullTicketsRepository: GateTicketsRepository {
+    func readyForPickup(limit: Int) async throws -> [ReadyPickup] { [] }
 }
 #endif

@@ -66,6 +66,7 @@ struct RootView: View {
                     appState.phase = .unauthenticated
                 })
                 .overlay(alignment: .topTrailing) { ConnectivityChip() }
+                .posTheme(override: nil)
             }
         }
         .task { await listenForSessionEvents() }
@@ -111,6 +112,10 @@ private struct LaunchView: View {
 
 struct MainShellView: View {
     @State private var selectedTab: MainTab = .dashboard
+    /// §22.G — iPad rail destination. Kept separate from `selectedTab` so the
+    /// iPhone `TabView` and iPad rail each own their own selection state without
+    /// needing a lossy conversion on every switch.
+    @State private var railDestination: RailDestination = .dashboard
     @State private var showCmdPalette: Bool = false
     /// §23 — ⌘/ toggles the keyboard shortcut cheat-sheet overlay.
     @State private var showShortcutOverlay: Bool = false
@@ -123,7 +128,7 @@ struct MainShellView: View {
             if Platform.isCompact {
                 iPhoneTabs(selection: $selectedTab, onSignOut: onSignOut)
             } else {
-                iPadSplit(selection: $selectedTab, onSignOut: onSignOut)
+                iPadShell(destination: $railDestination, onSignOut: onSignOut)
             }
 
             // §52.1 — ⌘K opens Command Palette on iPad/Mac. Hidden button
@@ -169,22 +174,45 @@ struct MainShellView: View {
         }
     }
 
-    /// Hidden buttons that wire ⌘1–⌘6 to tab navigation.
+    /// Hidden buttons that wire ⌘1–⌘8 to navigation.
+    /// On iPhone they drive `selectedTab`; on iPad they drive `railDestination`.
     @ViewBuilder
     private var navShortcutButtons: some View {
         Group {
-            Button { selectedTab = .dashboard  } label: { EmptyView() }
+            Button {
+                selectedTab = .dashboard
+                railDestination = .dashboard
+            } label: { EmptyView() }
                 .keyboardShortcut("1", modifiers: .command)
-            Button { selectedTab = .tickets    } label: { EmptyView() }
+            Button {
+                selectedTab = .tickets
+                railDestination = .tickets
+            } label: { EmptyView() }
                 .keyboardShortcut("2", modifiers: .command)
-            Button { selectedTab = .customers  } label: { EmptyView() }
+            Button {
+                selectedTab = .customers
+                railDestination = .customers
+            } label: { EmptyView() }
                 .keyboardShortcut("3", modifiers: .command)
-            Button { selectedTab = .pos        } label: { EmptyView() }
+            Button {
+                selectedTab = .pos
+                railDestination = .pos
+            } label: { EmptyView() }
                 .keyboardShortcut("4", modifiers: .command)
-            Button { selectedTab = .more       } label: { EmptyView() }
+            Button {
+                selectedTab = .more
+                railDestination = .inventory
+            } label: { EmptyView() }
                 .keyboardShortcut("5", modifiers: .command)
-            Button { selectedTab = .search     } label: { EmptyView() }
+            Button {
+                selectedTab = .search
+                railDestination = .sms
+            } label: { EmptyView() }
                 .keyboardShortcut("6", modifiers: .command)
+            Button { railDestination = .reports  } label: { EmptyView() }
+                .keyboardShortcut("7", modifiers: .command)
+            Button { railDestination = .settings } label: { EmptyView() }
+                .keyboardShortcut("8", modifiers: .command)
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -194,21 +222,21 @@ struct MainShellView: View {
     /// Build a fresh VM each time sheet opens so recent-usage state stays fresh.
     private func makeCmdPaletteVM() -> CommandPaletteViewModel {
         let actions = CommandCatalog.defaultActions(
-            newTicket:         { Task { @MainActor in selectedTab = .tickets;  showCmdPalette = false } },
-            newCustomer:       { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
-            findCustomerPhone: { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
-            findCustomerName:  { Task { @MainActor in selectedTab = .customers; showCmdPalette = false } },
-            openDashboard:     { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
-            openPOS:           { Task { @MainActor in selectedTab = .pos;       showCmdPalette = false } },
-            clockIn:           { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
-            clockOut:          { Task { @MainActor in selectedTab = .dashboard; showCmdPalette = false } },
-            openTickets:       { Task { @MainActor in selectedTab = .tickets;   showCmdPalette = false } },
-            openInventory:     { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            settingsTax:       { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            settingsHours:     { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            reportsRevenue:    { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            sendSMS:           { Task { @MainActor in selectedTab = .more;      showCmdPalette = false } },
-            signOut:           { Task { @MainActor [onSignOut] in showCmdPalette = false; onSignOut?() } }
+            newTicket:         { Task { @MainActor in selectedTab = .tickets;  self.railDestination = .tickets;  self.showCmdPalette = false } },
+            newCustomer:       { Task { @MainActor in selectedTab = .customers; self.railDestination = .customers; self.showCmdPalette = false } },
+            findCustomerPhone: { Task { @MainActor in selectedTab = .customers; self.railDestination = .customers; self.showCmdPalette = false } },
+            findCustomerName:  { Task { @MainActor in selectedTab = .customers; self.railDestination = .customers; self.showCmdPalette = false } },
+            openDashboard:     { Task { @MainActor in selectedTab = .dashboard; self.railDestination = .dashboard; self.showCmdPalette = false } },
+            openPOS:           { Task { @MainActor in selectedTab = .pos;       self.railDestination = .pos;       self.showCmdPalette = false } },
+            clockIn:           { Task { @MainActor in selectedTab = .dashboard; self.railDestination = .dashboard; self.showCmdPalette = false } },
+            clockOut:          { Task { @MainActor in selectedTab = .dashboard; self.railDestination = .dashboard; self.showCmdPalette = false } },
+            openTickets:       { Task { @MainActor in selectedTab = .tickets;   self.railDestination = .tickets;   self.showCmdPalette = false } },
+            openInventory:     { Task { @MainActor in selectedTab = .more;      self.railDestination = .inventory;  self.showCmdPalette = false } },
+            settingsTax:       { Task { @MainActor in selectedTab = .more;      self.railDestination = .settings;  self.showCmdPalette = false } },
+            settingsHours:     { Task { @MainActor in selectedTab = .more;      self.railDestination = .settings;  self.showCmdPalette = false } },
+            reportsRevenue:    { Task { @MainActor in selectedTab = .more;      self.railDestination = .reports;   self.showCmdPalette = false } },
+            sendSMS:           { Task { @MainActor in selectedTab = .more;      self.railDestination = .sms;       self.showCmdPalette = false } },
+            signOut:           { Task { @MainActor [onSignOut] in self.showCmdPalette = false; onSignOut?() } }
         )
         return CommandPaletteViewModel(actions: actions, context: .none)
     }
@@ -285,71 +313,81 @@ private struct iPhoneTabs: View {
     }
 }
 
-private struct iPadSplit: View {
-    @Binding var selection: MainTab
+/// §22.G — iPad shell using the custom 64pt rail (`ShellLayout`) instead of the
+/// system `NavigationSplitView` sidebar. The rail owns primary navigation; the
+/// detail column hosts the selected destination's view.
+///
+/// The iPhone `iPhoneTabs` struct is unchanged — `ShellLayout` falls through
+/// to the compact-content closure on narrow size classes, so even if this view
+/// were ever placed on iPhone the behaviour would degrade gracefully.
+private struct iPadShell: View {
+    @Binding var destination: RailDestination
     var onSignOut: (() -> Void)? = nil
-    /// POS gets the entire canvas so the Items + Cart columns are un-cramped.
-    /// Everything else keeps the sidebar visible by default; the user can still
-    /// collapse manually on any tab.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
-        // GeometryReader gives us the container width so we can adapt
-        // sidebar column widths per §22.2 (SidebarWidthCalculator).
-        GeometryReader { geo in
-            let category = SidebarWidthCalculator.width(for: geo.size.width)
-            let rec = SidebarWidthCalculator.recommendedSidebarWidth(for: category)
+        ShellLayout(selection: $destination) { dest in
+            detailView(for: dest)
+        } compactContent: {
+            // Compact fallback — `MainShellView` already gates on
+            // `Platform.isCompact` so this branch is never reached in
+            // production. Providing it keeps the ShellLayout contract.
+            iPhoneTabs(
+                selection: .constant(.dashboard),
+                onSignOut: onSignOut
+            )
+        }
+    }
 
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                List(selection: Binding<MainTab?>(
-                    get: { selection },
-                    set: { if let new = $0 { selection = new } }
-                )) {
-                    ForEach(MainTab.allCases) { tab in
-                        NavigationLink(value: tab) {
-                            Label(tab.title, systemImage: tab.systemImage)
-                                .accessibilityLabel(tab.title)
-                        }
-                    }
-                }
-                .navigationTitle("Bizarre CRM")
-                .navigationSplitViewColumnWidth(
-                    min: rec.min,
-                    ideal: rec.ideal,
-                    max: rec.max
-                )
-            } detail: {
-                switch selection {
-                case .dashboard: DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
-                case .tickets:   TicketListView(
-                    repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
-                    api: AppServices.shared.apiClient,
-                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
-                )
-                case .customers: CustomerListView(
-                    repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                    detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
-                    api: AppServices.shared.apiClient
-                )
-                case .pos:       PosView(
-                    repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
-                    api: AppServices.shared.apiClient,
-                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                    cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() }
-                )
-                case .more:      MoreMenuView(onSignOut: onSignOut)
-                case .search:    GlobalSearchView(api: AppServices.shared.apiClient)
-                }
-            }
-            .navigationSplitViewStyle(.balanced)
-            .onChange(of: selection, initial: true) { _, new in
-                // POS auto-collapses the sidebar so the Items + Cart columns
-                // get the entire canvas. Switching to any other tab restores
-                // the default balanced visibility. The user can still manually
-                // pop the sidebar back out on POS via the standard sidebar
-                // toggle in the nav bar.
-                columnVisibility = (new == .pos) ? .detailOnly : .automatic
-            }
+    @ViewBuilder
+    private func detailView(for dest: RailDestination) -> some View {
+        switch dest {
+        case .dashboard:
+            DashboardView(
+                repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
+            )
+
+        case .tickets:
+            TicketListView(
+                repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient,
+                customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
+            )
+
+        case .customers:
+            CustomerListView(
+                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
+            )
+
+        case .pos:
+            PosView(
+                repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient,
+                customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() }
+            )
+
+        case .inventory:
+            InventoryListView(
+                repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                detailRepo: InventoryDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
+            )
+
+        case .sms:
+            SmsListView(
+                repo: SmsRepositoryImpl(api: AppServices.shared.apiClient),
+                threadRepo: SmsThreadRepositoryImpl(api: AppServices.shared.apiClient),
+                api: AppServices.shared.apiClient
+            )
+
+        case .reports:
+            ReportsView(repository: LiveReportsRepository(api: AppServices.shared.apiClient))
+
+        case .settings:
+            SettingsView(onSignOut: onSignOut)
         }
     }
 }
