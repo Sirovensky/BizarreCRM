@@ -1325,8 +1325,8 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room.
 
 ### 8.2 Detail
-- [ ] **Header** — estimate # + status + valid-until date.
-- [ ] **Line items** + totals.
+- [x] **Header** — estimate # + status + valid-until date.
+- [x] **Line items** + totals.
 - [x] **Send** — SMS / email; body includes approval link (customer portal). (commit 388f4c2 — send bottom sheet reuses SMS/Email intent helpers from wave 15)
 - [x] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (Compose Canvas). (commit 388f4c2 — POST + confirm dialog; 404-tolerant; signature capture deferred)
 - [x] **Reject** — reason required. (commit 388f4c2 — reject dialog with required-reason field; POST /estimates/:id/reject)
@@ -1336,14 +1336,14 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] **Customer-facing PDF preview** — "See what customer sees" button. (commit 388f4c2 — Print action in overflow menu via PrintManager + WebView — mirrors InvoiceSendActions)
 
 ### 8.3 Create
-- [ ] Same structure as invoice + validity window.
-- [ ] Convert from lead (prefill).
-- [ ] Line items from repair-pricing services + inventory parts + free-form.
-- [ ] Idempotency key.
+- [x] Same structure as invoice + validity window.
+- [x] Convert from lead (prefill).
+- [x] Line items from repair-pricing services + inventory parts + free-form.
+- [x] Idempotency key.
 
 ### 8.4 Expiration handling
-- [ ] Auto-expire when past validity date (server-driven).
-- [ ] Manual expire action.
+- [x] Auto-expire when past validity date (server-driven).
+- [x] Manual expire action.
 
 ### 8.5 E-sign (public page)
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
@@ -1354,7 +1354,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 ### 8.6 Versioning
 - [ ] Each edit creates new version; prior retained.
-- [ ] Version number visible on UI (e.g. "v3").
+- [x] Version number visible on UI (e.g. "v3").
 - [ ] Only "sent" versions archived for audit; drafts freely edited.
 - [ ] Side-by-side diff of v-n vs v-n+1.
 - [ ] Highlight adds / removes / price changes.
@@ -4813,3 +4813,37 @@ Scope: exact string comparison of every visible text node in screens 01–11 aga
 - [ ] **LOGIN-MOCK-099 (Layout). ServerStep footer row has no bottom padding — card bottom is flush with card surface.** `ServerStep` ends with the `Row` of `TextButton` items ("Self-hosted?" / "Register new shop") at lines 2250–2265. There is no trailing `Spacer` after this row, so the card's 20 dp uniform padding provides the only bottom clearance. When `imePadding()` on the root Box lifts the entire Column to avoid the keyboard (screen-08), the bottom of the card lands visually flush with the `RoundedCornerShape(16.dp)` corner arc, and the footer text clips against the bottom arc at small viewport heights. Add `Spacer(Modifier.height(4.dp))` after the footer `Row` in `ServerStep` so the card bottom padding is a consistent 24 dp (20 dp card padding + 4 dp spacer). Apply the same fix to `RegisterStep` (no trailing spacer after the Create Shop button at line 2409) and `CredentialsStep` (no trailing spacer after the last TextButton block).
 
 - [ ] **LOGIN-MOCK-100 (Layout). Manual-key surface horizontal padding 12 dp / vertical 10 dp; mockup shows 16 dp / 12 dp.** `TwoFaSetupStep` line 3270: `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` on the `SelectionContainer` inside the manual-key `Surface`. The mockup (screen-10) shows the monospace key text with visibly wider side margins and slightly taller top/bottom margins. Change to `Modifier.padding(horizontal = 16.dp, vertical = 12.dp)` to match the 16 dp horizontal gutter used elsewhere in the card and provide a comfortable 12 dp vertical breathing room for the tall bodyLarge mono text.
+
+---
+
+## Login-flow mockup parity wave — 2026-04-24
+
+### Wave-3 Finder-H copy fidelity recapture
+
+Scope: exact string comparison — case, punctuation, Unicode char class (en-dash U+2013 vs hyphen-minus U+002D), sentence-case vs title-case, trailing punctuation, apostrophe type, ellipsis form, loading/error strings — for all visible text nodes in screens 01–11 against `LoginScreen.kt`. Wave-3 IDs start at 115.
+
+- [ ] **LOGIN-MOCK-115 (Copy). Shop-URL field supporting text uses ASCII hyphen-minus (U+002D) "3–30 characters: letters, numbers, hyphens" but the mockup renders an en-dash (U+2013) between "3" and "30".** Code at `LoginScreen.kt:2313` and `LoginScreen.kt` search: `supportingText = { Text("3–30 characters: letters, numbers, hyphens") }` — the dash character in the string literal is the ASCII hyphen-minus U+002D (i.e. `"3-30 characters: letters, numbers, hyphens"`). Mockup screens 02, 03, 04, 05, 06 all show "3–30 characters: letters, numbers, hyphens" with a visually wider dash between "3" and "30" that is unambiguously an en-dash (U+2013). Fix: change the literal to `"3–30 characters: letters, numbers, hyphens"`. `LoginScreen.kt:2313`.
+
+- [ ] **LOGIN-MOCK-116 (Copy). "Register new shop" footer link is sentence-case; "Register New Shop" heading on the destination screen is title-case — same destination, two different capitalisation rules across a single tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — the mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02, 03, 04, 05, 06 confirm title-case there. The link and its destination heading are the same named action with conflicting capitalisation. Both cannot be correct simultaneously; the capitalization rule must be resolved and applied consistently. Code: link `"Register new shop"` at line 2262 vs heading `"Register New Shop"` at line 2283. No change is correct until design decides; flag for decision.
+
+- [ ] **LOGIN-MOCK-117 (Copy). "Create your repair shop on BizarreCRM" subtitle uses a closed compound "BizarreCRM" (no space) while the wordmark renders "Bizarre CRM" (with space) — inconsistent brand name form.** `RegisterStep` subtitle `LoginScreen.kt:2292`: `Text("Create your repair shop on BizarreCRM")`. Mockup screen-02 shows "Create your repair shop on BizarreCRM" — same closed form. However the app wordmark at `LoginScreen.kt:1871` is `"Bizarre CRM"` with a space, confirmed by all 11 mockup screens. Two different forms of the brand name ("Bizarre CRM" vs "BizarreCRM") coexist with no explicit style guide rationale. Verify which is authoritative in body copy vs the wordmark; if brand guidance mandates "Bizarre CRM" everywhere, fix line 2292.
+
+- [ ] **LOGIN-MOCK-118 (Copy). "Set Up Two-Factor Auth" heading uses Title Case with a terminal abbreviation "Auth" — no trailing period in mockup, code matches, but abbreviation vs full word "Authentication" is undocumented.** `TwoFaSetupStep` `LoginScreen.kt:3181`: `Text("Set Up Two-Factor Auth", ...)`. Mockup screen-10 shows "Set Up Two-Factor Auth" — matches. However `TwoFaVerifyStep` `LoginScreen.kt:3377` uses the *expanded* form `"Two-Factor Authentication"` for the verify-step heading. The same feature domain uses "Auth" (abbreviated) in the setup step and "Authentication" (full word) in the verify step. Decide on one canonical term for the 2FA step headings and apply it to both; current code has `"Set Up Two-Factor Auth"` at line 3181 vs `"Two-Factor Authentication"` at line 3377.
+
+- [ ] **LOGIN-MOCK-119 (Copy). 2FA verify step subtitle "Enter the 6-digit code from your authenticator app" differs in structure from the setup step subtitle "Scan this QR code with Google Authenticator or any TOTP app" — the verify step names a generic concept ("authenticator app") while setup names a specific product ("Google Authenticator").** `TwoFaVerifyStep` `LoginScreen.kt:3380`: `Text("Enter the 6-digit code from your authenticator app")`. `TwoFaSetupStep` `LoginScreen.kt:3184`: `Text("Scan this QR code with Google Authenticator or any TOTP app")`. Mockup screen-10 confirms the setup subtitle exactly. The verify step subtitle has no mockup backing and uses a different product-mention pattern. If the design intent is to name Google Authenticator on both steps for discoverability, the verify subtitle should read "Enter the 6-digit code from Google Authenticator or any TOTP app". Flag for design review.
+
+- [ ] **LOGIN-MOCK-120 (Copy). Loading button state on "Connect" shows only a spinner with no text; mockup loading state is absent from the screen set but the empty-loading pattern is inconsistent with other CTA states that carry in-progress copy.** `ServerStep` `LoginScreen.kt:2241–2244`: when `state.isLoading`, the Connect `Button` renders only `CircularProgressIndicator` with no accompanying text label. `CredentialsStep` passkey loading state at line 2842 renders `CircularProgressIndicator` + `Text("Signing in…")`. `MagicLinkRequestSheet` send button at line 2920 renders only a spinner. No mockup screen depicts a loading state for the Connect or Create Shop buttons, so there is no mockup source of truth. Recommend harmonising: either all loading CTAs show spinner-only or all show spinner + in-progress label. Currently there are three different patterns (spinner-only on Connect, spinner + text on passkey, spinner-only on magic-link send).
+
+- [ ] **LOGIN-MOCK-121 (Copy). "Connecting to your server…" probe-overlay text uses Unicode HORIZONTAL ELLIPSIS (U+2026) — correct — but the string `"Signing in…"` on the passkey loading state at line 2843 also uses U+2026 correctly. However `LoginScreen.kt:2146` renders `"Sign-in expires in $label"` with a plain ASCII hyphen-minus (U+002D) in "Sign-in". Verify whether the style guide calls for an en-dash, hyphen-minus, or space-hyphen-space in compound adjective "sign-in". The mockup does not show a countdown; copy unreviewed.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. The ASCII hyphen in "sign-in" is grammatically correct as a hyphenated compound modifier, but worth confirming it aligns with the style guide treatment of hyphenated terms elsewhere in the app. No mockup backs this string.
+
+- [ ] **LOGIN-MOCK-122 (Copy). "Origin header required" error shown in mockup screen-06 is a raw server-side message surfaced verbatim; no client-owned translation string exists.** `LoginScreen.kt:755–758`: `registerShop()` extracts the server error via `rJson.optString("message", "Registration failed")` and sets it as `state.error`. Screen-06 shows the red inline copy "Origin header required" below the Admin Password field — this is the exact server JSON `message` value echoed through to the UI. There is no client-side mapping of known server error codes to user-friendly strings. A server-phrasing change silently changes the displayed copy with no code review. Add a client-side map from known technical messages (e.g. `"Origin header required"`) to user-friendly alternatives (e.g. `"Unable to register — please contact support"`). `LoginScreen.kt:755–758`.
+
+- [ ] **LOGIN-MOCK-123 (Copy). Tab comment at `LoginScreen.kt:2031` explicitly describes the active indicator as "purple (#8B5CF6)" but the brand accent is cream (#FDEED0) — contradicts brand-color guide.** `LoginTabBar` Composable comment lines 2031–2032: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The brand colour guide mandates cream `#FDEED0` as the primary accent; purple appears in older mockups and was explicitly deprecated. The indicator tint is actually driven by `MaterialTheme.colorScheme.primary` at runtime (line 2044), so the rendered colour is correct if the theme is set up properly. The stale comment is a copy-fidelity risk: it misleads developers into hardcoding `#8B5CF6` when debugging. Update the comment to reference `MaterialTheme.colorScheme.primary` (cream on the cream theme). `LoginScreen.kt:2031`.
+
+- [ ] **LOGIN-MOCK-124 (Copy). Apostrophe in "You've been signed out" and "You're offline" uses a straight apostrophe (U+0027) — Kotlin string literals do not automatically smart-quote.** `LoginScreen.kt:1908`: `"You've been signed out. Sign back in to continue."` and `LoginScreen.kt:2520`: `"You're offline. Connect to sign in."` Both use straight apostrophe U+0027. Compose renders straight apostrophes on-screen. Many style guides require curly/typographic apostrophe U+2019. Mockup screens do not depict these error states, so no mockup source of truth exists. Confirm whether the copy style guide mandates U+2019; if so, update all apostrophised strings in `LoginScreen.kt` (`"You've"` line 1908, `"You're"` line 2520, `"Passwords don't match"` line 983, `"Can't undo"` in undo stack copy, `"We'll send"` line 2888, `"won't show again"` in backup codes, etc.).
+
+- [ ] **LOGIN-MOCK-125 (Copy). "Minimum 8 characters" supporting text on the Admin Password field is sentence-case with no trailing period — mockup screen-02 confirms the exact string; code matches but the field-label analogue "Shop URL" supporting text "3–30 characters…" is also lowercase with no period, creating a consistent pattern that should be documented.** `LoginScreen.kt:2362`: `supportingText = { Text("Minimum 8 characters") }`. Mockup screen-02 shows "Minimum 8 characters" — exact match. Both supporting-text strings ("3–30 characters: letters, numbers, hyphens" at line 2313 and "Minimum 8 characters" at line 2362) follow sentence-case, no trailing period, no capitalisation of the first word. This is the correct pattern and matches the mockup. Flagging as a confirmatory pass — no fix needed, but the style rule should be recorded in §67 (Copy & Content Style Guide) to prevent future regressions.
+
+- [ ] **LOGIN-MOCK-126 (Copy). "Sign-in timed out. Please start over." snackbar message and "View setup guide" informational TextButton have no mockup backing — copy is unreviewed.** `LoginScreen.kt:1764`: snackbar message `"Sign-in timed out. Please start over."`. `LoginScreen.kt:2491`: `Text("View setup guide")` inside the needs-setup banner. Neither string appears in any of the 11 mockup screens. Both are live UI copy delivered to real users with no design review. "Please start over." ends with a period — consistent with error-message convention but unconfirmed. "View setup guide" is sentence-case with no trailing period — consistent but unreviewed. Flag both for design sign-off on wording and punctuation.
+
+- [ ] **LOGIN-MOCK-127 (Copy). Extra UI strings with no mockup analog are present on the Credentials step and represent potential scope-creep copy that needs design review: "Sign in with SSO" (line 2757), "Choose your sign-in provider" (line 2765 sheet title), "Email me a link" (line 2811), "Sign in with a magic link" (line 2882 sheet title), "We'll send a one-time sign-in link to your email. The link expires in 15 minutes." (line 2888), "Use passkey" (line 2851), "Signing in…" (line 2843), "Send link" (line 2927), "Resend link" (line 2991), "Resend in ${cooldownSec}s" (line 2989).** None of these strings appear in any of the 11 mockup screens. All are gated on feature flags (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) but the copy itself has never been reviewed against a design mockup for tone, capitalisation, or punctuation. Each should receive a mockup frame or explicit copy-approval comment before shipping. `LoginScreen.kt:2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2989, 2991`.

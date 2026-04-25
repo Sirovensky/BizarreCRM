@@ -63,7 +63,8 @@ class EstimateRepository @Inject constructor(
     suspend fun createEstimate(request: CreateEstimateRequest): Long {
         if (serverMonitor.isEffectivelyOnline.value) {
             try {
-                val response = estimateApi.createEstimate(request)
+                val idempotencyKey = request.idempotencyKey ?: java.util.UUID.randomUUID().toString()
+                val response = estimateApi.createEstimate(idempotencyKey, request)
                 val detail = response.data ?: throw Exception(response.message ?: "Create failed")
                 val entity = detail.toEntity()
                 estimateDao.insert(entity)

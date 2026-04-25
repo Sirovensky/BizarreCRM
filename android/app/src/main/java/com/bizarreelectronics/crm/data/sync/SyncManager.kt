@@ -606,7 +606,8 @@ class SyncManager @Inject constructor(
         when (entry.operation) {
             "create" -> {
                 val request = gson.fromJson(entry.payload, CreateEstimateRequest::class.java)
-                val response = estimateApi.createEstimate(request)
+                val idempotencyKey = request.idempotencyKey ?: entry.id.toString()
+                val response = estimateApi.createEstimate(idempotencyKey, request)
                 val created = response.data
                 if (created != null && entry.entityId < 0) {
                     estimateRepository.reconcileTempId(entry.entityId, created)

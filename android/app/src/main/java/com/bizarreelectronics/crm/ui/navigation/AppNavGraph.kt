@@ -239,6 +239,10 @@ sealed class Screen(val route: String) {
     data object EstimateDetail : Screen("estimates/{id}") {
         fun createRoute(id: Long) = "estimates/$id"
     }
+    data object EstimateCreate : Screen("estimate-create?leadId={leadId}") {
+        fun createRoute(leadId: Long? = null): String =
+            if (leadId != null) "estimate-create?leadId=$leadId" else "estimate-create"
+    }
 
     // Expenses
     data object Expenses : Screen("expenses")
@@ -1876,6 +1880,17 @@ fun AppNavGraph(
                             popUpTo(Screen.Leads.route)
                         }
                     },
+                    // 8.3 — "Convert to estimate" navigates to the new estimate detail if
+                    // the server created one, or to EstimateCreate with lead prefill as
+                    // a fallback (404 path).
+                    onConvertedToEstimate = { estimateId ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(estimateId)) {
+                            popUpTo(Screen.Leads.route)
+                        }
+                    },
+                    onNavigateToEstimateCreate = { id ->
+                        navController.navigate(Screen.EstimateCreate.createRoute(leadId = id))
+                    },
                 )
             }
             composable(Screen.LeadCreate.route) {
@@ -1941,6 +1956,7 @@ fun AppNavGraph(
                 }
                 com.bizarreelectronics.crm.ui.screens.estimates.EstimateListScreen(
                     onEstimateClick = { id -> navController.navigate(Screen.EstimateDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.EstimateCreate.createRoute()) },
                 )
             }
             composable(Screen.EstimateDetail.route) { backStackEntry ->
@@ -1959,6 +1975,25 @@ fun AppNavGraph(
                             ?.savedStateHandle
                             ?.set("estimate_deleted", true)
                         navController.popBackStack()
+                    },
+                )
+            }
+            composable(
+                route = Screen.EstimateCreate.route,
+                arguments = listOf(
+                    navArgument("leadId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.estimates.EstimateCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(id)) {
+                            popUpTo(Screen.Estimates.route)
+                        }
                     },
                 )
             }
