@@ -44,7 +44,8 @@ public struct PosLoyaltyCelebrationView: View {
                 starGlow
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     HStack(spacing: BrandSpacing.xs) {
-                        Text("+\(pointsDelta) pts earned")
+                        // Mockup line 2217: "+55 pts earned · GOLD tier held"
+                        Text(pointsLabel)
                             .font(.brandTitleSmall())
                             .foregroundStyle(.bizarreOnSurface)
                         if didTierUp {
@@ -119,6 +120,18 @@ public struct PosLoyaltyCelebrationView: View {
             }
         }
         .accessibilityHidden(true)
+    }
+
+    // MARK: - Helpers
+
+    /// Mockup label format: "+55 pts earned · GOLD tier held" /
+    /// "+120 pts earned · PLATINUM tier up". The trailing tier suffix
+    /// is dropped when no tier info is available.
+    private var pointsLabel: String {
+        let base = "+\(pointsDelta) pts earned"
+        guard let tier = (tierAfter ?? tierBefore), !tier.isEmpty else { return base }
+        let upOrHeld = didTierUp ? "up" : "held"
+        return "\(base) · \(tier.uppercased()) tier \(upOrHeld)"
     }
 
     // MARK: - Accessibility
