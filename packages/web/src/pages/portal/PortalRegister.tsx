@@ -78,18 +78,18 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
   }
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-gray-50 px-4 py-8">
+    <div className="flex flex-col items-center min-h-screen bg-surface-50 dark:bg-surface-900 px-4 py-8">
       <div className="w-full max-w-md">
-        <button onClick={onBack} className="mb-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+        <button onClick={onBack} className="mb-4 text-sm text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 flex items-center gap-1">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Back to login
         </button>
 
-        <div className="rounded-xl bg-white shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Create Account</h2>
-          <p className="text-sm text-gray-500 mb-5">
+        <div className="rounded-xl bg-white dark:bg-surface-800 shadow-sm border border-surface-200 dark:border-surface-700 p-6">
+          <h2 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-1">Create Account</h2>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mb-5">
             {step === 'phone' && 'Enter the phone number on file for your repairs.'}
             {step === 'code' && 'Enter the 6-digit code we just sent to your phone.'}
             {step === 'pin' && 'Choose a 4-digit PIN for future sign-ins.'}
@@ -102,7 +102,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
                   step === s ? 'bg-primary-600 text-white' :
                   (['phone', 'code', 'pin'].indexOf(step) > i) ? 'bg-green-500 text-white' :
-                  'bg-gray-200 text-gray-500'
+                  'bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400'
                 }`}>
                   {(['phone', 'code', 'pin'].indexOf(step) > i) ? (
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -110,13 +110,13 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                     </svg>
                   ) : i + 1}
                 </div>
-                {i < 2 && <div className={`w-8 h-0.5 ${(['phone', 'code', 'pin'].indexOf(step) > i) ? 'bg-green-500' : 'bg-gray-200'}`} />}
+                {i < 2 && <div className={`w-8 h-0.5 ${(['phone', 'code', 'pin'].indexOf(step) > i) ? 'bg-green-500' : 'bg-surface-200 dark:bg-surface-700'}`} />}
               </div>
             ))}
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
@@ -124,14 +124,14 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
           {step === 'phone' && (
             <form onSubmit={handleSendCode} className="space-y-4">
               <div>
-                <label htmlFor="reg-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <label htmlFor="reg-phone" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Phone Number</label>
                 <input
                   id="reg-phone"
                   type="tel"
                   placeholder="(303) 555-1234"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                  className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="tel"
                 />
               </div>
@@ -148,7 +148,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
           {step === 'code' && (
             <form onSubmit={handleCodeComplete} className="space-y-4">
               <div>
-                <label htmlFor="reg-code" className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
+                <label htmlFor="reg-code" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Verification Code</label>
                 <input
                   id="reg-code"
                   type="text"
@@ -157,7 +157,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={6}
                   value={code}
                   onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-[0.5em] text-center font-mono focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                  className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 tracking-[0.5em] text-center font-mono focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="one-time-code"
                   autoFocus
                 />
@@ -171,7 +171,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               <button
                 type="button"
                 onClick={() => { setStep('phone'); setCode(''); setError(''); }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700"
+                className="w-full text-sm text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
               >
                 Didn't receive it? Go back
               </button>
@@ -181,7 +181,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
           {step === 'pin' && (
             <form onSubmit={handleSetPin} className="space-y-4">
               <div>
-                <label htmlFor="reg-pin" className="block text-sm font-medium text-gray-700 mb-1">Choose a 4-Digit PIN</label>
+                <label htmlFor="reg-pin" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Choose a 4-Digit PIN</label>
                 <input
                   id="reg-pin"
                   type="password"
@@ -190,13 +190,13 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={4}
                   value={pin}
                   onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                  className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="new-password"
                   autoFocus
                 />
               </div>
               <div>
-                <label htmlFor="reg-pin-confirm" className="block text-sm font-medium text-gray-700 mb-1">Confirm PIN</label>
+                <label htmlFor="reg-pin-confirm" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Confirm PIN</label>
                 <input
                   id="reg-pin-confirm"
                   type="password"
@@ -205,7 +205,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   maxLength={4}
                   value={pinConfirm}
                   onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                  className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 tracking-widest text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                   autoComplete="new-password"
                 />
               </div>

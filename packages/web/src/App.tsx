@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
-import { superAdminTokenStore } from './api/client';
+import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
 import { extractApiError } from './utils/apiError';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -198,7 +198,24 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   // WEB-FJ-001: SA token in sessionStorage. Reading via the helper also
   // migrates any legacy localStorage value over to sessionStorage on first
   // access so existing logged-in operators don't bounce.
-  const hasSaToken = Boolean(superAdminTokenStore.get());
+  // WEB-FI-008 (Fixer-B2 2026-04-25): the previous implementation only read
+  // the token at render time. If the response interceptor revoked the SA
+  // session (401/403 → superAdminTokenStore.remove() + dispatch
+  // SUPER_ADMIN_LOGOUT_EVENT), the rendered SA page stayed mounted until the
+  // next route navigation — so a revoked operator could keep editing the
+  // visible UI for an arbitrary amount of time. Subscribe to the logout
+  // event AND the cross-tab `storage` event to force a re-render the moment
+  // the token disappears from this tab or any other.
+  const [hasSaToken, setHasSaToken] = useState(() => Boolean(superAdminTokenStore.get()));
+  useEffect(() => {
+    const recheck = () => setHasSaToken(Boolean(superAdminTokenStore.get()));
+    window.addEventListener(SUPER_ADMIN_LOGOUT_EVENT, recheck);
+    window.addEventListener('storage', recheck);
+    return () => {
+      window.removeEventListener(SUPER_ADMIN_LOGOUT_EVENT, recheck);
+      window.removeEventListener('storage', recheck);
+    };
+  }, []);
   if (!hasSaToken) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-4">

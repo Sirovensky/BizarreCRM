@@ -31,7 +31,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
@@ -41,17 +41,17 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
   const currency = store.store_currency || 'USD';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
               Welcome back{customerName ? `, ${customerName}` : ''}
             </h1>
-            <p className="text-sm text-gray-500">{store.store_name || 'Repair Shop'}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{store.store_name || 'Repair Shop'}</p>
           </div>
-          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">
+          <button onClick={onLogout} className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
             Sign Out
           </button>
         </div>
@@ -59,7 +59,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
         )}
         {/* Summary Cards */}
         <div className="grid grid-cols-2 gap-3">
@@ -83,9 +83,9 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
         {/* Ticket List */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Your Repairs</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Your Repairs</h2>
           {tickets.length === 0 ? (
-            <div className="rounded-xl bg-white border border-gray-200 p-8 text-center text-sm text-gray-400">
+            <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-8 text-center text-sm text-gray-400 dark:text-gray-500">
               No repairs found
             </div>
           ) : (
@@ -94,23 +94,23 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
                 <button
                   key={ticket.id}
                   onClick={() => onViewTicket(ticket.id)}
-                  className="w-full text-left rounded-xl bg-white border border-gray-200 p-4 hover:border-primary-300 hover:shadow-sm transition-all"
+                  className="w-full text-left rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 hover:border-primary-300 dark:hover:border-primary-500 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-gray-900">{ticket.order_id}</span>
+                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{ticket.order_id}</span>
                         <StatusBadge name={ticket.status.name} color={ticket.status.color} />
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
                         {ticket.devices.map(d => d.name || d.type).join(', ') || 'Device'}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                         {formatDate(ticket.created_at, locale)}
                         {ticket.due_on && ` — Due: ${formatDate(ticket.due_on, locale)}`}
                       </div>
                     </div>
-                    <svg className="w-5 h-5 text-gray-300 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-5 h-5 text-gray-300 dark:text-gray-600 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -141,9 +141,9 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
         </div>
 
         {/* Store Info */}
-        <div className="rounded-xl bg-white border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Contact Us</h3>
-          <div className="space-y-1 text-sm text-gray-600">
+        <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Contact Us</h3>
+          <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
             {store.store_phone && (
               <a href={`tel:${store.store_phone}`} rel="noreferrer noopener" className="flex items-center gap-2 hover:text-primary-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

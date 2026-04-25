@@ -91,6 +91,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
 
+  // WEB-FD-013 (Fixer-B2 2026-04-25): when an `aria-modal="true"` dialog
+  // (ConfirmDialog, UpgradeModal, PinModal, etc.) is mounted on top of the
+  // shell, F2/F3/F4/F6 must NOT pull the user out of the modal — that's a
+  // focus-trap escape hatch that loses any in-progress entry (PIN, confirm
+  // text). The dialog gets to swallow keys; the global shortcut steps aside.
+  function isModalDialogOpen(): boolean {
+    return document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
+  }
+
   // Global keyboard shortcuts
   // SCAN-1147: Header also registers a `?` listener that opens its own
   // shortcuts dialog — both firing caused two stacked modals and focus-trap
@@ -99,6 +108,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     if (isTypingInField()) return;
+    // Don't yank the user out of an open modal mid-task.
+    if (isModalDialogOpen()) return;
 
     // WEB-FL-005 (Fixer-UU 2026-04-25): on /pos, F2/F3/F4/F6 belong to
     // usePosKeyboardShortcuts (POS tab switching + customer search + returns)

@@ -57,6 +57,10 @@ export function ExpensesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: localToday() });
+  // WEB-FF-007 (Fixer-A2 2026-04-25): track field-level errors so screen
+  // readers get aria-invalid + aria-describedby on bad inputs instead of a
+  // toast.error that's invisible to AT.
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; category?: string }>({});
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -94,8 +98,16 @@ export function ExpensesPage() {
   });
 
   const handleSubmit = () => {
-    if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Valid amount required');
-    if (!form.category) return toast.error('Category required');
+    const errs: { amount?: string; category?: string } = {};
+    if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Valid amount required';
+    if (!form.category) errs.category = 'Category required';
+    if (errs.amount || errs.category) {
+      setFieldErrors(errs);
+      // Toast preserved for sighted users; AT users now also get the inline message.
+      toast.error(errs.amount || errs.category || 'Validation failed');
+      return;
+    }
+    setFieldErrors({});
     createMut.mutate({ ...form, amount: parseFloat(form.amount) });
   };
 
@@ -172,13 +184,23 @@ export function ExpensesPage() {
             {editingId ? 'Edit Expense' : 'New Expense'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
-              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+            <div>
+              <select value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined })); }}
+                aria-invalid={fieldErrors.category ? true : undefined}
+                aria-describedby={fieldErrors.category ? 'expense-category-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.category ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`}>
+                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {fieldErrors.category && <p id="expense-category-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.category}</p>}
+            </div>
+            <div>
+              <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
+                onChange={(e) => { setForm({ ...form, amount: e.target.value }); if (fieldErrors.amount) setFieldErrors((p) => ({ ...p, amount: undefined })); }}
+                aria-invalid={fieldErrors.amount ? true : undefined}
+                aria-describedby={fieldErrors.amount ? 'expense-amount-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.amount ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
+              {fieldErrors.amount && <p id="expense-amount-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.amount}</p>}
+            </div>
             <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             <input type="text" placeholder="Description" value={form.description}

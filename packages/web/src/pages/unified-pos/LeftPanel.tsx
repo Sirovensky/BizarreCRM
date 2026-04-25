@@ -532,7 +532,16 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           type="text" inputMode="decimal" pattern="[0-9.]*"
           data-tutorial-target="checkout:price-cell"
           value={item.laborPrice}
-          onChange={(e) => updateCartItem(item.id, { laborPrice: parseFloat(e.target.value) || 0 } as Partial<RepairCartItem>)}
+          onChange={(e) => {
+            // WEB-FH-015 (Fixer-B2 2026-04-25): the input has min="0" but
+            // that's HTML5 form-validation only — typing or pasting "-50"
+            // sets state to a negative number, which silently subtracts
+            // from the cart total (and the train-mode/free-pricing path
+            // never re-validates). Clamp at parse time.
+            const parsed = parseFloat(e.target.value);
+            const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+            updateCartItem(item.id, { laborPrice: safe } as Partial<RepairCartItem>);
+          }}
           className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
           step="0.01"
           min="0"
@@ -673,7 +682,13 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
       <input
         type="text" inputMode="decimal" pattern="[0-9.]*"
         value={item.unitPrice}
-        onChange={(e) => updateCartItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 } as Partial<ProductCartItem>)}
+        onChange={(e) => {
+          // WEB-FH-015 (Fixer-B2 2026-04-25): clamp negative input — see
+          // matching laborPrice handler above.
+          const parsed = parseFloat(e.target.value);
+          const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+          updateCartItem(item.id, { unitPrice: safe } as Partial<ProductCartItem>);
+        }}
         className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
         step="0.01"
         min="0"
