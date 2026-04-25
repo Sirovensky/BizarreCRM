@@ -61,10 +61,16 @@ class PosCartViewModel @Inject constructor(
             runCatching { inventoryApi.getTaxClasses() }
                 .onSuccess { resp ->
                     val classes = resp.data.orEmpty()
-                    val rate = classes.firstOrNull { it.isDefault == 1 }?.rate
+                    // tax_classes.rate is stored as a PERCENT (e.g. 8.5 for
+                    // 8.5%) on the server (matches invoices.routes.ts +
+                    // pos.routes.ts /transaction which divide by 100 when
+                    // multiplying line nets). Convert to a fraction here so
+                    // CartLine.taxCents = lineTotalCents * taxRate gives
+                    // sensible cents instead of 886%-of-subtotal totals.
+                    val ratePercent = classes.firstOrNull { it.isDefault == 1 }?.rate
                         ?: classes.firstOrNull()?.rate
                         ?: 0.0
-                    _uiState.update { it.copy(taxRate = rate) }
+                    _uiState.update { it.copy(taxRate = ratePercent / 100.0) }
                 }
         }
     }
