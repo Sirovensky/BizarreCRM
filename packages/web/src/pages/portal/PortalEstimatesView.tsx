@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
+import { formatDate } from '../../utils/format';
 
 interface PortalEstimatesViewProps {
   onBack: () => void;
@@ -157,10 +158,3 @@ function EstimateStatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(date: string): string {
-  try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
-}

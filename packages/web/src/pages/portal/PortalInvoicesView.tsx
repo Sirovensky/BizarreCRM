@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
 import { usePortalI18n } from './i18n';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface PortalInvoicesViewProps {
   onBack: () => void;
@@ -196,10 +196,3 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(date: string, locale = 'en-US'): string {
-  try {
-    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
-}

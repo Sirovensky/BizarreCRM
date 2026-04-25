@@ -49,6 +49,13 @@ function plusDaysIso(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// @audit-fixed (WEB-FG-010 / Fixer-B1 2026-04-25): clamp to a sane window so
+// managers can't save a goal for the year 9999 or 0001 via a stray keystroke
+// in a date input. Server validation is the source of truth, but failing fast
+// in the UI saves a roundtrip + a confusing 400 toast.
+const GOAL_DATE_MIN = '2020-01-01';
+const GOAL_DATE_MAX = '2100-12-31';
+
 export function GoalsPage() {
   const queryClient = useQueryClient();
   const [showNew, setShowNew] = useState(false);
@@ -229,6 +236,8 @@ export function GoalsPage() {
                   <span className="text-xs font-semibold text-gray-600">Start</span>
                   <input
                     type="date"
+                    min={GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                     value={newStart}
                     onChange={(e) => setNewStart(e.target.value)}
@@ -238,12 +247,17 @@ export function GoalsPage() {
                   <span className="text-xs font-semibold text-gray-600">End</span>
                   <input
                     type="date"
+                    min={newStart || GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                     value={newEnd}
                     onChange={(e) => setNewEnd(e.target.value)}
                   />
                 </label>
               </div>
+              {newStart && newEnd && newStart > newEnd && (
+                <p className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
+              )}
             </div>
             <div className="flex gap-2 mt-5">
               <button
@@ -254,7 +268,14 @@ export function GoalsPage() {
               </button>
               <button
                 className="flex-1 px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 inline-flex items-center justify-center"
-                disabled={!newUserId || !newTarget || createMut.isPending}
+                disabled={
+                  !newUserId
+                  || !newTarget
+                  || !newStart
+                  || !newEnd
+                  || newStart > newEnd
+                  || createMut.isPending
+                }
                 onClick={() => createMut.mutate()}
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}

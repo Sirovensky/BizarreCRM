@@ -54,14 +54,6 @@ export function AuditLogsTab() {
     }
   }
 
-  function formatDate(iso: string): string {
-    try {
-      // Server emits "YYYY-MM-DD HH:MM:SS"; normalise to ISO for the helper.
-      return formatDateTime(iso.replace(' ', 'T'));
-    } catch {
-      return iso;
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -140,7 +132,7 @@ export function AuditLogsTab() {
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-surface-800 hover:bg-surface-800/50">
-                    <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formatDate(log.created_at)}</td>
+                    <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formatDateTime(log.created_at?.replace(' ', 'T'))}</td>
                     <td className="py-2 px-3">
                       <span className="inline-block bg-surface-700 text-surface-200 rounded px-2 py-0.5 text-xs font-mono">
                         {log.event}

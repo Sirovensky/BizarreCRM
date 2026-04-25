@@ -91,7 +91,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
   }
 
   return (
-    <div className={`flex flex-col items-center ${isWidget ? 'px-4 py-3' : 'min-h-screen bg-gray-50 px-4 py-8'}`}>
+    <div className={`flex flex-col items-center ${isWidget ? 'px-4 py-3' : 'min-h-screen bg-surface-50 dark:bg-surface-950 px-4 py-8'}`}>
       {!isWidget && (
         <div className="mb-6 text-center">
           {storeLogo ? (
@@ -101,21 +101,21 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
               {storeName.charAt(0)}
             </div>
           )}
-          <h1 className="text-2xl font-bold text-gray-900">{storeName}</h1>
-          <p className="mt-1 text-sm text-gray-500">Check your repair status or manage your account</p>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">{storeName}</h1>
+          <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">Check your repair status or manage your account</p>
         </div>
       )}
 
       <div className={`w-full ${isWidget ? '' : 'max-w-md'}`}>
-        <div className="rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden">
+        <div className="rounded-xl bg-white dark:bg-surface-900 shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
           {/* Tab bar */}
-          <div className="flex border-b border-gray-200">
+          <div className="flex border-b border-surface-200 dark:border-surface-700">
             <button
               onClick={() => { setTab('track'); setError(''); }}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
                 tab === 'track'
-                  ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 bg-primary-50/50 dark:bg-primary-900/20'
+                  : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200'
               }`}
             >
               Track Repair
@@ -124,8 +124,8 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
               onClick={() => { setTab('signin'); setError(''); }}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${
                 tab === 'signin'
-                  ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 bg-primary-50/50 dark:bg-primary-900/20'
+                  : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200'
               }`}
             >
               Sign In
@@ -134,7 +134,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
 
           <div className="p-5">
             {error && (
-              <div id="portal-login-error" role="alert" className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              <div id="portal-login-error" role="alert" className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -142,7 +142,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
             {tab === 'track' ? (
               <form onSubmit={handleQuickTrack} className="space-y-4">
                 <div>
-                  <label htmlFor="portal-order-id" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-order-id" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                     Ticket ID
                   </label>
                   <input
@@ -153,12 +153,12 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     onChange={e => setOrderId(e.target.value)}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                    className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
                 <div>
-                  <label htmlFor="portal-phone-last4" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-phone-last4" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                     Last 4 digits of your phone
                   </label>
                   <input
@@ -170,7 +170,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     onChange={e => setPhoneLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                    className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
@@ -185,7 +185,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
             ) : (
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div>
-                  <label htmlFor="portal-phone" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-phone" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                     Phone Number
                   </label>
                   <input
@@ -196,12 +196,12 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     onChange={e => setPhone(e.target.value)}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                    className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="tel"
                   />
                 </div>
                 <div>
-                  <label htmlFor="portal-pin" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-pin" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                     4-Digit PIN
                   </label>
                   <input
@@ -215,7 +215,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                    className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 tracking-widest focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
@@ -226,9 +226,9 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                 >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>
-                <p className="text-center text-xs text-gray-400 mt-2">
+                <p className="text-center text-xs text-surface-400 dark:text-surface-500 mt-2">
                   Don't have an account?{' '}
-                  <button type="button" onClick={onRegister} className="text-primary-600 hover:underline">
+                  <button type="button" onClick={onRegister} className="text-primary-600 dark:text-primary-400 hover:underline">
                     Create one
                   </button>
                 </p>
@@ -238,7 +238,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
         </div>
 
         {!isWidget && (
-          <p className="mt-4 text-center text-xs text-gray-400">
+          <p className="mt-4 text-center text-xs text-surface-400 dark:text-surface-500">
             Your ticket ID is on your receipt or in the SMS we sent when your repair was checked in.
           </p>
         )}

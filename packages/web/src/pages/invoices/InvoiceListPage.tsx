@@ -59,6 +59,33 @@ function formatInvoiceId(orderId: string | number | null | undefined): string {
   return s.startsWith('INV') ? s : `INV-${s}`;
 }
 
+// @audit-fixed (WEB-FF-017 / Fixer-B1 2026-04-25): UTC-safe parse of a server
+// `due_on` string. Server sometimes returns `2026-04-24` or
+// `2026-04-24T00:00:00` with no `Z` \u2014 Safari treats those as LOCAL time, Chrome
+// as UTC, so a bill "due today" appears overdue on Safari east of UTC. We
+// anchor naive ISO strings to UTC end-of-day so "today is the due date" is
+// never overdue regardless of viewer timezone or browser.
+function parseDueDateMs(due: string | null | undefined): number | null {
+  if (!due) return null;
+  const trimmed = due.trim();
+  if (!trimmed) return null;
+  // Date-only `YYYY-MM-DD` \u2192 end of that calendar day in UTC (one ms before the
+  // following midnight). This matches the server's "due-on date" semantics.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const ms = Date.parse(`${trimmed}T23:59:59.999Z`);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  // Naive datetime `YYYY-MM-DDTHH:MM(:SS)?` (no Z, no offset) \u2192 treat as UTC
+  // by appending Z, instead of Safari's local-time interpretation.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+    const ms = Date.parse(`${trimmed}Z`);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  // Already explicit (Z or \u00b1HH:MM) \u2014 let the browser parse it.
+  const ms = Date.parse(trimmed);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 // Matches the subset of invoice row fields the list UI reads. Nullable per
 // server shape. Keeping the interface loose (optional fields + a permissive
 // extras bag) lets the server grow without breaking the client.
@@ -134,9 +161,8 @@ export function InvoiceListPage() {
     if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
     return invoices.filter((inv) => {
       if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
-      if (!inv.due_on) return false;
-      const ts = Date.parse(inv.due_on);
-      return !isNaN(ts) && ts < Date.now();
+      const ts = parseDueDateMs(inv.due_on);
+      return ts !== null && ts < Date.now();
     }).length;
   }, [invoices, status]);
   const stats = statsData?.data?.data;
@@ -386,7 +412,8 @@ export function InvoiceListPage() {
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {invoices.map((inv: any) => {
-                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_on && new Date(inv.due_on) < new Date();
+                    const dueMs = parseDueDateMs(inv.due_on);
+                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && dueMs !== null && dueMs < Date.now();
                     const isSelected = selected.has(inv.id);
                     return (
                     <tr key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}

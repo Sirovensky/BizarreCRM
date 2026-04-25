@@ -83,22 +83,26 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 
 // ─── Dates ──────────────────────────────────────────────────────────────────
 
-export function formatDate(iso: string | null | undefined): string {
+// @audit-fixed (WEB-FM-008 / Fixer-C1 2026-04-25): added optional `localeOverride`
+// arg mirroring `formatCurrency` so portal pages \u2014 which run before AppShell ever
+// calls `initCurrencyFromSettings` \u2014 can format dates against a visitor-supplied
+// locale (`usePortalI18n`) instead of falling back to the module default.
+export function formatDate(iso: string | null | undefined, localeOverride?: string): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleDateString(_locale, {
+  return d.toLocaleDateString(localeOverride ?? _locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
 }
 
-export function formatDateTime(iso: string | null | undefined): string {
+export function formatDateTime(iso: string | null | undefined, localeOverride?: string): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString(_locale, {
+  return d.toLocaleString(localeOverride ?? _locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',

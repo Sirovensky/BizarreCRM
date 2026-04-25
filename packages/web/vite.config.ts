@@ -5,10 +5,21 @@ import fs from 'fs';
 
 // Reuse the same self-signed certs as the API server
 const certsDir = path.resolve(__dirname, '../server/certs');
-const hasCerts = fs.existsSync(path.join(certsDir, 'server.key')) && fs.existsSync(path.join(certsDir, 'server.cert'));
+const certKeyPath = path.join(certsDir, 'server.key');
+const certCrtPath = path.join(certsDir, 'server.cert');
 // VITE_DEV_HTTP=1 disables HTTPS on the dev server so browsers that reject self-signed certs
 // (e.g. automated preview tools) can connect. API proxy still targets HTTPS 443 upstream.
-const useHttps = hasCerts && process.env.VITE_DEV_HTTP !== '1';
+// @audit-fixed (WEB-FW-009 / Fixer-C1 2026-04-25): defer fs.existsSync + readFileSync
+// until vite actually wants the https config. Previously top-level reads ran on every
+// HMR config-reload even with VITE_DEV_HTTP=1.
+function loadHttpsConfig(): { key: Buffer; cert: Buffer } | undefined {
+  if (process.env.VITE_DEV_HTTP === '1') return undefined;
+  if (!fs.existsSync(certKeyPath) || !fs.existsSync(certCrtPath)) return undefined;
+  return {
+    key: fs.readFileSync(certKeyPath),
+    cert: fs.readFileSync(certCrtPath),
+  };
+}
 
 export default defineConfig({
   root: path.resolve(__dirname),
@@ -20,10 +31,7 @@ export default defineConfig({
   },
   server: {
     port: 5173, // Dev-only HMR server (production uses port 443 directly)
-    https: useHttps ? {
-      key: fs.readFileSync(path.join(certsDir, 'server.key')),
-      cert: fs.readFileSync(path.join(certsDir, 'server.cert')),
-    } : undefined,
+    https: loadHttpsConfig(),
     proxy: {
       '/api': {
         target: 'https://localhost:443',

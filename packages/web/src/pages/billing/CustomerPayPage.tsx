@@ -62,7 +62,12 @@ export function CustomerPayPage() {
       // tracker is still visible. Not elevated to logger.warn because this is
       // public-internet traffic where transient network errors are expected.
       axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/click`).catch((err) => {
-        if (import.meta.env?.DEV) console.debug('[CustomerPayPage] click tracking failed (non-fatal)', err);
+        // @audit-fixed (WEB-FG-013 / Fixer-B1 2026-04-25): static `import.meta.env.DEV`
+        // (no optional-chain) — Vite/Rollup statically replaces it at build time so the
+        // entire branch (and the `console.debug` body) is dead-code-eliminated from
+        // the production bundle. The previous `import.meta.env?.DEV` defeated that
+        // replacement because the optional-chain is a runtime member access.
+        if (import.meta.env.DEV) console.debug('[CustomerPayPage] click tracking failed (non-fatal)', err);
       });
     } catch (err) {
       setView({

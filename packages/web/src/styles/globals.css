@@ -95,7 +95,7 @@
       0 0 0 4px #e9c477;              /* primary-400 — AA on dark surfaces */
   }
 
-  /* V19: Low contrast placeholders */
+  /* Low-contrast placeholders */
   ::placeholder {
     color: #a1a1aa;
   }
@@ -103,7 +103,7 @@
     color: #71717a;
   }
 
-  /* V18: Print page always light theme */
+  /* Print page always uses light theme */
   @media print {
     * {
       color-scheme: light !important;

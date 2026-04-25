@@ -17,7 +17,24 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { api } from '@/api/client';
+
+// @audit-fixed (WEB-FA-007 / Fixer-B1 2026-04-25): typed error narrowing for
+// mutation onError handlers. Previous `e: any` lost contract guards on the
+// API response shape; this helper gives us a stable string regardless of
+// whether the error is an axios response (`{error}` body), a thrown Error
+// (timeout / aborted / network), or something else.
+function describeError(e: unknown, fallback: string): string {
+  if (axios.isAxiosError(e)) {
+    const data = e.response?.data as { error?: unknown; message?: unknown } | undefined;
+    if (typeof data?.error === 'string') return data.error;
+    if (typeof data?.message === 'string') return data.message;
+    if (e.message) return e.message;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
 import { MentionPicker } from '@/components/team/MentionPicker';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -126,7 +143,7 @@ export function TeamChatPage() {
       setDraft('');
       queryClient.invalidateQueries({ queryKey: ['team-chat', 'messages', selectedChannelId] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to send'),
+    onError: (e: unknown) => toast.error(describeError(e, 'Failed to send')),
   });
 
   const createChannelMut = useMutation({
@@ -145,7 +162,7 @@ export function TeamChatPage() {
       setNewChannelName('');
       if (created?.id) setSelectedChannelId(created.id);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to create channel'),
+    onError: (e: unknown) => toast.error(describeError(e, 'Failed to create channel')),
   });
 
   function handleDraftChange(value: string) {
