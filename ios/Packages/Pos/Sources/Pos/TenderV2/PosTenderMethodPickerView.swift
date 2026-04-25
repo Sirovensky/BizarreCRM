@@ -79,23 +79,42 @@ public struct PosTenderMethodPickerView: View {
 
     // MARK: - Total header
 
+    /// "Due now" hero block per mockup screen 4a:
+    /// - Label: 11px all-caps uppercase tracking 0.12em → `.brandLabelLarge()` + .textCase(.uppercase)
+    /// - Amount: 57pt Barlow Condensed SemiBold → `.brandDisplayLarge()`, capped at .accessibility2
     private var totalHeader: some View {
-        VStack(spacing: BrandSpacing.xxs) {
-            if coordinator.isSplit {
-                Text("Remaining")
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(coordinator.isSplit ? "REMAINING" : "DUE NOW")
                     .font(.brandLabelLarge())
+                    .tracking(1.4)
                     .foregroundStyle(theme.muted)
-            } else {
-                Text("Select payment method")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(theme.muted)
+                    .accessibilityHidden(true)  // amount label reads alongside the amount
+                Text(CartMath.formatCents(coordinator.remaining))
+                    .font(.brandDisplayLarge())
+                    .foregroundStyle(theme.on)
+                    .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .accessibilityLabel(coordinator.isSplit
+                        ? "Remaining: \(CartMath.formatCents(coordinator.remaining))"
+                        : "Due now: \(CartMath.formatCents(coordinator.remaining))")
+                    .accessibilityIdentifier("pos.tenderV2.remaining")
             }
-            Text(CartMath.formatCents(coordinator.remaining))
-                .font(.brandDisplayMedium())
-                .foregroundStyle(theme.on)
-                .monospacedDigit()
-                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                .accessibilityIdentifier("pos.tenderV2.remaining")
+
+            Spacer()
+
+            // Split tender add-method affordance (top-right per mockup)
+            if !coordinator.isSplit {
+                VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
+                    Text("Split tender")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(theme.muted)
+                    Text("⊕ Add method")
+                        .font(.brandLabelLarge().weight(.bold))
+                        .foregroundStyle(theme.teal)
+                }
+                .padding(.top, BrandSpacing.xs)
+            }
         }
     }
 
