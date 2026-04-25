@@ -12,12 +12,25 @@
 // any entity_type emitted server-side that's missing here yields a no-op
 // click in the bell dropdown (visible bug for users).
 
+// WEB-FL-012: extend taxonomy beyond ticket/invoice/customer/inventory/lead.
+// Server also emits estimate/payment/gift_card/voice/lead-appointment events;
+// previously these clicked-through to nothing (silent no-op = looks broken).
+// Payment notifications point at the parent invoice (no standalone /payments
+// route in App.tsx as of 2026-04). Lead-appointment uses lead.id (calendar
+// page filters by lead via query string).
 export const NOTIFICATION_ENTITY_ROUTES: Readonly<Record<string, string>> = Object.freeze({
   ticket: '/tickets',
   invoice: '/invoices',
   customer: '/customers',
   inventory: '/inventory',
   lead: '/leads',
+  estimate: '/estimates',
+  gift_card: '/gift-cards',
+  'gift-card': '/gift-cards',
+  voice: '/voice',
+  payment: '/invoices',
+  'lead-appointment': '/leads',
+  lead_appointment: '/leads',
 });
 
 /**

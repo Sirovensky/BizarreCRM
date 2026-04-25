@@ -267,31 +267,18 @@ export function LeadDetailPage() {
     onError: () => toast.error('Failed to create reminder'),
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
-      </div>
-    );
-  }
+  // WEB-FK-016: ALL hooks must run before any conditional early-return so
+  // hook-call order stays stable across data → error transitions. Compute
+  // `appointments` from the (possibly undefined) lead before the guards;
+  // the useMemo below reads it via the lead?-guarded path.
+  const appointments: any[] = lead?.appointments || [];
 
-  if (isError || !lead) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Lead not found</p>
-        <Link to="/leads" className="mt-4 text-sm text-primary-600 hover:underline">Back to leads</Link>
-      </div>
-    );
-  }
-
-  const color = STATUS_COLORS[lead.status] || '#6b7280';
-  const devices: any[] = lead.devices || [];
-  const appointments: any[] = lead.appointments || [];
-  const statuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
-
-  // Activity timeline: merge appointments + reminders into a unified list
+  // Activity timeline: merge appointments + reminders into a unified list.
+  // Declared before the early returns (FK-016) — depends on possibly-undefined
+  // `lead`, so every read is guarded.
   const timeline = useMemo(() => {
     const items: { type: string; date: string; title: string; detail?: string }[] = [];
+    if (!lead) return items;
     for (const a of appointments) {
       items.push({
         type: 'appointment',
@@ -327,6 +314,27 @@ export function LeadDetailPage() {
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
   }, [appointments, reminders, lead, nowMs]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+      </div>
+    );
+  }
+
+  if (isError || !lead) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Lead not found</p>
+        <Link to="/leads" className="mt-4 text-sm text-primary-600 hover:underline">Back to leads</Link>
+      </div>
+    );
+  }
+
+  const color = STATUS_COLORS[lead.status] || '#6b7280';
+  const devices: any[] = lead.devices || [];
+  const statuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
 
   return (
     <div>

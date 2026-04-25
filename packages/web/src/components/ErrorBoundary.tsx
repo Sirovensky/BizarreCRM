@@ -31,15 +31,30 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      // WEB-FI-021 (Fixer-C8 2026-04-25): differentiate from the root
+      // boundary in main.tsx by offering a "Sign out" affordance alongside
+      // Reload — this boundary wraps the auth shell, so the user is logged
+      // in by the time it can render. A render error caused by stale auth
+      // state is escapable here without a manual cookie wipe.
       return (
         <div className="flex items-center justify-center min-h-screen p-8">
           <div className="text-center max-w-md">
             <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Something went wrong</h1>
             <p className="text-sm text-surface-500 mb-4">This page encountered an error. Your data is safe.</p>
-            <button onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
-              Reload Page
-            </button>
+            <div className="flex gap-2 justify-center">
+              <button onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+                Reload Page
+              </button>
+              <button
+                onClick={() => {
+                  try { window.dispatchEvent(new Event('bizarre-crm:auth-cleared')); } catch { /* best-effort */ }
+                  window.location.assign('/login');
+                }}
+                className="px-4 py-2 bg-surface-200 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-lg text-sm font-medium hover:bg-surface-300 dark:hover:bg-surface-700">
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       );

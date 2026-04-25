@@ -233,27 +233,32 @@ function ServicesSubTab() {
                     <>
                       <td className="px-4 py-2">
                         <input value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          aria-label="Service name"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2">
                         <input value={editForm.slug || ''} onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
+                          aria-label="Service slug"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2">
                         <select value={editForm.category || 'phone'} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                          aria-label="Service category"
                           className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
                           {CATEGORIES.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                         </select>
                       </td>
                       <td className="px-4 py-2">
                         <input value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          aria-label="Service description"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <input type="checkbox" checked={!!editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked ? 1 : 0 })} />
+                        <input type="checkbox" checked={!!editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked ? 1 : 0 })} aria-label="Active" />
                       </td>
                       <td className="px-4 py-2 text-center">
                         <input type="number" value={editForm.sort_order ?? 0} onChange={(e) => setEditForm({ ...editForm, sort_order: parseInt(e.target.value) || 0 })}
+                          aria-label="Sort order"
                           className="w-16 px-2 py-1 text-sm text-center border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2 text-right">

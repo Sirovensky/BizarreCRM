@@ -462,8 +462,10 @@ function ChecklistTemplatesSection() {
         <div className="card p-4 mb-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              aria-label="Template name"
               placeholder="Template name (e.g. Screen Replacement)" className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             <select value={form.device_type} onChange={(e) => setForm({ ...form, device_type: e.target.value })}
+              aria-label="Device type"
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
               <option value="">All Device Types</option>
               <option value="Phone">Phone</option>
@@ -475,6 +477,7 @@ function ChecklistTemplatesSection() {
             </select>
           </div>
           <textarea value={form.items} onChange={(e) => setForm({ ...form, items: e.target.value })}
+            aria-label="Checklist items"
             rows={5} placeholder="One checklist item per line:&#10;1. Open device&#10;2. Remove battery&#10;3. Replace screen&#10;4. Test display&#10;5. Reassemble"
             className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono resize-none" />
           <div className="flex gap-2 mt-2">

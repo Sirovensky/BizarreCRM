@@ -109,24 +109,38 @@ async function performRefresh(): Promise<string> {
 
 // Proactive token refresh — refresh 5 min before expiry
 let refreshScheduled = false;
+// WEB-FD-017: cache the decoded `exp` claim keyed by the raw token string.
+// Every authenticated request used to base64-decode + JSON.parse the JWT
+// payload; on a page that fires N requests this is N decodes for the same
+// token. Skip the work whenever the token string hasn't changed.
+let cachedTokenForExp: string | null = null;
+let cachedTokenExpMs: number | null = null;
 function scheduleTokenRefresh() {
   if (refreshScheduled) return;
   const token = localStorage.getItem('accessToken');
   if (!token) return;
   try {
-    const parts = token.split('.');
-    if (parts.length < 3) throw new Error('malformed');
-    if (parts[1].length > 4096) throw new Error('payload too large');
-    const decoded = atob(parts[1]);
-    if (decoded.length > 8192) throw new Error('decoded payload too large');
-    const payload = JSON.parse(decoded);
-    // Without this guard, a token with a missing or non-numeric `exp` would
-    // turn expiresIn into NaN, Math.max(NaN, 10_000) into NaN, and setTimeout
-    // into a 0-ms fire — causing a refresh storm on every request.
-    if (typeof payload?.exp !== 'number' || !Number.isFinite(payload.exp)) {
-      throw new Error('token missing numeric exp claim');
+    let expMs: number;
+    if (token === cachedTokenForExp && cachedTokenExpMs != null) {
+      expMs = cachedTokenExpMs;
+    } else {
+      const parts = token.split('.');
+      if (parts.length < 3) throw new Error('malformed');
+      if (parts[1].length > 4096) throw new Error('payload too large');
+      const decoded = atob(parts[1]);
+      if (decoded.length > 8192) throw new Error('decoded payload too large');
+      const payload = JSON.parse(decoded);
+      // Without this guard, a token with a missing or non-numeric `exp` would
+      // turn expiresIn into NaN, Math.max(NaN, 10_000) into NaN, and setTimeout
+      // into a 0-ms fire — causing a refresh storm on every request.
+      if (typeof payload?.exp !== 'number' || !Number.isFinite(payload.exp)) {
+        throw new Error('token missing numeric exp claim');
+      }
+      expMs = payload.exp * 1000;
+      cachedTokenForExp = token;
+      cachedTokenExpMs = expMs;
     }
-    const expiresIn = (payload.exp * 1000) - Date.now();
+    const expiresIn = expMs - Date.now();
     const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
     refreshScheduled = true;
     setTimeout(async () => {
@@ -148,6 +162,8 @@ function scheduleTokenRefresh() {
     const cleared = localStorage.getItem('accessToken') === token;
     if (cleared) {
       localStorage.removeItem('accessToken');
+      cachedTokenForExp = null;
+      cachedTokenExpMs = null;
     }
     devWarn('Could not decode access token for refresh scheduling:', err);
     // SCAN-1084: a malformed token left the auth store thinking we were
