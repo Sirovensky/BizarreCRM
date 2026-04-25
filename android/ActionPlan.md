@@ -4752,7 +4752,7 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 - [x] **POS-AUDIT-101 (Flow). Walk-in customer skipped path picker, dumped to cart.** Fixed in this wave: `onWalkIn` no longer auto-navigates — cashier stays on path picker after walk-in attaches.
 - [x] **POS-AUDIT-102 (UX). Three post-attach path tiles top-aligned, not centered.** Fixed: post-attach Column uses Spacer weight 0.4f / 0.6f to bias tiles upper-middle (matches pre-attach pattern + mockup PHONE 1).
 - [x] **POS-AUDIT-103 (Flow). Walk-in -> Create repair ticket re-asks for customer.** Fixed: `onNavigateToCheckin` passes id verbatim incl. 0L sentinel; `CheckInEntryViewModel.preFillCustomer(0L)` calls `attachWalkIn() + advance()` so cashier jumps straight to device step. Real-customer pre-fill also auto-advances.
-- [ ] **POS-AUDIT-104 (UX). Post-attach customer header has no contentDescription / status-bar overlap.** Earlier fixed via `statusBarsPadding()`. Verify on device after centering refactor.
+- [x] **POS-AUDIT-104 (UX). Post-attach customer header has no contentDescription / status-bar overlap.** Earlier fixed via `statusBarsPadding()`. Verified on device 2026-04-24 — `pos-audit-104-verify.png` shows WC header / Cart strip / status-bar (8:57) all clear; no overlap after centering refactor.
 
 ## Aggregator note
 
