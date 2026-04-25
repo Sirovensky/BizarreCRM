@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -43,12 +43,21 @@ export function CashRegisterPage() {
     ? (register.entries as CashRegisterHistoryEntry[])
     : [];
 
+  // WEB-FH-019: mint an idempotency key per draft cash-drawer event so a
+  // stalled network on a slow link can't double-record the same opening
+  // float / cash-out when the operator clicks "Record" twice. The key is
+  // reused across retries of the SAME amount/reason draft and reset after
+  // success or after the operator changes amount/action (see resetIdemKey).
+  const idemKeyRef = useRef<string>(crypto.randomUUID());
+  const resetIdemKey = () => { idemKeyRef.current = crypto.randomUUID(); };
+
   const cashInMut = useMutation({
-    mutationFn: () => posApi.cashIn({ amount: parseFloat(amount), reason: reason || undefined }),
+    mutationFn: () => posApi.cashIn({ amount: parseFloat(amount), reason: reason || undefined, idempotency_key: idemKeyRef.current }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash-register'] });
       toast.success('Cash in recorded');
       setCashAction(null); setAmount(''); setReason('');
+      resetIdemKey();
     },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { message?: string } } } | undefined;
@@ -57,11 +66,12 @@ export function CashRegisterPage() {
   });
 
   const cashOutMut = useMutation({
-    mutationFn: () => posApi.cashOut({ amount: parseFloat(amount), reason: reason || undefined }),
+    mutationFn: () => posApi.cashOut({ amount: parseFloat(amount), reason: reason || undefined, idempotency_key: idemKeyRef.current }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash-register'] });
       toast.success('Cash out recorded');
       setCashAction(null); setAmount(''); setReason('');
+      resetIdemKey();
     },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { message?: string } } } | undefined;

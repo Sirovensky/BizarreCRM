@@ -212,7 +212,11 @@ export function CustomerDetailPage() {
       const url = URL.createObjectURL(blob);
       const win = window.open(url, '_blank', 'noopener,noreferrer');
       if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // WEB-FJ-017: bumped from 60s → 5min so staff have time to print or
+      // screenshot the loyalty pass before the blob URL is revoked. After
+      // revoke the popup's reload/back keys produce a broken page silently
+      // (no toast — popup window doesn't share the parent's <Toaster />).
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'response' in err

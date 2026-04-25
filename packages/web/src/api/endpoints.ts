@@ -570,7 +570,12 @@ export interface VoiceCall {
   duration: number | null;
   status: string;
   recording_url: string | null;
-  recording_local_path: string | null;
+  // WEB-FN-013: server-side filesystem path (`/var/data/tenants/foo/...`)
+  // that the API used to leak in the calls list. The web client must NEVER
+  // depend on this value — it discloses on-disk layout and tenant slugs to
+  // a path-traversal probe. The field is kept here intentionally absent so
+  // that if the server ever re-emits it, a future tsc run does not silently
+  // type-check it. Use `recording_url` for playback / download.
   created_at: string;
   user_name: string | null;
   conv_phone: string | null;
@@ -601,8 +606,10 @@ export const posApi = {
   products: (params?: { keyword?: string; category?: string; item_type?: string }) =>
     api.get('/pos/products', { params }),
   register: () => api.get('/pos/register'),
-  cashIn: (data: { amount: number; reason?: string }) => api.post('/pos/cash-in', data),
-  cashOut: (data: { amount: number; reason?: string }) => api.post('/pos/cash-out', data),
+  // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
+  // event so a flaky-network double-click doesn't double-record opening float.
+  cashIn: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-in', data),
+  cashOut: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-out', data),
   transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
   // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
@@ -736,6 +743,17 @@ export const leadApi = {
 };
 
 // ==================== Estimates ====================
+// WEB-FN-011: the server also exposes
+//   POST /estimates/:id/sign        (auth-gated, staff-side e-sign)
+//   /public/api/v1/estimate-sign/*  (customer-side magic-link sign flow)
+// from `packages/server/src/routes/estimateSign.routes.ts`. Both are
+// **mobile-only** today — the iOS + Android clients drive the customer
+// e-sign UX directly off the device camera + signature pad. No web caller
+// is wired (and no desktop EstimateSignDialog exists). This comment is the
+// canonical record so a future audit can `grep estimate-sign` and see why
+// no `estimateApi.sign` wrapper exists; if the desktop estimate-detail
+// view ever needs in-shop staff signing, add the wrapper here and a
+// matching `<EstimateSignDialog>` component.
 export const estimateApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
     api.get('/estimates', { params }),

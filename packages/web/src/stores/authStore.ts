@@ -101,6 +101,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
+      // WEB-FI-016: only attempt the cookie-based refresh when the
+      // non-httpOnly `csrf_token` cookie is present. That cookie is set
+      // alongside the httpOnly refresh cookie at login, so its absence is
+      // a reliable proxy for "this browser has never authenticated" — and
+      // skipping the POST avoids a guaranteed 401 on every fresh tenant
+      // landing visit (which polluted server logs and added latency to
+      // the unauthenticated render).
+      const hasRefreshSession = typeof document !== 'undefined'
+        && /(?:^|;\s*)csrf_token=/.test(document.cookie);
+      if (!hasRefreshSession) {
+        set({ isLoading: false, isAuthenticated: false });
+        return;
+      }
       // No access token — try refreshing via httpOnly cookie before giving up
       try {
         const refreshRes = await api.post('/auth/refresh');

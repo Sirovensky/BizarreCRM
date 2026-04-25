@@ -31,7 +31,9 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function hasRecording(call: VoiceCall): boolean {
-  return Boolean(call.recording_url || call.recording_local_path);
+  // WEB-FN-013: only check `recording_url`; the on-disk path was removed
+  // from the wire/type to avoid leaking `/var/data/tenants/...` layouts.
+  return Boolean(call.recording_url);
 }
 
 function openRecording(callId: number): void {

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { formatApiError } from '@/utils/apiError';
+import { formatApiError, redactEmails } from '@/utils/apiError';
 
 type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
 
@@ -172,7 +172,7 @@ export function LoginPage() {
           setError('Cannot reach server to verify setup link. Check your connection and try again.');
         } else {
           setErrorKind('server');
-          setError(formatApiError(err) || 'Failed to verify setup link.');
+          setError(redactEmails(formatApiError(err) || 'Failed to verify setup link.'));
         }
         setAutoChecking(false);
       });
@@ -225,7 +225,7 @@ export function LoginPage() {
             setError('Cannot reach server. Check your connection and try again.');
           } else {
             setErrorKind('server');
-            setError(formatApiError(err) || 'Server error while checking setup status.');
+            setError(redactEmails(formatApiError(err) || 'Server error while checking setup status.'));
           }
           // Fall through to render the login form so the user is not stuck.
           setAutoChecking(false);
@@ -339,7 +339,7 @@ export function LoginPage() {
         setError('Invalid username or password.');
       } else {
         setErrorKind('server');
-        setError(formatApiError(err));
+        setError(redactEmails(formatApiError(err)));
       }
     } finally {
       setLoading(false);
@@ -358,7 +358,7 @@ export function LoginPage() {
       completeLogin(data.accessToken, data.refreshToken, data.user);
       navigate(fromPath, { replace: true });
     } catch (err: unknown) {
-      const msg = formatApiError(err) || 'Invalid code';
+      const msg = redactEmails(formatApiError(err) || 'Invalid code');
       const e = err as { response?: { data?: { data?: { challengeToken?: string } } } } | undefined;
       const newToken = e?.response?.data?.data?.challengeToken;
       if (newToken) setChallengeToken(newToken);
@@ -388,7 +388,7 @@ export function LoginPage() {
       setManualSecret(setupData.secret);
       setStep('setup');
     } catch (err: unknown) {
-      setError(formatApiError(err) || 'Failed to set password');
+      setError(redactEmails(formatApiError(err) || 'Failed to set password'));
     } finally {
       setLoading(false);
     }

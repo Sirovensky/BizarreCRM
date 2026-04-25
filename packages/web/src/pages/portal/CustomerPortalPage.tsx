@@ -66,6 +66,12 @@ export function CustomerPortalPage() {
       url.searchParams.delete('token');
       window.history.replaceState({}, '', url.toString());
 
+      // WEB-FJ-018: capture the trailing token chars BEFORE stripping it from
+      // the URL so a verification-failure toast can echo "your link …XYZ123"
+      // — gives the customer a recognisable handle to forward to support
+      // even though the URL has been scrubbed for browser-history hygiene.
+      const tokenTail = tokenParam.slice(-6);
+
       api.verifySession(tokenParam)
         .then(result => {
           if (result.valid) {
@@ -77,12 +83,12 @@ export function CustomerPortalPage() {
               result.ticket_id || undefined,
             );
           } else {
-            toast.error('This sign-in link is invalid or has expired. Please request a new one.');
+            toast.error(`Your sign-in link (…${tokenTail}) is invalid or has expired. Please request a new one.`);
           }
         })
         .catch(err => {
           console.error('Portal session verification failed:', err);
-          toast.error('Could not verify your sign-in link. Please try again.');
+          toast.error(`Could not verify your sign-in link (…${tokenTail}). Please try again.`);
         });
     }
   }, [tokenParam, auth.isAuthenticated, auth.isLoading]);

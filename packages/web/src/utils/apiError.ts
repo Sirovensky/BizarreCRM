@@ -65,10 +65,33 @@ export function extractApiError(err: unknown): ApiErrorFields {
 }
 
 /**
+ * WEB-FJ-019: redact email-shaped substrings from a string before it is
+ * rendered to an unauthenticated surface (login / signup / portal). Server
+ * validation messages occasionally echo the submitted email back ("An
+ * account already exists for serega@example.com"), and on a public landing
+ * page that's a shoulder-surfing / screenshot leak. We replace the local
+ * part with `***` and keep the domain as a hint that the field was the
+ * problem field. Conservative regex: only matches a "looks like a real
+ * email" pattern with at least one dot in the domain.
+ */
+export function redactEmails(input: string): string {
+  if (!input) return input;
+  return input.replace(
+    /([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,
+    '***@$2',
+  );
+}
+
+/**
  * Format an error for a single-line toast. Appends "(ERR_X · ref abc12…)"
  * when the server provided them so a support ticket can trace the exact
  * log line. Short request-id prefix keeps toasts readable without trimming
  * the underlying full id from `extractApiError()` if a UI needs it.
+ *
+ * WEB-FJ-019: callers rendering on unauthenticated surfaces should pass the
+ * result through `redactEmails()` — this fn does NOT auto-redact because
+ * the same helper is used for staff-side toasts where echoing the email
+ * the user typed is helpful.
  */
 export function formatApiError(err: unknown): string {
   const f = extractApiError(err);

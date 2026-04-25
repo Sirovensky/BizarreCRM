@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { signupApi } from '../../api/endpoints';
+import { redactEmails } from '../../utils/apiError';
 
 const HCAPTCHA_SCRIPT_SRC = 'https://js.hcaptcha.com/1/api.js?render=explicit';
 
@@ -195,6 +196,15 @@ export function SignupPage() {
       script.src = HCAPTCHA_SCRIPT_SRC;
       script.async = true;
       script.defer = true;
+      // WEB-FA-010: forward the page's CSP nonce (set by the server in a
+      // <meta name="csp-nonce" content="..."> tag, mirroring the React 19
+      // pattern) so this dynamically appended <script> survives a strict
+      // `script-src 'nonce-…'` policy. Falls through silently when no
+      // nonce meta is present (dev / non-CSP deployments).
+      const nonce = document
+        .querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')
+        ?.content;
+      if (nonce) script.setAttribute('nonce', nonce);
       document.head.appendChild(script);
     }
 
@@ -252,7 +262,11 @@ export function SignupPage() {
         || apiErr?.response?.data?.error
         || (err instanceof Error ? err.message : '')
         || 'Something went wrong. Please try again.';
-      setApiError(msg);
+      // WEB-FJ-019: signup is an unauthenticated public surface; redact any
+      // email-shaped substring the server echoed back (e.g. "An account
+      // already exists for x@y.com") so a screenshot or shoulder-surf can't
+      // exfiltrate it.
+      setApiError(redactEmails(msg));
       if (captchaWidgetIdRef.current !== null) {
         window.hcaptcha?.reset(captchaWidgetIdRef.current);
         setCaptchaToken('');

@@ -231,6 +231,30 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * WEB-FAE-002 (Fixer-A6 2026-04-25): client-side route role-gate.
+ *
+ * Previously every authenticated path was reachable by URL guess and we
+ * relied on the server's 403 to gate. A technician who typed `/employees`
+ * or `/team/roles` would mount the page component, fire GETs, and only see
+ * a generic toast on 403 — with the page already constructed inside the
+ * AppShell render tree (noisy 403s in Sentry, UI flash, briefly-visible
+ * admin-only data cells if the cache had a stale entry).
+ *
+ * `RequireRole` is the client-side counterpart to the server's
+ * `requirePermission` middleware. It does NOT replace the server check
+ * (defence-in-depth — the server still enforces); it just stops the
+ * forbidden page from mounting in the first place. On role mismatch we
+ * `<Navigate>` back to `/` and let the dashboard's normal toast surface
+ * a friendly "you don't have access to that page" message.
+ */
+function RequireRole({ roles, children }: { roles: string[]; children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  if (!user) return <Navigate to="/login" replace />;
+  if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function LoadingScreen() {
   return (
     <div className="flex h-screen items-center justify-center bg-white dark:bg-surface-950">
@@ -468,11 +492,11 @@ export default function App() {
                     <Route path="/inventory/new" element={<InventoryCreatePage />} />
                     {/* Enrichment pages — MUST be registered before /inventory/:id
                         so the detail-page catch-all doesn't shadow them. */}
-                    <Route path="/inventory/stocktake" element={<StocktakePage />} />
+                    <Route path="/inventory/stocktake" element={<RequireRole roles={['admin', 'manager']}><StocktakePage /></RequireRole>} />
                     <Route path="/inventory/bin-locations" element={<BinLocationsPage />} />
                     <Route path="/inventory/auto-reorder" element={<AutoReorderPage />} />
                     <Route path="/inventory/serials" element={<SerialNumbersPage />} />
-                    <Route path="/inventory/shrinkage" element={<ShrinkagePage />} />
+                    <Route path="/inventory/shrinkage" element={<RequireRole roles={['admin', 'manager']}><ShrinkagePage /></RequireRole>} />
                     <Route path="/inventory/abc-analysis" element={<AbcAnalysisPage />} />
                     <Route path="/inventory/age-report" element={<InventoryAgePage />} />
                     <Route path="/inventory/labels" element={<MassLabelPrintPage />} />
@@ -494,18 +518,18 @@ export default function App() {
                     <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                     <Route path="/cash-register" element={<CashRegisterPage />} />
                     <Route path="/communications" element={<CommunicationPage />} />
-                    <Route path="/employees" element={<EmployeeListPage />} />
-                    <Route path="/settings/*" element={<SettingsPage />} />
+                    <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
+                    <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />
                     <Route path="/catalog" element={<CatalogPage />} />
                     {/* Billing / Money Flow enrichment (§52). */}
                     <Route path="/billing/payment-links" element={<PaymentLinksPage />} />
-                    <Route path="/billing/dunning" element={<DunningPage />} />
-                    <Route path="/billing/aging" element={<AgingReportPage />} />
+                    <Route path="/billing/dunning" element={<RequireRole roles={['admin', 'manager']}><DunningPage /></RequireRole>} />
+                    <Route path="/billing/aging" element={<RequireRole roles={['admin', 'manager']}><AgingReportPage /></RequireRole>} />
                     {/* Team management (§53). */}
                     <Route path="/team/my-queue" element={<MyQueuePage />} />
                     <Route path="/team/shifts" element={<ShiftSchedulePage />} />
                     <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
-                    <Route path="/team/roles" element={<RolesMatrixPage />} />
+                    <Route path="/team/roles" element={<RequireRole roles={['admin', 'manager']}><RolesMatrixPage /></RequireRole>} />
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />

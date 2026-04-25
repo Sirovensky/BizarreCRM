@@ -93,7 +93,9 @@ interface CallLog {
   status: string;
   duration_secs?: number;
   recording_url?: string;
-  recording_local_path?: string;
+  // WEB-FN-013: `recording_local_path` removed from this interface — the
+  // server filesystem layout must not leak into the wire. Use
+  // `recording_url` for the audio src.
   transcription?: string;
   transcription_status: string;
   call_mode: string;
@@ -523,7 +525,7 @@ function CallLogPanel() {
                     <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
                       {formatDuration(call.duration_secs)}
                     </span>
-                    {(call.recording_url || call.recording_local_path) && (
+                    {call.recording_url && (
                       <div className="flex items-center gap-0.5 text-[10px] text-primary-500 mt-0.5 justify-end">
                         <Mic className="h-3 w-3" />
                         Recorded
@@ -561,14 +563,14 @@ function CallLogPanel() {
                     </div>
 
                     {/* Recording player */}
-                    {(call.recording_local_path || call.recording_url) && (
+                    {call.recording_url && (
                       <div className="mt-2 flex items-center gap-2">
                         <Play className="h-4 w-4 text-primary-500 shrink-0" />
                         <audio
                           controls
                           preload="none"
                           className="h-8 flex-1"
-                          src={call.recording_local_path || call.recording_url || ''}
+                          src={call.recording_url}
                         />
                       </div>
                     )}

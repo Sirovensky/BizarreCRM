@@ -82,10 +82,18 @@ async function performRefresh(): Promise<string> {
       // SEC-H89: Include the CSRF double-submit token so the server can verify
       // this refresh was initiated by our own JS (not a cross-origin CSRF request).
       const csrfToken = getCsrfTokenCookie();
+      // WEB-FI-006: pin an explicit timeout. We're calling bare `axios.post`
+      // (not the configured `client`) so the module default (no timeout)
+      // applies — without this guard a hung refresh blocks every queued
+      // 401 retry forever because `sharedRefreshPromise` never settles.
       const res = await axios.post(
         AUTH_REFRESH_URL,
         {},
-        { withCredentials: true, headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {} },
+        {
+          withCredentials: true,
+          headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+          timeout: 10_000,
+        },
       );
       const accessToken = res.data?.data?.accessToken;
       if (!accessToken) throw new Error('Refresh response missing access token');
