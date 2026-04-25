@@ -223,6 +223,20 @@ export function InvoiceDetailPage() {
 
   const handlePay = () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
+    // WEB-FH-021 (Fixer-B4 2026-04-25): warn the cashier before recording an
+    // overpayment. The server happily accepts amounts that exceed amount_due
+    // (it just leaves amount_due negative), so a fat-fingered extra zero
+    // ($500 for a $50 balance) goes through silently. Tolerate small float
+    // drift (0.005) so the "Pay full balance" preset never mis-fires.
+    const enteredAmount = parseFloat(paymentForm.amount);
+    const balanceDue = Number(invoice.amount_due) || 0;
+    if (enteredAmount > balanceDue + 0.005) {
+      const overage = enteredAmount - balanceDue;
+      const proceed = window.confirm(
+        `Amount $${enteredAmount.toFixed(2)} exceeds the balance due of $${balanceDue.toFixed(2)} by $${overage.toFixed(2)}.\n\nRecord this overpayment anyway?`,
+      );
+      if (!proceed) return;
+    }
     payMutation.mutate(paymentForm);
   };
 

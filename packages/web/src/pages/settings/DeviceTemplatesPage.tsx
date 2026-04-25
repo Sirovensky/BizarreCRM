@@ -334,13 +334,23 @@ export function DeviceTemplatesPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Name *</label>
+                <label htmlFor="dt-name" className="mb-1 block text-xs font-semibold uppercase text-surface-500">Name *</label>
                 <input
+                  id="dt-name"
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   placeholder="iPhone 13 Screen Replacement"
-                  className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+                  required
+                  aria-required="true"
+                  aria-invalid={!editing.name.trim() ? true : undefined}
+                  aria-describedby={!editing.name.trim() ? 'dt-name-error' : undefined}
+                  className={`w-full rounded-lg border bg-surface-50 p-2 text-sm dark:bg-surface-900 dark:text-surface-100 ${!editing.name.trim() ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`}
                 />
+                {!editing.name.trim() && (
+                  <p id="dt-name-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">
+                    Name is required.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-2">

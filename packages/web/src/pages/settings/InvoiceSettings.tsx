@@ -4,6 +4,7 @@ import { Save, Loader2, AlertCircle, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { SkeletonCard } from '@/components/shared/Skeleton';
 
 // ─── Field Rows ──────────────────────────────────────────────────────────────
 
@@ -245,10 +246,11 @@ export function InvoiceSettings() {
   }
 
   if (isLoading) {
+    // WEB-FQ-005: align with shared Skeleton ramp instead of spinner+text.
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
-        <span className="ml-3 text-surface-500">Loading...</span>
+      <div role="status" aria-label="Loading invoice settings" aria-busy="true" className="space-y-3 py-6">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }

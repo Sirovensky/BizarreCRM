@@ -35,6 +35,7 @@ import { BillingTab } from './BillingTab';
 import { DeviceTemplatesPage } from './DeviceTemplatesPage';
 // PROD59: tenant self-service termination (Settings > Danger Zone).
 import { DangerZoneTab } from './DangerZoneTab';
+import { SkeletonCard } from '@/components/shared/Skeleton';
 import { DataRetentionTab } from './DataRetentionTab';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -98,10 +99,13 @@ interface UserRecord {
 // ─── Reusable Components ──────────────────────────────────────────────────────
 
 function LoadingState() {
+  // WEB-FQ-005: align Settings loading affordance with the shared Skeleton
+  // ramp instead of mixing spinner + "Loading..." text. role="status" +
+  // aria-label keeps screen-reader announcement intact.
   return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      <span className="ml-3 text-surface-500">Loading...</span>
+    <div role="status" aria-label="Loading settings" aria-busy="true" className="space-y-3 py-6">
+      <SkeletonCard />
+      <SkeletonCard />
     </div>
   );
 }

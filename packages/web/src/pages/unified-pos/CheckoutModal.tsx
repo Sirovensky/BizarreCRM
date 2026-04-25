@@ -564,11 +564,22 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   </div>
                 ))}
                 <div className="flex items-center justify-between">
+                  {/* WEB-FH-022 (Fixer-B4 2026-04-25): cap split-payment rows
+                      at 6. Modal layout (max-w-lg) overflows past 6 rows on
+                      desktop, and the Android server caps payments.length at
+                      20. Disabling the button at 6 prevents the modal-footer
+                      hidden-by-overflow bug + the silent server-side 400. */}
                   <button
-                    onClick={() => setSplitPayments([...splitPayments, { method: 'Cash', amount: '' }])}
-                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    onClick={() => {
+                      if (splitPayments.length >= 6) return;
+                      setSplitPayments([...splitPayments, { method: 'Cash', amount: '' }]);
+                    }}
+                    disabled={splitPayments.length >= 6}
+                    title={splitPayments.length >= 6 ? 'Maximum of 6 split payments' : undefined}
+                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:cursor-not-allowed disabled:text-surface-400 disabled:hover:text-surface-400 dark:disabled:text-surface-500"
                   >
-                    <Plus className="h-3.5 w-3.5" /> Add Method
+                    <Plus className="h-3.5 w-3.5" />
+                    {splitPayments.length >= 6 ? 'Max 6 split payments' : 'Add Method'}
                   </button>
                   {splitRemainingCents > 0 ? (
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">

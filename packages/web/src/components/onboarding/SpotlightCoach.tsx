@@ -372,7 +372,10 @@ export function SpotlightCoach() {
       // Last step — flow complete
       void (async () => {
         try { await handleTutorialComplete(flowId as TutorialFlowId, 'done', navigate); }
-        catch (err) { console.warn('SpotlightCoach: tutorial complete handler failed', err); }
+        // WEB-FV-009 (Fixer-C4 2026-04-25): upgraded to console.error so dev
+        // tools default-filter surfaces this; structured prefix `[spotlight]` +
+        // tag `tutorial-complete` lets a future Sentry shim split by feature.
+        catch (err) { console.error('[spotlight] tutorial-complete handler failed', err); }
       })();
       return;
     }
@@ -420,7 +423,8 @@ export function SpotlightCoach() {
     setDismissed(true);
     void (async () => {
       try { await dismissAllTutorials(navigate); }
-      catch (err) { console.warn('SpotlightCoach: dismissAllTutorials failed', err); }
+      // WEB-FV-009 (Fixer-C4 2026-04-25): see paired callsites above.
+      catch (err) { console.error('[spotlight] dismissAllTutorials failed', err); }
     })();
   }, [navigate]);
 

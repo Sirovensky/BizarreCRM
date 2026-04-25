@@ -2,6 +2,12 @@ import { create } from 'zustand';
 
 interface ConfirmState {
   open: boolean;
+  // WEB-FI-015 (Fixer-B4 2026-04-25): monotonically increasing generation
+  // counter, bumped on every confirm() call. Consumed by GlobalConfirmDialog
+  // as a `key` to force-remount the underlying ConfirmDialog so the modal
+  // body cannot flash the prior confirm()'s title/message/danger between the
+  // resolve-prev frame and the next render commit.
+  generation: number;
   title: string;
   message: string;
   confirmLabel: string;
@@ -16,6 +22,7 @@ interface ConfirmStore extends ConfirmState {
 
 export const useConfirmStore = create<ConfirmStore>((set, get) => ({
   open: false,
+  generation: 0,
   title: 'Confirm',
   message: '',
   confirmLabel: 'Confirm',
@@ -36,6 +43,10 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
       }
       set({
         open: true,
+        // WEB-FI-015 (Fixer-B4 2026-04-25): bump generation so React keys
+        // change and the modal body forcibly remounts — eliminates the
+        // single-frame stale-text flash when one confirm() displaces another.
+        generation: get().generation + 1,
         title: opts.title || 'Confirm',
         message: opts.message,
         confirmLabel: opts.confirmLabel || 'Confirm',

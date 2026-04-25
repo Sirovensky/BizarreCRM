@@ -251,8 +251,12 @@ if (typeof window !== 'undefined') {
           ) {
             return; // already tried for this URL within the grace window
           }
-        } catch {
-          /* old-format or corrupt — fall through and overwrite */
+        } catch (err) {
+          // WEB-FV-010 (Fixer-C4 2026-04-25): surface migration-path hits so we
+          // can detect when the sentinel payload format changed under us. The
+          // catch still falls through and overwrites the slot.
+          // eslint-disable-next-line no-console
+          console.warn('[main] chunk-reload sentinel payload corrupt — overwriting', err);
         }
       }
       sessionStorage.setItem(
@@ -262,8 +266,13 @@ if (typeof window !== 'undefined') {
       // eslint-disable-next-line no-console
       console.warn('[main] stale chunk detected outside React tree — auto-reloading once');
       window.location.reload();
-    } catch {
-      /* storage blocked — user will see the manual boundary card */
+    } catch (err) {
+      // WEB-FV-010 (Fixer-C4 2026-04-25): sessionStorage unavailable (private
+      // mode, quota, blocked third-party storage). Log so ops can see the
+      // recovery branch fire instead of silently leaving the user on the
+      // manual boundary card.
+      // eslint-disable-next-line no-console
+      console.warn('[main] sessionStorage unavailable — chunk-reload sentinel skipped', err);
     }
   };
   window.addEventListener('unhandledrejection', (e) => {

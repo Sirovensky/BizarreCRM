@@ -160,8 +160,11 @@ function KpiCard({ label, value, tooltip, loading, href }: {
       <div className="flex items-center gap-1.5">
         <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">{label}</span>
         {tooltip && (
+          // WEB-FQ-018 (Fixer-C4 2026-04-25): bumped to h-3.5 (14px) so the
+          // tooltip glyph is hit-target-legible next to a 12px caption without
+          // visually dwarfing the kpi label. h-3 was unreadable at retina/144dpi.
           <span title={tooltip} className="text-surface-400 cursor-help">
-            <Info className="h-3 w-3" />
+            <Info className="h-3.5 w-3.5" />
           </span>
         )}
       </div>
@@ -447,6 +450,7 @@ function QuickActions() {
     queryKey: ['sms-conversations-unread'],
     queryFn: () => smsApi.conversations(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const smsUnread = useMemo(() => {
     const raw = smsData?.data?.data;
@@ -459,6 +463,7 @@ function QuickActions() {
     queryKey: ['order-queue-summary'],
     queryFn: () => catalogApi.getOrderQueueSummary(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const partsCount = queueData?.data?.data?.total_items ?? 0;
 
@@ -859,6 +864,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['my-queue', userId],
     queryFn: () => ticketApi.myQueue(),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
   const queue = queueData?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
 
@@ -867,6 +873,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['my-tickets', userId],
     queryFn: () => ticketApi.list({ assigned_to: userId, pagesize: 20 }),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const myTickets = ticketsData?.data?.data?.tickets ?? ticketsData?.data?.data ?? [];
 
@@ -875,6 +882,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
 
@@ -1198,6 +1206,7 @@ function TodaysAppointments() {
     queryKey: ['todays-appointments', today],
     queryFn: () => leadApi.appointments({ from_date: today, to_date: tomorrow }),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const appointments: any[] = (apptData?.data as any)?.data?.appointments ?? (apptData?.data as any)?.data ?? [];
@@ -1523,6 +1532,7 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
     queryKey: ['dashboard-kpis-7day', last7Range.from, last7Range.to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: last7Range.from, to_date: last7Range.to, employee_id: employeeId }),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const dailySales = salesKpiData?.data?.data?.daily_sales ?? [];
 
@@ -1645,6 +1655,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['dashboard-kpis', from, to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: from, to_date: to, employee_id: employeeId }),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 
   const kpis: DashboardKpis | null = kpiData?.data?.data ?? null;
@@ -1662,18 +1673,21 @@ function AdminOrManagerDashboard() {
     queryKey: ['missing-parts'],
     queryFn: () => missingPartsApi.list(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: queueData } = useQuery({
     queryKey: ['order-queue-summary'],
     queryFn: () => catalogApi.getOrderQueueSummary(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: queueItemsData } = useQuery({
     queryKey: ['order-queue-items'],
     queryFn: () => catalogApi.getOrderQueue('pending'),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   // Today's summary (basic dashboard KPIs)
@@ -1681,6 +1695,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
 
@@ -1689,6 +1704,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['needs-attention'],
     queryFn: () => reportApi.needsAttention(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const needsAttention: NeedsAttentionData | null = attentionData?.data?.data ?? null;
 
@@ -1698,6 +1714,7 @@ function AdminOrManagerDashboard() {
     queryFn: () => reportApi.techWorkload(),
     enabled: role === 'manager',
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const techWorkload: any[] = workloadData?.data?.data ?? [];
 
