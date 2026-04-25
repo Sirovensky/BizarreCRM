@@ -1858,7 +1858,12 @@ fun LoginScreen(
     ) { innerPadding ->
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding).statusBarsPadding().imePadding(),
-        contentAlignment = Alignment.TopCenter,
+        // LOGIN-MOCK-006/056/084: center the content column vertically so the hero
+        // sits at ~50% on tall phones instead of being pinned to the top.
+        // The Column sizes itself to content (verticalScroll), so the Box centers it.
+        // imePadding() above shrinks the Box when the keyboard rises, pushing the
+        // column upward naturally — no extra logic needed.
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
@@ -1867,8 +1872,8 @@ fun LoginScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Logo / App name
-            Spacer(Modifier.height(80.dp))
+            // Logo / App name — small top breathing room replaces the old 80dp pin.
+            Spacer(Modifier.height(32.dp))
             Text(
                 "Bizarre CRM",
                 style = MaterialTheme.typography.headlineLarge.copy(
@@ -1883,9 +1888,12 @@ fun LoginScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // Sanctioned WaveDivider placement — one branded moment under wordmark
-            Spacer(Modifier.height(12.dp))
+            // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
+            // LOGIN-MOCK-085: reduce WaveDivider height to 16dp (in WaveDivider.kt) and
+            //   spacer below from 24dp → 12dp. NET = 20 + 16 + 12 = 48dp ≈ target ~40-48dp.
+            Spacer(Modifier.height(20.dp))
             WaveDivider()
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
             // §28.6 — sticky banner shown when the user landed here because
             // the server killed their session (refresh-failed / revoked).
@@ -2008,7 +2016,9 @@ fun LoginScreen(
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    // LOGIN-MOCK-051: bump vertical padding to 24dp so card title doesn't
+                    // crowd the top edge; horizontal stays at 20dp for side gutters.
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
@@ -2078,7 +2088,7 @@ private fun LoginTabBar(currentStep: SetupStep) {
                 text = {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = if (isSelected) activeColor else inactiveColor,
                     )
                 },
@@ -2172,7 +2182,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
     Text(
         if (state.useCustomServer) "Enter your self-hosted server address"
         else "Enter your shop name to connect",
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(16.dp))
@@ -2243,12 +2253,12 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         TextButton(onClick = viewModel::toggleCustomServer) {
             Text(
                 if (state.useCustomServer) "Use BizarreCRM Cloud" else "Self-hosted?",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
         if (!state.useCustomServer) {
             TextButton(onClick = viewModel::goToRegister) {
-                Text("Register new shop", style = MaterialTheme.typography.bodyMedium)
+                Text("Register new shop", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
             }
         }
     }
@@ -2279,7 +2289,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
 
     Text(
         text = "Create your repair shop on BizarreCRM",
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(16.dp))
@@ -3144,11 +3154,11 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
 private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
     val context = LocalContext.current
 
-    Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(4.dp))
     Text(
         "Scan this QR code with Google Authenticator or any TOTP app",
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(16.dp))

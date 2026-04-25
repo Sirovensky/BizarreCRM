@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
  *
  * Renders a single wave using a cubic Bézier path:
  *   - Base wave: outline color at ~15% alpha (low-contrast texture)
- *   - Hairline underneath: decorative magenta at ~60% alpha (single accent line)
+ *   - Hairline underneath: decorative magenta at ~30% alpha (single accent line)
  *
  * ## Color policy (CROSS19/CROSS45-ext — brand accent is ORANGE, not magenta):
  * The hairline uses a HARDCODED magenta (#BC398F) that is deliberately
@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
  * (orange). Do NOT pull this hairline color from `colorScheme.tertiary` — if
  * a future theme bump changes tertiary, the wave must still render magenta.
  *
- * Height: ~24dp. Horizontal fill follows the modifier.
+ * Height: ~16dp (reduced from 24dp for LOGIN-MOCK-085 vertical budget). Horizontal fill follows the modifier.
  *
  * ## Sanctioned placements (at most ONE per screen):
  *   - LoginScreen.kt:506    — under the "Bizarre CRM" wordmark
@@ -69,9 +69,13 @@ fun WaveDivider(
     val magenta = color
 
     Canvas(
+        // LOGIN-MOCK-085: reduced from 24dp → 16dp to compress the wave-divider
+        // vertical budget (~20dp above + 16dp wave + 12dp below ≈ 48dp total).
+        // All path Y coordinates use h-relative fractions so the curve stays
+        // proportionally balanced inside the smaller canvas — no path adjustments needed.
         modifier = modifier
             .fillMaxWidth()
-            .height(24.dp),
+            .height(16.dp),
     ) {
         val w = size.width
         val h = size.height
@@ -106,7 +110,7 @@ fun WaveDivider(
         }
         drawPath(
             path = hairlinePath,
-            color = magenta.copy(alpha = 0.60f),
+            color = magenta.copy(alpha = 0.30f),
             style = Stroke(width = 1.dp.toPx()),
         )
     }
