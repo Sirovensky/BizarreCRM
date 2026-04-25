@@ -557,8 +557,6 @@ export function CatalogPage() {
                 {/* Image */}
                 <div className="h-28 rounded-lg bg-surface-50 dark:bg-surface-700 flex items-center justify-center overflow-hidden">
                   {item.image_url ? (
-                    {/* WEB-FF-013: lazy-load catalog grid imgs — long lists
-                        (100+ products) shouldn't fetch every thumbnail upfront. */}
                     <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
                   ) : (
                     <Package className="h-10 w-10 text-surface-300" />
