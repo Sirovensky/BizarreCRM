@@ -58,7 +58,10 @@ export function Header() {
         <StatusBadge status={serverState} />
         {ageSec != null && (
           <span
-            className={`hidden sm:inline-flex items-center gap-1 text-[10px] border rounded px-1.5 py-0.5 font-mono ${ageColor}`}
+            // DASH-ELEC-178: window minWidth is 900px so `sm:` (640) is always
+            // satisfied — the guard read as if it hid the chip on narrow widths
+            // when in fact it never could. Drop the dead breakpoint.
+            className={`inline-flex items-center gap-1 text-[10px] border rounded px-1.5 py-0.5 font-mono ${ageColor}`}
             title="Time since last successful server-stats poll"
           >
             tick {ageSec}s
@@ -75,7 +78,9 @@ export function Header() {
             CommandPalette. DASH-ELEC-126: use <kbd> so SR announces "keyboard
             shortcut" and add aria-keyshortcuts on the hint element itself. */}
         <kbd
-          className="hidden sm:inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono not-italic"
+          // DASH-ELEC-178: same dead breakpoint as the tick chip above —
+          // minWidth 900 means `sm:` (640) always matches. Drop the guard.
+          className="inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono not-italic"
           aria-label="Command palette shortcut: Control K or Command K"
           aria-keyshortcuts="Control+k Meta+k"
         >

@@ -179,6 +179,17 @@ function KpiCard({ label, value, tooltip, loading, href }: {
 
 // ─── Missing Parts Card ───────────────────────────────────────────────────────
 
+/** WEB-FA-013 (Fixer-B14 2026-04-25): supplier base URLs centralised in a
+ *  single map so the keys can be reviewed in one place and a future Settings
+ *  → Suppliers page can pre-populate from this list. Still hard-coded — true
+ *  per-tenant configurability requires a server-side `store_config` key (out
+ *  of scope for this loop) — but adding a new supplier no longer requires
+ *  hunting through the dashboard render path. */
+const SUPPLIER_BASE_URLS: Record<string, string> = {
+  mobilesentrix: 'https://www.mobilesentrix.com',
+  phonelcdparts: 'https://www.phonelcdparts.com',
+};
+
 /** Build the best URL for ordering a part from its supplier.
  *  If we have a numeric Magento product ID (external_id), construct a direct add-to-cart URL.
  *  Otherwise fall back to the product page URL. */
@@ -189,10 +200,10 @@ function getSupplierOrderUrl(part: MissingPart): string | null {
 
   // If we have a numeric external_id, we can build an add-to-cart URL
   if (extId && /^\d+$/.test(extId) && source) {
-    const base = source === 'mobilesentrix'
-      ? 'https://www.mobilesentrix.com'
-      : 'https://www.phonelcdparts.com';
-    return `${base}/checkout/cart/add/product/${extId}/qty/${part.quantity}/`;
+    const base = SUPPLIER_BASE_URLS[source];
+    if (base) {
+      return `${base}/checkout/cart/add/product/${extId}/qty/${part.quantity}/`;
+    }
   }
 
   return pageUrl || null;

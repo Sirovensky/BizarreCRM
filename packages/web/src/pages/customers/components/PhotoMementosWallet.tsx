@@ -104,11 +104,14 @@ export function PhotoMementosWallet({ customerId }: PhotoMementosWalletProps) {
             title={photo.caption ?? `${photo.device_name ?? 'Device'} — ${photo.order_id}`}
           >
             <div className="w-32 h-32 rounded-lg overflow-hidden bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 group-hover:border-primary-400 transition-colors">
+              {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer keeps the photo URL out of
+                  third-party Referer logs (extensions, mis-configured CDNs). */}
               <img
                 src={photo.file_path.startsWith('/') ? photo.file_path : `/uploads/${photo.file_path}`}
                 alt={photo.caption ?? 'Repair photo'}
                 className="w-full h-full object-cover"
                 loading="lazy"
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}

@@ -60,6 +60,8 @@ export function CommandPalette() {
         { id: 'nav-activity', group: 'Pages', label: 'Activity (alerts, audit, sessions)', icon: Activity, keywords: 'security alerts audit sessions tenant auth', onRun: () => navigate('/activity') },
         { id: 'nav-activity-alerts', group: 'Pages', label: 'Activity → Security Alerts', icon: Activity, keywords: 'unacknowledged', onRun: () => navigate('/activity?tab=alerts') },
         { id: 'nav-activity-audit', group: 'Pages', label: 'Activity → Audit Log', icon: Activity, onRun: () => navigate('/activity?tab=audit') },
+        // DASH-ELEC-051: Sessions deep-link parity with the alerts/audit deep-links above.
+        { id: 'nav-activity-sessions', group: 'Pages', label: 'Activity → Sessions', icon: Activity, keywords: 'session token revoke', onRun: () => navigate('/activity?tab=sessions') },
         { id: 'nav-diagnostics', group: 'Pages', label: 'Tenant Diagnostics', icon: Stethoscope, keywords: 'notifications webhooks automations', onRun: () => navigate('/diagnostics') },
         { id: 'nav-tools', group: 'Pages', label: 'Admin Tools', icon: Wrench, keywords: 'reset rate limit backfill dns', onRun: () => navigate('/tools') },
       );

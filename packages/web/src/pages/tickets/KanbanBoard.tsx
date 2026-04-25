@@ -154,7 +154,11 @@ export default function KanbanBoard() {
       const prev = queryClient.getQueryData(['tickets-kanban']);
       queryClient.setQueryData(['tickets-kanban'], (old: unknown) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old)) as { data?: { data?: { columns?: KanbanColumn[] } } };
+        // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone preserves Date /
+        // Map / undefined values that JSON.parse(JSON.stringify(...)) silently
+        // drops, and is broadly available since 2022. Cheaper too on 200+
+        // ticket boards because the engine uses a native deep-clone path.
+        const clone = structuredClone(old) as { data?: { data?: { columns?: KanbanColumn[] } } };
         const cols: KanbanColumn[] = clone?.data?.data?.columns || [];
         let moved: KanbanTicket | undefined;
         for (const col of cols) {

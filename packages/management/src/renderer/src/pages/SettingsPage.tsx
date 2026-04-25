@@ -411,8 +411,11 @@ export function SettingsPage() {
       </div>
 
       {/* Sticky save / restart bar */}
+      {/* DASH-ELEC-202: z-10 was insufficient — toasts/portals + later popovers
+          can render above and bury the save bar. z-30 keeps it under modals
+          (z-50) but always above page content. */}
       {(isDirty || restartPending) && (
-        <div className="sticky bottom-2 z-10 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-amber-900/60 bg-amber-950/40 backdrop-blur">
+        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-amber-900/60 bg-amber-950/40 backdrop-blur">
           <div className="flex items-center gap-2 text-xs text-amber-200">
             {isDirty ? (
               <>
@@ -533,7 +536,10 @@ export function SettingsPage() {
             <Info className="w-4 h-4" />
             System Information
           </h2>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
+          {/* DASH-ELEC-183: collapse to a single column on the narrowest panel
+              widths (compact density / sidebar-expanded settings) so long
+              hostnames + version strings don't overflow the 32px gap. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-surface-500">Platform</span>
               <span className="text-surface-300">{systemInfo.platform} ({systemInfo.arch})</span>

@@ -952,8 +952,14 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): referrerPolicy=no-referrer on the <a> + <img>
+                              so a customer's photo URL can never leak via the Referer header to a third
+                              party (chrome extension, embedded preview, mis-configured CDN). Pairs with
+                              `rel="noopener noreferrer"` on the anchor. Server-side signed-URL revocation
+                              is still required for full GDPR Art.17 compliance — tracked in WEB-FJ-002. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
                           <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
@@ -971,8 +977,10 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer — see Pre-Repair block above. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
                           <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
@@ -1047,8 +1055,10 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
                           <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
@@ -1066,8 +1076,10 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
                           <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}

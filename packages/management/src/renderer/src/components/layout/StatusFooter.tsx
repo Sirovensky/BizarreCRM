@@ -67,8 +67,10 @@ export function StatusFooter() {
     pieces.push({ label: 'host', value: stats.hostname });
   }
 
+  // DASH-ELEC-177: window minWidth is 900px so the `sm:` (640) breakpoint is
+  // always satisfied; the `hidden sm:flex` guard was dead. Just always flex.
   return (
-    <footer className="hidden sm:flex items-center gap-x-3 gap-y-1 px-3 py-1 text-[10px] text-surface-500 border-t border-surface-800 bg-surface-950 flex-wrap">
+    <footer className="flex items-center gap-x-3 gap-y-1 px-3 py-1 text-[10px] text-surface-500 border-t border-surface-800 bg-surface-950 flex-wrap">
       {pieces.map((p, i) => (
         <span key={i} className="inline-flex items-center gap-1">
           <span className="text-surface-600">{p.label}</span>

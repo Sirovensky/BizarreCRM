@@ -240,7 +240,12 @@ export function TenantsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-base lg:text-lg font-bold text-surface-100 flex items-center gap-2">
           <Users className="w-5 h-5 text-accent-400" />
-          Tenants ({tenants.length})
+          {/* DASH-ELEC-234: when the search/status filter is active show the
+              filtered count vs total ("3 of 27") so the heading reflects what
+              the table actually renders. Falls back to plain count otherwise. */}
+          Tenants ({filteredTenants.length === tenants.length
+            ? tenants.length
+            : `${filteredTenants.length} of ${tenants.length}`})
         </h1>
         <div className="flex items-center gap-2">
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
@@ -529,7 +534,11 @@ export function TenantsPage() {
           <div className="w-[420px] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6">
             <h3 className="text-sm font-semibold text-surface-100 mb-4">Create New Tenant</h3>
             <div className="space-y-3 mb-5">
+              {/* DASH-ELEC-236: cap slug input at 30 chars to match handleCreate's
+                  client-side validation (the IPC schema accepts 64 but we reject
+                  anything over 30 with a toast — let the input prevent it). */}
               <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="Slug (e.g. my-shop)"
+                maxLength={30}
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
               <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Shop name"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />

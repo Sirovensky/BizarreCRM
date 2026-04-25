@@ -271,7 +271,10 @@ export function TicketDetailPage() {
       const prev = queryClient.getQueryData(['ticket', ticketId]);
       queryClient.setQueryData(['ticket', ticketId], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone over
+        // JSON.parse(JSON.stringify(...)) — preserves Dates/undefined that
+        // ticket payloads carry (created_at, etc.) and is faster on hot path.
+        const clone = structuredClone(old);
         const t = clone?.data?.data;
         if (t) {
           t.status_id = newStatusId;
@@ -334,7 +337,8 @@ export function TicketDetailPage() {
     // we keep the page's data so if Undo is clicked, state just works.
     queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
       if (!old) return old;
-      const clone = JSON.parse(JSON.stringify(old));
+      // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone — see note above.
+      const clone = structuredClone(old);
       const list = clone?.data?.data?.tickets || clone?.data?.tickets;
       if (Array.isArray(list)) {
         const filtered = list.filter((t: any) => t.id !== ticketId);

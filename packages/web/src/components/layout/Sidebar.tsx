@@ -33,6 +33,14 @@ import {
   Target,
   TrendingUp,
   Gift,
+  Star,
+  Phone,
+  DollarSign,
+  BookOpen,
+  Smartphone,
+  Repeat,
+  Award,
+  Trophy,
 } from 'lucide-react';
 
 interface NavItem {
@@ -67,15 +75,21 @@ const navSections: NavSection[] = [
     title: 'Operations',
     items: [
       { label: 'Inventory', path: '/inventory', icon: Package },
+      { label: 'Catalog', path: '/catalog', icon: BookOpen },
       { label: 'Invoices', path: '/invoices', icon: FileText },
       { label: 'Expenses', path: '/expenses', icon: Receipt },
       { label: 'Purchase Orders', path: '/purchase-orders', icon: Package },
+      { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
+      { label: 'Loaners', path: '/loaners', icon: Smartphone },
+      { label: 'Gift Cards', path: '/gift-cards', icon: Gift },
+      { label: 'Subscriptions', path: '/subscriptions', icon: Repeat },
     ],
   },
   {
     title: 'Communications',
     items: [
       { label: 'Messages', path: '/communications', icon: MessageSquare },
+      { label: 'Voice Calls', path: '/voice', icon: Phone },
       { label: 'Leads', path: '/leads', icon: UserPlus },
       { label: 'Pipeline', path: '/pipeline', icon: Kanban },
       { label: 'Calendar', path: '/calendar', icon: Calendar },
@@ -89,10 +103,13 @@ const navSections: NavSection[] = [
       { label: 'Segments', path: '/marketing/segments', icon: Target },
       { label: 'NPS Trend', path: '/marketing/nps-trend', icon: TrendingUp },
       { label: 'Referrals', path: '/marketing/referrals', icon: Gift },
+      { label: 'Reviews', path: '/reviews', icon: Star },
     ],
   },
   // FA-L3: Team + Billing sections were routed but missing from the sidebar,
   // making them effectively invisible unless staff memorized the URLs.
+  // WEB-FL-006 (Fixer-B14): added Performance Reviews + Goals so the
+  // /team/reviews and /team/goals routes have a discoverable entry.
   {
     title: 'Team',
     items: [
@@ -100,6 +117,8 @@ const navSections: NavSection[] = [
       { label: 'Shifts', path: '/team/shifts', icon: Calendar },
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
+      { label: 'Goals', path: '/team/goals', icon: Trophy },
+      { label: 'Performance Reviews', path: '/team/reviews', icon: Award, adminOnly: true },
     ],
   },
   {

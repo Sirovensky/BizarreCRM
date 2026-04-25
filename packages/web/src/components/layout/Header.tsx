@@ -102,6 +102,17 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  // WEB-FO-009 (Fixer-B14 2026-04-25): track mount state so an in-flight
+  // fetch resolved AFTER unmount (logout race, route change) does not call
+  // setState on a torn-down component. The `api.get` wrappers don't expose
+  // an axios `signal` — until they do, the alive-ref is the surgical guard.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Fetch unread count on mount + on visibility-change resume.
   // @audit-fixed (WEB-FO-006 / Fixer-B12 2026-04-25): dropped the 60s
@@ -115,6 +126,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await notificationApi.unreadCount();
+      if (!isMountedRef.current) return;
       setUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
       // Silently handled — count stays at previous value
@@ -124,6 +136,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const fetchSmsUnreadCount = useCallback(async () => {
     try {
       const res = await smsApi.unreadCount();
+      if (!isMountedRef.current) return;
       setSmsUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
       // Silently handled — count stays at previous value
@@ -176,11 +189,13 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     setNotifLoading(true);
     try {
       const res = await notificationApi.list({ pagesize: 10 });
+      if (!isMountedRef.current) return;
       setNotifications(res.data?.data?.notifications ?? []);
     } catch (err: unknown) {
       // Silently handled — notifications stay at previous state
     } finally {
-      setNotifLoading(false);
+      // Guard the loading flag too — same unmount race.
+      if (isMountedRef.current) setNotifLoading(false);
     }
   }, []);
 
