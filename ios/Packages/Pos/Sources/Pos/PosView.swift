@@ -670,6 +670,18 @@ public struct PosView: View {
         }
     }
 
+    // MARK: - iPad inspector state
+
+    /// The cart line currently open in the inspector pane. `nil` = inspector
+    /// closed. Set by tapping a line in `PosIPadCartPanel`.
+    @State private var editingCartItem: CartItem?
+
+    /// Ephemeral edit buffers for the inspector pane — mirrors the selected
+    /// `CartItem` fields while the cashier makes changes before Save.
+    @State private var inspectorQty: Int = 1
+    @State private var inspectorDiscountCents: Int = 0
+    @State private var inspectorNote: String = ""
+
     // MARK: - Cart layouts (Frame 2/3)
 
     private var compactLayout: some View {
@@ -701,47 +713,273 @@ public struct PosView: View {
         }
     }
 
-    /// iPad regular layout. Uses an `HStack` rather than a nested
-    /// `NavigationSplitView` — POS is already mounted inside the outer
-    /// `MainShellView` split view's detail column, and stacking split views
-    /// forces SwiftUI to render two sets of navigation chrome, pushing the
-    /// Items + Cart columns down below the top of the screen. An `HStack`
-    /// inside a single `NavigationStack` keeps both columns flush with the
-    /// top edge while still giving us a single nav bar for the toolbar.
+    /// iPad regular layout — `PosRegisterLayout` two-column split with an
+    /// inspector pane that slides in from the trailing edge when a cart line
+    /// is tapped for editing.
+    ///
+    /// Layout geometry:
+    ///   - Left ~65 % — catalog (search + tile grid)
+    ///   - Right ~35 % — condensed cart totals panel
+    ///   - Trailing overlay — inspector pane (slides over the cart column)
     private var regularLayout: some View {
         NavigationStack {
-            HStack(spacing: 0) {
-                PosSearchPanel(
-                    search: search,
-                    onPick: pick,
-                    onAddCustom: { showingCustomLine = true },
-                    showsCustomerCTAs: !cart.hasCustomer,
-                    onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
-                    onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
-                )
-                .frame(minWidth: 320, idealWidth: 420, maxWidth: 540)
+            ZStack(alignment: .trailing) {
+                PosRegisterLayout(catalogFraction: 0.65) {
+                    // ── Catalog slot ──────────────────────────────────────
+                    PosSearchPanel(
+                        search: search,
+                        onPick: pick,
+                        onAddCustom: { showingCustomLine = true },
+                        showsCustomerCTAs: !cart.hasCustomer,
+                        onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
+                        onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
+                        onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                    )
+                } cart: {
+                    // ── Cart slot (condensed iPad panel) ──────────────────
+                    PosIPadCartPanel(
+                        cart: cart,
+                        onCharge: startChargeV5,
+                        onSelectTender: { showingTenderSelect = true }
+                    )
+                }
 
-                Divider()
+                // ── Inspector pane (trailing slide-in) ────────────────────
+                if editingCartItem != nil {
+                    Color.black.opacity(0.25)
+                        .ignoresSafeArea()
+                        .onTapGesture { editingCartItem = nil }
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
 
-                PosCartPanel(
-                    cart: cart,
-                    onCharge: startChargeV5,
-                    onOpenDrawer: openDrawer,
-                    onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
-                    onRemoveCustomer: { cart.detachCustomer() },
-                    editQuantityFor: $editQuantityFor,
-                    editPriceFor: $editPriceFor,
-                    onShowDiscount: { showingDiscountSheet = true },
-                    onShowTip: { showingTipSheet = true },
-                    onShowFees: { showingFeesSheet = true }
-                )
-                .frame(maxWidth: .infinity)
+                if let item = editingCartItem {
+                    iPadInspectorPane(item: item)
+                        .frame(width: 320)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .zIndex(2)
+                }
             }
+            .animation(BrandMotion.snappy, value: editingCartItem?.id)
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { posToolbar }
         }
+    }
+
+    /// The inspector pane rendered inline (not as a sheet) when a cart line
+    /// is tapped on iPad. Matches mockup screen 3: qty stepper / unit price
+    /// display / line discount / note field / Remove + Save actions.
+    @ViewBuilder
+    private func iPadInspectorPane(item: CartItem) -> some View {
+        VStack(spacing: 0) {
+            // ── Header ────────────────────────────────────────────────────
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(item.name)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(2)
+                    if let sku = item.sku {
+                        Text("SKU \(sku)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                Spacer(minLength: BrandSpacing.xs)
+                Button {
+                    editingCartItem = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close inspector")
+                .accessibilityIdentifier("pos.inspector.close")
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface2)
+
+            Divider().background(.bizarreOutline)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // ── Qty stepper ───────────────────────────────────────
+                    inspectorRow {
+                        HStack {
+                            Text("Qty")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            HStack(spacing: 0) {
+                                Button {
+                                    if inspectorQty > 1 { inspectorQty -= 1 }
+                                } label: {
+                                    Image(systemName: "minus")
+                                        .frame(width: DesignTokens.Touch.minTargetSide,
+                                               height: DesignTokens.Touch.minTargetSide)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(inspectorQty <= 1)
+                                .accessibilityLabel("Decrease quantity")
+
+                                Text("\(inspectorQty)")
+                                    .font(.brandTitleMedium())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                    .monospacedDigit()
+                                    .frame(minWidth: 36)
+
+                                Button {
+                                    inspectorQty += 1
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .frame(width: DesignTokens.Touch.minTargetSide,
+                                               height: DesignTokens.Touch.minTargetSide)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Increase quantity")
+                            }
+                            .foregroundStyle(.bizarreOrange)
+                            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Unit price (display only — tap editPriceFor to edit) ──
+                    inspectorRow {
+                        HStack {
+                            Text("Unit price")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            Text(CartMath.formatCents(CartMath.toCents(item.unitPrice)))
+                                .font(.brandHeadlineMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .monospacedDigit()
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Line discount ─────────────────────────────────────
+                    inspectorRow {
+                        HStack {
+                            Text("Line discount")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            if inspectorDiscountCents > 0 {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    Text("−\(CartMath.formatCents(inspectorDiscountCents))")
+                                        .font(.brandBodyLarge())
+                                        .foregroundStyle(.bizarreTeal)
+                                        .monospacedDigit()
+                                    Button {
+                                        inspectorDiscountCents = 0
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.footnote)
+                                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Remove discount")
+                                }
+                            } else {
+                                Button("+ Apply") {
+                                    showingDiscountSheet = true
+                                }
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreTeal)
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("pos.inspector.applyDiscount")
+                            }
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Note field ────────────────────────────────────────
+                    inspectorRow {
+                        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                            Text("Note")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            TextField("Add a note for the receipt…", text: $inspectorNote, axis: .vertical)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .lineLimit(3, reservesSpace: true)
+                                .padding(BrandSpacing.sm)
+                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                                .accessibilityIdentifier("pos.inspector.note")
+                        }
+                    }
+                }
+            }
+
+            Divider().background(.bizarreOutline)
+
+            // ── Footer: Remove + Save ─────────────────────────────────────
+            HStack(spacing: BrandSpacing.sm) {
+                Button(role: .destructive) {
+                    cart.removeLine(id: item.id)
+                    editingCartItem = nil
+                    BrandHaptics.tap()
+                } label: {
+                    Text("Remove")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .accessibilityIdentifier("pos.inspector.remove")
+
+                Button {
+                    cart.update(id: item.id, quantity: inspectorQty)
+                    if inspectorDiscountCents != item.discountCents {
+                        cart.update(id: item.id, discountCents: inspectorDiscountCents)
+                    }
+                    editingCartItem = nil
+                    BrandHaptics.success()
+                } label: {
+                    Text("Save")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.inspector.save")
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1)
+        }
+        .background(Color.bizarreSurface1.ignoresSafeArea())
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 24, x: -4, y: 0)
+        .padding(.vertical, BrandSpacing.sm)
+        .padding(.trailing, BrandSpacing.xs)
+        .onAppear {
+            inspectorQty = item.quantity
+            inspectorDiscountCents = item.discountCents
+            inspectorNote = item.notes ?? ""
+        }
+        .onChange(of: item.id) { _, _ in
+            inspectorQty = item.quantity
+            inspectorDiscountCents = item.discountCents
+            inspectorNote = item.notes ?? ""
+        }
+        .accessibilityIdentifier("pos.inspector")
+    }
+
+    /// Uniform padding wrapper for each inspector section row.
+    @ViewBuilder
+    private func inspectorRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var posToolbar: some ToolbarContent {
