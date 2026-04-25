@@ -7,6 +7,187 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
+
+### P0
+- [ ] WEB-W3-001. **Inventory stocktake barcode scan uses partial keyword search — wrong item selected on scan.** `pages/inventory/StocktakePage.tsx`. Fix: exact match by barcode/SKU first; only fall back to keyword if no exact hit.
+- [ ] WEB-W3-002. **Stocktake quick-scan defaults to `in_stock+1` not absolute count — corrupts data.** `StocktakePage.tsx`. Fix: scan must record absolute count input or be a separate "increment" mode clearly labeled.
+- [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
+- [ ] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** `pages/pos/CashRegisterPage.tsx` / `unified-pos`. Fix: each card leg of split tender must call BlockChyp `charge` for that amount; only mark paid on terminal success.
+- [ ] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** `pages/billing/`. Fix: implement `POST /payment-links` with token, public `/pay/:token` page that runs BlockChyp Hosted Checkout.
+
+### P1 (silent no-op)
+- [ ] WEB-W3-006. **Auto-reorder uses raw item ID input — no search, no enable/disable toggle.** `pages/inventory/AutoReorderPage.tsx`. Fix: replace ID input with item picker (autocomplete by SKU/name); add per-item enabled toggle.
+- [ ] WEB-W3-007. **Bin locations: no edit/rename for existing bins.** `BinLocationsPage.tsx`. Fix: add inline rename + `PUT /bin-locations/:id`.
+- [ ] WEB-W3-008. **Inventory age buckets capped at 100, no pagination.** `InventoryAgePage.tsx`. Fix: add pagination params + load-more.
+- [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
+- [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
+- [ ] WEB-W3-011. **Serial numbers page uses raw item ID input; no cross-item serial search.** `SerialNumbersPage.tsx`. Fix: item picker + `GET /inventory/serials?serial=` global search.
+- [ ] WEB-W3-012. **Shrinkage page uses raw item ID input.** `ShrinkagePage.tsx`. Fix: item picker.
+- [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
+- [ ] WEB-W3-014. **`wholesale_price` missing from inventory edit form.** `InventoryDetailPage.tsx`. Fix: add field; route already accepts column.
+- [ ] WEB-W3-015. **POS "Other" payment has no reference capture.** `CashRegisterPage.tsx`. Fix: add reference field on Other tender (e.g. check #, voucher code).
+- [ ] WEB-W3-016. **POS Z-report Print prints full page not modal.** `pages/pos/`. Fix: `window.print()` after wrapping report in print-only stylesheet, or open new window with z-report HTML.
+- [ ] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** `pages/billing/`. Fix: wire bulk-select + `POST /invoices/send-reminder` per row.
+- [ ] WEB-W3-018. **Payment-links page uses raw Customer/Invoice ID inputs.** `pages/billing/`. Fix: pickers.
+- [ ] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** `pages/billing/`. Fix: structured editor — list of steps with day-offset + channel + template selector.
+- [ ] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** `pages/subscriptions/`. Fix: implement `POST /subscriptions/:id/run-billing` that creates invoice + charges saved card via BlockChyp tokenized CNP.
+- [ ] WEB-W3-021. **Expenses create form has no receipt upload.** `pages/expenses/`. Fix: add file upload wired to `expenseReceipts.routes.ts`.
+- [ ] WEB-W3-022. **Gift cards: no balance-adjustment UI.** `pages/gift-cards/`. Fix: add adjust modal calling existing balance-adjust route, or add route if missing.
+- [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
+- [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
+
+### P2 (cosmetic / missing UI)
+- [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
+- [ ] WEB-W3-026. **Inventory age: no date-range filter; cost shows per-unit not total.** `InventoryAgePage.tsx`.
+- [ ] WEB-W3-027. **Shrinkage: no filter by reason/date; no export.** `ShrinkagePage.tsx`.
+- [ ] WEB-W3-028. **Print Barcode hidden when no SKU/UPC.** `InventoryDetailPage.tsx`. Fix: generate UUID-based barcode fallback or show disabled with tooltip.
+- [ ] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`.
+- [ ] WEB-W3-030. **Subscriptions Cancel has no end-date display.** `pages/subscriptions/`.
+- [ ] WEB-W3-031. **Expenses list has no category/date filter.** `pages/expenses/`.
+- [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
+- [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
+- [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
+- [ ] WEB-W3-035. **Loaners list: no search / status filter.** `pages/loaners/`.
+- [ ] WEB-W3-036. **Catalog device-filter: 2-char minimum with no visible hint.** `pages/catalog/`. Fix: add hint text.
+- [ ] WEB-W3-037. **Team goals: only 3 hardcoded metric types.** `pages/team/`. Fix: load metrics from server enum or expand list.
+
+## Web Audit Wave-WEB-2026-04-24 — settings tabs + setup wizard (search agent A1)
+
+### P0
+- [ ] WEB-W1-001. **`pos_require_pin_sale` / `pos_require_pin_ticket` — PIN gate frontend-only; direct API bypass.**
+  - File: `packages/web/src/pages/settings/PosSettings.tsx:220-236`
+  - Fix: enforce server-side. POS routes should require a PIN-validation header on tendering / ticket actions when these flags are true. Add middleware `requirePosPin` reading store_config + `pos_pin_hash`.
+
+### P1 (silent no-op)
+- [ ] WEB-W1-002. **`ticket_show_closed` stored but never read by backend.** — `TicketsRepairsSettings.tsx`. Fix: tickets list route filters out closed tickets when false (`statuses NOT IN (closed, canceled)`).
+- [x] WEB-W1-003. **`ticket_show_empty` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-008.
+- [ ] WEB-W1-004. **`ticket_default_view` client-only, `kanban` option unimplemented but marked live.** — flip to `coming_soon` until kanban default works, or add server-side default-view persistence.
+- [ ] WEB-W1-005. **`ticket_default_filter` — date-range value assigned to `statusFilter` variable (type mismatch).** — `TicketsRepairsSettings.tsx`. Fix: split into `ticket_default_date_filter` + `ticket_default_status_filter`.
+- [ ] WEB-W1-006. **`ticket_default_pagination` key-name drift between save and read.** — verify save key matches consumed key in `tickets.routes.ts`.
+- [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
+- [x] WEB-W1-008. **`repair_default_input_criteria` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-010 (autoFocus IMEI/Serial in RepairsTab).
+- [x] WEB-W1-009. **`ticket_default_sort_order` / `ticket_default_date_sort` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-009.
+- [ ] WEB-W1-010. **POS keys `pos_show_repairs/products/miscellaneous` vs backend's `pos_show_devices/services/etc.` — different key sets.** — `PosSettings.tsx` + `pos.routes.ts`. Pick one set, drop the other, write migration to map old → new.
+- [x] WEB-W1-011. **`pos_show_out_of_stock` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-005.
+- [x] WEB-W1-012. **`pos_show_invoice_notes` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-007.
+- [x] WEB-W1-013. **`pos_show_outstanding_alert` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-006.
+- [ ] WEB-W1-014. **`pos_show_images` dead.** — wire into POS catalog tile render.
+- [ ] WEB-W1-015. **`pos_show_discount_reason` dead.** — wire into POS discount modal (require reason input when true).
+- [ ] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** — `ReceiptSettings.tsx` + print route. Pick canonical value; migrate stored.
+- [ ] WEB-W1-017. **8x `receipt_cfg_*_page` variants — 2 of 8 wired (security_code_page + po_so_page) per WEB-WA-003/004; remaining 6 still saved-but-not-read.** Identify the other 6 keys + wire each into letter renderer.
+- [x] WEB-W1-018. **`receipt_cfg_line_price_incl_tax_thermal` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-002.
+- [ ] WEB-W1-019. **Invoice branding keys client-side only; server-sent invoices unbranded.** — `InvoiceSettings.tsx`. Fix: server-side PDF/email render must read same branding keys.
+- [ ] WEB-W1-020. **`invoice_payment_terms` no runtime consumer.** — wire into invoice create + PDF render.
+- [ ] WEB-W1-021. **Voice inputs uncontrolled (`defaultChecked`/DOM query) — brittle save.** — `SmsVoiceSettings.tsx`. Convert to controlled inputs with React state.
+- [ ] WEB-W1-022. **`POST /settings/sms/reload` endpoint existence unverified.** — `SmsVoiceSettings.tsx`. Verify route in `settings.routes.ts`; if missing, add (re-init Twilio client from updated creds) or remove button.
+- [x] WEB-W1-023. **`lead_auto_assign` + `estimate_followup_days` registry trim verified.** CLOSED 2026-04-24 — verified absent from settingsDeadToggles.ts post-commit a0a81865.
+- [ ] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed in `blockchyp.ts`.** — verify; if not read, wire terminal-capture toggle.
+
+### P2 (cosmetic / missing UI)
+- [ ] WEB-W1-025. **`checkin_default_category` hardcoded option list.** — `PosSettings.tsx`. Fix: load options from `categories` table.
+- [ ] WEB-W1-026. **`receipt_header` / `receipt_footer` written by two separate forms — last-write-wins.** — `ReceiptSettings.tsx`. Fix: single source of truth form.
+- [ ] WEB-W1-027. **`theme_primary_color` requires page refresh to apply after save.** — wire `useEffect` listener on store_config update; re-run AppShell color setter.
+- [ ] WEB-W1-028. **Webhook event list hardcoded in UI.** — load from server (`/webhooks/events` enum).
+- [ ] WEB-W1-029. **`auto_reply_enabled` / `auto_reply_message` missing from SmsVoiceSettings UI** (already wired backend in WEB-WB-001). — add inputs to surface.
+- [ ] WEB-W1-030. **3CX keys (`tcx_*`) missing from SmsVoiceSettings.** — these are intentionally dead; either hide or render with Coming Soon badge.
+- [ ] WEB-W1-031. **`notification_digest_mode` / `notification_digest_hour` missing from NotificationsSettings.** — render with Coming Soon badge until digest dispatcher exists.
+- [ ] WEB-W1-032. **`settingsSearchIndex` includes `coming_soon` entries pointing to tabs with no UI controls.** — filter coming_soon-without-UI from index.
+- [ ] WEB-W1-033. **`findMetadataOnlyDeadKeys()` never called — drift goes undetected.** — call in dev-only banner inside SettingsPage to surface drift.
+- [ ] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection before advancing.** — `pages/setup/`. Add `POST /setup/test-smtp` route + button on step.
+- [ ] WEB-W1-035. **Setup wizard: no "back" navigation between sub-steps.** — add Back button reading wizard step state.
+
+## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
+
+### P0 (blocks workflow / data loss)
+- [ ] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.**
+  - File: `packages/web/src/pages/invoices/` (list, bulk action handler)
+  - Symptom: button reports success; customer never contacted.
+  - Fix: in invoices route, on reminder action enqueue notification via `services/notifications.ts` (email + SMS per customer prefs) before timestamping.
+- [ ] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).**
+  - File: `packages/web/src/pages/invoices/` (InstallmentPlanWizard component)
+  - Fix: add `packages/server/src/routes/installments.routes.ts` with create/list/cancel handlers + migration for `installment_plans` table OR remove wizard until built.
+- [ ] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route — likely 404.**
+  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` or `TicketActions.tsx`
+  - Fix: confirm endpoint in `tickets.routes.ts`; if missing, add `POST /tickets/:id/clone-warranty` that copies ticket with `is_warranty=true` and parent reference.
+- [ ] WEB-W2-004. **Ticket merge dialog calls unverified route — likely 404.**
+  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` (merge dialog)
+  - Fix: implement `POST /tickets/merge` that consolidates devices/notes/payments under target ticket id and soft-deletes source.
+
+### P1 (silent no-op / broken feature)
+- [x] WEB-W2-005. **Overview-bar status buttons send string group names, not numeric IDs.** CLOSED 2026-04-24 — 1233b978
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
+  - Fix: map group label → status_id before query param.
+- [ ] WEB-W2-006. **Bulk "Assign" missing from UI although backend supports it.**
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx` (bulk action menu)
+  - Fix: add Assign action wired to existing bulk endpoint.
+- [ ] WEB-W2-007. **Saved filter presets not persisted — lost on reload.**
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
+  - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
+- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
+  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
+- [x] WEB-W2-009. **Unassign sends `null as any` — type-unsafe.** CLOSED 2026-04-24 — 1233b978
+  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
+  - Fix: type assignee field as `number | null`; route accepts null.
+- [x] WEB-W2-010. **Appointment note field name mismatch (`note` saved vs `notes` displayed).** CLOSED 2026-04-24 — 42e9b254
+  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
+  - Fix: normalize to `notes` in DB + payload + display.
+- [ ] WEB-W2-011. **Activity filter tabs are client-side only — incomplete if backend paginates.**
+  - File: `packages/web/src/pages/tickets/TicketNotes.tsx`
+  - Fix: pass filter as query param to activity endpoint; rebuild filtering server-side.
+- [x] WEB-W2-012. **DeviceEditForm silently drops `device_type`, `color`, `network`, `pre_conditions`.** CLOSED 2026-04-24 — 3062bde3
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx`
+  - Fix: include these fields in PUT payload; verify route accepts them.
+- [x] WEB-W2-013. **Price editing uses `prompt()` — blocked on iOS Safari.** CLOSED 2026-04-24 — 2f381cdc
+  - File: `packages/web/src/pages/tickets/TicketPayments.tsx`
+  - Fix: replace `prompt()` with inline modal/input.
+- [ ] WEB-W2-014. **`repairPricingApi` import — backend route unverified.**
+  - File: `packages/web/src/pages/tickets/TicketWizard.tsx`
+  - Fix: confirm `repairPricing.routes.ts` shape matches client; align if not.
+- [x] WEB-W2-015. **Wallet pass `window.open(blob)` blocked by popup policies.** CLOSED 2026-04-24 — 5699cb5e
+  - File: `packages/web/src/pages/customers/CustomerDetailPage.tsx`
+  - Fix: trigger anchor download with `download` attr instead of `window.open`.
+- [ ] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: hide button until partner integration exists, or wire to real provider.
+- [ ] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.**
+  - File: `packages/server/src/routes/blockchyp.routes.ts`
+  - Fix: implement adjustTip per BlockChyp SDK or remove tip-adjust UI button.
+- [ ] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.**
+  - File: `packages/web/src/pages/invoices/` + `packages/server/src/routes/creditNotes.routes.ts`
+  - Fix: add columns via migration if missing or drop fields from form.
+- [ ] WEB-W2-019. **Estimate line items display-only after creation — can't edit.**
+  - File: `packages/web/src/pages/estimates/`
+  - Fix: add inline edit + PUT `/estimates/:id/line-items/:lineId`.
+- [ ] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.**
+  - File: `packages/web/src/pages/estimates/`
+  - Fix: add Reject action calling existing status route.
+- [x] WEB-W2-021. **Lead appointment note field mismatch (same as WEB-W2-010).** CLOSED 2026-04-24 — 42e9b254
+  - File: `packages/web/src/pages/leads/`
+  - Fix: same normalization to `notes`.
+- [ ] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: pass active filter params to stats endpoint OR compute from filtered result set.
+- [ ] WEB-W2-023. **Overdue count computed from current page only — inaccurate.**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: dedicated `/invoices/stats?overdue=1` query independent of pagination.
+
+### P2 (cosmetic / minor UX)
+- [x] WEB-W2-024. **Dead `_unusedMut` mutation variable.** CLOSED 2026-04-24 — 1233b978 — `pages/tickets/TicketListPage.tsx` — remove.
+- [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
+- [x] WEB-W2-026. **QC sign-off button always visible regardless of status.** CLOSED 2026-04-24 — 3e278dda — `pages/tickets/TicketDetailPage.tsx` — gate visibility on status === ready_for_qc.
+- [x] WEB-W2-027. **Appointment `end_time` uses locale-pinned `toLocaleTimeString`.** CLOSED 2026-04-24 — 42e9b254 — `pages/tickets/TicketSidebar.tsx` — use app date helper.
+- [x] WEB-W2-028. **`outstanding_balance` column not sortable.** CLOSED 2026-04-24 — a67ec4cb — `pages/customers/CustomerListPage.tsx` — add sort param.
+- [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
+- [x] WEB-W2-030. **Membership date uses `toLocaleDateString()` not app helper.** CLOSED 2026-04-24 — 5699cb5e — `pages/customers/CustomerDetailPage.tsx`.
+- [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
+- [ ] WEB-W2-032. **No sortable columns on invoice table.** — `pages/invoices/`.
+- [ ] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** — `pages/estimates/`.
+- [ ] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** — add print stylesheet or PDF route.
+- [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
+- [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
+- [x] WEB-W2-037. **MissingPartsCard supplier links use `window.open` — popup blocker risk.** CLOSED 2026-04-24 — b0801919 — `pages/dashboard/` — use anchor with `target="_blank" rel="noopener"`.
+
 ### Wave-75 scan-loop findings (2026-04-24) — customer GDPR re-auth (blocked on user WIP)
 - [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/customers.routes.ts:1870-1890; fix=checkWindowRate('customer_gdpr_reauth',userId:ip,5,3600_000)+cap-password<=72+recordWindowFailure-on-mismatch; BLOCKED: file is user WIP (never touch per project rule) -->
