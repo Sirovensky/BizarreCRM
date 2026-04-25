@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Lock, Loader2 } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
+
+// WEB-FC-005: focusable selector for in-modal Tab cycle
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 interface PinModalProps {
   title?: string;
@@ -65,8 +68,44 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   const [lockedUntil, setLockedUntil] = useState<number | null>(initialLockout.lockedUntil);
   const [lockCountdown, setLockCountdown] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // WEB-FC-005: dialog ref drives the Tab focus trap below
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
+
+  // WEB-FC-005: keyboard handler — Esc closes the modal, Tab/Shift+Tab is
+  // trapped inside the dialog so keyboard users can't focus chrome behind
+  // the overlay.
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onCancel();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }, [onCancel]);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   // Countdown timer while locked out
   useEffect(() => {
@@ -130,6 +169,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pin-modal-title"
@@ -175,7 +215,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
               if (!isLocked) setError('');
             }}
             placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
 
           {error && (
@@ -193,7 +233,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             <button
               type="submit"
               disabled={!pin.trim() || verifying || isLocked}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50"
             >
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
             </button>

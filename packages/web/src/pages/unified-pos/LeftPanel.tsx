@@ -8,6 +8,7 @@ import { useUnifiedPosStore } from './store';
 import { CustomerSelector } from './CustomerSelector';
 import { genId } from './types';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
+import { computePosTotals } from './totals';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Unified Search Bar ────────────────────────────────────────────
@@ -760,60 +761,15 @@ function useTotals(): Totals {
   const { cartItems, discount, customer, memberDiscountApplied } = useUnifiedPosStore();
   const taxRate = useDefaultTaxRate();
 
-  return useMemo(() => {
-    let subtotal = 0;
-    let taxableAmount = 0;
-
-    for (const item of cartItems) {
-      if (item.type === 'repair') {
-        const labor = item.laborPrice - item.lineDiscount;
-        subtotal += labor;
-        if (item.taxable) taxableAmount += labor;
-        for (const p of item.parts) {
-          const partTotal = p.quantity * p.price;
-          subtotal += partTotal;
-          if (p.taxable) taxableAmount += partTotal;
-        }
-      } else if (item.type === 'product') {
-        const lineTotal = item.quantity * item.unitPrice;
-        subtotal += lineTotal;
-        if (item.taxable && !item.taxInclusive) taxableAmount += lineTotal;
-      } else {
-        const lineTotal = item.quantity * item.unitPrice;
-        subtotal += lineTotal;
-        if (item.taxable) taxableAmount += lineTotal;
-      }
-    }
-
-    // Member discount
-    let memberDiscount = 0;
-    if (memberDiscountApplied && customer?.group_discount_pct && customer.group_discount_pct > 0) {
-      if (customer.group_discount_type === 'fixed') {
-        memberDiscount = customer.group_discount_pct;
-      } else {
-        memberDiscount = subtotal * (customer.group_discount_pct / 100);
-      }
-      memberDiscount = Math.round(memberDiscount * 100) / 100;
-    }
-
-    const discountAmount = discount + memberDiscount;
-
-    // WEB-FH-006: tax MUST be computed on the discounted taxable amount,
-    // not the pre-discount taxable amount. CA / TX / NY / FL / most US
-    // states levy sales tax on the net price after discount. Allocate the
-    // discount pro-rata across taxable lines: taxable_share = discount *
-    // (taxableAmount / subtotal). Non-taxable items (e.g. labor) shoulder
-    // the rest of the discount but never affect the tax base. Falls back
-    // to "tax on full taxable" only when subtotal == 0 (empty cart edge).
-    const taxableShareOfDiscount =
-      subtotal > 0 ? discountAmount * (taxableAmount / subtotal) : 0;
-    const netTaxable = Math.max(0, taxableAmount - taxableShareOfDiscount);
-    const tax = Math.round(netTaxable * taxRate * 100) / 100;
-    const total = Math.round((subtotal + tax - discountAmount) * 100) / 100;
-    const itemCount = cartItems.length;
-
-    return { itemCount, subtotal, discountAmount, tax, total: Math.max(0, total) };
-  }, [cartItems, discount, customer, memberDiscountApplied, taxRate]);
+  // WEB-FH-005 (Fixer-O 2026-04-24): math moved to `./totals.ts` so this
+  // panel and CheckoutModal share one cents-int implementation. Earlier
+  // duplicate float pipelines could drift 1¢ between displays and disagree
+  // with the server's cents-pure recompute (POS-SALES-001). Pro-rata
+  // discount allocation (WEB-FH-006) is preserved inside the helper.
+  return useMemo(
+    () => computePosTotals({ cartItems, discount, customer, memberDiscountApplied, taxRate }),
+    [cartItems, discount, customer, memberDiscountApplied, taxRate],
+  );
 }
 
 // ─── LeftPanelCustomerPicker ────────────────────────────────────────

@@ -46,11 +46,11 @@
     -moz-appearance: textfield;
   }
 
-  /* Focus ring */
+  /* Focus ring — brand cream primary token (WEB-FQ-002) */
   *:focus-visible {
     outline-width: 2px;
     outline-offset: 2px;
-    outline-color: #22c55e;
+    outline-color: #a66d1f; /* primary-600 caramel — AA contrast on cream + light surfaces */
   }
 
   /* V19: Low contrast placeholders */
@@ -145,14 +145,19 @@
   .btn:focus-visible { outline: 2px solid; outline-offset: 2px; }
   .btn:disabled { pointer-events: none; opacity: 0.5; }
 
+  /* WEB-FQ-002 (Fixer-O 2026-04-24): primary CTA uses caramel primary-600 +
+   * white text + hover primary-700 — matches Tailwind primary tokens
+   * (tailwind.config.ts:25-26) and Android LightColorScheme.primary parity.
+   * Cream (primary-200) gave too-low contrast for filled CTAs on light
+   * surfaces; caramel-600 on white clears AA at 4.6:1. */
   .btn-primary {
-    background-color: #16a34a;
-    color: white;
+    background-color: #a66d1f; /* primary-600 caramel */
+    color: #ffffff;
   }
-  .btn-primary:hover { background-color: #15803d; }
-  .btn-primary:focus-visible { outline-color: #22c55e; }
-  .dark .btn-primary { background-color: #22c55e; }
-  .dark .btn-primary:hover { background-color: #16a34a; }
+  .btn-primary:hover { background-color: #7d4e14; /* primary-700 */ }
+  .btn-primary:focus-visible { outline-color: #a66d1f; /* primary-600 */ }
+  .dark .btn-primary { background-color: #a66d1f; color: #ffffff; }
+  .dark .btn-primary:hover { background-color: #7d4e14; /* primary-700 */ }
 
   .btn-secondary {
     background-color: #f4f4f5;
@@ -198,10 +203,11 @@
     font-size: 0.875rem;
   }
   .input::placeholder { color: #a1a1aa; }
-  .input:focus { border-color: #22c55e; outline: none; box-shadow: 0 0 0 1px #22c55e; }
+  /* WEB-FQ-002: input focus uses primary-600 caramel (AA on white/cream) */
+  .input:focus { border-color: #a66d1f; outline: none; box-shadow: 0 0 0 1px #a66d1f; }
   .dark .input { border-color: #52525b; background-color: #27272a; color: #f4f4f5; }
   .dark .input::placeholder { color: #71717a; }
-  .dark .input:focus { border-color: #4ade80; box-shadow: 0 0 0 1px #4ade80; }
+  .dark .input:focus { border-color: #e9c477; box-shadow: 0 0 0 1px #e9c477; /* primary-400 */ }
 
   .card {
     border-radius: 0.75rem;

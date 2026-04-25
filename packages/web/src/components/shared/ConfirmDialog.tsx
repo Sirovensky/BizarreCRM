@@ -100,7 +100,7 @@ export function ConfirmDialog({
               onChange={(e) => setTypedValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && typingMatch) onConfirm(); }}
               placeholder={confirmText}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
               autoComplete="off"
               spellCheck={false}
             />

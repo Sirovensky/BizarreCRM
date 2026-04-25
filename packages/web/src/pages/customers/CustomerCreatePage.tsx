@@ -218,6 +218,9 @@ export function CustomerCreatePage() {
                     onBlur={() => handleFieldBlur('name')}
                     className={cn('input', errors.first_name && 'border-red-500 dark:border-red-500')}
                     placeholder="John"
+                    aria-invalid={errors.first_name ? true : undefined}
+                    aria-describedby={errors.first_name ? 'first_name-error' : undefined}
+                    aria-required={true}
                   />
                 </FormField>
                 <FormField label="Last Name" htmlFor="last_name">
@@ -269,8 +272,10 @@ export function CustomerCreatePage() {
                   value={form.email}
                   onChange={(e) => updateField('email', e.target.value)}
                   onBlur={() => handleFieldBlur('email')}
-                  className="input"
+                  className={cn('input', errors.email && 'border-red-500 dark:border-red-500')}
                   placeholder="john@example.com"
+                  aria-invalid={errors.email ? true : undefined}
+                  aria-describedby={errors.email ? 'email-error' : undefined}
                 />
               </FormField>
               <FormField label="Phone" htmlFor="phone">
@@ -493,15 +498,26 @@ function FormField({
   error?: string;
   children: React.ReactNode;
 }) {
+  // WEB-FF-007: error span gets stable id `<htmlFor>-error` and role=alert so
+  // SR users hear the announcement when the error appears, and the matching
+  // input's aria-describedby points back here.
+  const errorId = htmlFor ? `${htmlFor}-error` : undefined;
   return (
     <div>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-red-500 ml-0.5" aria-hidden="true">*</span>}
       </label>
       {children}
       {error && (
-        <p className="mt-1 text-xs text-red-500">{error}</p>
+        <p
+          id={errorId}
+          role="alert"
+          aria-live="polite"
+          className="mt-1 text-xs text-red-500"
+        >
+          {error}
+        </p>
       )}
     </div>
   );
