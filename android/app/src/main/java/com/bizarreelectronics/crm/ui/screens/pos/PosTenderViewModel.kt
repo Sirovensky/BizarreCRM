@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.PosCartLineDto
+import com.bizarreelectronics.crm.data.remote.api.PosPaymentDto
 import com.bizarreelectronics.crm.data.remote.api.PosSaleRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -115,6 +116,12 @@ class PosTenderViewModel @Inject constructor(
                 cartDiscountCents = session.cartDiscountCents,
                 paymentMethod = session.appliedTenders.firstOrNull()?.method ?: "card",
                 paymentAmountCents = session.paidCents,
+                // Server prefers `payments[]` when non-empty so split-tender
+                // sales preserve the per-method breakdown on the receipt.
+                payments = session.appliedTenders.map { t ->
+                    PosPaymentDto(method = t.method, amountCents = t.amountCents)
+                },
+                linkedTicketId = session.linkedTicketId,
             )
 
             runCatching {

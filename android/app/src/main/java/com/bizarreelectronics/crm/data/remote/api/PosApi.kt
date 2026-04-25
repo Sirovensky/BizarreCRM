@@ -31,7 +31,21 @@ data class PosSaleRequest(
     @SerializedName("tip_cents") val tipCents: Long = 0L,
     @SerializedName("payment_method") val paymentMethod: String,
     @SerializedName("payment_amount_cents") val paymentAmountCents: Long,
+    /** Multi-tender split: server prefers this when non-empty over the single
+     *  payment_method/payment_amount_cents pair. */
+    val payments: List<PosPaymentDto>? = null,
+    /** When the cashier finalizes a Ready-for-pickup ticket the resulting
+     *  invoice gets attached so it shows up in the ticket's history. */
+    @SerializedName("linked_ticket_id") val linkedTicketId: Long? = null,
     val notes: String? = null,
+)
+
+data class PosPaymentDto(
+    val method: String,                                  // 'cash' | 'card' | 'ach' | 'store_credit' | 'gift'
+    @SerializedName("amount_cents") val amountCents: Long,
+    val processor: String? = null,
+    val reference: String? = null,
+    @SerializedName("transaction_id") val transactionId: String? = null,
 )
 
 data class PosSaleData(
