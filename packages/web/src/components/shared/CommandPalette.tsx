@@ -36,6 +36,18 @@ const MAX_RECENT = 10;
 const MIN_QUERY_LENGTH = 2;
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// @audit-fixed (WEB-FJ-016 / Fixer-B11 2026-04-25): wipe stored queries on
+// logout. Recent searches typically contain customer names, phone fragments,
+// and ticket numbers — leaving them in sessionStorage after logout means the
+// next staff member opening Cmd-K on the same tab session sees the previous
+// operator's investigation trail. The `bizarre-crm:auth-cleared` event is
+// dispatched by the auth store on logout / force-logout / switch-user.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try { sessionStorage.removeItem(RECENT_SEARCHES_KEY); } catch { /* best-effort */ }
+  });
+}
+
 interface RecentSearchEntry {
   query: string;
   storedAt: number;

@@ -194,13 +194,16 @@ export function PaymentLinksPage() {
       )}
 
       {!canManagePaymentLinks ? (
-        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200">
           Your role can view and copy payment request links, but only admins and managers can create or cancel them.
         </div>
       ) : null}
 
+      {/* WEB-FG-021 (Fixer-C11 2026-04-25): added dark: variants so the create
+          form honours the brand-surface-ramp swap instead of locking the page
+          into legacy-gray. */}
       {canManagePaymentLinks && paymentLinksEnabled && showForm ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3 dark:border-surface-700 dark:bg-surface-900">
           <div className="grid grid-cols-2 gap-3">
             <input
               type="text"
@@ -210,7 +213,7 @@ export function PaymentLinksPage() {
               placeholder="Customer ID (optional)"
               value={form.customer_id}
               onChange={(e) => setForm((f) => ({ ...f, customer_id: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
             <input
               type="text"
@@ -220,7 +223,7 @@ export function PaymentLinksPage() {
               placeholder="Invoice ID (optional)"
               value={form.invoice_id}
               onChange={(e) => setForm((f) => ({ ...f, invoice_id: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
             <input
               type="number"
@@ -228,20 +231,20 @@ export function PaymentLinksPage() {
               placeholder="Amount (USD)"
               value={form.amount}
               onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
             <input
               type="date"
               value={form.expires_at}
               onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
             <input
               type="text"
               placeholder="Description"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
             />
           </div>
           <button type="button"

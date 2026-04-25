@@ -80,35 +80,38 @@ export function DepositCollectModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/* WEB-FQ-021 (Fixer-C11 2026-04-25): added dark: variants so the modal
+          honours the brand-surface-ramp swap; previously stayed bone-white in
+          dark mode and floated as a legacy-gray island. */}
       <div
-        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-surface-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="deposit-collect-title" className="text-lg font-semibold text-gray-900">Collect Deposit</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 id="deposit-collect-title" className="text-lg font-semibold text-gray-900 dark:text-surface-50">Collect Deposit</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-surface-400">
           Amount collected now will be subtracted from the final invoice when the repair is
           finalized.
         </p>
 
         <div className="mt-4 space-y-3">
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Amount (USD)</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-surface-200">Amount (USD)</span>
             <input
               type="number"
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
               placeholder="100.00"
             />
           </label>
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Notes (optional)</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-surface-200">Notes (optional)</span>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
               maxLength={500}
               placeholder="e.g. parts order deposit"
             />
@@ -119,7 +122,7 @@ export function DepositCollectModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-surface-700 dark:text-surface-100 dark:hover:bg-surface-800"
           >
             Cancel
           </button>

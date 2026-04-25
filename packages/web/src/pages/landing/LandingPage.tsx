@@ -240,7 +240,7 @@ export default function LandingPage() {
           font-weight: 600; font-size: 16px; cursor: pointer; transition: all .2s;
           text-decoration: none;
         }
-        .btn-outline:hover { background: #0E7490; color: #fff; }
+        @media (hover: hover) { .btn-outline:hover { background: #0E7490; color: #fff; } }
 
         /* Grid paper subtle background */
         .grid-bg {
@@ -256,21 +256,29 @@ export default function LandingPage() {
           box-shadow: 0 8px 32px rgba(0,0,0,.12);
           transition: transform .3s ease;
         }
-        .photo-card:hover { transform: scale(1.02); }
         .photo-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
         /* Feature-grid card hover — replaces per-card inline onMouseEnter/Leave
            handlers that allocated new function refs on every render. */
         .feat-card { transition: box-shadow .25s, transform .25s; }
-        .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
 
         /* FA-012: footer link/button hover — pure CSS replaces per-link
            onMouseEnter/Leave that mutated .style.color (anti-pattern: forced
            reflow + new function ref every render + no keyboard parity). */
         .footer-link { color: #888; text-decoration: none; font-family: 'League Spartan', sans-serif; font-weight: 500; transition: color .15s ease; }
-        .footer-link:hover, .footer-link:focus-visible { color: #bc398f; }
+        .footer-link:focus-visible { color: #bc398f; }
         .footer-btn { background: none; border: none; color: #666; cursor: pointer; font-family: 'League Spartan', sans-serif; font-weight: 500; font-size: 14px; padding: 0; transition: color .15s ease; }
-        .footer-btn:hover, .footer-btn:focus-visible { color: #bc398f; }
+        .footer-btn:focus-visible { color: #bc398f; }
+
+        /* WEB-FL-025 (Fixer-C11 2026-04-25): gate :hover behind (hover: hover)
+           so touchscreen kiosks running the landing page don't get spurious
+           mouse-emulated hover styles that snap-stick after the touch ends. */
+        @media (hover: hover) {
+          .photo-card:hover { transform: scale(1.02); }
+          .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
+          .footer-link:hover { color: #bc398f; }
+          .footer-btn:hover { color: #bc398f; }
+        }
 
         @keyframes wave-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 

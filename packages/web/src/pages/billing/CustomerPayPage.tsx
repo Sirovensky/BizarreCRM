@@ -61,14 +61,26 @@ export function CustomerPayPage() {
       // block on analytics. Swallow the error but log it in dev so a broken
       // tracker is still visible. Not elevated to logger.warn because this is
       // public-internet traffic where transient network errors are expected.
-      axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/click`).catch((err) => {
-        // @audit-fixed (WEB-FG-013 / Fixer-B1 2026-04-25): static `import.meta.env.DEV`
-        // (no optional-chain) — Vite/Rollup statically replaces it at build time so the
-        // entire branch (and the `console.debug` body) is dead-code-eliminated from
-        // the production bundle. The previous `import.meta.env?.DEV` defeated that
-        // replacement because the optional-chain is a runtime member access.
-        if (import.meta.env.DEV) console.debug('[CustomerPayPage] click tracking failed (non-fatal)', err);
-      });
+      // @audit-fixed (WEB-FJ-014 / Fixer-B11 2026-04-25): de-dupe via
+      // sessionStorage so accidental refreshes + Slack/iMessage link unfurl
+      // previewers don't pollute click-conversion analytics with non-user
+      // activity. One POST per token per session — preview bots opening a
+      // fresh sessionStorage on each fetch will still hit it once, but the
+      // human user reloading 5x to "make sure" only fires once.
+      const clickKey = `crm:pay-click:${token}`;
+      let alreadyTracked = false;
+      try { alreadyTracked = sessionStorage.getItem(clickKey) === '1'; } catch { /* storage disabled */ }
+      if (!alreadyTracked) {
+        try { sessionStorage.setItem(clickKey, '1'); } catch { /* storage disabled */ }
+        axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/click`).catch((err) => {
+          // @audit-fixed (WEB-FG-013 / Fixer-B1 2026-04-25): static `import.meta.env.DEV`
+          // (no optional-chain) — Vite/Rollup statically replaces it at build time so the
+          // entire branch (and the `console.debug` body) is dead-code-eliminated from
+          // the production bundle. The previous `import.meta.env?.DEV` defeated that
+          // replacement because the optional-chain is a runtime member access.
+          if (import.meta.env.DEV) console.debug('[CustomerPayPage] click tracking failed (non-fatal)', err);
+        });
+      }
     } catch (err) {
       setView({
         kind: 'error',

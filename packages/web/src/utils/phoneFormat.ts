@@ -62,3 +62,34 @@ export function formatStorePhoneAsYouType(value: string): string {
   if (digits.length <= 6) return `+1 (${digits.slice(0, 3)})-${digits.slice(3)}`;
   return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
+
+/**
+ * WEB-FJ-004 / FIXED-by-Fixer-A11 2026-04-25 — non-reversible 8-hex-char
+ * fingerprint of a phone number, used as a localStorage draft-key suffix in
+ * place of the raw phone digits. Prevents anyone with shared-PC access to
+ * the browser's localStorage from harvesting `phone -> draft message body`
+ * pairs (medical-device repairs, addresses, account-recovery codes, door
+ * codes, etc.) by reading keys like `bizarrecrm:draft:42:draft_sms_+15551234567`.
+ *
+ * FNV-1a 32-bit — small, dependency-free, and "good enough" for opaque
+ * key namespacing. NOT a cryptographic hash and NOT a secret; collisions
+ * are tolerable here because draft restoration is best-effort UX, not a
+ * security boundary, and per-user namespacing already isolates buckets.
+ *
+ * Returned as 8 lowercase hex chars (e.g. "a3f2c980") so the resulting
+ * draft key stays a fixed, opaque length regardless of input format.
+ */
+export function obfuscatePhoneForStorageKey(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  // Empty/missing input still gets a stable key so callers can pass
+  // through "no phone selected" without branching.
+  const input = digits || phone;
+  let h = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    // FNV prime multiply — Math.imul keeps it 32-bit on JS engines.
+    h = Math.imul(h, 0x01000193);
+  }
+  // Coerce to unsigned and pad to 8 hex chars.
+  return (h >>> 0).toString(16).padStart(8, '0');
+}

@@ -9,6 +9,34 @@ import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 // data, and last-message WebSocket state.
 const AUTH_CLEAR_EVENT = 'bizarre-crm:auth-cleared';
 const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
+// WEB-FI-005 / FIXED-by-Fixer-A11 2026-04-25 — used to ask the App-level
+// router bridge to navigate to /login via react-router instead of a hard
+// `window.location.href = '/login'` reload. The hard reload was discarding
+// the React tree, killing in-flight uploads, and dropping any text that
+// the useDraft debounce hadn't flushed yet (up to 2 s of typed content).
+// SPA navigation keeps the tree alive so `auth-cleared` listeners can run
+// before the route changes and pending writes get flushed cleanly.
+const REQUEST_LOGIN_NAV_EVENT = 'bizarre-crm:request-login-nav';
+function requestLoginNav(): void {
+  if (typeof window === 'undefined') return;
+  // If nothing is listening yet (App not mounted, Suspense fallback), the
+  // listener that DOES eventually mount won't help — fall back to a hard
+  // nav after a microtask in that case so we never get stuck on a stale
+  // protected page. Bridge handler sets `window.__bizarreLoginNavReady`
+  // when it's wired up.
+  try {
+    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT));
+  } catch (err) {
+    console.warn('Failed to emit request-login-nav event', err);
+  }
+  setTimeout(() => {
+    if (window.location.pathname.startsWith('/login')) return;
+    if (!(window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady) {
+      window.location.href = '/login';
+    }
+  }, 0);
+}
+export { REQUEST_LOGIN_NAV_EVENT };
 function emitAuthCleared(): void {
   if (typeof window === 'undefined') return;
   try {
@@ -170,7 +198,10 @@ if (typeof window !== 'undefined') {
       useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
       emitAuthCleared();
       if (wasAuthed && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+        // WEB-FI-005: prefer SPA nav so the React tree (and useDraft
+        // beforeunload flush) survives. Falls back to hard nav if no
+        // bridge is mounted.
+        requestLoginNav();
       }
       return;
     }
@@ -205,8 +236,10 @@ if (typeof window !== 'undefined') {
       toast.error('Your session has expired. Please sign in again.');
     }
     // AUDIT-WEB-024: clearing auth state without navigating leaves the user on
-    // a protected page that immediately re-checks auth and loops. Use a hard
-    // navigation so React Router picks up the cleared state cleanly.
-    window.location.href = '/login';
+    // a protected page that immediately re-checks auth and loops. Prefer the
+    // react-router bridge (WEB-FI-005) so the SPA tree stays mounted long
+    // enough for `useDraft`'s beforeunload flush + WS cleanup to run; falls
+    // back to a hard nav if the App-level listener isn't mounted yet.
+    requestLoginNav();
   });
 }

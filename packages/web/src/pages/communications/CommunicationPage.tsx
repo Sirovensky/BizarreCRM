@@ -13,6 +13,7 @@ import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import { formatPhone, formatCurrency } from '@/utils/format';
+import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
 // Team-inbox enrichment (audit §51) — all new components are additive.
 import { TeamInboxHeader } from './components/TeamInboxHeader';
@@ -979,7 +980,16 @@ export function CommunicationPage() {
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
-  const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(selectedPhone ? `draft_sms_${selectedPhone}` : 'draft_sms_none');
+  // WEB-FJ-004 / FIXED-by-Fixer-A11 2026-04-25 — never embed the raw phone
+  // number in the draft localStorage key. A counter-staff snoop with a few
+  // seconds of access to a shared kiosk could otherwise dump localStorage
+  // and read `phone -> message body` pairs verbatim (sensitive contents
+  // include door codes, addresses, medical-device notes). The 8-hex
+  // fingerprint keeps the per-conversation namespace stable across
+  // refreshes without leaking the contact identifier.
+  const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(
+    selectedPhone ? `draft_sms_${obfuscatePhoneForStorageKey(selectedPhone)}` : 'draft_sms_none',
+  );
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [attachedMedia, setAttachedMedia] = useState<{ url: string; contentType: string; preview: string } | null>(null);

@@ -956,6 +956,12 @@ function MembershipCard({ customerId }: { customerId: number }) {
               >
                 {memberData.tier_name}
               </span>
+              {/* @audit-cents WEB-FF-019 (Fixer-C11 2026-04-25): server still
+                  returns memberData.monthly_price as dollars-as-float. When
+                  the membership-price column migrates to integer cents (to
+                  match POS), every value rendered here will silently be 100×
+                  wrong. Replace with `formatCents(memberData.monthly_price_cents)`
+                  on the migration PR — same risk class as WEB-FB-001. */}
               <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
                 ${memberData.monthly_price.toFixed(2)}/mo
               </span>

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from './stores/authStore';
+import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
 import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
 import { extractApiError } from './utils/apiError';
@@ -347,6 +347,30 @@ function isBareHostname(): boolean {
 export default function App() {
   const { checkAuth, isLoading } = useAuthStore();
   const bareHostname = useState(() => isBareHostname())[0];
+  const navigate = useNavigate();
+
+  // WEB-FI-005 / FIXED-by-Fixer-A11 2026-04-25 — bridge the authStore's
+  // `request-login-nav` event into a react-router SPA navigation. Doing the
+  // navigation through the router (instead of `window.location.href = '/login'`)
+  // keeps the React tree mounted long enough for `auth-cleared` listeners,
+  // useDraft's beforeunload flush, and WS teardown to run cleanly. The
+  // `__bizarreLoginNavReady` flag tells authStore the bridge is wired so the
+  // setTimeout fallback (which would still hard-nav if nothing was listening)
+  // can short-circuit.
+  useEffect(() => {
+    (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = true;
+    const handler = () => {
+      // Skip if we're already on the login page; avoids double-render and
+      // wiping the LoginForm's local state on every spurious re-fire.
+      if (window.location.pathname.startsWith('/login')) return;
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
+    return () => {
+      (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = false;
+      window.removeEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
+    };
+  }, [navigate]);
   // Server-driven tenancy mode. `undefined` = not yet known; `true` = bare
   // hostname should render the SaaS landing + signup flow; `false` = single-
   // tenant local server, bare hostname routes straight to /login (which
