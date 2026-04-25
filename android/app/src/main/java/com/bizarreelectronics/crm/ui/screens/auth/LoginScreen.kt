@@ -25,6 +25,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -1866,18 +1868,25 @@ fun LoginScreen(
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
     Box(
-        modifier = Modifier.fillMaxSize().padding(innerPadding).statusBarsPadding().imePadding(),
-        // LOGIN-MOCK-006/056/084: center the content column vertically so the hero
-        // sits at ~50% on tall phones instead of being pinned to the top.
-        // The Column sizes itself to content (verticalScroll), so the Box centers it.
-        // imePadding() above shrinks the Box when the keyboard rises, pushing the
-        // column upward naturally — no extra logic needed.
-        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize().padding(innerPadding)
+            // LOGIN-MOCK-140: protect display-cutout area (notch/punch-hole) — status-bar
+            // inset is already handled by Scaffold's innerPadding (LOGIN-MOCK-102).
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
+            .imePadding(),
+        // LOGIN-MOCK-102: removed .statusBarsPadding() — Scaffold's innerPadding already
+        // contains the status-bar inset on API 30+ (M3 default contentWindowInsets =
+        // safeDrawing). Adding statusBarsPadding() a second time pushed the wordmark
+        // down by an extra ~24–30dp (double-inset on API 30+).
+        // LOGIN-MOCK-114: changed Center → TopCenter so the card is always reachable
+        // by scrolling when the keyboard is up. Alignment.Center pins the column at
+        // the vertical midpoint of the *remaining* Box height, which can push the
+        // Connect button + footer row under the IME on shorter phones (screens 07/08).
+        contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)
-                .padding(24.dp)
+                .padding(horizontal = 16.dp, vertical = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -1887,10 +1896,10 @@ fun LoginScreen(
             Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
                 Text(
                     "Bizarre CRM",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 36.sp,
-                    ),
+                    style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 2,
+                    softWrap = true,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -2043,7 +2052,9 @@ fun LoginScreen(
                 ) {
                     // LOGIN-MOCK-051: bump vertical padding to 24dp so card title doesn't
                     // crowd the top edge; horizontal stays at 20dp for side gutters.
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
+                    // LOGIN-MOCK-107: reduce vertical from 24dp → 20dp; card bottom gap
+                    // was ~8dp over the mockup's ~16dp visual gap when card ends with a TextButton.
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
@@ -2096,7 +2107,7 @@ private fun LoginTabBar(currentStep: SetupStep) {
                         .align(Alignment.BottomStart)
                         .offset(x = pos.left)
                         .width(pos.width),
-                    height = 2.dp,
+                    height = 3.dp, // LOGIN-MOCK-103: match mockup ~3dp indicator weight
                     color = activeColor,
                 )
             }
@@ -2214,8 +2225,9 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
     Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
         Text(
             "Connect to Your Shop",
+            // LOGIN-MOCK-129: drop fontSize = 22.sp override — BizarreTypography.titleLarge
+            // is already 22sp; redundant override defeats fontScale scaling.
             style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
             ),
             color = MaterialTheme.colorScheme.onSurface,
@@ -2259,11 +2271,15 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             leadingIcon = { Icon(Icons.Default.Store, null) },
             suffix = {
-                Text(
-                    ".$CLOUD_DOMAIN",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                // LOGIN-MOCK-108: bodyLarge (16sp) matches OutlinedTextField value text size.
+                // LOGIN-MOCK-133: LTR override prevents domain suffix from mirroring in RTL.
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        ".$CLOUD_DOMAIN",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
             },
             trailingIcon = {
                 if (state.serverConnected) {
@@ -2336,13 +2352,13 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Create your repair shop on BizarreCRM",
+                text = "Create your repair shop on Bizarre CRM",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp)) // LOGIN-MOCK-104: 16→20dp to match 20dp inter-field rhythm
 
     // Field 1: Shop URL
     OutlinedTextField(
@@ -2354,11 +2370,15 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester),
         leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
         suffix = {
-            Text(
-                ".$CLOUD_DOMAIN",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            // LOGIN-MOCK-108: bodyLarge (16sp) matches OutlinedTextField value text size.
+            // LOGIN-MOCK-133: LTR override prevents domain suffix from mirroring in RTL.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Text(
+                    ".$CLOUD_DOMAIN",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         },
         supportingText = { Text("3–30 characters: letters, numbers, hyphens") },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -2437,7 +2457,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         )
     }
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp)) // LOGIN-MOCK-113: 20→16dp to match ServerStep CTA rhythm
 
     val isFormValid = state.shopSlug.length >= 3
         && state.registerShopName.isNotBlank()
@@ -2535,7 +2555,9 @@ private fun CredentialsStep(
                     Text(
                         "View setup guide",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        // LOGIN-MOCK-138: caramel primary (#A66D1F) on Surface100 = 3.6:1 < 4.5:1
+                        // WCAG AA threshold for small text. onSurfaceVariant meets contrast.
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -2730,7 +2752,8 @@ private fun CredentialsStep(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(18.dp))
+                    // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
+                    Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Continue with SSO")
                 }
@@ -2798,7 +2821,8 @@ private fun CredentialsStep(
             if (state.ssoExchangeLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {
-                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                // LOGIN-MOCK-135: Language (globe) is non-directional; OpenInBrowser mirrors in RTL.
+                Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Sign in with SSO")
             }
@@ -3262,7 +3286,9 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp),
+            // LOGIN-MOCK-109: 240dp → 200dp saves ~40dp vertical space without
+            // clipping at typical scan distances; image scaled proportionally.
+            .height(200.dp),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -3274,8 +3300,8 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                     bitmap = qrBitmap.asImageBitmap(),
                     contentDescription = "2FA QR Code — scan with your authenticator app",
                     modifier = Modifier
-                        .padding(16.dp)
-                        .size(200.dp),
+                        .padding(12.dp) // LOGIN-MOCK-109: 16dp → 12dp proportional to height reduction
+                        .size(172.dp),  // LOGIN-MOCK-109: 200dp → 172dp proportional
                 )
             }
             state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() ->
@@ -3386,7 +3412,12 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
         }
     }
 
-    Spacer(Modifier.height(16.dp))
+    // LOGIN-MOCK-112: 16dp → 4dp between QR block and TotpCodeInputContent.
+    // TotpCodeInputContent already emits its own Spacer(16dp) before the Continue
+    // button, so 4+16 = 20dp total visual gap — matching the mockup grouping.
+    // This also fixes LOGIN-MOCK-110: the QR image inner padding (12dp) + 4dp spacer
+    // = 16dp visual gap from QR image edge to code field, matching subtitle→QR gap.
+    Spacer(Modifier.height(4.dp))
     // LOGIN-MOCK-092: pass autoFocusOnEntry = false so keyboard doesn't open
     // immediately on Setup entry, which would scroll the QR code off-screen.
     TotpCodeInputContent(state, viewModel, onSuccess, autoFocusOnEntry = false)
@@ -3436,9 +3467,12 @@ private fun TwoFaVerifyStep(
         }
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
-            Text("Two-Factor Authentication", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            // LOGIN-MOCK-118: "Auth" matches TwoFaSetupStep heading (screen-10 mockup-backed).
+            Text("Two-Factor Auth", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            Text("Enter the 6-digit code from your authenticator app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // LOGIN-MOCK-119: align with Setup step's "TOTP app" phrasing; drops misleading
+            // "your" (user may not have installed an app yet at the verify step).
+            Text("Enter the 6-digit code from your TOTP app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     Spacer(Modifier.height(24.dp))
@@ -3493,7 +3527,8 @@ private fun TotpCodeInputContent(
         textStyle = LocalTextStyle.current.copy(
             fontFamily = BrandMono.fontFamily,
             fontSize = 24.sp,
-            letterSpacing = 6.sp,
+            // LOGIN-MOCK-130: reduced from 6.sp — 6.sp overflows at fontScale ≥ 1.5.
+            letterSpacing = 4.sp,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
         ),
