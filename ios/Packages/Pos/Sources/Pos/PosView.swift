@@ -426,12 +426,19 @@ public struct PosView: View {
 
         case .repair(let coordinator):
             if let api {
-                RepairFlowAdapter(
-                    coordinator: coordinator,
-                    devicePickerVM: PosDevicePickerViewModel(
-                        repository: PosDevicePickerRepositoryImpl(api: api)
+                if Platform.isCompact {
+                    // iPhone: full-screen NavigationStack via RepairFlowAdapter.
+                    RepairFlowAdapter(
+                        coordinator: coordinator,
+                        devicePickerVM: PosDevicePickerViewModel(
+                            repository: PosDevicePickerRepositoryImpl(api: api)
+                        )
                     )
-                )
+                } else {
+                    // iPad: catalog dim + cart "in progress" + step in inspector
+                    // pane (mockup pos-ipad-mockups.html frames 1b–1e).
+                    iPadRepairLayout(coordinator: coordinator, api: api)
+                }
             } else {
                 // No API — cannot run repair flow; fall back to cart.
                 Color.clear.onAppear { phase = .cart }
@@ -762,6 +769,220 @@ public struct PosView: View {
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { posToolbar }
+        }
+    }
+
+    // MARK: - iPad repair-flow layout (PosPhase.repair on regular size class)
+
+    /// iPad-only routing for `PosPhase.repair`. Matches mockup spec
+    /// `pos-ipad-mockups.html` frames 1b–1e: items area dims with a
+    /// "Creating ticket…" placeholder, cart column shows a draft-state
+    /// "Repair ticket — in progress" placeholder with a per-step disabled
+    /// charge button, and the active repair step view slides into the
+    /// trailing inspector pane with a Cancel + Continue footer.
+    @ViewBuilder
+    private func iPadRepairLayout(coordinator: PosRepairFlowCoordinator,
+                                   api: APIClient) -> some View {
+        let devicePickerVM = PosDevicePickerViewModel(
+            repository: PosDevicePickerRepositoryImpl(api: api)
+        )
+        PosRegisterLayout(
+            catalogFraction: 0.65,
+            inspectorActive: true
+        ) {
+            // Topbar — empty; nav bar hosts posToolbar.
+            Color.clear.frame(height: 0)
+        } catalog: {
+            iPadRepairCatalogPlaceholder(coordinator: coordinator)
+        } cart: {
+            iPadRepairCartPlaceholder(coordinator: coordinator)
+        } inspector: {
+            iPadRepairInspectorPane(
+                coordinator: coordinator,
+                devicePickerVM: devicePickerVM
+            )
+        }
+        .animation(BrandMotion.snappy, value: coordinator.currentStep)
+    }
+
+    /// Items column — dimmed centered "Creating ticket…" hint per mockup
+    /// (`pos-ipad-mockups.html` line 1741).
+    private func iPadRepairCatalogPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
+        VStack(spacing: 12) {
+            Text("🧾").font(.system(size: 56))
+            Text("Creating repair ticket…")
+                .font(.brandTitleSmall())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(coordinator.currentStep.accessibilityDescription)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .opacity(0.45)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
+    }
+
+    /// Cart column — header + repair-in-progress placeholder + disabled
+    /// per-step charge button (mockup line 1750-1768).
+    private func iPadRepairCartPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
+        VStack(spacing: 0) {
+            if let customer = cart.customer {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(customer.displayName)
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Text("Repair ticket — in progress")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreWarning)
+                    }
+                    Spacer(minLength: BrandSpacing.xs)
+                    Text("Draft")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.bizarreWarning.opacity(0.18), in: Capsule())
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                Divider().background(.bizarreOutline)
+            }
+            Spacer(minLength: 0)
+            VStack(spacing: 10) {
+                Text("🔧").font(.system(size: 40))
+                Text("Complete the inspector to start adding parts.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            Spacer(minLength: 0)
+            Button(action: {}) {
+                Text(repairStepDisabledChargeLabel(coordinator.currentStep))
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
+            .disabled(true)
+            .accessibilityIdentifier("pos.ipad.repair.disabledCharge")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func repairStepDisabledChargeLabel(_ step: RepairStep) -> String {
+        switch step {
+        case .pickDevice:      return "Pick device first"
+        case .describeIssue:   return "Describe issue first"
+        case .diagnosticQuote: return "Set diagnostic & quote first"
+        case .deposit:         return "Pay deposit first"
+        }
+    }
+
+    /// Inspector pane — hosts the active repair step view + footer with
+    /// Cancel + Continue (per mockup line 1809-1812).
+    @ViewBuilder
+    private func iPadRepairInspectorPane(coordinator: PosRepairFlowCoordinator,
+                                          devicePickerVM: PosDevicePickerViewModel) -> some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(coordinator.currentStep.navigationTitle)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                    if let name = coordinator.customerDisplayName {
+                        Text("\(coordinator.currentStep.accessibilityDescription) · \(name)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    } else {
+                        Text(coordinator.currentStep.accessibilityDescription)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                Spacer(minLength: BrandSpacing.xs)
+                Button {
+                    coordinator.cancel()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityLabel("Close repair flow")
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.top, BrandSpacing.md)
+            .padding(.bottom, BrandSpacing.sm)
+
+            Divider().background(.bizarreOutline)
+
+            // Step body
+            ScrollView {
+                Group {
+                    switch coordinator.currentStep {
+                    case .pickDevice:
+                        PosRepairDevicePickerView(coordinator: coordinator,
+                                                   devicePickerVM: devicePickerVM)
+                    case .describeIssue:
+                        PosRepairSymptomView(coordinator: coordinator)
+                    case .diagnosticQuote:
+                        PosRepairQuoteView(coordinator: coordinator)
+                    case .deposit:
+                        PosRepairDepositView(coordinator: coordinator)
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+
+            Divider().background(.bizarreOutline)
+
+            // Footer — Cancel + Continue
+            HStack(spacing: BrandSpacing.sm) {
+                Button(role: .destructive) {
+                    coordinator.cancel()
+                } label: {
+                    Text("Cancel")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("pos.ipad.repair.cancel")
+
+                Button {
+                    coordinator.advance()
+                } label: {
+                    Text(repairContinueLabel(coordinator.currentStep))
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .disabled(coordinator.isLoading)
+                .accessibilityIdentifier("pos.ipad.repair.continue")
+            }
+            .padding(BrandSpacing.md)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.bizarreSurface1)
+    }
+
+    private func repairContinueLabel(_ step: RepairStep) -> String {
+        switch step {
+        case .pickDevice:      return "Continue → issue"
+        case .describeIssue:   return "Continue → quote"
+        case .diagnosticQuote: return "Continue → deposit"
+        case .deposit:         return "Confirm deposit"
         }
     }
 
