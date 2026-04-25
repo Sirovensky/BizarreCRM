@@ -123,14 +123,18 @@ export function AuditLogsTab() {
       ) : (
         <>
           <div className="overflow-x-auto">
+            {/* WEB-FE-013 (Fixer-OOO 2026-04-25): added <caption> +
+                scope="col" so screen readers can associate cell values
+                with their column headers. WCAG 1.3.1. */}
             <table className="w-full text-sm">
+              <caption className="sr-only">Audit log entries — system events with timestamp, actor, IP address, and detail payload.</caption>
               <thead>
                 <tr className="border-b border-surface-700 text-left text-surface-400">
-                  <th className="py-2 px-3 font-medium">Time</th>
-                  <th className="py-2 px-3 font-medium">Event</th>
-                  <th className="py-2 px-3 font-medium">User</th>
-                  <th className="py-2 px-3 font-medium">IP</th>
-                  <th className="py-2 px-3 font-medium">Details</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Time</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Event</th>
+                  <th scope="col" className="py-2 px-3 font-medium">User</th>
+                  <th scope="col" className="py-2 px-3 font-medium">IP</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Details</th>
                 </tr>
               </thead>
               <tbody>

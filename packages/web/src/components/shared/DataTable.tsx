@@ -179,7 +179,7 @@ export function DataTable<T>({
                     className={cn(
                       'px-4 py-3 font-medium text-surface-500 dark:text-surface-400',
                       isSortable &&
-                        'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
+                        'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
                       col.className,
                     )}
                     onClick={isSortable ? () => onSort(col.key) : undefined}
@@ -223,7 +223,7 @@ export function DataTable<T>({
                       ? 'bg-primary-50 dark:bg-primary-950/20'
                       : 'hover:bg-surface-50 dark:hover:bg-surface-800/50',
                     onRowClick &&
-                      'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
+                      'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset',
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   onKeyDown={

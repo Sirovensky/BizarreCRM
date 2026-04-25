@@ -101,15 +101,47 @@ export function PaymentLinksPage() {
     onError: (err: unknown) => toast.error(errorMessage(err)),
   });
 
+  // WEB-FG-009 (Fixer-OOO 2026-04-25): strict integer-only parser. Old code
+  // accepted `'12abc'` as `12` because parseInt is forgiving — operator
+  // pasting a slug or accidentally hitting a letter silently created a
+  // payment link against the wrong customer. New helper rejects anything
+  // with trailing non-digit characters and surfaces an explicit toast.
+  const parseStrictId = (raw: string, label: string): number | null | 'error' => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (!/^\d+$/.test(trimmed)) {
+      toast.error(`${label} must be a numeric ID`);
+      return 'error';
+    }
+    const n = parseInt(trimmed, 10);
+    if (!Number.isSafeInteger(n) || n <= 0) {
+      toast.error(`${label} must be a positive whole number`);
+      return 'error';
+    }
+    return n;
+  };
+
   const handleCreate = () => {
     const amount = parseFloat(form.amount);
     if (!isFinite(amount) || amount <= 0 || amount > 999_999.99) {
       toast.error('Enter a positive amount up to $999,999.99');
       return;
     }
+    const customerId = parseStrictId(form.customer_id, 'Customer ID');
+    if (customerId === 'error') return;
+    const invoiceId = parseStrictId(form.invoice_id, 'Invoice ID');
+    if (invoiceId === 'error') return;
+    // WEB-FG-010 sanity-belt: reject expiry dates already in the past.
+    if (form.expires_at) {
+      const exp = new Date(`${form.expires_at}T23:59:59`);
+      if (!isFinite(exp.getTime()) || exp.getTime() < Date.now()) {
+        toast.error('Expiry date must be in the future');
+        return;
+      }
+    }
     createMutation.mutate({
-      customer_id: form.customer_id ? parseInt(form.customer_id, 10) : null,
-      invoice_id: form.invoice_id ? parseInt(form.invoice_id, 10) : null,
+      customer_id: customerId,
+      invoice_id: invoiceId,
       amount,
       description: form.description || null,
       expires_at: form.expires_at || null,
@@ -172,6 +204,9 @@ export function PaymentLinksPage() {
           <div className="grid grid-cols-2 gap-3">
             <input
               type="text"
+              inputMode="numeric"
+              pattern="\d*"
+              aria-label="Customer ID (optional)"
               placeholder="Customer ID (optional)"
               value={form.customer_id}
               onChange={(e) => setForm((f) => ({ ...f, customer_id: e.target.value }))}
@@ -179,6 +214,9 @@ export function PaymentLinksPage() {
             />
             <input
               type="text"
+              inputMode="numeric"
+              pattern="\d*"
+              aria-label="Invoice ID (optional)"
               placeholder="Invoice ID (optional)"
               value={form.invoice_id}
               onChange={(e) => setForm((f) => ({ ...f, invoice_id: e.target.value }))}

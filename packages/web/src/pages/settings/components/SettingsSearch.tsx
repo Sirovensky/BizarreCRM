@@ -106,7 +106,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
           onFocus={() => setOpen(true)}
           onKeyDown={handleKey}
           placeholder="Search settings..."
-          className="w-full rounded-lg border border-surface-200 bg-white py-1.5 pl-9 pr-8 text-sm placeholder:text-surface-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          className="w-full rounded-lg border border-surface-200 bg-white py-1.5 pl-9 pr-8 text-sm placeholder:text-surface-400 focus:border-primary-500 focus-visible:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
         />
         {query && (
           <button

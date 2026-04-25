@@ -132,7 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
       >
         Skip to main content
       </a>
@@ -187,14 +187,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={dismissDevBanner}
               aria-label="Dismiss development mode warning"
-              className="ml-1 rounded p-0.5 transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
+              className="ml-1 rounded p-0.5 transition-colors hover:bg-white/20 focus-visible:outline-none focus:ring-2 focus:ring-white/50"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
         <TrialBanner />
-        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus-visible:outline-none">
           <div className="p-6 h-full">
             {children}
           </div>

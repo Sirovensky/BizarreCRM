@@ -64,6 +64,23 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   componentDidCatch(error: Error, info: ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error('Uncaught render error:', error, info.componentStack);
+    // WEB-FE-011 (Fixer-OOO 2026-04-25): forward to the server crash sink
+    // so this isn't a console-only signal. Best-effort; a missing endpoint
+    // or offline tab silently degrades back to the previous behaviour.
+    try {
+      const reporter = (globalThis as {
+        __bizarreReportCrash?: (p: {
+          message: string;
+          stack?: string;
+          componentStack?: string;
+        }) => void;
+      }).__bizarreReportCrash;
+      reporter?.({
+        message: error?.message ?? 'unknown render error',
+        stack: error?.stack,
+        componentStack: info?.componentStack ?? undefined,
+      });
+    } catch { /* never throw out of componentDidCatch */ }
   }
 
   render() {
@@ -95,6 +112,60 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 }
 
 // ─── App Bootstrap ────────────────────────────────────────────────
+
+// WEB-FE-010 (Fixer-OOO 2026-04-25): seed `<html lang>` from the browser's
+// preferred language so non-English-locale tenants get correct screen-reader
+// pronunciation (es-MX, fr-CA, etc.) instead of the static `lang="en"`
+// hard-coded in index.html. WCAG 3.1.1 Language of Page. When tenant-locale
+// settings ship, callers can override at runtime by setting
+// `document.documentElement.lang = '<bcp47>'`.
+if (typeof document !== 'undefined') {
+  try {
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const preferred = nav?.language || (nav?.languages?.[0] ?? '') || 'en';
+    // BCP-47 sanity check: allow "en", "en-US", "es-MX", "fr-CA", "zh-Hant".
+    if (/^[a-zA-Z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(preferred)) {
+      document.documentElement.lang = preferred;
+    }
+  } catch { /* non-DOM env — leave the static lang from index.html */ }
+}
+
+// WEB-FE-011 (Fixer-OOO 2026-04-25): forward uncaught render errors to a
+// best-effort server crash sink (`POST /api/v1/telemetry/client-error`) so
+// operators learn about white-screens without waiting for customer
+// complaints. Sink endpoint is opt-in: the request is `keepalive` + fire-
+// and-forget; a 404 from a deployment that hasn't shipped the route yet is
+// silently swallowed. Reused by the global ErrorBoundary's componentDidCatch
+// below.
+function reportClientCrash(payload: {
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  url?: string;
+  ts?: number;
+}): void {
+  try {
+    if (typeof fetch !== 'function') return;
+    const body = JSON.stringify({
+      message: payload.message?.slice(0, 2000) ?? '',
+      stack: payload.stack?.slice(0, 4000) ?? '',
+      component_stack: payload.componentStack?.slice(0, 4000) ?? '',
+      url: payload.url ?? (typeof location !== 'undefined' ? location.href : ''),
+      ts: payload.ts ?? Date.now(),
+      ua: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    });
+    fetch('/api/v1/telemetry/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      // keepalive lets the request survive a tab close / navigation away
+      keepalive: true,
+      credentials: 'include',
+    }).catch(() => { /* best-effort — never let reporting throw */ });
+  } catch { /* best-effort */ }
+}
+// Expose for the boundary class below without growing its scope.
+(globalThis as { __bizarreReportCrash?: typeof reportClientCrash }).__bizarreReportCrash = reportClientCrash;
 
 const queryClient = new QueryClient({
   defaultOptions: {

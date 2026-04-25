@@ -124,11 +124,22 @@ export function CashRegisterPage() {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
             {cashAction === 'in' ? 'Cash In' : 'Cash Out'}
           </h3>
-          <div className="flex gap-3">
-            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)}
-              placeholder="Amount" className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
-            <input value={reason} onChange={(e) => setReason(e.target.value)}
-              placeholder="Reason (optional)" className="flex-1 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+          {/* WEB-FE-015 (Fixer-OOO 2026-04-25): inputs now carry visible
+              <label htmlFor> wiring + aria-required on Amount so screen
+              readers + autofill no longer treat placeholder text as the
+              accessible name (WCAG 1.3.1 + 3.3.2). */}
+          <div className="flex gap-3 items-end">
+            <label htmlFor="cash-amount" className="flex flex-col">
+              <span className="text-xs font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</span>
+              <input id="cash-amount" type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)}
+                aria-required="true" inputMode="decimal"
+                placeholder="0.00" className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+            </label>
+            <label htmlFor="cash-reason" className="flex flex-col flex-1">
+              <span className="text-xs font-medium text-surface-700 dark:text-surface-300 mb-1">Reason <span className="text-surface-400 font-normal">(optional)</span></span>
+              <input id="cash-reason" value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. till float, vendor refund" className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+            </label>
             <button onClick={handleSubmit} disabled={cashInMut.isPending || cashOutMut.isPending}
               className={cn('px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50',
                 cashAction === 'in' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')}>

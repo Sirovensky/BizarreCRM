@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Star, MessageSquare, CheckCircle, ChevronLeft, ChevronRight, Loader2, X,
@@ -68,14 +68,26 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
     onError: () => toast.error('Failed to save reply'),
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="review-reply-title"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+          <h2 id="review-reply-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
             {review.response ? 'Edit Reply' : 'Reply to Review'}
           </h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">

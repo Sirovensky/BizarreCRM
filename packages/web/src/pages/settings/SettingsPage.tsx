@@ -329,7 +329,7 @@ function StoreInfoTab() {
                 const val = f.key === 'phone' ? e.target.value.replace(/[^\d+\-() ]/g, '') : e.target.value;
                 handleChange(f.key, val);
               }}
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder={f.placeholder || f.label}
             />
           </div>
@@ -357,7 +357,7 @@ function StoreInfoTab() {
                     onChange={(e) => handleHoursChange(day, 'open', e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-surface-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-surface-600 peer-checked:bg-blue-600" />
+                  <div className="w-9 h-5 bg-surface-200 peer-focus-visible:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-surface-600 peer-checked:bg-blue-600" />
                 </label>
                 {hours[day]?.open ? (
                   <div className="flex items-center gap-2">
@@ -365,14 +365,14 @@ function StoreInfoTab() {
                       type="time"
                       value={hours[day]?.from || '09:00'}
                       onChange={(e) => handleHoursChange(day, 'from', e.target.value)}
-                      className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <span className="text-xs text-surface-400">to</span>
                     <input
                       type="time"
                       value={hours[day]?.to || '17:00'}
                       onChange={(e) => handleHoursChange(day, 'to', e.target.value)}
-                      className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                 ) : (
@@ -533,7 +533,7 @@ function ReferralSourcesSection() {
             onChange={(e) => setNewSource(e.target.value)}
             placeholder="Add referral source..."
             onKeyDown={(e) => { if (e.key === 'Enter' && newSource.trim()) createMut.mutate(newSource.trim()); }}
-            className="flex-1 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
             onClick={() => newSource.trim() && createMut.mutate(newSource.trim())}
@@ -637,7 +637,7 @@ function ThemeCustomizationSection() {
               value={primaryColor}
               onChange={(e) => { setPrimaryColor(e.target.value); setDirty(true); }}
               placeholder="#3b82f6"
-              className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -746,7 +746,7 @@ function WebhookConfigSection() {
             value={webhookUrl}
             onChange={(e) => { setWebhookUrl(e.target.value); setDirty(true); }}
             placeholder="https://example.com/webhook or https://hooks.zapier.com/..."
-            className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <p className="text-xs text-surface-400 mt-1">
             POST requests will be sent to this URL when selected events occur. Use with Zapier, Make.com, or custom endpoints.
@@ -941,7 +941,7 @@ function StatusesTab() {
                   type="text"
                   value={addForm.name}
                   onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500 w-48"
                   placeholder="Status name"
                 />
               </div>
@@ -968,7 +968,7 @@ function StatusesTab() {
                   type="number"
                   value={addForm.sort_order}
                   onChange={(e) => setAddForm({ ...addForm, sort_order: parseInt(e.target.value) || 0 })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <label className="flex items-center gap-1.5 text-sm text-surface-600 dark:text-surface-400">
@@ -1160,7 +1160,7 @@ function TaxClassesTab() {
                 type="text"
                 value={addForm.name}
                 onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-48 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., Colorado Sales Tax"
               />
             </div>
@@ -1171,7 +1171,7 @@ function TaxClassesTab() {
                 step="0.001"
                 value={addForm.rate}
                 onChange={(e) => setAddForm({ ...addForm, rate: e.target.value })}
-                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-28 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-28 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="8.865"
               />
             </div>
@@ -1369,7 +1369,7 @@ function PaymentMethodsTab() {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) createMutation.mutate(newName.trim()); }}
-          className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 flex-1 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="New payment method name..."
         />
         <button
@@ -1498,7 +1498,7 @@ function UsersTab() {
                 <input
                   type="text" value={addForm.first_name}
                   onChange={(e) => setAddForm({ ...addForm, first_name: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -1506,7 +1506,7 @@ function UsersTab() {
                 <input
                   type="text" value={addForm.last_name}
                   onChange={(e) => setAddForm({ ...addForm, last_name: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -1514,7 +1514,7 @@ function UsersTab() {
                 <input
                   type="text" value={addForm.username}
                   onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -1522,7 +1522,7 @@ function UsersTab() {
                 <input
                   type="email" value={addForm.email}
                   onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -1531,7 +1531,7 @@ function UsersTab() {
                   <input
                     type={showPassword ? 'text' : 'password'} value={addForm.password}
                     onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                    className="w-full px-3 py-2 pr-9 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 pr-9 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -1548,7 +1548,7 @@ function UsersTab() {
                 <select
                   value={addForm.role}
                   onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {roles.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
                 </select>
@@ -1883,7 +1883,7 @@ function CustomerGroupsTab() {
                   type="text"
                   value={addForm.name}
                   onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500 w-full"
                   placeholder="e.g. VIP, Wholesale, Employee"
                 />
               </div>
@@ -1896,13 +1896,13 @@ function CustomerGroupsTab() {
                     step="0.01"
                     value={addForm.discount_pct || ''}
                     onChange={(e) => setAddForm({ ...addForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                    className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-24 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
                   />
                   <select
                     value={addForm.discount_type}
                     onChange={(e) => setAddForm({ ...addForm, discount_type: e.target.value })}
-                    className="px-2 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-2 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="percentage">%</option>
                     <option value="fixed">$ Fixed</option>
@@ -1915,7 +1915,7 @@ function CustomerGroupsTab() {
                   type="text"
                   value={addForm.description}
                   onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500 w-full"
                   placeholder="Optional description"
                 />
               </div>
@@ -1966,7 +1966,7 @@ function CustomerGroupsTab() {
                             type="text"
                             value={editForm.name || ''}
                             onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-32 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -1977,12 +1977,12 @@ function CustomerGroupsTab() {
                               step="0.01"
                               value={editForm.discount_pct || ''}
                               onChange={(e) => setEditForm({ ...editForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                              className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                             <select
                               value={editForm.discount_type || 'percentage'}
                               onChange={(e) => setEditForm({ ...editForm, discount_type: e.target.value })}
-                              className="px-1 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="px-1 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                               <option value="percentage">%</option>
                               <option value="fixed">$</option>
@@ -2002,7 +2002,7 @@ function CustomerGroupsTab() {
                             type="text"
                             value={editForm.description || ''}
                             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-full focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
                           />
                         </td>
                         <td className="px-4 py-2 text-right">
@@ -2221,7 +2221,7 @@ function SettingsPageInner() {
         <select
           value={activeTab}
           onChange={(e) => void setActiveTab(e.target.value as Tab)}
-          className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-900 focus:border-primary-500 focus-visible:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
         >
           {filteredTabs.map((tab) => {
             const locked = isTabLocked(tab);
@@ -2502,7 +2502,7 @@ function SupplierCatalogSyncSection() {
                 onClick={() => toggleAutoSync.mutate()}
                 disabled={toggleAutoSync.isPending}
                 className={cn(
-                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none',
                   autoSync ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
                 )}
               >

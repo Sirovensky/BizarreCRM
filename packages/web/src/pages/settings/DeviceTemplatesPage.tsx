@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { deviceTemplateApi, inventoryApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 
 interface TemplatePart {
   inventory_item_id: number;
@@ -297,8 +298,11 @@ export function DeviceTemplatesPage() {
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm(`Delete template "${t.name}"?`)) deleteMut.mutate(t.id);
+                  onClick={async () => {
+                    // WEB-FB-007 (Fixer-QQQ 2026-04-25): swap native confirm for
+                    // themed async confirm so the dialog respects dark mode +
+                    // brand fonts and queues correctly with other modals.
+                    if (await confirm(`Delete template "${t.name}"?`, { danger: true, confirmLabel: 'Delete' })) deleteMut.mutate(t.id);
                   }}
                   className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >

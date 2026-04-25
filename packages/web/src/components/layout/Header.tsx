@@ -127,30 +127,74 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   }, []);
 
   useEffect(() => {
-    fetchUnreadCount();
-    fetchSmsUnreadCount();
+    // WEB-FD-011 (Fixer-OOO 2026-04-25): short-circuit polling when the
+    // session is already cleared so logout doesn't fire a 401 storm against
+    // notification + sms unread-count endpoints (which then push another
+    // logout-required event through the response interceptor and re-trigger
+    // refresh). We additionally listen for `bizarre-crm:auth-cleared` so an
+    // in-flight tick that fires DURING logout (between authStore set and
+    // the next render) tears the interval down immediately rather than
+    // waiting for unmount.
+    let cancelled = false;
+    const isAuthed = () => useAuthStore.getState().isAuthenticated;
 
-    const pollIfVisible = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUnreadCount();
-        fetchSmsUnreadCount();
+    // Fixer-PPP (WEB-FO-019): the previous implementation kept a
+    // 60s setInterval running while the tab was hidden — the gated
+    // body suppressed fetches but the timer itself still woke the JS
+    // thread every minute on tablets parked in a back office. Park
+    // the timer entirely on `hidden`, recreate it on `visible`. Net
+    // effect: zero CPU/battery overhead while hidden, immediate
+    // refresh on focus (preserved from previous behaviour).
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const startInterval = () => {
+      if (interval == null && !cancelled && isAuthed()) {
+        interval = setInterval(() => {
+          if (cancelled) return;
+          if (!isAuthed()) return;
+          // Visibility is checked by the timer-park logic below — by the
+          // time this fires the tab is visible.
+          fetchUnreadCount();
+          fetchSmsUnreadCount();
+        }, 60_000);
+      }
+    };
+    const stopInterval = () => {
+      if (interval != null) {
+        clearInterval(interval);
+        interval = null;
       }
     };
 
-    const interval = setInterval(pollIfVisible, 60_000);
+    if (isAuthed()) {
+      fetchUnreadCount();
+      fetchSmsUnreadCount();
+      if (document.visibilityState === 'visible') startInterval();
+    }
 
-    // Resume polling immediately when tab becomes visible again
+    // Resume polling immediately when tab becomes visible again; park
+    // the timer when it goes hidden so it stops waking the JS thread.
     const handleVisibilityChange = () => {
+      if (!isAuthed()) return;
       if (document.visibilityState === 'visible') {
         fetchUnreadCount();
         fetchSmsUnreadCount();
+        startInterval();
+      } else {
+        stopInterval();
       }
+    };
+    const handleAuthCleared = () => {
+      cancelled = true;
+      stopInterval();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
 
     return () => {
-      clearInterval(interval);
+      cancelled = true;
+      stopInterval();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
     };
   }, [fetchUnreadCount, fetchSmsUnreadCount]);
 
@@ -658,7 +702,7 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="PIN"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus-visible:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
           {error && <p className="text-center text-sm text-red-500">{error}</p>}
           <div className="flex gap-3">

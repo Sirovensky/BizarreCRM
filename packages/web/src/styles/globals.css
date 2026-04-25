@@ -20,7 +20,18 @@
     }
   }
 
-  /* Custom scrollbar */
+  /* Custom scrollbar — Fixer-PPP (WEB-FQ-023): added Firefox CSS Scrollbar
+   * Module fallbacks (`scrollbar-width` + `scrollbar-color`) so FF users see
+   * the same thin tinted scrollbar instead of the default chrome that broke
+   * visual cohesion on long lists. Light/dark thumb tints mirror the webkit
+   * rules below; track stays transparent in both. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: #d4d4d8 transparent;
+  }
+  html.dark {
+    scrollbar-color: #52525b transparent;
+  }
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

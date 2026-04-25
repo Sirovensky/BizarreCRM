@@ -65,15 +65,23 @@ function useIsNarrow(breakpointPx: number): boolean {
     const mq = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
     const handler = (e: MediaQueryListEvent) => setNarrow(e.matches);
     // Safari < 14 uses addListener/removeListener — guard against that.
+    // Fixer-PPP (WEB-FL-022): replaced two `@ts-expect-error legacy API`
+    // suppressions with a narrowed shim type. The legacy methods are
+    // declared on the W3C spec and most lib.dom.d.ts releases include
+    // them as deprecated; we type them locally so we don't depend on
+    // ambient typings staying lenient.
     if ('addEventListener' in mq) {
       mq.addEventListener('change', handler);
       return () => mq.removeEventListener('change', handler);
     }
-    // @ts-expect-error legacy API
-    mq.addListener(handler);
+    type LegacyMQL = MediaQueryList & {
+      addListener: (cb: (e: MediaQueryListEvent) => void) => void;
+      removeListener: (cb: (e: MediaQueryListEvent) => void) => void;
+    };
+    const legacy = mq as LegacyMQL;
+    legacy.addListener(handler);
     return () => {
-      // @ts-expect-error legacy API
-      mq.removeListener(handler);
+      legacy.removeListener(handler);
     };
   }, [breakpointPx]);
   return narrow;

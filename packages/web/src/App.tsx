@@ -84,8 +84,11 @@ const GiftCardDetailPage = lazy(() => import('./pages/gift-cards/GiftCardDetailP
 const SubscriptionsListPage = lazy(() => import('./pages/subscriptions/SubscriptionsListPage').then(m => ({ default: m.SubscriptionsListPage })));
 // Loaner devices
 const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => ({ default: m.LoanersPage })));
-// Automations standalone page
-const AutomationsListPage = lazy(() => import('./pages/automations/AutomationsListPage').then(m => ({ default: m.AutomationsListPage })));
+// Automations: Fixer-PPP (WEB-FC-023) collapsed the legacy standalone
+// `/automations` route — Settings → Automations is the canonical home now.
+// `/automations` is kept as a `<Navigate replace>` to preserve any
+// bookmarked links staff already have. The standalone wrapper page
+// (AutomationsListPage) was removed because it was a 28-LOC duplicate.
 // Super-admin tenant management
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
@@ -496,8 +499,10 @@ export default function App() {
                     <Route path="/subscriptions" element={<SubscriptionsListPage />} />
                     {/* Loaner device management. */}
                     <Route path="/loaners" element={<LoanersPage />} />
-                    {/* Automations standalone page. */}
-                    <Route path="/automations" element={<AutomationsListPage />} />
+                    {/* Automations canonical home is Settings → Automations.
+                     *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
+                     *  there so navigation memory has one URL per feature. */}
+                    <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
                     {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
                     <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}

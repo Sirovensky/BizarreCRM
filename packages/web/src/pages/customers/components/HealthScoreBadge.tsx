@@ -92,11 +92,16 @@ export function HealthScoreBadge({ customerId, compact = false, className }: Hea
 
   if (isLoading) {
     return (
-      <div className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border bg-surface-100 text-surface-400 border-surface-200 dark:bg-surface-800 dark:border-surface-700',
-        className,
-      )}>
-        <Activity className="h-3 w-3 animate-pulse" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Loading health score"
+        className={cn(
+          'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border bg-surface-100 text-surface-400 border-surface-200 dark:bg-surface-800 dark:border-surface-700',
+          className,
+        )}>
+        <Activity aria-hidden="true" className="h-3 w-3 animate-pulse" />
         <span>Loading...</span>
       </div>
     );
