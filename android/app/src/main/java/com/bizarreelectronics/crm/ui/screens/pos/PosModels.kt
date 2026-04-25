@@ -59,7 +59,14 @@ data class CustomerResult(
     val phone: String? = null,
     val email: String? = null,
     val ticketCount: Int = 0,
-    val initials: String = name.take(2).uppercase(),
+    val initials: String = run {
+        val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        when {
+            parts.isEmpty() -> ""
+            parts.size == 1 -> parts[0].take(2).uppercase()
+            else -> "${parts.first().first()}${parts.last().first()}".uppercase()
+        }
+    },
 )
 
 data class TicketResult(
@@ -88,9 +95,12 @@ data class AppliedTender(
     val detail: String? = null,
 )
 
-/** Format cents to "$NNN.NN" display string. */
+/** Format cents to "$NNN.NN" display string. Handles negatives as "-$N.NN". */
 fun Long.toDollarString(): String {
-    val dollars = this / 100
-    val cents = Math.abs(this % 100)
-    return "${'$'}$dollars.${cents.toString().padStart(2, '0')}"
+    val negative = this < 0
+    val abs = Math.abs(this)
+    val dollars = abs / 100
+    val cents = abs % 100
+    val sign = if (negative) "-" else ""
+    return "$sign${'$'}$dollars.${cents.toString().padStart(2, '0')}"
 }

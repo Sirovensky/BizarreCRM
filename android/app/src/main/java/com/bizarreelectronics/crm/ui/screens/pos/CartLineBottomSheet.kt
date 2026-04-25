@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.pos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,6 +14,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.view.HapticFeedbackConstantsCompat
 import androidx.core.view.ViewCompat
@@ -36,13 +38,54 @@ fun CartLineBottomSheet(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    // AUDIT-033: skipPartiallyExpanded = true eliminates snap jitter
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Local editable state — applied to VM only on Save
-    var qty by remember { mutableIntStateOf(line.qty) }
-    var selectedChip by remember { mutableStateOf<DiscountChip?>(null) }
-    var discountCents by remember { mutableLongStateOf(line.discountCents) }
-    var note by remember { mutableStateOf(line.note ?: "") }
+    // AUDIT-036: restore selectedChip from line.discountCents on first composition
+    val initialChip: DiscountChip? = remember(line.id) {
+        when {
+            line.discountCents == 0L -> null
+            line.discountCents == (line.unitPriceCents * line.qty * 5 / 100) -> DiscountChip.FIVE_PCT
+            line.discountCents == (line.unitPriceCents * line.qty * 10 / 100) -> DiscountChip.TEN_PCT
+            else -> DiscountChip.FLAT
+        }
+    }
+
+    // AUDIT-007: all local state — nothing is pushed to the VM until Save
+    var qty by remember(line.id) { mutableIntStateOf(line.qty) }
+    var selectedChip by remember(line.id) { mutableStateOf(initialChip) }
+
+    // AUDIT-008: extra input state for FLAT ($) and CUSTOM (%) chips
+    var flatInput by remember(line.id) {
+        mutableStateOf(
+            if (initialChip == DiscountChip.FLAT)
+                "%.2f".format(line.discountCents / 100.0)
+            else ""
+        )
+    }
+    var customPctInput by remember(line.id) { mutableStateOf("") }
+
+    var note by remember(line.id) { mutableStateOf(line.note ?: "") }
+
+    // AUDIT-009: discount derived from current qty + chip + custom inputs (never stale)
+    val discountCents: Long by remember {
+        derivedStateOf {
+            val subtotal = line.unitPriceCents * qty
+            when (selectedChip) {
+                DiscountChip.FIVE_PCT -> subtotal * 5 / 100
+                DiscountChip.TEN_PCT -> subtotal * 10 / 100
+                DiscountChip.FLAT -> {
+                    val dollars = flatInput.toDoubleOrNull() ?: 0.0
+                    (dollars * 100).toLong().coerceIn(0L, subtotal)
+                }
+                DiscountChip.CUSTOM -> {
+                    val pct = customPctInput.toDoubleOrNull() ?: 0.0
+                    (subtotal * pct / 100).toLong().coerceIn(0L, subtotal)
+                }
+                null -> 0L
+            }
+        }
+    }
 
     val view = LocalView.current
 
@@ -74,15 +117,16 @@ fun CartLineBottomSheet(
             ) {
                 Text("Qty", style = MaterialTheme.typography.bodyMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // AUDIT-007: qty mutations stay local; pushed only on Save
+                    // AUDIT-037: tap target bumped from 34dp to 48dp
                     FilledIconButton(
                         onClick = {
                             if (qty > 1) {
                                 qty--
                                 ViewCompat.performHapticFeedback(view, HapticFeedbackConstantsCompat.CLOCK_TICK)
-                                onQtyChange(qty)
                             }
                         },
-                        modifier = Modifier.size(34.dp).semantics { contentDescription = "Decrease quantity" },
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = "Decrease quantity" },
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         ),
@@ -100,10 +144,9 @@ fun CartLineBottomSheet(
                             if (qty < 999) {
                                 qty++
                                 ViewCompat.performHapticFeedback(view, HapticFeedbackConstantsCompat.CLOCK_TICK)
-                                onQtyChange(qty)
                             }
                         },
-                        modifier = Modifier.size(34.dp).semantics { contentDescription = "Increase quantity" },
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = "Increase quantity" },
                     ) {
                         Text("+", style = MaterialTheme.typography.titleMedium)
                     }
@@ -141,6 +184,8 @@ fun CartLineBottomSheet(
                 // remain 48dp minimum (usability guardrail #3). Falls back
                 // automatically on the feature flag toggle because
                 // ButtonGroup requires the expressive surface.
+                // AUDIT-007/008/009: chip selection is local; discount derived;
+                // nothing pushed to VM until Save
                 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
                 ButtonGroup(
                     overflowIndicator = { /* No overflow; 4 fixed items */ },
@@ -158,17 +203,50 @@ fun CartLineBottomSheet(
                             checked = isActive,
                             onCheckedChange = { checked ->
                                 selectedChip = if (checked) chip else null
-                                discountCents = when {
-                                    !checked -> 0L
-                                    chip == DiscountChip.FIVE_PCT -> (line.unitPriceCents * qty * 5 / 100)
-                                    chip == DiscountChip.TEN_PCT -> (line.unitPriceCents * qty * 10 / 100)
-                                    else -> 0L
+                                // Reset inline inputs when deselecting
+                                if (!checked) {
+                                    flatInput = ""
+                                    customPctInput = ""
                                 }
-                                onDiscountChange(discountCents)
                             },
                             label = label,
                         )
                     }
+                }
+                // AUDIT-008: inline input shown for FLAT ($) and CUSTOM (%)
+                if (selectedChip == DiscountChip.FLAT) {
+                    OutlinedTextField(
+                        value = flatInput,
+                        onValueChange = { v ->
+                            // Allow digits and a single decimal point; max 2 dp
+                            val filtered = v.filter { it.isDigit() || it == '.' }
+                            val dotIdx = filtered.indexOf('.')
+                            flatInput = if (dotIdx >= 0)
+                                filtered.substring(0, dotIdx + 1) +
+                                    filtered.substring(dotIdx + 1).filter { it.isDigit() }.take(2)
+                            else filtered
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        label = { Text("Flat discount ($)") },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                }
+                if (selectedChip == DiscountChip.CUSTOM) {
+                    OutlinedTextField(
+                        value = customPctInput,
+                        onValueChange = { v ->
+                            val filtered = v.filter { it.isDigit() }
+                            val num = filtered.toIntOrNull() ?: 0
+                            customPctInput = if (num <= 100) filtered else "100"
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        label = { Text("Custom discount (%)") },
+                        placeholder = { Text("0") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
                 }
             }
 
@@ -176,13 +254,11 @@ fun CartLineBottomSheet(
             HorizontalDivider()
             Column(modifier = Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Note", style = MaterialTheme.typography.bodyMedium)
+                // AUDIT-007: note mutation stays local until Save
                 OutlinedTextField(
                     value = note,
                     onValueChange = { v ->
-                        if (v.length <= 1000) {
-                            note = v
-                            onNoteChange(v)
-                        }
+                        if (v.length <= 1000) note = v
                     },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Optional · appears on receipt") },
@@ -209,8 +285,14 @@ fun CartLineBottomSheet(
                 ) {
                     Text("Remove", fontWeight = FontWeight.Bold)
                 }
+                // AUDIT-007: Save is the single point that flushes all local state to VM
                 Button(
-                    onClick = onSave,
+                    onClick = {
+                        onQtyChange(qty)
+                        onDiscountChange(discountCents)
+                        onNoteChange(note)
+                        onSave()
+                    },
                     modifier = Modifier.weight(1.5f).semantics { contentDescription = "Save changes to ${line.name}" },
                     shape = RoundedCornerShape(12.dp),
                 ) {

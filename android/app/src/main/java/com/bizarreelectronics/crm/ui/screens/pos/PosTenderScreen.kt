@@ -30,6 +30,7 @@ fun PosTenderScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showCashDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when order completes
     LaunchedEffect(state.completedOrderId) {
@@ -76,6 +77,7 @@ fun PosTenderScreen(
         bottomBar = {
             TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp),
@@ -133,9 +135,8 @@ fun PosTenderScreen(
         }
     }
 
-    state.errorMessage?.let { msg ->
-        val snackbarHostState = remember { SnackbarHostState() }
-        LaunchedEffect(msg) {
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
             viewModel.clearError()
         }
