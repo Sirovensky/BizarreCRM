@@ -1,4 +1,18 @@
 
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix L (asyncHandler codemod + S8 P2 cleanup)
+
+- [x] WEB-S8-018. **roles/permission-keys admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /permission-keys; previously any authenticated user could enumerate all permission key strings.
+- [x] WEB-S8-019. **roles/users/:userId/role admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /users/:userId/role; prevented cross-user role-assignment enumeration.
+- [x] WEB-S8-020. **settings/config inverted denylist** CLOSED 2026-04-25 — `7a5d4da8` — switched non-admin filtering from `SENSITIVE_CONFIG_KEYS` denylist to `PUBLIC_CONFIG_KEYS` allowlist; new DB keys can no longer silently leak.
+- [x] WEB-S8-021. **settings/preferences bare async** CLOSED 2026-04-25 — `7a5d4da8` — both GET and PUT /preferences wrapped with asyncHandler.
+- [x] WEB-S8-022. **settings read-only endpoints bare async (7 routes)** CLOSED 2026-04-25 — `7a5d4da8` — setup-status, store, statuses, tax-classes, payment-methods, referral-sources, customer-groups all wrapped.
+- [x] WEB-S8-023. **settings/module-visibility bare async** CLOSED 2026-04-25 — `7a5d4da8` — wrapped with asyncHandler.
+- [x] WEB-S8-024. **sms/templates no role gate** CLOSED 2026-04-25 — `e3321a6e` — `requireManagerOrAdmin(req)` added to GET /templates; matches write sibling handlers.
+- [x] WEB-S8-025. **sms/preview-template no role gate + unbounded vars** CLOSED 2026-04-25 — `e3321a6e` — `requireManagerOrAdmin(req)` + max 20 vars keys, each ≤ 200 chars.
+- [x] WEB-S8-029. **nuclear wipe confirm-before-role ordering** CLOSED 2026-04-25 — `f7781356` — role check moved to first line of handler; non-admins no longer receive 400 vs 403 probe signal.
+- [x] WEB-S8-038. **settings/audit-logs bare async** CLOSED 2026-04-25 — `7a5d4da8` — covered by full settings.routes.ts codemod.
+- [x] WEB-S8-041. **settings.routes.ts wide bare-async pattern (60 handlers)** CLOSED 2026-04-25 — `7a5d4da8` — all 60 bare `async (req, res)` handlers in settings.routes.ts wrapped with asyncHandler; asyncHandler type updated to `Promise<unknown>` to accommodate early-return res.json() patterns.
+
 ### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix K (RBAC + crash vectors)
 
 - [x] WEB-S8-001. **account.routes.ts asyncHandler** CLOSED 2026-04-24 — `e3321a6e` — wrapped /usage with asyncHandler so DB rejections don't crash process.
