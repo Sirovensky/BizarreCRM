@@ -58,6 +58,9 @@ class AuthPreferences @Inject constructor(
     private val _authCleared = MutableSharedFlow<ClearReason>(extraBufferCapacity = 1)
     val authCleared: SharedFlow<ClearReason> = _authCleared.asSharedFlow()
 
+    private val _isLoggedIn = MutableStateFlow(accessToken != null)
+    val isLoggedInFlow: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
     enum class ClearReason {
         /** User tapped Sign out / Switch user. No banner. */
         UserLogout,
@@ -73,7 +76,10 @@ class AuthPreferences @Inject constructor(
 
     var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
+            _isLoggedIn.value = value != null
+        }
 
     var refreshToken: String?
         get() = prefs.getString(KEY_REFRESH_TOKEN, null)
@@ -416,6 +422,7 @@ class AuthPreferences @Inject constructor(
         if (preservedBioEnabled != null) restore.putBoolean(KEY_BIO_CREDS_ENABLED, preservedBioEnabled)
         if (preservedBioIv != null) restore.putString(KEY_BIO_IV, preservedBioIv)
         restore.apply()
+        _isLoggedIn.value = false
 
         // §2.17-L412 — propagate wipe to BiometricCredentialStore (Keystore key + ciphertext).
         if (wipeBio) {
@@ -444,6 +451,7 @@ class AuthPreferences @Inject constructor(
             .putString(KEY_USER_LAST_NAME, lastName)
             .putString(KEY_USER_ROLE, role)
             .apply()
+        _isLoggedIn.value = true
     }
 
     private companion object {

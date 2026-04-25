@@ -116,6 +116,7 @@ import com.bizarreelectronics.crm.ui.screens.audit.AuditLogsScreen
 import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
 import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
 import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 import javax.inject.Inject
 
@@ -530,6 +531,18 @@ fun AppNavGraph(
         }
     }
 
+    val isLoggedIn by (authPreferences?.isLoggedInFlow
+        ?: kotlinx.coroutines.flow.MutableStateFlow(false))
+        .collectAsStateWithLifecycle()
+
+    LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn && currentRoute != null && !currentRoute.startsWith("login") && currentRoute != Screen.Login.route) {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
     // AND-20260414-H1 + AND-20260414-H2: consume whatever MainActivity
     // resolved from the launch / onNewIntent intent — either an external
     // deep-link path (`ticket/new`, `customer/new`, `scan`) or an FCM
@@ -612,7 +625,8 @@ fun AppNavGraph(
     //  (e.g. "tickets/42"). A helper like `fun Screen.matches(route: String)` would
     //  be needed, making this a small but intentional routing refactor — evaluate
     //  when next adding detail routes rather than as a standalone change.
-    val showBottomNav = currentRoute != null &&
+    val showBottomNav = isLoggedIn &&
+            currentRoute != null &&
             (currentRoute?.startsWith("login") != true) &&
             !currentRoute.startsWith("tickets/") &&
             // CROSS47-seed: the registered route is now

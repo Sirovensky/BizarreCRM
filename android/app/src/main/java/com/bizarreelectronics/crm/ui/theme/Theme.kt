@@ -70,20 +70,20 @@ val ConditionAmberText = Color(0xFFE8A33D)
 // ---------------------------------------------------------------------------
 // Warm dark surface ramp
 // ---------------------------------------------------------------------------
-val BgDark        = Color(0xFF121017)  // background
-val Surface1      = Color(0xFF1A1722)  // surface / primary surface
-val Surface2      = Color(0xFF241F2E)  // elevated surface
-val OutlineColor  = Color(0xFF332C3F)  // dividers / borders
-val MutedText     = Color(0xFFA79FB8)  // onSurfaceVariant muted
-val PrimaryText   = Color(0xFFECE9F3)  // onBackground / onSurface
+val BgDark        = Color(0xFF1C1611)  // background
+val Surface1      = Color(0xFF26201A)  // surface / primary surface
+val Surface2      = Color(0xFF322A22)  // elevated surface
+val OutlineColor  = Color(0xFF4A3C30)  // dividers / borders
+val MutedText     = Color(0xFFB09A84)  // onSurfaceVariant muted
+val PrimaryText   = Color(0xFFF5E6D3)  // onBackground / onSurface
 
 // Light-mode surface ramp (retained for when user toggles light)
-val Surface50  = Color(0xFFF8F6FF)  // slightly warm white
-val Surface100 = Color(0xFFEFEBFF)
-val Surface200 = Color(0xFFDDD6F7)
-val Surface700 = Color(0xFF4A4265)
-val Surface800 = Color(0xFF1A1722)
-val Surface900 = Color(0xFF121017)
+val Surface50  = Color(0xFFFAF4EC)  // slightly warm white
+val Surface100 = Color(0xFFEFE4D4)
+val Surface200 = Color(0xFFE0D0B5)
+val Surface700 = Color(0xFF5A4A38)
+val Surface800 = Color(0xFF26201A)
+val Surface900 = Color(0xFF1C1611)
 
 /**
  * Returns Color.Black or Color.White based on perceived brightness of the background color.
@@ -120,7 +120,7 @@ private val LightColorScheme = lightColorScheme(
     onErrorContainer     = Color(0xFF410009),
     background           = Surface50,
     onBackground         = Surface900,
-    surface              = Color.White,
+    surface              = Color(0xFFFFF8F0),
     onSurface            = Surface900,
     surfaceVariant       = Surface100,
     onSurfaceVariant     = Surface700,
