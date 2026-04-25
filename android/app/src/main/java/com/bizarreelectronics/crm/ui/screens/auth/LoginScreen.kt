@@ -15,7 +15,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -2009,7 +2011,7 @@ fun LoginScreen(
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
-                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel, onForgotPassword)
+                            SetupStep.CREDENTIALS -> CredentialsStep(state, viewModel)
                             SetupStep.SET_PASSWORD -> SetPasswordStep(state, viewModel)
                             SetupStep.TWO_FA_SETUP -> TwoFaSetupStep(state, viewModel, onLoginSuccess)
                             SetupStep.TWO_FA_VERIFY -> TwoFaVerifyStep(state, viewModel, onLoginSuccess, onBackupCodeRecovery)
@@ -2230,14 +2232,14 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth().height(56.dp),
         shape = RoundedCornerShape(28.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF8B5CF6),
-            contentColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text("Connect", style = MaterialTheme.typography.labelLarge)
         }
@@ -2274,7 +2276,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     // Header row: back arrow + title
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(4.dp))
         Text(
@@ -2300,12 +2302,12 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         label = { Text("Shop URL") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+        leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
         suffix = {
             Text(
                 ".$CLOUD_DOMAIN",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
         },
         supportingText = { Text("3–30 characters: letters, numbers, hyphens") },
@@ -2364,7 +2366,6 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
 
     // Error shown between password helper and Create Shop button
     if (state.error != null) {
-        Spacer(Modifier.height(8.dp))
         Text(
             text = state.error,
             color = MaterialTheme.colorScheme.error,
@@ -2392,6 +2393,8 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
         ),
     ) {
         if (state.isLoading) {
@@ -2413,7 +2416,6 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
 private fun CredentialsStep(
     state: LoginUiState,
     viewModel: LoginViewModel,
-    onForgotPassword: (() -> Unit)? = null,
 ) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
@@ -2619,11 +2621,11 @@ private fun CredentialsStep(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
-            Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
         Column {
-            Text("Sign In", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Sign In", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
             if (state.storeName.isNotBlank()) {
                 Text(state.storeName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -2728,50 +2730,6 @@ private fun CredentialsStep(
             } else {
                 Text("Sign In")
             }
-        }
-    }
-
-    // §2.17-L407/L414 — Remember me + biometric toggles.
-    Spacer(Modifier.height(4.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(
-            checked = state.rememberMeChecked,
-            onCheckedChange = { viewModel.toggleRememberMe() },
-        )
-        Text(
-            "Remember me",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 4.dp),
-        )
-        if (state.rememberMeChecked) {
-            Checkbox(
-                checked = state.biometricEnabled,
-                onCheckedChange = { viewModel.toggleBiometricEnabled() },
-            )
-            Text(
-                "Use biometrics",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-    }
-
-    // §2.8 — Forgot password link, shown on username step only
-    if (onForgotPassword != null) {
-        Spacer(Modifier.height(4.dp))
-        TextButton(
-            onClick = onForgotPassword,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                "Forgot password?",
-                style = MaterialTheme.typography.labelMedium,
-            )
         }
     }
 
