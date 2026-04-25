@@ -44,6 +44,10 @@ public struct PosView: View {
     /// by asking "who is this sale for?".
     @State private var phase: PosPhase = .gate
 
+    /// §16.28.1 bug 2 — post-gate sell-vs-service decision. Reset to
+    /// `.undecided` whenever phase returns to `.gate` (next sale).
+    @State private var pathChoice: PosPathChoice = .undecided
+
     /// Tracks when the transaction settled so `PosReceiptView` can fire
     /// its success haptic (`.sensoryFeedback(.success, trigger: paidAt)`).
     @State private var paidAt: Date = Date()
@@ -412,7 +416,9 @@ public struct PosView: View {
             gateView
 
         case .cart:
-            if Platform.isCompact {
+            if shouldShowPathChoice {
+                pathChoiceView
+            } else if Platform.isCompact {
                 compactLayout
             } else {
                 regularLayout
@@ -443,6 +449,63 @@ public struct PosView: View {
 
     private var gateView: some View {
         PosGateView(vm: makeGateVM())
+    }
+
+    // MARK: - Path choice (sell vs service · §16.28.1 bug 2)
+
+    /// Show the post-gate sell-vs-service decision when:
+    /// - Customer is attached (gate already cleared)
+    /// - Cart is empty (no items already chosen)
+    /// - Cashier hasn't picked a path yet this sale
+    private var shouldShowPathChoice: Bool {
+        cart.hasCustomer && cart.isEmpty && pathChoice == .undecided
+    }
+
+    @ViewBuilder
+    private var pathChoiceView: some View {
+        let displayName = cart.customer?.displayName ?? "this customer"
+        PosPathChoiceView(
+            customerName: displayName,
+            onSell: { pathChoice = .selling },
+            onStartRepair: startRepairFlow
+        )
+    }
+
+    /// Build a `PosRepairFlowCoordinator`, attach it to the phase machine,
+    /// and route `onCancel` / `onComplete` back to `.cart` (or `.gate` for
+    /// a fresh sale on completion).
+    @MainActor
+    private func startRepairFlow() {
+        guard let api else {
+            // No API — cannot run repair flow; surface a typed message
+            // (parity with PosPhase.repair fallback in phaseBody).
+            tenderErrorMessage = "Repair check-in unavailable: no server connection."
+            return
+        }
+        let customerId = cart.customer?.id ?? 0
+        let coordinator = PosRepairRouter.makeCoordinator(
+            customerId: customerId,
+            customerDisplayName: cart.customer?.displayName,
+            api: api,
+            onCancel: {
+                pathChoice = .undecided
+                phase = .cart
+            },
+            onComplete: { _ in
+                // Deposit tendered (or quote saved) → return to cart so
+                // the cashier can either keep selling parts or charge.
+                pathChoice = .selling
+                phase = .cart
+            }
+        )
+        phase = .repair(coordinator)
+    }
+
+    /// Reset the path choice on every return to gate so the next sale
+    /// starts fresh. Called from `handleGateRoute` and the receipt's
+    /// "Next sale" callback.
+    private func resetPathChoice() {
+        pathChoice = .undecided
     }
 
     private func makeGateVM() -> PosGateViewModel {
@@ -560,6 +623,7 @@ public struct PosView: View {
             api: api,
             onNextSale: {
                 self.cart.clear()
+                self.pathChoice = .undecided
                 self.phase = .gate
             }
         )
