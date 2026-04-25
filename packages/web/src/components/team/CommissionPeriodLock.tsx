@@ -9,7 +9,7 @@
  * Drop-in for the payroll page or settings; also re-used by GoalsPage in a
  * follow-up if needed.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen, Plus, Loader2, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -42,6 +42,14 @@ export function CommissionPeriodLock() {
     },
   });
   const periods: PayrollPeriod[] = data || [];
+
+  // WEB-FX-003: Esc-to-close for new-period dialog.
+  useEffect(() => {
+    if (!showNew) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowNew(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showNew]);
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -149,9 +157,15 @@ export function CommissionPeriodLock() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New payroll period</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNew(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-payroll-period-title"
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="new-payroll-period-title" className="text-lg font-bold mb-4">New payroll period</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-gray-600">Name</span>

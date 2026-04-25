@@ -144,7 +144,7 @@ export function SettingsGlobalSearch({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Search settings (try: tax, receipt, SMS, passcode)"
-            className="flex-1 bg-transparent py-1.5 text-sm text-surface-900 placeholder:text-surface-400 focus:outline-none dark:text-surface-100"
+            className="flex-1 bg-transparent py-1.5 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:text-surface-100"
             aria-label="Search settings"
           />
           <button

@@ -3181,7 +3181,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
               value={subdomain}
               onChange={(e) => setSubdomain(e.target.value)}
               placeholder="myshop"
-              className="w-28 px-3 py-2 text-sm bg-transparent text-surface-900 dark:text-surface-100 focus:outline-none"
+              className="w-28 px-3 py-2 text-sm bg-transparent text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
             <span className="px-3 py-2 text-xs text-surface-400 bg-surface-50 dark:bg-surface-700 border-l border-surface-200 dark:border-surface-600 whitespace-nowrap">.repairshopr.com</span>
           </div>

@@ -15,7 +15,7 @@
  * SEVERITY=LOW: component is marketing-only today, behind a feature flag,
  * and the "coming soon" message is shown to the user directly.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatCents } from '@/utils/format';
 
 interface FinancingButtonProps {
@@ -57,6 +57,14 @@ export function FinancingButton({
     setShowModal(true);
   };
 
+  // WEB-FX-003: Esc-to-close for a11y dialog parity.
+  useEffect(() => {
+    if (!showModal) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowModal(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showModal]);
+
   return (
     <>
       <button
@@ -68,9 +76,15 @@ export function FinancingButton({
       </button>
 
       {showModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-2 text-lg font-semibold">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowModal(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="financing-stub-title"
+            className="max-w-md rounded-lg bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="financing-stub-title" className="mb-2 text-lg font-semibold">
               {providerLabel} financing (stub)
             </h3>
             <p className="mb-4 text-sm text-gray-600">

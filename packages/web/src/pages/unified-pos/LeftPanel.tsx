@@ -603,7 +603,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                 value={partQuery}
                 onChange={(e) => setPartQuery(e.target.value)}
                 placeholder="Search inventory parts…"
-                className="flex-1 text-xs bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none"
+                className="flex-1 text-xs bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                 autoFocus
               />
               <button

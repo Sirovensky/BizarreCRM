@@ -128,6 +128,21 @@
       min-width: auto;
     }
   }
+
+  /* WEB-FAC-001/002/003 (Fixer-AA 2026-04-25): respect prefers-reduced-motion.
+   * Vestibular/motion-sensitive users; WCAG 2.3.3. Strip animation +
+   * transition durations to ~0 and disable smooth-scroll. Explicit overrides
+   * for Tailwind's animate-spin / animate-pulse since those are looped. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .animate-spin { animation: none !important; }
+    .animate-pulse { animation: none !important; }
+  }
 }
 
 /* Component classes — outside @layer to prevent Tailwind purging */

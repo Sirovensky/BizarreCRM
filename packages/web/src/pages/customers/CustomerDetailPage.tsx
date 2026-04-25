@@ -40,7 +40,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatShortDateTime } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -1667,7 +1667,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
             )}
             <p>{msg.content ?? msg.message ?? ''}</p>
             <p className={cn('text-[10px] mt-1', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
-              {msg.created_at ? new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+              {msg.created_at ? formatShortDateTime(msg.created_at) : ''}
             </p>
           </div>
         </div>

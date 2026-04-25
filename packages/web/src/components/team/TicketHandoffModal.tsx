@@ -8,7 +8,7 @@
  * Designed to be dropped into TicketDetailPage by the tickets agent in a
  * follow-up — they own that file, we don't touch it. Importable from here.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, ArrowRightLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -73,10 +73,23 @@ export function TicketHandoffModal({
 
   const canSubmit = !!toUserId && reason.trim().length > 0 && !handoffMut.isPending;
 
+  // WEB-FX-003: Esc-to-close.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-        <h2 className="text-lg font-bold mb-1 inline-flex items-center">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ticket-handoff-title"
+        className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="ticket-handoff-title" className="text-lg font-bold mb-1 inline-flex items-center">
           <ArrowRightLeft className="w-5 h-5 mr-2 text-primary-500" /> Hand off ticket
         </h2>
         <p className="text-xs text-gray-500 mb-4">

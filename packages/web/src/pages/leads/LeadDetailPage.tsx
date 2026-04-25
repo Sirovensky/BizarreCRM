@@ -11,7 +11,7 @@ import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -530,9 +530,7 @@ export function LeadDetailPage() {
                         )}
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5">
-                        {new Date(r.remind_at).toLocaleString('en-US', {
-                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                        })}
+                        {formatShortDateTime(r.remind_at)}
                         {r.created_by_first_name && ` - by ${r.created_by_first_name}`}
                       </p>
                     </div>
@@ -579,9 +577,7 @@ export function LeadDetailPage() {
                         <p className="text-xs font-medium text-surface-900 dark:text-surface-100">{item.title}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-surface-400">
-                            {new Date(item.date).toLocaleString('en-US', {
-                              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                            })}
+                            {formatShortDateTime(item.date)}
                           </span>
                           {item.detail && (
                             <span className="text-[10px] text-surface-500 capitalize">{item.detail}</span>
@@ -680,8 +676,8 @@ export function LeadDetailPage() {
                         </span>
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5">
-                        {new Date(a.start_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+                        {formatShortDateTime(a.start_time)}
+                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
                       </p>
                       {a.no_show === 1 && (
                         <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">

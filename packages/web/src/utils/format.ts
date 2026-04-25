@@ -87,7 +87,7 @@ export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleDateString('en-US', {
+  return d.toLocaleDateString(_locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -98,13 +98,35 @@ export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString('en-US', {
+  return d.toLocaleString(_locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+// @audit-fixed (WEB-FF-003 / Fixer-DD 2026-04-25): short date+time used widely
+// across detail pages (Leads, Customer chat, Portal, etc.). Each had its own
+// hardcoded `toLocaleString('en-US', { month: 'short', ... })`. Centralised
+// here so locale flows from `initCurrencyFromSettings` instead of being pinned.
+export function formatShortDateTime(iso: string | Date | null | undefined): string {
+  if (iso == null) return '\u2014';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return '\u2014';
+  return d.toLocaleString(_locale, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
+export function formatNumber(n: number | null | undefined): string {
+  if (n == null || !isFinite(Number(n))) return '0';
+  return new Intl.NumberFormat(_locale).format(Number(n));
 }
 
 // ─── Relative time ──────────────────────────────────────────────────────────

@@ -67,10 +67,16 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900" onClick={e => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="print-preview-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-700 px-5 py-4">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Print</h2>
+          <h2 id="print-preview-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Print</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <X className="h-5 w-5" />
           </button>

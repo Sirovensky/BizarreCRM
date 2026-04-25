@@ -10,6 +10,7 @@ import { PortalEstimatesView } from './PortalEstimatesView';
 import { PortalInvoicesView } from './PortalInvoicesView';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
+import { formatShortDateTime } from '@/utils/format';
 // Portal enrichment (criticalaudit.md §45)
 import { StatusTimeline } from './components/StatusTimeline';
 import { QueuePosition } from './components/QueuePosition';
@@ -414,7 +415,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
 
 function formatWidgetDate(date: string): string {
   try {
-    return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return formatShortDateTime(date);
   } catch {
     return date;
   }
