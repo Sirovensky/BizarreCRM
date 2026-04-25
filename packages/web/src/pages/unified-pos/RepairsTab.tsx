@@ -412,7 +412,16 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     } else if (pricingData) {
       laborPrice = pricingData.labor_price ?? 0;
     } else {
-      laborPrice = parseFloat(manualPrice) || 0;
+      // WEB-FB-024: parseFloat coercing typos like "12o.50" silently to 0
+      // means the cashier walks out the door charging $0 for labor with no
+      // visual feedback. Reject obviously-non-numeric input and abort the
+      // add so the cashier sees a toast instead.
+      const parsed = parseFloat(manualPrice);
+      if (manualPrice.trim() !== '' && (Number.isNaN(parsed) || !/^\d*\.?\d+$/.test(manualPrice.trim()))) {
+        toast.error('Invalid manual price — enter a number like 75.00');
+        return;
+      }
+      laborPrice = Number.isFinite(parsed) ? parsed : 0;
     }
 
     onSelect(selectedServiceId, service.name, laborPrice, gradeId, gradeParts);

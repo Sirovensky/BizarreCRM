@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, UserSearch } from 'lucide-react';
+import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, UserSearch, type LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, ticketApi, customerApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -172,7 +172,13 @@ function UnifiedSearchBar() {
     return () => { isCancelled = true; clearTimeout(debounceRef.current); };
   }, [input]); // intentional: debounced search triggers on input change, API fns and store actions are stable
 
-  const iconMap: Record<string, any> = { ticket: Ticket, customer: User, product: Package };
+  // WEB-FB-016: typed map so an unknown `r.type` is a build-time signal
+  // rather than a silently-rendered nothing.
+  const iconMap: Record<'ticket' | 'customer' | 'product', LucideIcon> = {
+    ticket: Ticket,
+    customer: User,
+    product: Package,
+  };
 
   return (
     <div className="relative">
@@ -229,7 +235,7 @@ function UnifiedSearchBar() {
       {focused && results.length > 0 && !customer && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800 overflow-hidden">
           {results.map((r, i) => {
-            const Icon = iconMap[r.type] || Search;
+            const Icon = iconMap[r.type as keyof typeof iconMap] ?? Search;
             return (
               <button
                 key={i}

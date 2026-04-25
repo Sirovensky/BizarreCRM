@@ -126,8 +126,16 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  // WEB-FC-022: revokeObjectURL synchronously after `.click()` races on
+  // Firefox/Safari — the browser may not have started the download when the
+  // URL is invalidated, cancelling the save. Defer cleanup so the navigation
+  // for the blob URL has time to begin.
+  setTimeout(() => {
+    if (a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 // ─── Tabs Config ──────────────────────────────────────────────────────────────

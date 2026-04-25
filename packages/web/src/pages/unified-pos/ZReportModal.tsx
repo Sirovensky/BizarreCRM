@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { api } from '@/api/client';
@@ -59,11 +60,30 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
 
   const handlePrint = () => window.print();
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="z-report-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="z-report-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Z-Report · Shift #{shiftId}
           </h3>
           <div className="flex items-center gap-1">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { X, CalendarClock, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi } from '@/api/endpoints';
@@ -90,10 +90,22 @@ export function ScheduledSendModal({
     }
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scheduled-send-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -102,7 +114,7 @@ export function ScheduledSendModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h3 className="flex items-center gap-2 text-base font-semibold text-surface-900 dark:text-surface-100">
+          <h3 id="scheduled-send-title" className="flex items-center gap-2 text-base font-semibold text-surface-900 dark:text-surface-100">
             <CalendarClock className="h-4 w-4 text-amber-500" />
             Schedule Send
           </h3>

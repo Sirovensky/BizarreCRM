@@ -304,8 +304,15 @@ client.interceptors.response.use(
     // silently swallowed. We skip auth endpoints (already handled above) and
     // network errors where response is undefined (offline, CORS, etc.) since
     // those have no status code to inspect.
+    // WEB-FI-004 / FIXED-by-Fixer-ZZ 2026-04-25 — callers that already render
+    // their own error UI in `useMutation({ onError })` can pass
+    // `{ skipGlobal500Toast: true }` on the request config to suppress this
+    // global toast and avoid the "Server error..." over the specific message
+    // pile-up. Defaults to false so existing behavior is preserved.
     const status = error.response?.status;
-    if (status !== undefined && status >= 500) {
+    const skipGlobal = (originalRequest as { skipGlobal500Toast?: boolean })
+      ?.skipGlobal500Toast === true;
+    if (status !== undefined && status >= 500 && !skipGlobal) {
       const serverMsg =
         typeof error.response?.data?.message === 'string'
           ? error.response.data.message
@@ -394,9 +401,14 @@ export const superAdminTokenStore = {
   },
 };
 
+// WEB-FI-002 / FIXED-by-Fixer-ZZ 2026-04-25 — add explicit timeout so a hung
+// super-admin request doesn't trap the operator on an indefinite spinner. The
+// SA console's only credential is the bearer; there's no graceful degradation
+// when a tenant call stalls. 30s matches the tenant-side default.
 export const superAdminClient = axios.create({
   baseURL: '/super-admin/api',
   headers: { 'Content-Type': 'application/json' },
+  timeout: 30_000,
 });
 
 superAdminClient.interceptors.request.use((config) => {

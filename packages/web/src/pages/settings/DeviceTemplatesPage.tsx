@@ -69,6 +69,23 @@ const EMPTY_FORM: TemplateForm = {
 
 const CATEGORIES = ['phone', 'tablet', 'laptop', 'tv', 'watch', 'other'];
 
+// WEB-FF-001 / FIXED-by-Fixer-ZZ 2026-04-25 — float * 100 + round drops a cent
+// when the dollar input came from a binary-fp computation (e.g. 0.1+0.2). Parse
+// the input as a string and split on the decimal so 19.995 -> 1999, 19.99 ->
+// 1999, 0.1 -> 10 deterministically. Falls back to 0 on bad input.
+function dollarsToCents(value: number | string): number {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  const m = raw.match(/^(-?)(\d*)(?:\.(\d{0,2}))?\d*$/);
+  if (!m) {
+    const fallback = Number(raw);
+    return Number.isFinite(fallback) ? Math.round(fallback * 100) : 0;
+  }
+  const [, sign, whole, frac = ''] = m;
+  const cents = Number(whole || '0') * 100 + Number((frac + '00').slice(0, 2) || '0');
+  return sign === '-' ? -cents : cents;
+}
+
 export function DeviceTemplatesPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<TemplateForm | null>(null);
@@ -111,8 +128,8 @@ export function DeviceTemplatesPage() {
         device_model: form.device_model || null,
         fault: form.fault || null,
         est_labor_minutes: form.est_labor_minutes,
-        est_labor_cost: Math.round(form.est_labor_cost_dollars * 100),
-        suggested_price: Math.round(form.suggested_price_dollars * 100),
+        est_labor_cost: dollarsToCents(form.est_labor_cost_dollars),
+        suggested_price: dollarsToCents(form.suggested_price_dollars),
         warranty_days: form.warranty_days,
         parts: form.parts.map((p) => ({ inventory_item_id: p.inventory_item_id, qty: p.qty })),
         diagnostic_checklist: form.diagnostic_checklist,

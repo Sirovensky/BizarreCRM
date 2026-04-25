@@ -6,7 +6,7 @@
  * Ratings below threshold are stored locally so owners can respond
  * privately without the damage hitting public review sites.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { submitReview } from './enrichApi';
 import { usePortalI18n } from '../i18n';
 
@@ -28,6 +28,15 @@ export function ReviewPromptModal({
   const [phase, setPhase] = useState<'ask' | 'thanks' | 'google'>('ask');
   const [googleUrl, setGoogleUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 

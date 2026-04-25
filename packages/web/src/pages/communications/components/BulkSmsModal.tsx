@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { X, AlertTriangle, Users, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -97,10 +97,22 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Bulk send failed'),
   });
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-sms-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -109,7 +121,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h3 className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h3 id="bulk-sms-title" className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
             <Users className="h-5 w-5 text-primary-500" />
             Bulk SMS
           </h3>

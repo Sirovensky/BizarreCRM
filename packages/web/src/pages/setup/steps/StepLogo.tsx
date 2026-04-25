@@ -107,7 +107,7 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
               value={color}
               onChange={(e) => handleColorChange(e.target.value)}
               placeholder="#0E7490"
-              className="flex-1 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm text-surface-900 focus:border-primary-500 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="flex-1 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
         </div>

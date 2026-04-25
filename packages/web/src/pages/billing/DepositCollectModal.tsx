@@ -17,7 +17,7 @@
  *     />
  *   )}
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
@@ -38,6 +38,14 @@ export function DepositCollectModal({
 }: DepositCollectModalProps) {
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -63,9 +71,20 @@ export function DepositCollectModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-gray-900">Collect Deposit</h2>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deposit-collect-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="deposit-collect-title" className="text-lg font-semibold text-gray-900">Collect Deposit</h2>
         <p className="mt-1 text-sm text-gray-500">
           Amount collected now will be subtracted from the final invoice when the repair is
           finalized.

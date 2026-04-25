@@ -55,7 +55,7 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
             placeholder="Joe's Phone Repair"
             autoFocus
             maxLength={100}
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
           <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
             This appears on receipts, invoices, and the customer portal.

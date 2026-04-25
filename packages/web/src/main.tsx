@@ -68,18 +68,22 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 
   render() {
     if (this.state.hasError) {
+      // WEB-FE-023: Tailwind classes (with `dark:` variants) so the root
+      // boundary at least respects prefers-color-scheme. Tailwind has run
+      // before React mounts, so utility classes are available even when
+      // every page chunk failed to render.
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '2rem', fontFamily: 'system-ui, sans-serif', textAlign: 'center', backgroundColor: '#f9fafb' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>&#9888;</div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginBottom: '0.5rem' }}>
+        <div className="flex min-h-screen flex-col items-center justify-center bg-surface-50 p-8 text-center font-sans dark:bg-surface-950">
+          <div className="mb-4 text-5xl" aria-hidden="true">&#9888;</div>
+          <h1 className="mb-2 text-2xl font-bold text-surface-900 dark:text-surface-50">
             Something went wrong
           </h1>
-          <p style={{ color: '#6b7280', maxWidth: '32rem', marginBottom: '1.5rem' }}>
+          <p className="mb-6 max-w-lg text-surface-500 dark:text-surface-400">
             An unexpected error occurred. Please reload the page to try again.
           </p>
           <button
             onClick={() => window.location.reload()}
-            style={{ padding: '0.625rem 1.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#2563eb', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+            className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700"
           >
             Reload Page
           </button>

@@ -32,7 +32,7 @@ export function StepReceipts({ pending, onUpdate, onComplete, onCancel }: SubSte
               value={title}
               onChange={(e) => onUpdate({ receipt_title: e.target.value })}
               placeholder="Thank you for your business!"
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
 
@@ -45,7 +45,7 @@ export function StepReceipts({ pending, onUpdate, onComplete, onCancel }: SubSte
               onChange={(e) => onUpdate({ receipt_header: e.target.value })}
               placeholder="Joe's Phone Repair&#10;123 Main Street&#10;City, State ZIP"
               rows={4}
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
 
@@ -58,7 +58,7 @@ export function StepReceipts({ pending, onUpdate, onComplete, onCancel }: SubSte
               onChange={(e) => onUpdate({ receipt_footer: e.target.value })}
               placeholder="Warranty: 90 days parts and labor&#10;Questions? Call us at (555) 123-4567"
               rows={4}
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
         </div>

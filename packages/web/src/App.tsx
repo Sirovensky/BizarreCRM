@@ -334,10 +334,33 @@ export default function App() {
           useAuthStore.setState({ isLoading: false });
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        // If the status call fails, err on the side of "landing" so
-        // production SaaS traffic isn't routed into a broken CRM shell.
+        // WEB-FV-003 / FIXED-by-Fixer-ZZ 2026-04-25 — previously this catch
+        // silently flipped to landing with no diagnostic, so a customer hitting
+        // a transient network blip on cold-start saw the marketing page and
+        // assumed the app was gone. Now we leave a console breadcrumb (picked
+        // up by Sentry/Datadog/etc. via console capture) AND flash a non-
+        // blocking toast so the user knows it was a connectivity issue, not a
+        // missing tenant. We still default to landing for the same SaaS-safety
+        // reason as before.
+        try {
+          console.warn('[boot] setup/status fetch failed; defaulting to landing', err);
+        } catch {
+          /* ignore */
+        }
+        // Lazy dynamic import keeps App.tsx free of an extra static dep on
+        // react-hot-toast; it is already bundled in main via other call sites
+        // so this resolves immediately. .catch swallowed so a missing toast
+        // lib at runtime never replaces the connectivity error with a blank
+        // unhandled-promise rejection.
+        import('react-hot-toast')
+          .then(({ default: t }) => {
+            t.error("Couldn't reach server — showing landing page.", { id: 'boot-status' });
+          })
+          .catch(() => {
+            /* ignore */
+          });
         setShowLanding(true);
         useAuthStore.setState({ isLoading: false });
       });
@@ -374,20 +397,29 @@ export default function App() {
     <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-        <Route path="/setup/:token" element={<LoginPage />} />
-        <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
+        {/* WEB-FE-020 (Fixer-AAA 2026-04-25): wrap auth routes in
+            PageErrorBoundary so a stale-token render exception on
+            /reset-password/:token (opened from email) shows the
+            in-app error UI with a "Back to login" affordance instead
+            of the global ErrorBoundary's bare inline-styled fallback. */}
+        <Route path="/login" element={<PageErrorBoundary><LoginPage /></PageErrorBoundary>} />
+        <Route path="/reset-password/:token" element={<PageErrorBoundary><ResetPasswordPage /></PageErrorBoundary>} />
+        <Route path="/setup/:token" element={<PageErrorBoundary><LoginPage /></PageErrorBoundary>} />
+        <Route path="/setup" element={<ProtectedRoute><PageErrorBoundary><SetupPage /></PageErrorBoundary></ProtectedRoute>} />
         <Route path="/tv" element={<PageErrorBoundary><TvDisplayPage /></PageErrorBoundary>} />
         <Route path="/photo-capture/:ticketId/:deviceId" element={<PageErrorBoundary><PhotoCapturePage /></PageErrorBoundary>} />
-        <Route path="/print/ticket/:id" element={<PrintPage />} />
-        <Route path="/track" element={<TrackingPage />} />
-        <Route path="/track/:orderId" element={<TrackingPage />} />
+        {/* WEB-FE-019 (Fixer-AAA 2026-04-25): public/customer surfaces (print,
+            track, customer-portal, pay) were rendered naked — any render
+            error crashed the whole React tree. Wrap each in PageErrorBoundary
+            to match the auth'd shell and the kiosk routes above. */}
+        <Route path="/print/ticket/:id" element={<PageErrorBoundary><PrintPage /></PageErrorBoundary>} />
+        <Route path="/track" element={<PageErrorBoundary><TrackingPage /></PageErrorBoundary>} />
+        <Route path="/track/:orderId" element={<PageErrorBoundary><TrackingPage /></PageErrorBoundary>} />
         {/* WEB-FL-009: wildcard alone matches `/customer-portal` exactly; flat
             decl was redundant + a footgun if a nested route was inserted between. */}
-        <Route path="/customer-portal/*" element={<CustomerPortalPage />} />
+        <Route path="/customer-portal/*" element={<PageErrorBoundary><CustomerPortalPage /></PageErrorBoundary>} />
         {/* Public customer pay page — no auth, token validates server-side (§52). */}
-        <Route path="/pay/:token" element={<CustomerPayPage />} />
+        <Route path="/pay/:token" element={<PageErrorBoundary><CustomerPayPage /></PageErrorBoundary>} />
         <Route
           path="/*"
           element={

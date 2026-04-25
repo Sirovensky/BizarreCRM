@@ -272,10 +272,13 @@ export function SignupPage() {
   const submitDisabled = submitting || slugStatus === 'checking' || (Boolean(captchaSiteKey) && !captchaReady);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Roboto', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=League+Spartan:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-      `}</style>
+    <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Jost', 'Roboto', sans-serif" }}>
+      {/* WEB-FA-024: dropped per-page <style>@import — Bebas Neue is loaded
+          once globally via index.html <link rel="stylesheet">. The inline
+          @import duplicated the network round-trip on every signup mount
+          AND blocked first paint while the @import resolved. League Spartan
+          + Roboto refs further down fall back to Jost / system stack which
+          aligns with the project_brand_fonts (Jost) canonical body face. */}
       <div style={{ width: '100%', maxWidth: 460 }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>

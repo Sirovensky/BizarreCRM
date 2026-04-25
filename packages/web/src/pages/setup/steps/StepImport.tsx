@@ -234,7 +234,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setTestStatus('idle'); }}
               placeholder="Paste your API key"
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 font-mono text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 font-mono text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
 
@@ -249,7 +249,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
                   value={subdomain}
                   onChange={(e) => { setSubdomain(e.target.value.trim()); setTestStatus('idle'); }}
                   placeholder="yourshop"
-                  className="flex-1 rounded-l-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="flex-1 rounded-l-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
                 <span className="rounded-r-lg border border-l-0 border-surface-300 bg-surface-100 px-3 py-3 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-700">
                   .repairshopr.com

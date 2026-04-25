@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- WEB-FE-017 (Fixer-AAA 2026-04-25): viewport-fit=cover so iOS Safari
+         renders into the notch/home-indicator safe areas; pair with
+         env(safe-area-inset-*) in CSS for /customer-portal + kiosk
+         surfaces previously clipped on iPhone. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- SEC-H61: no-referrer at the HTML level so a reset-password URL like
          /reset-password/<token> never leaks to third-party origins (fonts,
          analytics, image hosts, external links) via the Referer header. This
