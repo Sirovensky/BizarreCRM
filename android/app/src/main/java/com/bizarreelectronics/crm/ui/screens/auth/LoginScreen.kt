@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -1388,11 +1389,11 @@ class LoginViewModel @Inject constructor(
     private suspend fun probemagicLinksEnabled() {
         try {
             val response = authApi.getTenantMe()
-            val enabled = response.data?.magicLinksEnabled ?: true
+            val enabled = response.data?.magicLinksEnabled ?: false
             _state.value = _state.value.copy(magicLinksEnabled = enabled)
         } catch (_: Exception) {
-            // 404 or any failure → treat as enabled (opt-out model).
-            _state.value = _state.value.copy(magicLinksEnabled = true)
+            // 404 or any failure → treat as disabled (opt-in model; hide button until confirmed).
+            _state.value = _state.value.copy(magicLinksEnabled = false)
         }
     }
 
@@ -3224,7 +3225,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
     Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(4.dp))
     Text(
-        "Scan this QR code with any authenticator app (Google Authenticator, Authy, etc.)",
+        "Scan this QR code with Google Authenticator or any TOTP app",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -3256,14 +3257,14 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp),
+            .height(200.dp),
         contentAlignment = Alignment.Center,
     ) {
         when {
             qrBitmap != null -> Image(
                 bitmap = qrBitmap.asImageBitmap(),
                 contentDescription = "2FA QR Code — scan with your authenticator app",
-                modifier = Modifier.size(240.dp),
+                modifier = Modifier.size(200.dp),
             )
             state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() ->
                 CircularProgressIndicator()
