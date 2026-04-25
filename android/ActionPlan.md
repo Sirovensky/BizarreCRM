@@ -4757,3 +4757,128 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 ## Aggregator note
 
 Findings produced by 10 parallel sonnet code-audit agents, deduped. Each item is independently checkable. Cron `pos-fix-loop-reminder` fires every 10 minutes nudging continuation; remove the cron when this section is empty.
+
+---
+## Login-flow mockup parity wave — 2026-04-24
+
+> **Mission.** 100% structural parity between the Android login flow (LoginScreen.kt, 3445 LOC) and the static PNG mockups in C:\Users\Owner\Downloads\MY OWN CRM\screen-01..11-*.png. Brand palette stays **cream #FDEED0** per project memory — ignore the purple #8B5CF6 rendered in the legacy mockups (memory: feedback_brand_color). All other structure (copy, spacing, components, helper text, error placement, tab strip, wave divider) must match the mockups byte-for-byte where feasible.
+>
+> **Reference mockups (in flow order):**
+> - screen-01-login.png — Initial Server step (Connect to Your Shop, slug field, Connect CTA, "Self-hosted?" + "Register new shop" footer)
+> - screen-02-register.png — Register card empty state (back arrow, 4 fields, disabled Create Shop)
+> - screen-03-register-filled.png — Register card with focused Shop URL (label cut-out + cream outline)
+> - screen-04-url-only.png — Register card after typing Shop URL only (still disabled Create Shop)
+> - screen-05-filled.png — Register card all 4 fields filled (Create Shop ENABLED, cream pill)
+> - screen-06-after-create.png — Register card with inline red "Origin header required" error above CTA
+> - screen-07-back.png — Server step focused with keyboard up (slug field outlined cream, Connect button cream)
+> - screen-08-retry.png — Server step pre-fill empty slug ("myshop" placeholder, Connect disabled)
+> - screen-09-create-result.png — Sign In step header (Sign In + "Testing 123 Shop" subtitle, Username + Password fields, disabled Sign In)
+> - screen-10-signed-in.png — 2FA Setup step (QR code in white frame, "Set Up Two-Factor Auth" + subtitle, 6-digit field with shield icon + cream outline focused)
+> - screen-11-post-2fa.png — Dashboard post-login (out of scope for this section, included for context only)
+>
+> Legend: (Theme) palette/typography - (Layout) size/spacing - (Copy) exact strings - (Bug) defect - (A11y) accessibility - (Flow) step transition.
+
+### Theme + tab strip
+
+- [ ] **LOGIN-MOCK-001 (Theme). Stale "purple #8B5CF6" reference in LoginTabBar doc-block.** LoginScreen.kt:2031-2033 comment claims active tab is "purple (#8B5CF6) text + 2dp purple underline indicator". Brand is now cream #FDEED0 (Theme.kt:43). Replace comment with cream + reference MaterialTheme.colorScheme.primary so doc and code agree.
+- [ ] **LOGIN-MOCK-002 (Layout). Card surface hardcoded Color(0xFF1F1F23).** LoginScreen.kt:2007 — escape hatch breaks any future palette swap (light theme, dynamic-color override, brand re-tune). Replace with MaterialTheme.colorScheme.surfaceContainer (or surface1 semantic token) to match the rest of the app and the mockup card tone.
+- [ ] **LOGIN-MOCK-003 (Layout). Tab text style is labelMedium (12sp); mockup tabs read at ~14-15sp.** LoginScreen.kt:2080. Bump to MaterialTheme.typography.titleSmall (14sp medium) for tap-target legibility and match to screen-01 / screen-09.
+- [ ] **LOGIN-MOCK-004 (Theme). Inactive tab divider line missing visual continuity at indicator gap.** LoginScreen.kt:2068-2070 renders HorizontalDivider underneath a 2dp SecondaryIndicator. Mockup shows the inactive segment line dimmer than the active indicator and FLUSH with it (no overlap). Audit z-order: indicator should sit ABOVE the divider, not be the same thickness.
+- [ ] **LOGIN-MOCK-005 (Layout). Tab row contentColor hardcoded to activeColor propagates cream to inactive tabs.** LoginScreen.kt:2052 sets contentColor = activeColor. Tab override at :2081-2082 correctly switches inactive to muted, but the selectedContentColor/unselectedContentColor props at :2084-2085 duplicate that logic. Pick one source of truth (preferred: drop :2052 override, let Tab props drive color).
+
+### Hero / wordmark / wave divider
+
+- [ ] **LOGIN-MOCK-006 (Layout). Top spacer is height(80.dp); mockup hero sits at ~30-35% screen height.** LoginScreen.kt:1869. On 6.7" reference (mockup ratio), wordmark center is at ~40% of viewport. Replace static 80.dp with a Spacer(weight=...) or compute from BoxWithConstraints so hero centers vertically when keyboard is dismissed. Server step screen-01 shows the wordmark roughly mid-screen, not pinned to top.
+- [ ] **LOGIN-MOCK-007 (Theme). Wordmark uses headlineLarge.copy(fontSize = 36.sp) — mockup looks heavier (display weight, condensed).** LoginScreen.kt:1872-1874. Confirm headlineLarge is wired to BarlowCondensedFamily per Typography.kt. If it's still FontFamily.Default, the wordmark renders Roboto bold and won't match the mockup's compressed serif-ish "Bizarre CRM". Verify font assets in res/font/ are loaded.
+- [ ] **LOGIN-MOCK-008 (Copy). Subtitle is "Electronics Repair Management".** LoginScreen.kt:1879 matches mockups screen-01/02/03/04/05/06 verbatim. Keep — but also verify casing (Title Case, no period) and confirm bodyMedium muted color matches mockup grey (mockup ~#7A7A7A, theme MutedText = #B09A84). Investigate if onSurfaceVariant resolves to roughly the right hue in dark theme.
+- [ ] **LOGIN-MOCK-009 (Layout). Wave divider hairline thickness audit.** WaveDivider.kt (component file) — confirm 1px stroke at ~15% magenta alpha matches mockup's barely-visible curve. If too prominent, dial down alpha. If too subtle, bump.
+- [ ] **LOGIN-MOCK-010 (Layout). Wave divider sits 12dp under subtitle; mockup gap looks ~20-24dp.** LoginScreen.kt:1884. Increase top spacer to 20.dp.
+
+### Server step (screen-01, screen-07, screen-08)
+
+- [ ] **LOGIN-MOCK-011 (Copy). Subtitle "Enter your shop name to connect" — current matches mockup.** LoginScreen.kt:2173. Keep verbatim.
+- [ ] **LOGIN-MOCK-012 (Layout). OutlinedTextField suffix .bizarrecrm.com may collide with cursor on long slugs.** LoginScreen.kt:2207-2213. Mockup screen-03 shows long slug truncating with an ellipsis effect ("Btsting123yadmintesti.bizarrecrm.com"). Verify TextOverflow.Ellipsis on the value text or set maxLength = 30 on input — server enforces 3-30 char range per helper text.
+- [ ] **LOGIN-MOCK-013 (Theme). Connect button disabledContainerColor = surfaceVariant blends with card surface.** LoginScreen.kt:2237. Mockup screen-01/screen-08 show the disabled CTA as a slightly lighter pill against the card — current surfaceVariant may be the same shade as the card, making the button visually disappear. Switch disabled bg to onSurface @ alpha 0.12f (Material default) or surface3 so it stays a visible affordance.
+- [ ] **LOGIN-MOCK-014 (Copy). "Connect" button label uses labelLarge.** LoginScreen.kt:2244. Mockup shows it slightly larger and bolder than labelLarge default — try titleMedium semibold.
+- [ ] **LOGIN-MOCK-015 (Layout). Footer row Self-hosted? + Register new shop use bodyMedium; mockup footer text reads like labelLarge.** LoginScreen.kt:2257, 2262. Bump style to labelLarge semibold so the actions read as buttons, not body text.
+- [ ] **LOGIN-MOCK-016 (Theme). Cloud-mode placeholder is myshop (matches).** LoginScreen.kt:2203. Verified vs mockup screen-08. Keep.
+- [ ] **LOGIN-MOCK-017 (Layout). Server step has NO back arrow in the card; mockup screen-01 also has none.** LoginScreen.kt:2156-2266 has no IconButton(onBack) here. Correct — keep.
+- [ ] **LOGIN-MOCK-018 (Bug). "Use BizarreCRM Cloud" / "Self-hosted?" toggle on same row as "Register new shop" — mockup screen-01 shows them spaced apart.** Current Arrangement.SpaceBetween at :2252 is correct. Verify horizontal padding inside card for the row matches mockup ~16dp gutter.
+
+### Register step (screen-02, screen-03, screen-04, screen-05, screen-06)
+
+- [ ] **LOGIN-MOCK-019 (Layout). Register back-arrow + title spacing tight.** LoginScreen.kt:2277-2288. Current Spacer(width(4.dp)) between IconButton and title text is too tight; mockup screen-02 shows ~12-16dp gap. Bump to 12.dp or use IconButton default 48dp tap target which already includes the spacing.
+- [ ] **LOGIN-MOCK-020 (Copy). Register subtitle "Create your repair shop on BizarreCRM" matches mockup screen-02 verbatim.** LoginScreen.kt:2292. Keep.
+- [ ] **LOGIN-MOCK-021 (Layout). Shop URL field uses Icons.Outlined.Link; mockup screen-03/04/05 shows a chain icon — verify which renders.** LoginScreen.kt:2305. Outlined.Link is the chain. Match.
+- [ ] **LOGIN-MOCK-022 (Layout). Register Shop URL helper "3-30 characters: letters, numbers, hyphens" matches mockup verbatim.** LoginScreen.kt:2313. Keep — but verify the en-dash is the correct Unicode char and not a hyphen-minus.
+- [ ] **LOGIN-MOCK-023 (Layout). Shop Display Name field uses Icons.Default.Store; mockup screen-02/04/05 shows the same store-front icon.** LoginScreen.kt:2326. Match.
+- [ ] **LOGIN-MOCK-024 (Copy). Admin Email + Admin Password labels match mockup verbatim.** LoginScreen.kt:2336, 2349. Keep.
+- [ ] **LOGIN-MOCK-025 (Layout). Admin Password trailing eye icon — IconButton shows visibility toggle.** LoginScreen.kt:2354-2361 matches mockup screen-02/05.
+- [ ] **LOGIN-MOCK-026 (Bug). Password helper "Minimum 8 characters" stays visible even on focus — mockup screen-05 shows it persistently.** LoginScreen.kt:2362. Confirm supportingText doesn't disappear on validation success — it shouldn't, but verify.
+- [ ] **LOGIN-MOCK-027 (Layout). Inline error "Origin header required" — mockup screen-06 shows it left-aligned, no icon, red color, sitting BETWEEN password helper and Create Shop CTA.** LoginScreen.kt:2368-2375. Current implementation matches. Verify color resolves to MaterialTheme.colorScheme.error (not hardcoded red) and font is bodySmall.
+- [ ] **LOGIN-MOCK-028 (Layout). Create Shop button height 56dp + 28dp pill radius matches mockup screen-05.** LoginScreen.kt:2389-2392. Match. Verify enabled state cream fill + onPrimary dark text matches screen-05 (#FDEED0 fill + #2B1400 text).
+- [ ] **LOGIN-MOCK-029 (Layout). Create Shop disabled state uses onSurface @ 0.24f — confirm that matches screen-04's grey CTA shade.** LoginScreen.kt:2396-2397. Visual sanity-check on dark Surface1 = #26201A — alpha 0.24 of #F5E6D3 ~= #3F3A33 which matches mockup grey. Verify with screenshot.
+- [ ] **LOGIN-MOCK-030 (Bug). Register form has no scroll affordance when keyboard up — 4 fields + helpers may overflow on small phones.** Card itself isn't scrollable, only the outer Column. Confirm parent verticalScroll(rememberScrollState()) at LoginScreen.kt:1865 covers the register card content. If keyboard pushes Create Shop off-screen, add ime padding or scroll-to-CTA on focus.
+
+### Sign In / Credentials step (screen-09)
+
+- [ ] **LOGIN-MOCK-031 (Copy). Header "Sign In" + subtitle is the SHOP DISPLAY NAME (e.g. "Testing 123 Shop") per mockup screen-09.** Current CredentialsStep at LoginScreen.kt:2416+ may not show the shop name as subtitle — needs verification. If absent, render state.storeName (or fall back to host) as bodySmall onSurfaceVariant under the "Sign In" titleLarge.
+- [ ] **LOGIN-MOCK-032 (Layout). Sign In step back arrow inside card — IconButton(onClick = goBack) to return to Server.** Confirm CredentialsStep has back arrow + title row matching screen-09.
+- [ ] **LOGIN-MOCK-033 (Layout). Username field uses Person icon (mockup screen-09).** Verify CredentialsStep's username field has Icons.Default.Person leading icon.
+- [ ] **LOGIN-MOCK-034 (Layout). Password field uses Lock icon + visibility eye trailing.** Verify CredentialsStep matches.
+- [ ] **LOGIN-MOCK-035 (Layout). Sign In CTA disabled state matches mockup screen-09 grey pill (Sign In disabled when fields empty).** Verify pill shape (28dp), height 56dp, label "Sign In" (case match).
+- [ ] **LOGIN-MOCK-036 (Bug). Per recent commit feat(android/login): wave 4 polish, RememberMe + ForgotPassword were removed.** Verify NO "Forgot password?" text or RememberMe checkbox renders on the Sign In card — mockup screen-09 has neither.
+- [ ] **LOGIN-MOCK-037 (Layout). Sign In tab indicator color on screen-09 looks teal-ish; current uses colorScheme.primary (cream).** LoginScreen.kt:2064. Mockup shows a TEAL underline on the previously-completed Server tab + cream/purple on the active Sign In tab. If the design intent is "completed = secondary, current = primary", that's a divergence. For now keep single primary color across, but flag for design clarification — added: LOGIN-MOCK-037-TBD.
+
+### 2FA Setup step (screen-10)
+
+- [ ] **LOGIN-MOCK-038 (Layout). Header "Set Up Two-Factor Auth" uses titleMedium; mockup looks larger/bolder.** LoginScreen.kt:3181. Promote to titleLarge SemiBold/Bold for parity with Server/Register/Sign In headers.
+- [ ] **LOGIN-MOCK-039 (Copy). Subtitle "Scan this QR code with Google Authenticator or any TOTP app" matches mockup screen-10 verbatim.** LoginScreen.kt:3184. Keep.
+- [ ] **LOGIN-MOCK-040 (Layout). QR code rendered directly without white background frame.** LoginScreen.kt:3220-3224. Mockup screen-10 shows the QR inside a WHITE square (~240dp) with ~16dp padding. Wrap Image in Surface(color = Color.White, shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(16.dp)) to match. ZXing-encoded QR codes need a light bg to scan reliably anyway.
+- [ ] **LOGIN-MOCK-041 (Layout). QR Box height fixed at 200.dp; mockup shows ~240dp incl. white frame.** LoginScreen.kt:3216. Increase to 240.dp or compute from screen width.
+- [ ] **LOGIN-MOCK-042 (Layout). 6-digit TOTP field leading icon is Icons.Default.Lock; mockup screen-10 shows a SHIELD with a check.** TotpCodeInputContent LoginScreen.kt:3424. Replace with Icons.Outlined.VerifiedUser or Icons.Default.Shield (whichever ships in M3 icon pack) for parity.
+- [ ] **LOGIN-MOCK-043 (Layout). 6-digit field placeholder/label is "6-digit code"; mockup screen-10 matches.** LoginScreen.kt:3414. Keep.
+- [ ] **LOGIN-MOCK-044 (Layout). Continue button height is 48dp; mockup CTAs across the flow are all 56dp.** LoginScreen.kt:3437. Change .height(48.dp) to .height(56.dp) and add shape = RoundedCornerShape(28.dp) to match the pill shape used by Connect/Create Shop/Sign In.
+- [ ] **LOGIN-MOCK-045 (Layout). Continue button has no explicit pill shape.** LoginScreen.kt:3434-3438. Add shape = RoundedCornerShape(28.dp) and explicit colors = ButtonDefaults.buttonColors(...) to match the other CTAs.
+- [ ] **LOGIN-MOCK-046 (Bug). 2FA Verify uses Icons.Default.ArrowBack instead of AutoMirrored variant.** LoginScreen.kt:3374. Recent commit migrated other arrows to AutoMirrored.Filled.ArrowBack; this one was missed. RTL bug. Replace.
+- [ ] **LOGIN-MOCK-047 (Copy). 2FA Verify subtitle "Enter the 6-digit code from your authenticator app" — mockup screen-10 (Setup) doesn't show the verify subtitle, only Setup. Confirm Verify card mockup parity.** No screen-N png for verify-only step. Flag LOGIN-MOCK-047-TBD — request mockup or accept current copy.
+- [ ] **LOGIN-MOCK-048 (Layout). 2FA Setup "Set Up Two-Factor Auth" + "Scan this QR code" subtitle uses bodySmall muted.** LoginScreen.kt:3185. Mockup looks like bodyMedium. Promote one size.
+
+### Cross-step polish
+
+- [ ] **LOGIN-MOCK-049 (Theme). All step CTAs (Connect/Create Shop/Sign In/Continue) should share an identical button spec.** Currently three of them share 56dp height + 28dp pill, but Continue (2FA) diverges (LOGIN-MOCK-044). Lift the spec into a shared LoginPillButton(onClick, enabled, isLoading, label) Composable in ui/components/auth/ and call from all 4 sites.
+- [ ] **LOGIN-MOCK-050 (Theme). All step OutlinedTextFields should share leading/trailing/suffix conventions.** Audit: cream outline focused / muted outline unfocused / cream label cut-out. Confirm OutlinedTextFieldDefaults.colors() is configured at the app theme level so all instances inherit cream automatically — no per-field color overrides.
+- [ ] **LOGIN-MOCK-051 (Layout). Card padding 20.dp everywhere; mockup gutters look ~24dp.** LoginScreen.kt:2010. Bump Modifier.padding(20.dp) to padding(horizontal = 20.dp, vertical = 24.dp) so the card title doesn't crowd the top edge.
+- [ ] **LOGIN-MOCK-052 (Layout). Card RoundedCornerShape is 16.dp; mockup card radius reads ~20-24dp.** LoginScreen.kt:2006. Bump to 20.dp for parity.
+- [ ] **LOGIN-MOCK-053 (A11y). Tab strip is display-only (onClick = no-op) yet has tappable Tab semantics.** LoginScreen.kt:2076. TalkBack announces tabs as buttons, but tapping does nothing — a false affordance. Add Modifier.semantics { role = Role.Tab; selected = isSelected; onClick = null } and disable click handling so TalkBack reads them as status indicators, not actions. OR enable click-to-jump-back (Server tap when on Sign In = goBack).
+- [ ] **LOGIN-MOCK-054 (A11y). Wordmark "Bizarre CRM" lacks contentDescription heading semantics.** LoginScreen.kt:1870-1875. Add Modifier.semantics { heading() } so TalkBack treats it as a screen title.
+- [ ] **LOGIN-MOCK-055 (A11y). Each step header (Connect to Your Shop / Register New Shop / Sign In / Set Up Two-Factor Auth) lacks heading semantics.** Bulk-add Modifier.semantics { heading() } to all four titleLarge text nodes.
+- [ ] **LOGIN-MOCK-056 (Bug). Top Spacer(Modifier.height(80.dp)) is hardcoded; on small phones (5.4" or fontScale=2.0) the wordmark may push the card off-screen.** LoginScreen.kt:1869. Replace with a weight-based vertical centering scheme inside a Column(verticalArrangement = Arrangement.Center) + Spacer(weight = 1f) above the wordmark.
+- [ ] **LOGIN-MOCK-057 (Theme). surfaceContainer semantic token absent — Theme.kt may not define it.** LoginScreen.kt:2007 falls back to a hardcoded color because the theme might not expose surfaceContainer. Audit Theme.kt:43-90 and add surfaceContainer, surfaceContainerHigh, surfaceContainerLow to both light + dark ColorScheme blocks if missing.
+- [ ] **LOGIN-MOCK-058 (Layout). AnimatedContent slide direction on goBack vs goForward.** LoginScreen.kt:1993-1996 always slides in from right + out to left. Going BACK from Register to Server should reverse direction. Wire transitionSpec to detect targetState.ordinal less than initialState.ordinal and flip horizontals.
+- [ ] **LOGIN-MOCK-059 (Bug). Register card Field 4: Admin Password has no PasswordStrengthMeter.** LoginScreen.kt:2346-2365. The SetPasswordStep uses a strength meter; the Register Admin Password field should too — the helper Minimum 8 characters is the only feedback now. Mockup doesn't show a meter explicitly, so this is OPTIONAL — flag LOGIN-MOCK-059-OPT.
+- [ ] **LOGIN-MOCK-060 (A11y). Field labels in mockup screen-09 (Username, Password) — verify OutlinedTextField label slot is used (cut-out animation), not placeholder.** Mockup screen-09 shows fields without cut-outs (label sits inside as placeholder text). Either render placeholder = { Text("Username") } with NO label, OR use label = { Text("Username") } with cut-out animation. Pick one consistent with screen-03/screen-05 register fields, which DO show cut-outs.
+- [ ] **LOGIN-MOCK-061 (Theme). Inline error red color audit.** LoginScreen.kt:2371 uses MaterialTheme.colorScheme.error. Theme.kt sets ErrorRed = #E2526C. Verify rendering on Surface1 (#26201A) hits AA 4.5:1 — visual pass.
+- [ ] **LOGIN-MOCK-062 (Layout). Spacing between fields in Register card.** LoginScreen.kt:2317, 2330, 2343, 2377 all Spacer(Modifier.height(16.dp)). Mockup screen-05 shows ~20dp gaps. Bump to 20.dp consistently.
+
+### Verification + lint
+
+- [ ] **LOGIN-MOCK-063 (Verify). Build the app, sideload to USB-connected device (adb install -r), navigate Server -> Register -> Sign In -> 2FA Setup, screenshot each step.** Compare against screen-01..10-*.png side-by-side. Document deltas in a follow-up wave.
+- [ ] **LOGIN-MOCK-064 (Verify). Run ./gradlew lintDebug and resolve any lint errors introduced by changes (text color contrast, deprecated APIs).**
+- [ ] **LOGIN-MOCK-065 (Verify). Run ./gradlew testDebugUnitTest — LoginViewModelRegisterTest.kt must still pass after register-card changes.**
+
+## Aggregator note (login wave)
+
+Findings produced by the parent + 3 parallel sonnet finder agents (LOGIN-MOCK-066+ to be appended below as agents complete). 2 sonnet fixer agents work in parallel against the unchecked items above. Each item is independently checkable. Cron login-mock-loop-reminder fires every 10 minutes nudging continuation; remove the cron when this section is empty.
+
+### Finder-C theme + typography gaps
+
+Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/WaveDivider.kt`, `res/font/`, `ui/screens/auth/LoginScreen.kt` (lines 1869-1887, 3267, 3418).
+
+- [ ] **LOGIN-MOCK-066 (Theme). `surfaceContainerLow` is absent from both LightColorScheme and DarkColorScheme in Theme.kt.** Only `surfaceContainer` and `surfaceContainerHigh` are explicitly set; `surfaceContainerLow` is not. Material 3 will silently derive a value, but for mockup card-tone parity the token must be pinned. In DarkColorScheme add `surfaceContainerLow = Color(0xFF201A14)` (one step below `Surface1 #26201A`). In LightColorScheme add `surfaceContainerLow = Surface50` (`#FAF4EC`) as the lowest rung. Files: `ui/theme/Theme.kt` lines ~127-160.
+
+- [ ] **LOGIN-MOCK-067 (Typography). `headlineSmall` is not assigned `BarlowCondensedFamily` in Typography.kt.** `headlineLarge` and `headlineMedium` correctly use `BarlowCondensedFamily`; `headlineSmall` is absent from `BizarreTypography`, so it falls back to M3's default (`Roboto`). If any composable uses `headlineSmall` for a section title (e.g., card sub-headers on tablet layouts) it will render in Roboto instead of Barlow Condensed, breaking visual consistency. Add `headlineSmall = TextStyle(fontFamily = BarlowCondensedFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 28.sp)` to `BizarreTypography`. Files: `ui/theme/Typography.kt` after line 80.
+
+- [ ] **LOGIN-MOCK-068 (Typography). `labelMedium` is not defined in `BizarreTypography`.** `labelLarge` and `labelSmall` are set to `InterFamily`; `labelMedium` is absent and falls back to M3's default font. Chip labels, badge text, and helper-text composables that resolve `MaterialTheme.typography.labelMedium` will render in Roboto. Add `labelMedium = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp)` alongside `labelLarge`/`labelSmall`. Files: `ui/theme/Typography.kt` after line 123.
+
+- [ ] **LOGIN-MOCK-069 (Theme). WaveDivider magenta hairline renders at 60% alpha, but the audit spec requires ~15% alpha.** `WaveDivider.kt` line 109 calls `magenta.copy(alpha = 0.60f)` — this produces a visually prominent pink line, not a subtle hairline flourish. The base-wave outline layer at 15% is correct; the hairline on top at 60% dominates. If design intent is a delicate decorative accent (consistent with "low-contrast texture" wording in the KDoc), reduce hairline to `alpha = 0.15f`. If intent is a bolder accent stripe, update the KDoc to say "~60% alpha" so the wording matches. Requires design clarification — flag LOGIN-MOCK-069-TBD. Files: `ui/components/WaveDivider.kt` line 109.
