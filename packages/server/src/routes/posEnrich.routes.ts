@@ -148,6 +148,48 @@ router.get(
   }),
 );
 
+/**
+ * GET /pos-enrich/quick-add — Android cart Catalog tab tiles.
+ *
+ * Returns the same Today's Top-5 list as /top-five when the shop has any
+ * sales today. When the rollup is empty (fresh shop, brand-new day, training
+ * mode) we fall back to the first 10 active inventory items by name so the
+ * Android Catalog tab always renders SOMETHING tappable instead of a blank
+ * grid. Response shape matches PosApi.QuickAddItem on Android: each item is
+ * { id, name, sku, price_cents, type }.
+ */
+router.get(
+  '/quick-add',
+  asyncHandler(async (req, res) => {
+    const top = await queryTopFiveProductsToday(req.asyncDb);
+    let rows: Array<{ id: number; name: string; sku: string | null; retail_price: number; item_type: string }>;
+    if (top.length > 0) {
+      rows = top.map(t => ({
+        id: t.inventory_item_id,
+        name: t.name,
+        sku: t.sku,
+        retail_price: t.retail_price ?? 0,
+        item_type: 'product',
+      }));
+    } else {
+      rows = await req.asyncDb.all<{ id: number; name: string; sku: string | null; retail_price: number; item_type: string }>(
+        `SELECT id, name, sku, retail_price, item_type
+           FROM inventory_items
+          WHERE is_active = 1 AND in_stock > 0
+          ORDER BY name ASC LIMIT 10`,
+      );
+    }
+    const items = rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      sku: r.sku,
+      price_cents: Math.round((Number(r.retail_price) || 0) * 100),
+      type: r.item_type === 'service' ? 'service' : 'inventory',
+    }));
+    res.json({ success: true, data: { items } });
+  }),
+);
+
 // ────────────────────────────────────────────────────────────────────────────
 // 2. CASH DRAWER SHIFTS (audit §43.4 + §43.8)
 // ────────────────────────────────────────────────────────────────────────────

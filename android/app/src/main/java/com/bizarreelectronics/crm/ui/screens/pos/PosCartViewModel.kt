@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.ui.screens.pos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.PosApi
+import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,8 @@ data class PosCartUiState(
     val scanMessage: String? = null,
     /** Linked repair-ticket draft id — drives the "Ticket draft" topbar subtitle */
     val linkedTicketId: Long? = null,
+    /** Quick-add catalog tiles populated from /pos-enrich/quick-add (Today's Top-5 + fallback). */
+    val catalog: List<QuickAddItem> = emptyList(),
 ) {
     val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
     val taxCents: Long get() = lines.sumOf { it.taxCents }
@@ -34,6 +38,7 @@ data class PosCartUiState(
 class PosCartViewModel @Inject constructor(
     private val coordinator: PosCoordinator,
     private val inventoryApi: InventoryApi,
+    private val posApi: PosApi,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosCartUiState())
@@ -73,6 +78,27 @@ class PosCartViewModel @Inject constructor(
                     _uiState.update { it.copy(taxRate = ratePercent / 100.0) }
                 }
         }
+        // Mockup PHONE 3 'Catalog' tab — fetch quick-add tiles. Server route
+        // returns Today's Top-5 sold items + fallback to first 10 active when
+        // there are no sales yet today. Errors silently ignored — Catalog
+        // tab simply renders empty state.
+        viewModelScope.launch {
+            runCatching { posApi.getQuickAddItems() }
+                .onSuccess { resp ->
+                    val items = resp.data?.items.orEmpty()
+                    _uiState.update { it.copy(catalog = items) }
+                }
+        }
+    }
+
+    /** Tap on a Catalog tile → add inventory line. */
+    fun addQuickAddItem(item: QuickAddItem) {
+        addInventoryItem(
+            itemId = item.id,
+            name = item.name,
+            unitPriceCents = item.priceCents,
+            sku = item.sku,
+        )
     }
 
     fun addMiscItem(name: String, unitPriceCents: Long) {

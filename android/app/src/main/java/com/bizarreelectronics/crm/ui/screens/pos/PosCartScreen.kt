@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +51,10 @@ fun PosCartScreen(
     var showDetachConfirm by remember { mutableStateOf(false) }
     var showMiscDialog by remember { mutableStateOf(false) }
     var showDiscountDialog by remember { mutableStateOf(false) }
+    // Mockup PHONE 3 path tabs: Catalog | Cart · N · $X — selected tab
+    // index 1 by default since cashier reaches this screen with intent to
+    // tender. Catalog tab populates from quick-add (Today's Top-5).
+    var selectedTab by rememberSaveable { mutableIntStateOf(1) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Consume scan-result handoff from the scanner screen. AppNavGraph
@@ -124,46 +132,67 @@ fun PosCartScreen(
             TotalsAndTenderBar(state = state, onTender = onNavigateToTender)
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 8.dp),
-        ) {
-            // Cart line rows (or empty emoji)
-            if (state.lines.isEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("🛒", style = MaterialTheme.typography.displayMedium)
-                        Text(
-                            "Scan or pick parts to start",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            } else {
-                items(state.lines, key = { it.id }) { line ->
-                    CartLineRow(
-                        line = line,
-                        onTap = { viewModel.openLineEdit(line.id) },
-                        onRemove = { viewModel.removeLine(line.id) },
-                    )
-                }
-            }
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Mockup PHONE 3 path tabs: 'Catalog' + 'Cart · N · $X' active.
+            CartPathTabs(
+                selectedIndex = selectedTab,
+                cartLineCount = state.lines.size,
+                cartTotalCents = state.totalCents,
+                onSelect = { selectedTab = it },
+            )
 
-            // Three dashed-border action slots — always visible so cashier can
-            // add a misc line / attach a note / apply a cart discount from an
-            // otherwise empty cart too (matches mockup PHONE 3 layout).
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            if (selectedTab == 0) {
+                // Catalog tab — quick-add tile grid
+                CatalogTab(
+                    items = state.catalog,
+                    onTileTap = { viewModel.addQuickAddItem(it) },
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 8.dp),
                 ) {
-                    DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
-                    DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
+                    // Cart line rows (or empty emoji)
+                    if (state.lines.isEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("🛒", style = MaterialTheme.typography.displayMedium)
+                                Text(
+                                    "Scan or pick parts to start",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = { selectedTab = 0 }) {
+                                    Text("Browse catalog →")
+                                }
+                            }
+                        }
+                    } else {
+                        items(state.lines, key = { it.id }) { line ->
+                            CartLineRow(
+                                line = line,
+                                onTap = { viewModel.openLineEdit(line.id) },
+                                onRemove = { viewModel.removeLine(line.id) },
+                            )
+                        }
+                    }
+
+                    // Three dashed-border action slots — always visible so cashier can
+                    // add a misc line / attach a note / apply a cart discount from an
+                    // otherwise empty cart too (matches mockup PHONE 3 layout).
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
+                            DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }
@@ -398,6 +427,132 @@ private fun DashedSlot(label: String, onClick: () -> Unit, modifier: Modifier = 
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = LocalExtendedColors.current.info)
+    }
+}
+
+// ─── Path tabs (Catalog | Cart · N · $X) ────────────────────────────────────
+
+@Composable
+private fun CartPathTabs(
+    selectedIndex: Int,
+    cartLineCount: Int,
+    cartTotalCents: Long,
+    onSelect: (Int) -> Unit,
+) {
+    // Mockup PHONE 3 .tabs row: surface bg + outline border-bottom; active
+    // tab gains primary border-bottom + bold onSurface text. Inactive tabs
+    // are muted.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+    ) {
+        listOf(
+            "Catalog" to 0,
+            "Cart · $cartLineCount · ${cartTotalCents.toDollarString()}" to 1,
+        ).forEach { (label, idx) ->
+            val isActive = idx == selectedIndex
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClickLabel = label) { onSelect(idx) }
+                    .padding(vertical = 12.dp)
+                    .drawBehind {
+                        if (isActive) {
+                            // 2dp primary underline matches mockup .tab.active
+                            val w = 2.dp.toPx()
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color(0xFFFDEED0),
+                                topLeft = Offset(0f, size.height - w),
+                                size = Size(size.width, w),
+                            )
+                        } else {
+                            // 1px outline border-bottom on inactive tabs to
+                            // mirror the mockup's full-width row separator.
+                            val w = 1.dp.toPx()
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color(0xFF332C3F),
+                                topLeft = Offset(0f, size.height - w),
+                                size = Size(size.width, w),
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isActive) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+// ─── Catalog tab — quick-add tile grid ───────────────────────────────────────
+
+@Composable
+private fun CatalogTab(
+    items: List<com.bizarreelectronics.crm.data.remote.api.QuickAddItem>,
+    onTileTap: (com.bizarreelectronics.crm.data.remote.api.QuickAddItem) -> Unit,
+) {
+    if (items.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "No catalog items configured yet.\nAdd inventory in Settings → Inventory.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        gridItems(items, key = { it.id }) { item ->
+            CatalogTile(item = item, onClick = { onTileTap(item) })
+        }
+    }
+}
+
+@Composable
+private fun CatalogTile(
+    item: com.bizarreelectronics.crm.data.remote.api.QuickAddItem,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClickLabel = "Add ${item.name}") { onClick() }
+            .padding(10.dp)
+            .defaultMinSize(minHeight = 92.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            item.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+        )
+        Text(
+            item.priceCents.toDollarString(),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

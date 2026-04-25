@@ -80,6 +80,7 @@ data class PosGiftCardData(
 data class QuickAddItem(
     val id: Long,
     val name: String,
+    val sku: String? = null,
     @SerializedName("price_cents") val priceCents: Long,
     @SerializedName("photo_url") val photoUrl: String? = null,
     val type: String = "inventory",
@@ -127,8 +128,10 @@ interface PosApi {
     ): ApiResponse<PosGiftCardData>
 
     /**
-     * Quick-add top-5 items (L1789). Returns 404 if server doesn't support it —
-     * callers should hide the bar on 404.
+     * Quick-add catalog tiles for the cart screen Catalog tab. Returns
+     * Today's Top-5 sold inventory items, falling back to first 10 active
+     * items when there are no sales yet today. Server endpoint:
+     * /api/v1/pos-enrich/quick-add (server posEnrich.routes.ts).
      */
     @GET("pos-enrich/quick-add")
     suspend fun getQuickAddItems(): ApiResponse<QuickAddData>
