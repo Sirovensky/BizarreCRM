@@ -24,6 +24,12 @@ struct PosCartPanel: View {
     var onShowTip: (() -> Void)?
     var onShowFees: (() -> Void)?
 
+    /// Coupon code entry — mockup screen 3: "Coupon" section below cart rows.
+    /// Optional: when nil the field is still rendered but tapping Apply is a no-op.
+    var onShowCoupon: (() -> Void)?
+
+    @State private var couponCode: String = ""
+
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -48,50 +54,112 @@ struct PosCartPanel: View {
         if cart.isEmpty {
             emptyState
         } else {
-            List {
-                ForEach(cart.items) { item in
-                    PosCartRow(
-                        item: item,
-                        onIncrement: {
-                            BrandHaptics.tap()
-                            cart.update(id: item.id, quantity: item.quantity + 1)
-                        },
-                        onDecrement: {
-                            BrandHaptics.tap()
-                            cart.update(id: item.id, quantity: item.quantity - 1)
+            VStack(spacing: 0) {
+                List {
+                    ForEach(cart.items) { item in
+                        PosCartRow(
+                            item: item,
+                            onIncrement: {
+                                BrandHaptics.tap()
+                                cart.update(id: item.id, quantity: item.quantity + 1)
+                            },
+                            onDecrement: {
+                                BrandHaptics.tap()
+                                cart.update(id: item.id, quantity: item.quantity - 1)
+                            }
+                        )
+                        .listRowBackground(Color.bizarreSurface1)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                cart.remove(id: item.id)
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                            .accessibilityLabel("Remove \(item.name) from cart")
                         }
-                    )
-                    .listRowBackground(Color.bizarreSurface1)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            cart.remove(id: item.id)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                        .accessibilityLabel("Remove \(item.name) from cart")
-                    }
-                    .contextMenu {
-                        Button {
-                            editQuantityFor = item
-                        } label: {
-                            Label("Edit quantity", systemImage: "number")
-                        }
-                        Button {
-                            editPriceFor = item
-                        } label: {
-                            Label("Edit price", systemImage: "dollarsign")
-                        }
-                        Button(role: .destructive) {
-                            cart.remove(id: item.id)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
+                        .contextMenu {
+                            Button {
+                                editQuantityFor = item
+                            } label: {
+                                Label("Edit quantity", systemImage: "number")
+                            }
+                            Button {
+                                editPriceFor = item
+                            } label: {
+                                Label("Edit price", systemImage: "dollarsign")
+                            }
+                            Button(role: .destructive) {
+                                cart.remove(id: item.id)
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
                         }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+
+                // Mockup screen 3: Coupon section pinned at bottom of cart body.
+                couponSection
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .frame(maxHeight: .infinity)
         }
+    }
+
+    /// Glassy coupon-code input pinned at the bottom of the cart body
+    /// per mockup screen 3 ("Coupon" sect-label + search-style input row).
+    private var couponSection: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            Text("Coupon")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.top, BrandSpacing.sm)
+                .accessibilityAddTraits(.isHeader)
+
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "tag")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .font(.system(size: 14))
+                    .accessibilityHidden(true)
+                TextField("Enter code or scan", text: $couponCode)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .submitLabel(.done)
+                    .onSubmit { applyCoupon() }
+                    .accessibilityIdentifier("pos.cart.couponField")
+                if !couponCode.isEmpty {
+                    Button {
+                        applyCoupon()
+                    } label: {
+                        Text("Apply")
+                            .font(.brandLabelLarge().bold())
+                            .foregroundStyle(.bizarreTeal)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Apply coupon code")
+                    .accessibilityIdentifier("pos.cart.couponApply")
+                }
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(Color.bizarreSurface1.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5)
+            )
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.bottom, BrandSpacing.sm)
+        }
+    }
+
+    private func applyCoupon() {
+        guard !couponCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        couponCode = ""
+        // Delegate to call site (PosView) which holds the CouponInputViewModel + API.
+        onShowCoupon?()
     }
 
     private var emptyState: some View {
