@@ -142,13 +142,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     { method: 'Card', amount: '' },
   ]);
 
-  const splitTotal = useMemo(
-    () => Math.round(
-      splitPayments.reduce((sum, sp) => sum + (Math.round((parseFloat(sp.amount) || 0) * 100)), 0)
-    ) / 100,
+  // WEB-FB-009 / WEB-FH-014 (Fixer-V 2026-04-25): keep the split-payment
+  // running tally in integer cents and only divide once for display. The
+  // previous code summed cents then divided by 100, which when compared to
+  // `totals.total` (also a float) could fail at the 1¢ boundary — e.g. three
+  // 33.33 splits looked like "99.99 < 100" and blocked a legitimate even-split
+  // checkout, or worse, passed a sale a cent short. The cents-int comparison
+  // matches the server's cents-pure recompute (POS-SALES-001).
+  const splitTotalCents = useMemo(
+    () =>
+      splitPayments.reduce(
+        (sum, sp) => sum + Math.round((parseFloat(sp.amount) || 0) * 100),
+        0,
+      ),
     [splitPayments],
   );
-  const splitRemaining = Math.max(0, Math.round((totals.total - splitTotal) * 100) / 100);
+  const splitTotal = splitTotalCents / 100;
+  const splitRemainingCents = Math.max(0, totals.totalCents - splitTotalCents);
+  const splitRemaining = splitRemainingCents / 100;
+  const splitCoversTotal = splitTotalCents >= totals.totalCents;
 
   const handleSignatureSave = useCallback((dataUrl: string) => {
     setSignature(dataUrl);
@@ -282,7 +294,10 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
   const handleCompleteCheckout = async () => {
     if (splitMode) {
-      if (splitTotal < totals.total) {
+      // WEB-FB-009 / WEB-FH-014: cents-int compare. Float compare drifted by
+      // 1¢ on three-way even splits (33.33×3) and either blocked legit
+      // checkouts or let a one-cent underpayment through.
+      if (!splitCoversTotal) {
         toast.error(`Split payments total ($${splitTotal.toFixed(2)}) must cover the total ($${totals.total.toFixed(2)})`);
         return;
       }
@@ -365,7 +380,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   };
 
   const canComplete = !processing && (splitMode
-    ? splitTotal >= totals.total
+    ? splitCoversTotal
     : method === 'Cash' ? cashAmount >= totals.total : true);
 
   return (
@@ -553,7 +568,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   >
                     <Plus className="h-3.5 w-3.5" /> Add Method
                   </button>
-                  {splitRemaining > 0 ? (
+                  {splitRemainingCents > 0 ? (
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
                       Remaining: ${splitRemaining.toFixed(2)}
                     </span>

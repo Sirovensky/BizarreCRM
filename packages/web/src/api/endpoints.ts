@@ -1321,8 +1321,13 @@ export const superAdminApi = {
       '/tenants',
       { params },
     ),
-  impersonate: (slug: string) =>
+  // WEB-FG-003 / FIXED-by-Fixer-U 2026-04-25 — pass operator-supplied reason
+  // so the audit log on the server can attribute intent (ticket #, customer
+  // name, etc.). Server already accepts an optional body; if absent it stays
+  // backwards compatible.
+  impersonate: (slug: string, reason?: string) =>
     superAdminClient.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate`,
+      reason ? { reason } : undefined,
     ),
 };

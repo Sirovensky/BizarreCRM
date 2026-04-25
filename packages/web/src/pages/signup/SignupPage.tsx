@@ -27,12 +27,26 @@ declare global {
    the admin to verify the email before provisioning the tenant.
    ═══════════════════════════════════════════════════════════════ */
 
+// WEB-FG-002 / FIXED-by-Fixer-U 2026-04-25 — allow-list trusted base domains.
+// Previously this helper trusted whatever hostname the browser landed on, so
+// a phishing landing on `bizarrecrm.evil-co.com` could redirect customers to
+// `slug.evil-co.com/login`. Anything off the allow-list falls back to the
+// canonical apex so we never craft a link to an attacker-controlled subdomain.
+const TRUSTED_BASE_DOMAINS = ['bizarrecrm.com', 'localhost'] as const;
+
+function resolveBaseDomain(hostname: string): string | null {
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return 'localhost';
+  for (const allowed of TRUSTED_BASE_DOMAINS) {
+    if (hostname === allowed || hostname.endsWith(`.${allowed}`)) return allowed;
+  }
+  return null;
+}
+
 // Build the tenant URL from a slug
 function getTenantUrl(slug: string, path = '/'): string {
   const { protocol, port, hostname } = window.location;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  // Use actual hostname domain - works in both dev (localhost) and production.
-  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
+  const baseDomain = resolveBaseDomain(hostname) ?? 'bizarrecrm.com';
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
@@ -275,7 +289,7 @@ export function SignupPage() {
         </div>
 
         {/* Form card */}
-        <form onSubmit={handleSubmit} style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
+        <form onSubmit={handleSubmit} noValidate style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
           {apiError && (
             <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
               {apiError}
@@ -291,6 +305,7 @@ export function SignupPage() {
               placeholder="My Repair Shop"
               maxLength={100}
               autoFocus
+              aria-invalid={!!fieldErrors.shop_name}
               style={inputStyle(!!fieldErrors.shop_name)}
             />
           </FieldGroup>
@@ -304,13 +319,14 @@ export function SignupPage() {
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 placeholder="your-shop"
                 maxLength={30}
+                aria-invalid={!!fieldErrors.slug}
                 style={{ ...inputStyle(!!fieldErrors.slug), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
               />
               <span style={{
                 display: 'flex', alignItems: 'center', padding: '0 12px',
                 background: '#f5f5f5', border: `2px solid ${fieldErrors.slug ? '#fca5a5' : '#ddd'}`,
                 borderLeft: 'none', borderRadius: '0 8px 8px 0', color: '#999', fontSize: 13, whiteSpace: 'nowrap',
-              }}>.{window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
+              }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
             </div>
             {slugStatus !== 'idle' && (
               <div style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
@@ -327,6 +343,7 @@ export function SignupPage() {
               onChange={e => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, admin_email: undefined })); }}
               placeholder="you@example.com"
               maxLength={254}
+              aria-invalid={!!fieldErrors.admin_email}
               style={inputStyle(!!fieldErrors.admin_email)}
             />
           </FieldGroup>
@@ -340,9 +357,12 @@ export function SignupPage() {
                 onChange={e => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, admin_password: undefined })); }}
                 placeholder="Min 8 characters"
                 maxLength={128}
+                aria-invalid={!!fieldErrors.admin_password}
                 style={{ ...inputStyle(!!fieldErrors.admin_password), paddingRight: 44 }}
               />
               <button type="button" onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
                 style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, fontFamily: "'Roboto', sans-serif" }}>
                 {showPassword ? 'Hide' : 'Show'}
               </button>
@@ -357,6 +377,7 @@ export function SignupPage() {
               onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirm_password: undefined })); }}
               placeholder="Repeat password"
               maxLength={128}
+              aria-invalid={!!fieldErrors.confirm_password}
               style={inputStyle(!!fieldErrors.confirm_password)}
             />
           </FieldGroup>

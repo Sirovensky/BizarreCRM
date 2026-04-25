@@ -27,6 +27,13 @@ export interface PosTotals {
   tax: number;
   /** subtotal + tax − discount, clamped at 0, in dollars. */
   total: number;
+  /**
+   * Authoritative integer-cents total (WEB-FB-009 / WEB-FH-014 / Fixer-V).
+   * Use this for comparisons like split-payment "covers total" checks where
+   * a 1¢ float drift would block a legitimately-funded sale or pass an
+   * underpayment. Display fields stay as dollars.
+   */
+  totalCents: number;
 }
 
 /** Round a dollar float to integer cents. Single-source rounding. */
@@ -93,5 +100,6 @@ export function computePosTotals(args: {
     discountAmount: fromCents(discountC),
     tax: fromCents(taxC),
     total: fromCents(totalC),
+    totalCents: totalC,
   };
 }

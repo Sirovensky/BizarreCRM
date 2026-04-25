@@ -1930,7 +1930,7 @@ export function CommunicationPage() {
                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-surface-100 dark:bg-surface-700 p-2">
                   <img src={attachedMedia.preview} alt="Attached" className="h-16 w-16 rounded-lg object-cover" />
                   <div className="flex-1 text-xs text-surface-500">Image attached (MMS)</div>
-                  <button onClick={() => setAttachedMedia(null)} className="text-surface-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                  <button onClick={() => setAttachedMedia(null)} aria-label="Remove attached media" className="text-surface-400 hover:text-red-500"><X className="h-4 w-4" /></button>
                 </div>
               )}
               <div className="flex items-end gap-2">

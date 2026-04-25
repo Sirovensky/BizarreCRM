@@ -75,11 +75,28 @@ const testimonials = [
   { quote: "The mobile app is a game-changer. I check ticket status from the bench without running to the computer.", name: 'James K.', shop: 'PhoneDoc, Miami' },
 ];
 
-// Build the tenant URL from a slug
-function getTenantUrl(slug: string, path = '/'): string {
+// WEB-FG-002 / FIXED-by-Fixer-U 2026-04-25 — trust only known base domains
+// when computing tenant URLs. The previous heuristic (`hostname.split('.').slice(-2).join('.')`)
+// blindly trusted whatever DNS the browser landed on, so a phishing host like
+// `bizarrecrm.evil-co.com` would redirect to `slug.evil-co.com/login` and harvest
+// credentials. Allow-list canonical brand domains and reject everything else.
+const TRUSTED_BASE_DOMAINS = ['bizarrecrm.com', 'localhost'] as const;
+
+function resolveBaseDomain(hostname: string): string | null {
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return 'localhost';
+  for (const allowed of TRUSTED_BASE_DOMAINS) {
+    if (hostname === allowed || hostname.endsWith(`.${allowed}`)) return allowed;
+  }
+  return null;
+}
+
+// Build the tenant URL from a slug. Returns null if the current origin is not
+// a trusted base domain — caller must abort the redirect in that case.
+function getTenantUrl(slug: string, path = '/'): string | null {
   const { protocol, port, hostname } = window.location;
+  const baseDomain = resolveBaseDomain(hostname);
+  if (!baseDomain) return null;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
@@ -94,7 +111,14 @@ function LoginModal({ onClose }: { onClose: () => void }) {
       setError('Enter your shop name (at least 3 characters)');
       return;
     }
-    window.location.href = getTenantUrl(cleaned, '/login');
+    const target = getTenantUrl(cleaned, '/login');
+    if (!target) {
+      setError(
+        'This page is not on a recognized BizarreCRM domain. Visit https://bizarrecrm.com to log in.',
+      );
+      return;
+    }
+    window.location.href = target;
   };
 
   return (
@@ -121,7 +145,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             display: 'flex', alignItems: 'center', padding: '0 14px',
             background: '#f5f5f5', border: '2px solid #ddd', borderLeft: 'none',
             borderRadius: '0 8px 8px 0', color: '#999', fontSize: 14, whiteSpace: 'nowrap',
-          }}>.{window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost') ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
+          }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
         </div>
         {error && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>

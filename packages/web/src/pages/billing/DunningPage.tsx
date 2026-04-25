@@ -13,6 +13,19 @@ interface DunningStep {
   template_id?: string;
 }
 
+/**
+ * Known notification template IDs. Until the server exposes a
+ * `GET /notifications/templates` enum, this list is the contract that
+ * `dunningScheduler.ts` honors. Keep in sync.
+ *
+ * WEB-FA-018 / FIXED-by-Fixer-U 2026-04-25 — replace the previous bare
+ * `"overdue_1"` literal in the textarea placeholder with the first entry
+ * from this list and surface the full set as a datalist hint so operators
+ * don't invent template IDs that the dispatcher will silently drop.
+ */
+const KNOWN_TEMPLATE_IDS = ['overdue_1', 'overdue_2', 'overdue_final'] as const;
+const DEFAULT_TEMPLATE_ID = KNOWN_TEMPLATE_IDS[0];
+
 interface DunningSequence {
   id: number;
   name: string;
@@ -50,7 +63,7 @@ export function DunningPage() {
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [stepsText, setStepsText] = useState(
-    '[{"days_offset":3,"action":"email","template_id":"overdue_1"}]',
+    `[{"days_offset":3,"action":"email","template_id":"${DEFAULT_TEMPLATE_ID}"}]`,
   );
 
   const { data: sequences, isLoading } = useQuery({
@@ -68,6 +81,21 @@ export function DunningPage() {
         steps = JSON.parse(stepsText);
       } catch {
         throw new Error('steps must be valid JSON array');
+      }
+      if (!Array.isArray(steps) || steps.length === 0) {
+        throw new Error('steps must be a non-empty JSON array');
+      }
+      // WEB-FA-018: warn when an unknown template_id slips through —
+      // the dispatcher will skip the step rather than crash, so the
+      // user gets a chance to fix it before submission.
+      const unknown = steps
+        .map((s) => s?.template_id)
+        .filter((t): t is string => typeof t === 'string' && t.length > 0)
+        .filter((t) => !(KNOWN_TEMPLATE_IDS as readonly string[]).includes(t));
+      if (unknown.length > 0) {
+        throw new Error(
+          `Unknown template_id(s): ${unknown.join(', ')}. Known: ${KNOWN_TEMPLATE_IDS.join(', ')}`,
+        );
       }
       const res = await api.post('/dunning/sequences', { name, steps });
       return res.data.data;
@@ -198,6 +226,17 @@ export function DunningPage() {
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
           />
         </label>
+        <p className="text-xs text-gray-500">
+          Known template_id values:{' '}
+          {KNOWN_TEMPLATE_IDS.map((t) => (
+            <code
+              key={t}
+              className="mr-1 rounded bg-gray-100 px-1 py-0.5 font-mono text-[11px]"
+            >
+              {t}
+            </code>
+          ))}
+        </p>
         <button type="button"
           onClick={() => createMutation.mutate()}
           disabled={!name.trim() || createMutation.isPending}

@@ -159,9 +159,23 @@ interface TenantRowProps {
 function TenantRow({ tenant }: TenantRowProps) {
   const navigate = useNavigate();
   const completeLogin = useAuthStore((s) => s.completeLogin);
+  // WEB-FG-003 / FIXED-by-Fixer-U 2026-04-25 — gate impersonation behind a
+  // typed-slug confirmation + required reason field so accidental clicks
+  // can't silently log an operator in as a tenant admin and the server
+  // audit log gets attribution ("ticket #1234, customer support").
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [typedSlug, setTypedSlug] = useState('');
+  const [reason, setReason] = useState('');
+
+  const closeConfirm = () => {
+    setConfirmOpen(false);
+    setTypedSlug('');
+    setReason('');
+  };
 
   const impersonateMutation = useMutation({
-    mutationFn: () => superAdminApi.impersonate(tenant.slug),
+    mutationFn: (overrideReason: string) =>
+      superAdminApi.impersonate(tenant.slug, overrideReason),
     onSuccess: (res) => {
       const data = res.data?.data;
       if (!data?.token) {
@@ -193,6 +207,7 @@ function TenantRow({ tenant }: TenantRowProps) {
         updated_at: '',
       });
       toast.success(`Impersonating ${data.tenant_slug}`);
+      closeConfirm();
       navigate('/');
     },
     onError: (err: unknown) => {
@@ -230,7 +245,7 @@ function TenantRow({ tenant }: TenantRowProps) {
       </td>
       <td className="px-4 py-3">
         <button
-          onClick={() => impersonateMutation.mutate()}
+          onClick={() => setConfirmOpen(true)}
           disabled={impersonateMutation.isPending || tenant.status !== 'active'}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 transition-colors"
           title={tenant.status !== 'active' ? `Cannot impersonate: tenant is ${tenant.status}` : 'Log in as tenant admin'}
@@ -242,8 +257,152 @@ function TenantRow({ tenant }: TenantRowProps) {
           )}
           Log in as
         </button>
+        {confirmOpen && (
+          <ImpersonateConfirmModal
+            tenantSlug={tenant.slug}
+            tenantName={tenant.name}
+            typedSlug={typedSlug}
+            reason={reason}
+            onTypedSlugChange={setTypedSlug}
+            onReasonChange={setReason}
+            onCancel={closeConfirm}
+            onConfirm={() => impersonateMutation.mutate(reason.trim())}
+            submitting={impersonateMutation.isPending}
+          />
+        )}
       </td>
     </tr>
+  );
+}
+
+interface ImpersonateConfirmModalProps {
+  tenantSlug: string;
+  tenantName: string;
+  typedSlug: string;
+  reason: string;
+  onTypedSlugChange: (v: string) => void;
+  onReasonChange: (v: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  submitting: boolean;
+}
+
+// WEB-FG-003: cross-tenant access requires typed-slug + reason. Mirrors
+// DangerZoneTab's three-step pattern but inline so we don't need to thread
+// a global confirm dialog through super-admin auth state.
+function ImpersonateConfirmModal({
+  tenantSlug, tenantName, typedSlug, reason,
+  onTypedSlugChange, onReasonChange, onCancel, onConfirm, submitting,
+}: ImpersonateConfirmModalProps) {
+  const slugMatches = typedSlug.trim() === tenantSlug;
+  const reasonValid = reason.trim().length >= 8;
+  const canConfirm = slugMatches && reasonValid && !submitting;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      role="presentation"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="impersonate-confirm-title"
+        className="w-full max-w-md rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/30">
+            <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <h3
+              id="impersonate-confirm-title"
+              className="text-base font-semibold text-surface-900 dark:text-surface-100"
+            >
+              Impersonate {tenantName}?
+            </h3>
+            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+              You will be logged in as the tenant admin. This is recorded to
+              the audit log with the reason below.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label
+              htmlFor="impersonate-confirm-slug"
+              className="block text-xs font-medium text-surface-700 dark:text-surface-300 mb-1"
+            >
+              Type the tenant slug{' '}
+              <code className="font-mono text-surface-900 dark:text-surface-100">
+                {tenantSlug}
+              </code>{' '}
+              to confirm
+            </label>
+            <input
+              id="impersonate-confirm-slug"
+              type="text"
+              value={typedSlug}
+              onChange={(e) => onTypedSlugChange(e.target.value)}
+              placeholder={tenantSlug}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="impersonate-confirm-reason"
+              className="block text-xs font-medium text-surface-700 dark:text-surface-300 mb-1"
+            >
+              Reason (min 8 chars — e.g. ticket #1234, customer support)
+            </label>
+            <input
+              id="impersonate-confirm-reason"
+              type="text"
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+              placeholder="ticket #1234 — investigating refund issue"
+              maxLength={200}
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            />
+            {!reasonValid && reason.length > 0 && (
+              <p className="mt-1 text-xs text-red-500">
+                Reason must be at least 8 characters.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
+              canConfirm
+                ? 'bg-amber-600 hover:bg-amber-700'
+                : 'bg-surface-300 dark:bg-surface-600 cursor-not-allowed'
+            }`}
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              'Impersonate'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

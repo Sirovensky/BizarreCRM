@@ -259,7 +259,19 @@ export function InvoiceDetailPage() {
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     if (!amount || amount <= 0) return toast.error('Enter a valid amount');
-    if (amount > Number(invoice.total)) return toast.error('Amount cannot exceed invoice total');
+    // WEB-FH-009 (Fixer-V 2026-04-25): cap the credit note at the cash that
+    // actually came in, not the invoice headline total. Prior code allowed
+    // $200 credit notes against a $200 invoice that had only collected a
+    // $50 deposit — the shop would refund $150 it never received. The
+    // server's refund route also enforces this, but the client used to
+    // promise the operator "max=$200" and submit invalid amounts that
+    // bounced on a race. Cap on `amount_paid` matches the server contract.
+    const maxRefundable = Number(invoice.amount_paid) || 0;
+    if (amount > maxRefundable) {
+      return toast.error(
+        `Amount cannot exceed amount paid ($${maxRefundable.toFixed(2)})`,
+      );
+    }
     if (!creditNoteForm.reason) return toast.error('Select a reason');
     creditNoteMutation.mutate({
       amount,
@@ -710,16 +722,19 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
-                    type="number" step="0.01" min="0.01" max={Number(invoice.total)}
+                    type="number" step="0.01" min="0.01" max={Number(invoice.amount_paid) || 0}
                     value={creditNoteForm.amount}
                     onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
-                    placeholder={Number(invoice.amount_due).toFixed(2)}
+                    placeholder={(Number(invoice.amount_paid) || 0).toFixed(2)}
                     className="input w-full pl-6"
                     autoFocus
                   />
                 </div>
+                {/* WEB-FH-009 (Fixer-V): cap the visible max at amount actually
+                    paid, not the invoice total — a $200 invoice with only a
+                    $50 deposit can't yield more than $50 of credit. */}
                 <p className="text-xs text-surface-400 mt-1">
-                  Max: ${Number(invoice.total).toFixed(2)} (invoice total)
+                  Max: ${(Number(invoice.amount_paid) || 0).toFixed(2)} (amount paid)
                 </p>
               </div>
               {/* FA-L8 — structured reason picker replaces the free-text

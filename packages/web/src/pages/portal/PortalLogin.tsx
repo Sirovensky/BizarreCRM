@@ -21,6 +21,19 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // WEB-FC-024: read server's Retry-After (seconds) and surface a concrete countdown
+  function retryAfterMessage(err: unknown, fallback: string): string {
+    const headers = (err as any)?.response?.headers ?? {};
+    const raw = headers['retry-after'] ?? headers['Retry-After'];
+    const secs = raw ? parseInt(String(raw), 10) : NaN;
+    if (Number.isFinite(secs) && secs > 0) {
+      if (secs < 60) return `Too many attempts. Please try again in ${secs}s.`;
+      const mins = Math.ceil(secs / 60);
+      return `Too many attempts. Please try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
+    }
+    return fallback;
+  }
+
   async function handleQuickTrack(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -39,7 +52,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
       } else if (status === 404) {
         setError('No matching repair found. Please check your details.');
       } else if (status === 429) {
-        setError('Too many attempts. Please wait a minute before trying again.');
+        setError(retryAfterMessage(err, 'Too many attempts. Please wait a minute before trying again.'));
       } else {
         setError('Something went wrong. Please try again.');
       }
@@ -51,13 +64,15 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!phone.trim() || pin.length !== 4) {
+    // WEB-S4-020: strip non-digits before submit so backend receives a normalized phone
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (!phoneDigits || pin.length !== 4) {
       setError('Please enter your phone number and 4-digit PIN');
       return;
     }
     setLoading(true);
     try {
-      const result = await api.portalLogin(phone.trim(), pin);
+      const result = await api.portalLogin(phoneDigits, pin);
       onFullLogin(result.token, result.customer.first_name);
     } catch (err: unknown) {
       const status = (err as any)?.response?.status;
@@ -66,7 +81,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
       } else if (status === 401) {
         setError('Invalid credentials. Please try again.');
       } else if (status === 429) {
-        setError('Too many attempts. Please try again later.');
+        setError(retryAfterMessage(err, 'Too many attempts. Please try again later.'));
       } else {
         setError('Something went wrong. Please try again.');
       }

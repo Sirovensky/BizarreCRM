@@ -201,8 +201,20 @@ export function TrackingPage() {
       } else {
         setResults(tickets);
       }
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err: any) {
+      // WEB-FC-024: surface server's Retry-After header on 429s
+      if (err?.response?.status === 429) {
+        const raw = err.response.headers?.['retry-after'] ?? err.response.headers?.['Retry-After'];
+        const secs = raw ? parseInt(String(raw), 10) : NaN;
+        if (Number.isFinite(secs) && secs > 0) {
+          const human = secs < 60 ? `${secs}s` : `${Math.ceil(secs / 60)} minute${Math.ceil(secs / 60) === 1 ? '' : 's'}`;
+          setError(`Too many attempts. Please try again in ${human}.`);
+        } else {
+          setError('Too many attempts. Please try again later.');
+        }
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -755,14 +767,15 @@ function formatAction(h: HistoryEntry): string {
 
 // ---------- Invoice status badge ----------
 function InvoiceStatusBadge({ status }: { status: string }) {
+  // WEB-FC-025: ship dark-mode variants so chips stay legible on dark phone UAs
   const colors: Record<string, string> = {
-    paid: 'bg-green-100 text-green-700',
-    partial: 'bg-amber-100 text-amber-700',
-    unpaid: 'bg-red-100 text-red-700',
-    draft: 'bg-slate-100 text-slate-600',
-    voided: 'bg-slate-100 text-slate-400',
+    paid: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200',
+    partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+    unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
+    draft: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    voided: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
   };
-  const cls = colors[status.toLowerCase()] || 'bg-slate-100 text-slate-600';
+  const cls = colors[status.toLowerCase()] || 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
   return (
     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}

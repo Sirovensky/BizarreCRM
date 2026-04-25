@@ -338,7 +338,7 @@ export function LeadDetailPage() {
                       {s}
                     </button>
                   ))}
-                  <button onClick={() => setEditingStatus(false)} className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setEditingStatus(false)} aria-label="Cancel status edit" className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (
                 <button
