@@ -72,8 +72,13 @@ router.get(
           WHERE fts.customers_fts MATCH ? AND c.is_deleted = 0
           LIMIT ?
         `, matchExpr, limit);
-      } catch {
-        // FTS can fail on odd characters — fall through to LIKE
+      } catch (err) {
+        // WEB-S7-039: FTS can fail on odd characters or a missing/corrupt index.
+        // Log so a broken index doesn't silently degrade every search to LIKE.
+        // eslint-disable-next-line no-console
+        console.warn('[search] customers_fts MATCH failed, falling back to LIKE', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 

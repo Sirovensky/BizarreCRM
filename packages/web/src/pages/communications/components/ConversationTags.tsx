@@ -110,7 +110,7 @@ export function ConversationTags({ phone, className }: ConversationTagsProps) {
           }}
           onKeyDown={onKeyDown}
           placeholder="tag…"
-          className="h-5 w-24 rounded-full border border-surface-300 bg-white px-2 text-[10px] text-surface-900 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+          className="h-5 w-24 rounded-full border border-surface-300 bg-white px-2 text-[10px] text-surface-900 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
         />
       ) : (
         <button

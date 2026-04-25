@@ -25,10 +25,18 @@ export function PhotoCapturePage() {
   }, []); // mount-only
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+  const MAX_PHOTOS = 20; // WEB-S4-029: cap at 20 to bound upload + storage cost.
 
   const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+
+    const remaining = Math.max(0, MAX_PHOTOS - photos.length);
+    if (remaining === 0) {
+      toast.error(`Maximum ${MAX_PHOTOS} photos per ticket reached`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     const valid: File[] = [];
     for (const file of files) {
@@ -44,7 +52,13 @@ export function PhotoCapturePage() {
     }
     if (!valid.length) { if (fileInputRef.current) fileInputRef.current.value = ''; return; }
 
-    const newPhotos = valid.map((file) => ({
+    // Trim to remaining capacity so a multi-select past the cap is bounded.
+    const trimmed = valid.slice(0, remaining);
+    if (trimmed.length < valid.length) {
+      toast.error(`Only ${remaining} of ${valid.length} photos added (max ${MAX_PHOTOS})`);
+    }
+
+    const newPhotos = trimmed.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
     }));
@@ -159,19 +173,21 @@ export function PhotoCapturePage() {
               </div>
             </div>
           ))}
-          {/* Add more tile */}
-          <label className="aspect-square rounded-2xl border-2 border-dashed border-gray-600 flex flex-col items-center justify-center cursor-pointer active:bg-gray-800 transition-colors">
-            <Camera className="h-8 w-8 text-gray-500 mb-1" />
-            <span className="text-gray-500 text-xs">Add more</span>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              className="sr-only"
-              onChange={handleCapture}
-            />
-          </label>
+          {/* Add more tile — WEB-S4-029: hide when 20-photo cap reached. */}
+          {photos.length < MAX_PHOTOS && (
+            <label className="aspect-square rounded-2xl border-2 border-dashed border-gray-600 flex flex-col items-center justify-center cursor-pointer active:bg-gray-800 transition-colors">
+              <Camera className="h-8 w-8 text-gray-500 mb-1" />
+              <span className="text-gray-500 text-xs">Add more</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="sr-only"
+                onChange={handleCapture}
+              />
+            </label>
+          )}
         </div>
       ) : (
         /* Empty state */

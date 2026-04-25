@@ -12,7 +12,7 @@
 // The modal uses local state only — no Zustand / React Query cache updates
 // are needed because success NAVIGATES the user away (their tenant is gone).
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Loader2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -167,15 +167,28 @@ function TerminationModal({ onClose }: TerminationModalProps) {
     }
   }
 
+  // Esc closes the modal except on the final "done" step, where the user must
+  // confirm via the explicit Close button so they don't dismiss the legal
+  // paper-trail screen by accident.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && step !== 'done') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step, onClose]);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby="danger-zone-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget && step !== 'done') onClose(); }}
     >
       <div className="w-full max-w-lg rounded-lg bg-white dark:bg-surface-900 shadow-xl border border-red-300 dark:border-red-800">
         <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-red-600 dark:text-red-400 flex items-center gap-2">
+          <h2 id="danger-zone-title" className="text-base font-semibold text-red-600 dark:text-red-400 flex items-center gap-2">
             <ShieldAlert className="h-5 w-5" />
             Terminate Account
           </h2>

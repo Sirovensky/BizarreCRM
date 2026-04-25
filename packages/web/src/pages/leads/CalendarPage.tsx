@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, Fragment } from 'react';
+import { useState, useMemo, useCallback, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar, ChevronLeft, ChevronRight, Plus, X, Clock,
@@ -87,14 +87,26 @@ function AppointmentDetailModal({
   onClose: () => void;
 }) {
   const color = getStatusColor(appointment.status);
+  // Esc closes the appointment-detail dialog so keyboard users aren't trapped.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="appointment-detail-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Appointment Details</h2>
+          <h2 id="appointment-detail-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Appointment Details</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -197,13 +209,27 @@ function CreateAppointmentModal({
     onError: () => toast.error('Failed to create appointment'),
   });
 
+  // Esc cancels the create flow without losing the rest of the page state.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="appointment-create-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
+          <h2 id="appointment-create-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>

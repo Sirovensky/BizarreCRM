@@ -5,6 +5,7 @@ import { posApi, blockchypApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
 import { useQuery } from '@tanstack/react-query';
@@ -35,7 +36,9 @@ function CashModal({ type, onClose }: CashModalProps) {
     try {
       const fn = type === 'in' ? posApi.cashIn : posApi.cashOut;
       await fn({ amount: num, reason: reason.trim() || undefined });
-      toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: $${num.toFixed(2)}`);
+      // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `$` + `toFixed(2)`
+      // → tenant-aware currency formatter.
+      toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: ${formatCurrency(num)}`);
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : `Cash ${type} failed`);

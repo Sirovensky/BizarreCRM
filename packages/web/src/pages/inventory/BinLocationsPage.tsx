@@ -109,12 +109,14 @@ export function BinLocationsPage() {
   });
 
   const heatColor = (heat: number) => {
+    // WEB-FB-020: dark-mode partners for the cool side of the ramp so heatmap
+    // tiles remain visible on dark theme (brand surface ramp alignment).
     if (heat > 0.8) return 'bg-red-500 text-white';
     if (heat > 0.6) return 'bg-orange-500 text-white';
-    if (heat > 0.4) return 'bg-amber-400';
-    if (heat > 0.2) return 'bg-yellow-200';
-    if (heat > 0) return 'bg-surface-100';
-    return 'bg-surface-50 text-surface-400';
+    if (heat > 0.4) return 'bg-amber-400 dark:bg-amber-500 dark:text-surface-900';
+    if (heat > 0.2) return 'bg-yellow-200 dark:bg-yellow-700/60 dark:text-yellow-50';
+    if (heat > 0) return 'bg-surface-100 dark:bg-surface-800 dark:text-surface-200';
+    return 'bg-surface-50 text-surface-400 dark:bg-surface-900 dark:text-surface-500';
   };
 
   return (

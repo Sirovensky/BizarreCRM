@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
+import { formatCurrency as formatCurrencyShared } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,14 +50,16 @@ interface IssueFormState {
 // outside corporate gifting; if it does, it'll still render correctly because
 // 1000.5 -> 1000.50 dollars stays in dollar branch). This avoids the silent
 // 100x bug if the server flips representation, while keeping today's UX.
+// @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): keep the cents/dollars
+// heuristic (server flips representation depending on endpoint) but route
+// the final render through canonical `formatCurrency` so tenant currency +
+// locale reach this surface. Was a hardcoded `$` + `toFixed(2)` template.
 function formatCurrency(amount: number): string {
-  if (!Number.isFinite(amount)) return '$0.00';
-  // Heuristic: treat integer values >= 1000 as cents (POS migration pattern).
-  // Float-dollar values like 25.50 stay in the dollar branch.
+  if (!Number.isFinite(amount)) return formatCurrencyShared(0);
   const dollars = Number.isInteger(amount) && Math.abs(amount) >= 1000
     ? amount / 100
     : amount;
-  return `$${dollars.toFixed(2)}`;
+  return formatCurrencyShared(dollars);
 }
 
 function formatDate(iso: string): string {

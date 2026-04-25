@@ -655,7 +655,7 @@ export function EstimateListPage() {
                     p.set('page', '1');
                     setSearchParams(p, { replace: true });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>

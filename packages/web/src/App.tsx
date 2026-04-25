@@ -376,7 +376,8 @@ export default function App() {
         <Route path="/print/ticket/:id" element={<PrintPage />} />
         <Route path="/track" element={<TrackingPage />} />
         <Route path="/track/:orderId" element={<TrackingPage />} />
-        <Route path="/customer-portal" element={<CustomerPortalPage />} />
+        {/* WEB-FL-009: wildcard alone matches `/customer-portal` exactly; flat
+            decl was redundant + a footgun if a nested route was inserted between. */}
         <Route path="/customer-portal/*" element={<CustomerPortalPage />} />
         {/* Public customer pay page — no auth, token validates server-side (§52). */}
         <Route path="/pay/:token" element={<CustomerPayPage />} />

@@ -4,7 +4,7 @@
  * Lists every goal with a progress bar pulled from the server. Managers can
  * create + delete goals; everyone can view.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -180,9 +180,9 @@ export function GoalsPage() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New goal</h2>
+        <NewGoalModal onClose={() => setShowNew(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 id="new-goal-title" className="text-lg font-bold mb-4">New goal</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-gray-600">Employee</span>
@@ -260,8 +260,35 @@ export function GoalsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </NewGoalModal>
       )}
+    </div>
+  );
+}
+
+// NewGoalModal — keyboard a11y wrapper around the new-goal form. Esc closes,
+// click on the dim backdrop closes, click inside the panel does not.
+function NewGoalModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-goal-title"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {children}
     </div>
   );
 }

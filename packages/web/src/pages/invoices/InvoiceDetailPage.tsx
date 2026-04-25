@@ -268,8 +268,9 @@ export function InvoiceDetailPage() {
     // bounced on a race. Cap on `amount_paid` matches the server contract.
     const maxRefundable = Number(invoice.amount_paid) || 0;
     if (amount > maxRefundable) {
+      // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
       return toast.error(
-        `Amount cannot exceed amount paid ($${maxRefundable.toFixed(2)})`,
+        `Amount cannot exceed amount paid (${formatCurrency(maxRefundable)})`,
       );
     }
     if (!creditNoteForm.reason) return toast.error('Select a reason');

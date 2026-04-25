@@ -456,7 +456,7 @@ export function InventoryListPage() {
             placeholder="Search by name, SKU, UPC..."
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors"
           />
         </div>
         <button
@@ -846,7 +846,7 @@ export function InventoryListPage() {
                     <select
                       value={pageSize}
                       onChange={(e) => { const v = e.target.value; localStorage.setItem('inventory_pagesize', v); setSavedPageSize(Number(v)); const p = new URLSearchParams(searchParams); p.set('pagesize', v); p.set('page', '1'); setSearchParams(p, { replace: true }); }}
-                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                     >
                       {[10, 25, 50, 100, 250].map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -1420,7 +1420,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                 onKeyDown={handleKeyDown}
                 placeholder="Scan barcode or type SKU..."
                 autoFocus
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 text-sm focus:border-primary-500 focus:outline-none"
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 text-sm focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               />
               {scanning && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary-500" />}
             </div>

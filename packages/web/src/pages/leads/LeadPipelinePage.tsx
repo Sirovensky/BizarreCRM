@@ -153,7 +153,7 @@ function LeadCard({
                       onMove(lead.id, stage.key);
                       setShowMoveMenu(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:hover:bg-surface-700 dark:focus:bg-surface-700"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 focus-visible:bg-surface-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:hover:bg-surface-700 dark:focus-visible:bg-surface-700"
                   >
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} />
                     <span className="text-surface-700 dark:text-surface-300">{stage.label}</span>

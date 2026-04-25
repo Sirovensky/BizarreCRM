@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { repairPricingApi, catalogApi, inventoryApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -565,8 +566,9 @@ function GradesSection({ priceId }: { priceId: number }) {
               <tr key={g.id} className="border-t border-surface-100 dark:border-surface-700/50">
                 <td className="py-1.5 pr-3 font-mono text-xs">{g.grade}</td>
                 <td className="py-1.5 pr-3 text-surface-900 dark:text-surface-100">{g.grade_label}</td>
-                <td className="py-1.5 pr-3 text-right">${g.part_price.toFixed(2)}</td>
-                <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? `$${g.labor_price_override.toFixed(2)}` : '-'}</td>
+                {/* @audit-fixed (WEB-FF-003/FF-022 / Fixer-PP 2026-04-25): hardcoded `$` + toFixed → tenant-aware currency. */}
+                <td className="py-1.5 pr-3 text-right">{formatCurrency(g.part_price)}</td>
+                <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? formatCurrency(g.labor_price_override) : '-'}</td>
                 <td className="py-1.5 pr-3 text-center">{g.is_default ? <Check className="h-3 w-3 text-green-500 inline" /> : '-'}</td>
                 <td className="py-1.5 text-right">
                   <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }}

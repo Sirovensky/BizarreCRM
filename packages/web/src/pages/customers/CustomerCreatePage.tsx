@@ -323,7 +323,7 @@ export function CustomerCreatePage() {
                   </Link>
                 ))}
               </div>
-              <button onClick={() => setDuplicates([])} className="mt-2 text-xs text-amber-600 dark:text-amber-400 hover:underline">
+              <button type="button" onClick={() => setDuplicates([])} className="mt-2 text-xs text-amber-600 dark:text-amber-400 hover:underline">
                 Dismiss
               </button>
             </div>

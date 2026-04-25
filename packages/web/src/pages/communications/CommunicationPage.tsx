@@ -387,7 +387,7 @@ function TemplatePicker({
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search templates..."
                 autoFocus
-                className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
+                className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
       </div>
@@ -786,7 +786,7 @@ function LinkCustomerPopover({
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name..."
           autoFocus
-          className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-400"
+          className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
         />
       </div>
       <div className="max-h-40 overflow-y-auto">
@@ -947,7 +947,7 @@ function ThreadSearchBar({
           }
         }}
         placeholder="Search in conversation..."
-        className="flex-1 bg-transparent text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none"
+        className="flex-1 bg-transparent text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
       />
       {query && (
         <>
@@ -1368,7 +1368,7 @@ export function CommunicationPage() {
               placeholder="Search conversations..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
         </div>
@@ -2006,7 +2006,7 @@ export function CommunicationPage() {
                     }}
                     placeholder="Type a message..."
                     rows={1}
-                    className="max-h-24 min-h-[2.5rem] w-full resize-none rounded-xl border border-surface-300 px-4 py-2.5 pr-16 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                    className="max-h-24 min-h-[2.5rem] w-full resize-none rounded-xl border border-surface-300 px-4 py-2.5 pr-16 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     style={{ height: 'auto' }}
                     onInput={(e) => {
                       const el = e.target as HTMLTextAreaElement;
@@ -2054,7 +2054,7 @@ export function CommunicationPage() {
                         value={scheduledAt}
                         min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
                         onChange={(e) => setScheduledAt(e.target.value)}
-                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                       {scheduledAt && (
                         <div className="mt-2 flex items-center justify-between">

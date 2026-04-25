@@ -1264,7 +1264,13 @@ export function TicketListPage() {
         const month = calendarMonth.month;
         const firstDay = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const monthName = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `'en-US'`
+        // locale on calendar header → respect browser locale via `undefined`.
+        // Could route through `formatDate` but month-only + year format isn't
+        // covered by the canonical helpers and adding one for a single site
+        // would be over-engineering; `undefined` matches the format.ts
+        // `_locale` semantics for the common case.
+        const monthName = new Date(year, month).toLocaleString(undefined, { month: 'long', year: 'numeric' });
         const today = new Date();
         const isToday = (d: number) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
 

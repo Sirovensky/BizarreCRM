@@ -8,6 +8,7 @@ import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
+import { formatCurrency } from '@/utils/format';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -298,7 +299,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       // 1¢ on three-way even splits (33.33×3) and either blocked legit
       // checkouts or let a one-cent underpayment through.
       if (!splitCoversTotal) {
-        toast.error(`Split payments total ($${splitTotal.toFixed(2)}) must cover the total ($${totals.total.toFixed(2)})`);
+        // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
+        toast.error(`Split payments total (${formatCurrency(splitTotal)}) must cover the total (${formatCurrency(totals.total)})`);
         return;
       }
       const validEntries = splitPayments.filter((sp) => parseFloat(sp.amount) > 0);

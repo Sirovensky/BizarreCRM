@@ -8,7 +8,7 @@
  * Drag-drop is intentionally NOT implemented in v1 — too much overhead for an
  * MVP. The CRUD is in place so a follow-up can layer dnd on top.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -305,9 +305,9 @@ export function ShiftSchedulePage() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New shift</h2>
+        <NewShiftModal onClose={() => setShowNew(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 id="new-shift-title" className="text-lg font-bold mb-4">New shift</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-gray-600">Employee</span>
@@ -371,9 +371,37 @@ export function ShiftSchedulePage() {
               </button>
             </div>
           </div>
-        </div>
+        </NewShiftModal>
       )}
 
+    </div>
+  );
+}
+
+// NewShiftModal — wraps the shift form in a backdrop with Esc + click-outside
+// dismissal so keyboard users aren't trapped and a misclick can't strand them
+// inside a transparent overlay (criticalaudit.md §53 a11y pass).
+function NewShiftModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-shift-title"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {children}
     </div>
   );
 }

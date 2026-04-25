@@ -105,7 +105,7 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
               onChange={(e) => setText(e.target.value)}
               maxLength={2000}
               placeholder="Thank the customer and address their feedback..."
-              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
             <p className="mt-0.5 text-right text-xs text-surface-400">{text.length}/2000</p>
           </div>

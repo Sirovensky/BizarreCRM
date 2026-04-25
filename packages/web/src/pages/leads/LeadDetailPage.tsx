@@ -459,7 +459,7 @@ export function LeadDetailPage() {
             {editingNotes ? (
               <div className="space-y-2">
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
                     className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">

@@ -119,13 +119,28 @@ function CreateLeadModal({
     onError: () => toast.error('Failed to create lead'),
   });
 
+  // Esc dismisses the new-lead dialog so keyboard-only users can recover from
+  // an accidental open without losing focus context.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-lead-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Lead</h2>
+          <h2 id="new-lead-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Lead</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -564,7 +579,7 @@ export function LeadListPage() {
                     p.set('page', '1');
                     setSearchParams(p, { replace: true });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>
