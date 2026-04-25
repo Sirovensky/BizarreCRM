@@ -165,15 +165,22 @@ export function TeamChatPage() {
     onError: (e: unknown) => toast.error(describeError(e, 'Failed to create channel')),
   });
 
+  // WEB-FA-020 (Fixer-C7 2026-04-25): bound the mention regex to 0-32 chars
+  // and the same character class (`[a-zA-Z0-9_.\-]`) the server uses in
+  // `parseMentionUsernames` (teamChat.routes.ts:86). Without the upper bound,
+  // typing `@` then a 100-char run of dots would still open the picker even
+  // though the server would discard the token (>32 char cap). The picker
+  // popup is also dismissed once the typed run exceeds 32 chars so the user
+  // gets a visible signal that the candidate is now invalid.
+  const MENTION_TAIL_RE = /@[a-zA-Z0-9_.\-]{0,32}$/;
   function handleDraftChange(value: string) {
     setDraft(value);
-    // Open the mention picker when the user types '@' followed by 0+ chars at the end.
     const tail = value.slice(0, inputRef.current?.selectionStart ?? value.length);
-    setShowMentions(/@[a-zA-Z0-9_.-]*$/.test(tail));
+    setShowMentions(MENTION_TAIL_RE.test(tail));
   }
 
   function insertMention(username: string) {
-    setDraft((prev) => prev.replace(/@[a-zA-Z0-9_.-]*$/, `@${username} `));
+    setDraft((prev) => prev.replace(MENTION_TAIL_RE, `@${username} `));
     setShowMentions(false);
     inputRef.current?.focus();
   }

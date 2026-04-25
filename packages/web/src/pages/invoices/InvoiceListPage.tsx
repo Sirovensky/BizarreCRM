@@ -264,8 +264,12 @@ export function InvoiceListPage() {
                   </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
-                  {statusPieData.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
+                  {/* WEB-FF-014 (Fixer-B7 2026-04-25): key by status `name`
+                      (stable across re-renders) instead of array index — keeps
+                      legend animations/highlights pinned to the right status
+                      when the chart slice ordering shifts on data refresh. */}
+                  {statusPieData.map((s) => (
+                    <div key={s.name} className="flex items-center gap-2 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_STATUS[s.name] || '#94a3b8' }} />
                       <span className="capitalize text-surface-600 dark:text-surface-400">{s.name}</span>
                       <span className="font-medium text-surface-800 dark:text-surface-200">{s.value}</span>
@@ -288,8 +292,11 @@ export function InvoiceListPage() {
                   </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
+                  {/* WEB-FF-014 (Fixer-B7 2026-04-25): key by method `name` for
+                      stable React reconciliation. `i` is still passed to the
+                      style for color rotation — keying != coloring. */}
                   {methodPieData.map((m, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
+                    <div key={m.name} className="flex items-center gap-2 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length] }} />
                       <span className="text-surface-600 dark:text-surface-400">{m.name}</span>
                       <span className="font-medium text-surface-800 dark:text-surface-200">{m.value}</span>

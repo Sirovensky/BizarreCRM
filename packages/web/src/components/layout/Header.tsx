@@ -28,6 +28,7 @@ import {
   X,
   Loader2,
   HelpCircle,
+  ScrollText,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 // WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
@@ -505,6 +506,21 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                     icon={<Settings className="h-4 w-4" />}
                     label="Settings"
                     onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
+                  />
+                </PermissionBoundary>
+                {/* WEB-FL-017 (Fixer-C7 2026-04-25): Audit Logs is a defined
+                    Settings tab but had no entry surface — admins reached it
+                    only by clicking through the Settings tab list, which is
+                    the worst path during a security incident. Add a direct
+                    deep-link from the user menu, gated to admin since the
+                    server settings.routes.ts permission check rejects
+                    non-admins anyway (a manager-visible link would dead-end
+                    on a 403 toast). */}
+                <PermissionBoundary roles={['admin']}>
+                  <DropdownItem
+                    icon={<ScrollText className="h-4 w-4" />}
+                    label="Audit Logs"
+                    onClick={() => { setUserMenuOpen(false); navigate('/settings/audit-logs'); }}
                   />
                 </PermissionBoundary>
                 <DropdownItem

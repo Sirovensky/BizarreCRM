@@ -7,6 +7,12 @@ import toast from 'react-hot-toast';
 import { settingsApi, membershipApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { confirm } from '@/stores/confirmStore';
+// WEB-FF-022 (Fixer-C7 2026-04-25): swap raw `${n.toFixed(2)}` template usage
+// to the canonical `formatCurrency` helper so the active tenant's currency
+// symbol + locale flow through (the tenant-onboarding wizard collects locale
+// but it never reached this surface). Two callsites: the tier card price
+// readout and the subscriber summary line.
+import { formatCurrency } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -117,7 +123,7 @@ function TierCard({ tier, onEdit, onDelete }: {
         </div>
         <div className="mt-2 flex items-baseline gap-1">
           <span className="text-3xl font-extrabold text-surface-900 dark:text-surface-100">
-            ${tier.monthly_price.toFixed(2)}
+            {formatCurrency(tier.monthly_price)}
           </span>
           <span className="text-sm text-surface-500">/month</span>
         </div>
@@ -566,7 +572,7 @@ function ActiveSubscribers() {
                   {sub.first_name} {sub.last_name}
                 </p>
                 <p className="text-xs text-surface-400">
-                  {sub.tier_name} - ${sub.monthly_price.toFixed(2)}/mo
+                  {sub.tier_name} - {formatCurrency(sub.monthly_price)}/mo
                 </p>
               </div>
             </div>

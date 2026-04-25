@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '@/stores/authStore';
 
 export interface UseUndoableActionOptions<TArgs> {
   /** Delay before the action fires, in milliseconds. Default 5000. */
@@ -77,6 +78,13 @@ export function useUndoableAction<TArgs = void>(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastIdRef = useRef<string | null>(null);
   const argsRef = useRef<TArgs | null>(null);
+  // WEB-FI-024 (Fixer-C7 2026-04-25): freeze the action callback at trigger
+  // time so a parent re-render that swaps `action` between trigger and the
+  // 5s timer fire cannot run a *different* mutation than the user originally
+  // confirmed. Without this, `actionRef.current` is updated on every render,
+  // and the timer ends up calling whatever `action` happens to be current
+  // when it fires — which is rarely what was on screen when the user clicked.
+  const frozenActionRef = useRef<((args: TArgs) => Promise<unknown>) | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -92,6 +100,7 @@ export function useUndoableAction<TArgs = void>(
       toastIdRef.current = null;
     }
     argsRef.current = null;
+    frozenActionRef.current = null;
   }, [clearTimer]);
 
   const resolveMessage = <R,>(
@@ -113,6 +122,8 @@ export function useUndoableAction<TArgs = void>(
       }
 
       argsRef.current = args;
+      // Snapshot the action at trigger-time. See WEB-FI-024 note above.
+      frozenActionRef.current = actionRef.current;
       const body = resolveMessage(pendingMessageRef.current, args) ?? 'Action scheduled';
 
       const tId = toast(
@@ -127,6 +138,7 @@ export function useUndoableAction<TArgs = void>(
                 const undoArgs = argsRef.current;
                 argsRef.current = null;
                 toastIdRef.current = null;
+                frozenActionRef.current = null;
                 toast.dismiss(tInstance.id);
                 if (undoArgs !== null && onUndoRef.current) {
                   try {
@@ -149,12 +161,13 @@ export function useUndoableAction<TArgs = void>(
 
       timerRef.current = setTimeout(() => {
         const runArgs = argsRef.current;
+        const runAction = frozenActionRef.current;
         timerRef.current = null;
         argsRef.current = null;
         toastIdRef.current = null;
-        if (runArgs === null) return;
-        actionRef
-          .current(runArgs)
+        frozenActionRef.current = null;
+        if (runArgs === null || runAction === null) return;
+        runAction(runArgs)
           .then(() => {
             const success = resolveMessage(successMessageRef.current, runArgs);
             if (success) toast.success(success);
@@ -193,21 +206,34 @@ export function useUndoableAction<TArgs = void>(
   // the fire in that case — the timer is discarded silently. If the user
   // navigates to another route inside the SPA (visibility === 'visible'),
   // firing is still the right behavior so pending intent is preserved.
+  //
+  // WEB-FD-007 (Fixer-B7 2026-04-25): also skip the unmount fire when auth
+  // has been cleared (logout / forced logout / switch-user) inside the 5s
+  // window. AppShell unmounts the host on logout; firing the snapshot
+  // afterward issues a request whose token has already been invalidated —
+  // best case 401 + console error, worst case the request was queued before
+  // logout-cleanup and runs as the previous user. Drop the pending intent
+  // when the session is gone.
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
         const runArgs = argsRef.current;
+        const runAction = frozenActionRef.current;
         argsRef.current = null;
         toastIdRef.current = null;
+        frozenActionRef.current = null;
         const tabHidden =
           typeof document !== 'undefined' && document.visibilityState === 'hidden';
-        if (runArgs !== null && !tabHidden) {
+        const authed = useAuthStore.getState().isAuthenticated;
+        if (runArgs !== null && runAction !== null && !tabHidden && authed) {
           // Fire and forget — we are unmounting, no UI to update.
           // Log the error so silent data-loss failures are still visible in
           // browser console / error telemetry rather than vanishing entirely.
-          actionRef.current(runArgs).catch((err) => {
+          // WEB-FI-024: use the trigger-time snapshot, not whatever the latest
+          // render set into actionRef.current.
+          runAction(runArgs).catch((err) => {
             console.error('[useUndoableAction] unmount-fired action failed', err);
           });
         }

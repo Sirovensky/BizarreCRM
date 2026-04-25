@@ -503,7 +503,9 @@ export default function App() {
                     <Route path="/inventory/:id" element={<InventoryDetailPage />} />
                     <Route path="/invoices" element={<InvoiceListPage />} />
                     <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-                    <Route path="/checkin" element={<UnifiedPosPage />} />
+                    {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
+                        No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
+                        returned only the route declaration itself. `/pos` is the live entry. */}
                     <Route path="/leads" element={<LeadListPage />} />
                     <Route path="/leads/:id" element={<LeadDetailPage />} />
                     <Route path="/calendar" element={<CalendarPage />} />
