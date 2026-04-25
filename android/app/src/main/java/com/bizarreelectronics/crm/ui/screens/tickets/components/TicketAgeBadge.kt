@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -84,7 +85,8 @@ fun dueTierFor(dueAtStr: String, today: LocalDate = LocalDate.now()): DueTier {
 @Composable
 private fun ageTierColor(tier: AgeTier): Color = when (tier) {
     AgeTier.Red    -> MaterialTheme.colorScheme.error
-    AgeTier.Amber  -> Color(0xFFF59E0B)
+    AgeTier.Amber  -> LocalExtendedColors.current.warning
+    // TODO: cream-theme — pick token — Yellow tier (3–7d); no warning-light token yet
     AgeTier.Yellow -> Color(0xFFEAB308)
     AgeTier.Gray   -> MaterialTheme.colorScheme.onSurfaceVariant
 }
@@ -92,7 +94,8 @@ private fun ageTierColor(tier: AgeTier): Color = when (tier) {
 @Composable
 private fun dueTierColor(tier: DueTier): Color = when (tier) {
     DueTier.Red    -> MaterialTheme.colorScheme.error
-    DueTier.Amber  -> Color(0xFFF59E0B)
+    DueTier.Amber  -> LocalExtendedColors.current.warning
+    // TODO: cream-theme — pick token — Yellow tier (≤2d due); no warning-light token yet
     DueTier.Yellow -> Color(0xFFEAB308)
     DueTier.Gray   -> MaterialTheme.colorScheme.onSurfaceVariant
 }

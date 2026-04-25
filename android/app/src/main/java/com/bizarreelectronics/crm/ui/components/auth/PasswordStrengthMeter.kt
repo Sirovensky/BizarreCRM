@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.util.PasswordStrength
 
 /**
@@ -56,12 +57,13 @@ private data class StrengthStyle(
 @Composable
 private fun strengthStyleFor(level: PasswordStrength.Level): StrengthStyle {
     val colorScheme = MaterialTheme.colorScheme
+    val ext = LocalExtendedColors.current
     return when (level) {
         PasswordStrength.Level.NONE       -> StrengthStyle(0, colorScheme.outlineVariant, "")
         PasswordStrength.Level.WEAK       -> StrengthStyle(1, colorScheme.error,           "Weak")
-        PasswordStrength.Level.FAIR       -> StrengthStyle(3, Color(0xFFF59E0B),            "Fair")
-        PasswordStrength.Level.STRONG     -> StrengthStyle(4, Color(0xFF22C55E),            "Strong")
-        PasswordStrength.Level.VERY_STRONG -> StrengthStyle(5, Color(0xFF16A34A),           "Very strong")
+        PasswordStrength.Level.FAIR       -> StrengthStyle(3, ext.warning,                 "Fair")
+        PasswordStrength.Level.STRONG     -> StrengthStyle(4, ext.success,                 "Strong")
+        PasswordStrength.Level.VERY_STRONG -> StrengthStyle(5, ext.success,                "Very strong")
     }
 }
 
@@ -113,11 +115,12 @@ private fun ruleLabel(rule: PasswordStrength.Rule): String = when (rule) {
 @Composable
 private fun RuleChecklist(checks: Map<PasswordStrength.Rule, Boolean>) {
     val orderedRules = PasswordStrength.Rule.values()
+    val ext = LocalExtendedColors.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         orderedRules.forEach { rule ->
             val passing = checks[rule] == true
             val icon = if (passing) Icons.Default.Check else Icons.Default.Close
-            val iconTint = if (passing) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant
+            val iconTint = if (passing) ext.success else MaterialTheme.colorScheme.onSurfaceVariant
             val textColor = if (passing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
 
             Row(

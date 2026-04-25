@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -80,7 +81,7 @@ data class ExpenseListUiState(
     val categorySlices: List<ExpenseSlice> = emptyList(),
 )
 
-// Cycling palette for pie slices.
+// TODO: cream-theme — pick token — chart-specific cycling palette; no single theme token maps to a multi-hue sequence
 private val SLICE_COLORS = listOf(
     Color(0xFF6750A4),
     Color(0xFF625B71),
@@ -473,6 +474,7 @@ private fun SwipeableExpenseCard(
             when (direction) {
                 SwipeToDismissBoxValue.StartToEnd -> {
                     // Approve background (green)
+                    val successColor = LocalExtendedColors.current.success
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -480,7 +482,7 @@ private fun SwipeableExpenseCard(
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         Surface(
-                            color = Color(0xFF4CAF50).copy(alpha = 0.15f),
+                            color = successColor.copy(alpha = 0.15f),
                             modifier = Modifier.fillMaxSize(),
                         ) {}
                         Row(
@@ -488,8 +490,8 @@ private fun SwipeableExpenseCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF4CAF50))
-                            Text("Approve", color = Color(0xFF4CAF50), style = MaterialTheme.typography.labelLarge)
+                            Icon(Icons.Default.Check, contentDescription = null, tint = successColor)
+                            Text("Approve", color = successColor, style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }

@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -332,6 +333,7 @@ fun PingStatusIndicator(
     var showDiagDialog by remember { mutableStateOf(false) }
     var diagReason by remember { mutableStateOf("") }
 
+    val ext = LocalExtendedColors.current
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -342,12 +344,12 @@ fun PingStatusIndicator(
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
                     strokeWidth = 2.dp,
-                    color = Color(0xFFF9A825),
+                    color = ext.warning,
                 )
                 Text(
                     text = "Pinging…",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFF9A825),
+                    color = ext.warning,
                 )
             }
 
@@ -355,13 +357,13 @@ fun PingStatusIndicator(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Device reachable",
-                    tint = Color(0xFF2E7D32),
+                    tint = ext.success,
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "OK (${result.latencyMs} ms)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF2E7D32),
+                    color = ext.success,
                 )
             }
 
@@ -369,13 +371,13 @@ fun PingStatusIndicator(
                 Icon(
                     imageVector = Icons.Default.HourglassEmpty,
                     contentDescription = "Ping timed out",
-                    tint = Color(0xFFF57F17),
+                    tint = ext.warning,
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "Timeout (2 s)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFF57F17),
+                    color = ext.warning,
                 )
             }
 

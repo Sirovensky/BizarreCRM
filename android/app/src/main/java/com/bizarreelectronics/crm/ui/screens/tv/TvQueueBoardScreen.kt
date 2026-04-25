@@ -50,16 +50,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.delay
 
-// Brand palette constants for the TV board — deep dark background, accent purple.
+// TODO: cream-theme — pick token — TV board uses a fixed dark palette intentionally (wall display; always dark regardless of device theme)
 private val TvBackground   = Color(0xFF0D0D1A)
 private val TvSurface      = Color(0xFF1A1A2E)
 private val TvBrandPurple  = Color(0xFF7C3AED)
 private val TvTextPrimary  = Color(0xFFF5F5FF)
 private val TvTextSecondary = Color(0xFFB0B0CC)
 
-/** Status dot colour per group, visible at distance. */
+// TODO: cream-theme — pick token — TV group status dots; high-chroma cyan/amber/green chosen for readability at distance; no theme token equivalent
 private val TvGroupColor = mapOf(
     TvQueueGroup.IN_PROGRESS to Color(0xFF22D3EE),
     TvQueueGroup.AWAITING    to Color(0xFFFBBF24),
@@ -213,7 +214,7 @@ fun TvQueueBoardScreen(
         if (uiState.error != null) {
             Text(
                 text = uiState.error!!,
-                color = Color(0xFFFC8181),
+                color = LocalExtendedColors.current.error,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier
                     .align(Alignment.TopEnd)

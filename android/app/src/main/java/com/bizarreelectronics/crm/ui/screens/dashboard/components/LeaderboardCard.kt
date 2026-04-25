@@ -38,6 +38,7 @@ data class LeaderboardEntry(
     val metricLabel: String,
 )
 
+// TODO: cream-theme — pick token — medal colors (gold/silver/bronze) are decorative; no theme token equivalent
 private val MEDAL_COLORS = listOf(
     Color(0xFFFFD700), // Gold
     Color(0xFFC0C0C0), // Silver
@@ -81,6 +82,7 @@ fun LeaderboardCard(
                 Icon(
                     imageVector = Icons.Default.EmojiEvents,
                     contentDescription = null,
+                    // TODO: cream-theme — pick token — gold trophy tint; decorative, matches MEDAL_COLORS[0]
                     tint = Color(0xFFFFD700),
                     modifier = Modifier.size(20.dp),
                 )

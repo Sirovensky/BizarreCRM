@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.util.WindowMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
@@ -201,6 +202,7 @@ private fun AccentColorSection(
     currentArgb: Int?,
     onSelect: (Int?) -> Unit,
 ) {
+    // TODO: cream-theme — pick token — these ARE the selectable accent colors; hardcoded by design (they're the options being offered)
     val swatches: List<Pair<String, Int?>> = listOf(
         "Default"  to null,
         "Purple"   to Color(0xFF6750A4).toArgb(),
@@ -446,10 +448,11 @@ private fun DensityPreviewCard(density: DashboardDensity) {
             // Simulate phone column count (always preview as phone for clarity)
             val columnCount = density.columnsForWindowSize(WindowMode.Phone)
             val spacing = density.baseSpacing
+            val ext = LocalExtendedColors.current
             val mockTiles = listOf(
                 Triple("Open", "12", MaterialTheme.colorScheme.primary),
-                Triple("Revenue", "$342", Color(0xFF4CAF50)),
-                Triple("Low Stock", "3", Color(0xFFFF9800)),
+                Triple("Revenue", "$342", ext.success),
+                Triple("Low Stock", "3", ext.warning),
                 Triple("Pending", "5", MaterialTheme.colorScheme.tertiary),
             ).take(columnCount.coerceAtMost(4))
 
