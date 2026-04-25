@@ -85,12 +85,14 @@ public enum PosDeviceOption: Equatable, Sendable, Identifiable {
         }
     }
 
-    /// Optional warranty/serial status line shown in the device picker card.
-    /// Populated from the subtitle field if it contains warranty information.
-    /// For MVP, returns `nil` — callers can set this via subtitle.
+    /// Optional warranty/serial status line shown in the device picker card
+    /// (mockup 1b: "Under warranty until 2026-08-14" in success color).
+    /// Scans the subtitle for a "warranty" keyword and returns that component.
     public var warrantyLine: String? {
-        // The warranty line lives in the subtitle in the current data model.
-        // Return nil here; callers parsing the subtitle can split it out.
-        nil
+        guard case .asset(_, _, let subtitle) = self, let text = subtitle else { return nil }
+        // Look for a component that contains "warranty" (case-insensitive).
+        // Subtitle components are separated by " · ".
+        let parts = text.components(separatedBy: " · ")
+        return parts.first { $0.lowercased().contains("warranty") }
     }
 }

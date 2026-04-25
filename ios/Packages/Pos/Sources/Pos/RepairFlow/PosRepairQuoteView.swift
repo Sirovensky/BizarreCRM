@@ -83,6 +83,7 @@ public struct PosRepairQuoteView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Step 3/4 progress bar pinned below nav (66%)
+            // Gradient: primary (orange) → primary-bright, left → right per mockup.
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
@@ -90,7 +91,7 @@ public struct PosRepairQuoteView: View {
                     Rectangle()
                         .fill(
                             LinearGradient(
-                                colors: [Color.bizarreOrange, Color.bizarreOrange.opacity(0.7)],
+                                colors: [Color.bizarreOrange, Color.bizarreOrangeBright],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
@@ -299,9 +300,12 @@ public struct PosRepairQuoteView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        // Estimate hero card background: surface-solid base + tinted gradient overlay
+        // Matches mockup: background: linear-gradient(...), var(--surface-solid) + border.
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(
+                .fill(Color.bizarreSurface1)
+                .overlay(
                     LinearGradient(
                         stops: [
                             .init(color: Color.bizarreOrange.opacity(0.10), location: 0),
@@ -309,8 +313,8 @@ public struct PosRepairQuoteView: View {
                         ],
                         startPoint: .top, endPoint: .bottom
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 )
-                .overlay(Color.bizarreSurface1.opacity(0.6))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -401,20 +405,25 @@ public struct PosRepairQuoteView: View {
                 coordinator.advance()
                 BrandHaptics.tapMedium()
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     if coordinator.isLoading {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(Color.bizarreOnPrimary)
                     } else {
                         Text("Continue → deposit")
                             .font(.subheadline.weight(.bold))
-                        Image(systemName: "chevron.right")
-                            .font(.subheadline.weight(.bold))
+                        Text("›")
+                            .font(.system(size: 15, weight: .bold))
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.bizarreOrange, in: RoundedRectangle(cornerRadius: 14))
-                .foregroundStyle(Color.white)
+                .background(
+                    coordinator.isLoading
+                        ? Color.bizarreOrange.opacity(0.4)
+                        : Color.bizarreOrange,
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+                .foregroundStyle(Color.bizarreOnPrimary)
             }
             .buttonStyle(.plain)
             .disabled(coordinator.isLoading)
@@ -431,8 +440,9 @@ public struct PosRepairQuoteView: View {
     // MARK: - Helpers
 
     private func lineSubtitle(_ line: RepairQuoteLine) -> String? {
-        // Stock info would come from the line metadata in a real impl.
-        // For now, show "Suggested" for pre-populated items.
+        // Prefer the explicit subtitle (stock info, time estimate, etc.).
+        // Fall back to "Suggested" for pre-populated items with no subtitle.
+        if let s = line.subtitle, !s.isEmpty { return s }
         if line.isPrePopulated { return "Suggested" }
         return nil
     }
