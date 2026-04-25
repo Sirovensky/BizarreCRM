@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useReducer } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Cpu,
@@ -41,7 +41,7 @@ function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400
           <span className="text-[10px] lg:text-[11px] font-medium text-surface-500 uppercase tracking-wider">
             {label}
           </span>
-          {sublabel && <span className="text-[9px] text-surface-600 ml-1">({sublabel})</span>}
+          {sublabel && <span className="text-[9px] text-surface-400 ml-1">({sublabel})</span>}
         </div>
         <Icon className={cn('w-3.5 h-3.5 lg:w-4 lg:h-4 flex-shrink-0', iconColor)} />
       </div>
@@ -301,13 +301,15 @@ function formatRelativeAge(ms: number): string {
   return remHr > 0 ? `${day}d ${remHr}h` : `${day}d`;
 }
 
+// DASH-ELEC-109: always pass 'en-US' as first arg so axis labels are
+// locale-stable regardless of operator OS locale settings.
 function formatTimeLabel(ts: string | number, range: TimeRange): string {
   const d = typeof ts === 'number' ? new Date(ts) : new Date(ts.includes(' ') ? ts.replace(' ', 'T') + 'Z' : ts);
   if (range === 'Live') return '';
-  if (range === '1h' || range === '6h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (range === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (range === '1w') return d.toLocaleDateString([], { weekday: 'short', hour: '2-digit' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (range === '1h' || range === '6h') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  if (range === '1d') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  if (range === '1w') return d.toLocaleDateString('en-US', { weekday: 'short', hour: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function formatHoverTime(ts: string | number, range: TimeRange): string {
@@ -320,11 +322,11 @@ function formatHoverTime(ts: string | number, range: TimeRange): string {
   if (range === 'Live') {
     const ms = Date.now() - d.getTime();
     if (ms < 500) return 'Now';
-    const wall = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const wall = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return `${formatRelativeAge(ms)} ago · ${wall}`;
   }
-  if (range === '1h' || range === '6h' || range === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (range === '1h' || range === '6h' || range === '1d') return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
@@ -587,24 +589,45 @@ export function OverviewPage() {
   const isOnline = useServerStore((s) => s.isOnline);
   const lastError = useServerStore((s) => s.lastError);
 
-  // Local sparkline buffers — reset on page mount (not persisted across
-  // navigation, by design: a 30-sample trend is a "what's happening NOW"
-  // signal, not a historical trend log. The full chart below covers history.)
-  const [memSeries, setMemSeries] = useState<number[]>([]);
-  const [dbSeries, setDbSeries] = useState<number[]>([]);
-  const [rpsSeries, setRpsSeries] = useState<number[]>([]);
-  const [connSeries, setConnSeries] = useState<number[]>([]);
-  const [uploadsSeries, setUploadsSeries] = useState<number[]>([]);
-  const [p95Series, setP95Series] = useState<number[]>([]);
+  // DASH-ELEC-040: Consolidate 6 sparkline series into a single state object
+  // so a stats poll triggers exactly one state update → one re-render.
+  // Under React 18 auto-batching the six separate setState calls are safe,
+  // but any `await` before the chain (e.g. a future async metrics fetch)
+  // would break batching and cause 6 intermediate renders.
+  interface SeriesMap {
+    mem: number[];
+    db: number[];
+    rps: number[];
+    conn: number[];
+    uploads: number[];
+    p95: number[];
+  }
+  const emptySeries: SeriesMap = { mem: [], db: [], rps: [], conn: [], uploads: [], p95: [] };
+
+  // DASH-ELEC-186: reducer accepts either a plain partial update or a functional
+  // updater so the sparkline effect can pass (prev) => ... without capturing a
+  // stale series closure.
+  type SeriesAction = Partial<SeriesMap> | ((prev: SeriesMap) => Partial<SeriesMap>);
+  const [series, dispatchSeries] = useReducer(
+    (prev: SeriesMap, action: SeriesAction): SeriesMap =>
+      ({ ...prev, ...(typeof action === 'function' ? action(prev) : action) }),
+    emptySeries,
+  );
 
   useEffect(() => {
     if (!stats) return;
-    setMemSeries((b) => pushSpark(b, stats.memory?.rss ?? 0));
-    setDbSeries((b) => pushSpark(b, stats.dbSizeMB ?? 0));
-    setRpsSeries((b) => pushSpark(b, stats.requestsPerSecondAvg ?? 0));
-    setConnSeries((b) => pushSpark(b, stats.activeConnections ?? 0));
-    setUploadsSeries((b) => pushSpark(b, stats.uploadsSizeMB ?? 0));
-    setP95Series((b) => pushSpark(b, stats.p95ResponseMs ?? 0));
+    // DASH-ELEC-186: Use a functional-form callback so pushSpark reads the
+    // *current* series snapshot from the reducer rather than the stale closure
+    // captured at effect registration time.  The eslint-disable can now be
+    // removed because `series` is no longer referenced in the effect body.
+    dispatchSeries((prev) => ({
+      mem: pushSpark(prev.mem, stats.memory?.rss ?? 0),
+      db: pushSpark(prev.db, stats.dbSizeMB ?? 0),
+      rps: pushSpark(prev.rps, stats.requestsPerSecondAvg ?? 0),
+      conn: pushSpark(prev.conn, stats.activeConnections ?? 0),
+      uploads: pushSpark(prev.uploads, stats.uploadsSizeMB ?? 0),
+      p95: pushSpark(prev.p95, stats.p95ResponseMs ?? 0),
+    }));
   }, [stats]);
 
   return (
@@ -617,7 +640,7 @@ export function OverviewPage() {
           <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
           <div>
             <p className="text-sm font-medium text-red-300">Server Offline</p>
-            <p className="text-xs text-red-400/70">{lastError ?? 'Unable to reach the CRM server'}</p>
+            <p className="text-xs text-red-400">{lastError ?? 'Unable to reach the CRM server'}</p>
           </div>
         </div>
       )}
@@ -634,7 +657,7 @@ export function OverviewPage() {
               <p className="text-sm font-medium text-orange-300">
                 {stats.unacknowledgedSecurityAlerts} Unacknowledged Security Alert{stats.unacknowledgedSecurityAlerts > 1 ? 's' : ''}
               </p>
-              <p className="text-xs text-orange-400/70">
+              <p className="text-xs text-orange-400">
                 Review recent security events before clearing alerts.
               </p>
             </div>
@@ -656,7 +679,7 @@ export function OverviewPage() {
           unit="MB"
           icon={Cpu}
           iconColor="text-purple-400"
-          series={memSeries}
+          series={series.mem}
         />
         <StatCard
           label="Uptime"
@@ -670,7 +693,7 @@ export function OverviewPage() {
           value={stats?.requestsPerSecondAvg !== undefined ? formatDecimal(stats.requestsPerSecondAvg) : '--'}
           icon={Zap}
           iconColor="text-amber-400"
-          series={rpsSeries}
+          series={series.rps}
         />
         <StatCard
           label="Database"
@@ -678,7 +701,7 @@ export function OverviewPage() {
           unit="MB"
           icon={Database}
           iconColor="text-accent-400"
-          series={dbSeries}
+          series={series.db}
         />
         <StatCard
           label="Uploads"
@@ -686,14 +709,14 @@ export function OverviewPage() {
           unit="MB"
           icon={HardDrive}
           iconColor="text-cyan-400"
-          series={uploadsSeries}
+          series={series.uploads}
         />
         <StatCard
           label="Connections"
           value={stats?.activeConnections !== undefined ? String(stats.activeConnections) : '--'}
           icon={Wifi}
           iconColor="text-emerald-400"
-          series={connSeries}
+          series={series.conn}
         />
         <StatCard
           label="P95 response"
@@ -702,7 +725,7 @@ export function OverviewPage() {
           unit="ms"
           icon={Activity}
           iconColor="text-pink-400"
-          series={p95Series}
+          series={series.p95}
         />
         <StatCard
           label="Avg response"

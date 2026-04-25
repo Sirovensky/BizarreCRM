@@ -28,11 +28,11 @@ const STATUS_CONFIG: Record<string, { label: string; dotClass: string; textClass
 
 export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.unknown;
-  const isOnline = status === 'online' || status === 'running' as string;
+  const isOnline = status === 'online' || status === 'running';
 
   return (
     <span className={cn('inline-flex items-center gap-1.5', size === 'md' ? 'text-sm' : 'text-xs')}>
-      <span className="relative flex">
+      <span className="relative flex" aria-hidden="true">
         <span className={cn(
           'rounded-full',
           size === 'md' ? 'h-2.5 w-2.5' : 'h-2 w-2',

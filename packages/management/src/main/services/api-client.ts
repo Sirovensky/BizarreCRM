@@ -25,7 +25,7 @@ import { app } from 'electron';
 let serverPort = 443;
 const REQUEST_TIMEOUT = 30_000;
 
-function getServerBase(): string {
+export function getServerBase(): string {
   return serverPort === 443
     ? 'https://localhost'
     : `https://localhost:${serverPort}`;

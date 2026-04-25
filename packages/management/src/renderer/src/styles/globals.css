@@ -34,11 +34,12 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: #3f3f46;
+    /* DASH-ELEC-147: use theme tokens instead of hardcoded hex */
+    background-color: theme('colors.surface.700');
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: #52525b;
+    background-color: theme('colors.surface.600');
   }
 
   /* Hide number input spinners */
@@ -51,9 +52,9 @@
     -moz-appearance: textfield;
   }
 
-  /* Focus ring */
+  /* Focus ring — DASH-ELEC-148: use theme token instead of hardcoded hex */
   *:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid theme('colors.accent.500');
     outline-offset: 2px;
   }
 
@@ -94,5 +95,14 @@
 
   .status-dot-offline {
     @apply h-2.5 w-2.5 rounded-full bg-red-500;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

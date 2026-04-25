@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { EnvSettingField } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 import { useServerStore } from '@/stores/serverStore';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
@@ -33,14 +34,18 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
+    // DASH-ELEC-048: pipe responses through handleApiResponse so a 401
+    // triggers immediate logout rather than silently stalling the checklist.
     getAPI().admin.getEnvSettings()
       .then((res) => {
+        if (handleApiResponse(res)) return;
         if (res.success && res.data) setEnvFields(res.data.fields);
       })
       .catch((err) => console.warn('[SetupChecklist] getEnvSettings failed', err));
 
     getAPI().admin.listBackups()
       .then((res) => {
+        if (handleApiResponse(res)) return;
         if (res.success && Array.isArray(res.data)) {
           const list = res.data as Array<{ created: string }>;
           setBackupCount(list.length);

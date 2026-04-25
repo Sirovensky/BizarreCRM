@@ -13,13 +13,19 @@
 export function escapeCsvField(value: unknown): string {
   if (value === null || value === undefined) return '';
   const s = String(value);
-  if (/[",\r\n]/.test(s)) {
-    return '"' + s.replace(/"/g, '""') + '"';
+  // RFC-4180 §2 note 2: fields starting with =, +, @, or - are interpreted as
+  // formulas by spreadsheet applications. Prefix with a single quote so the
+  // field is treated as a text literal. The quote is stripped by most parsers
+  // but is visible as =' in raw CSV; this is the widely-accepted safe default.
+  const needsFormulaGuard = s.length > 0 && /^[=+@\-]/.test(s);
+  const guarded = needsFormulaGuard ? "'" + s : s;
+  if (/[",\r\n]/.test(guarded)) {
+    return '"' + guarded.replace(/"/g, '""') + '"';
   }
-  return s;
+  return guarded;
 }
 
-export function toCsv(columns: readonly string[], rows: readonly Record<string, unknown>[]): string {
+export function toCsv<T extends Record<string, unknown>>(columns: readonly string[], rows: readonly T[]): string {
   const header = columns.map(escapeCsvField).join(',');
   const body = rows.map((r) => columns.map((c) => escapeCsvField(r[c])).join(',')).join('\n');
   return header + '\n' + body + '\n';

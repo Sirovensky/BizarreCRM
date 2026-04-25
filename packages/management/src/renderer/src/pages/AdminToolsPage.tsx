@@ -66,6 +66,15 @@ export function AdminToolsPage() {
 
   useEffect(() => { refreshRateLimits(); }, [refreshRateLimits]);
 
+  // DASH-ELEC-261: advance rlServerNow at 1 Hz so the countdown ticks even
+  // when the operator leaves the page open and doesn't manually refresh.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRlServerNow((t) => t + 1000);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   async function handleReset() {
     if (resetScope === 'single' && !/^[a-z0-9-]{1,64}$/.test(resetTenant)) {
       toast.error('Enter a valid tenant slug (lowercase, hyphens only).');

@@ -9,6 +9,7 @@
  * This ensures auto-logout is not limited to the stats-polling channel.
  */
 import { create } from 'zustand';
+import toast from 'react-hot-toast';
 
 type AuthMode = 'management' | 'super-admin' | null;
 
@@ -46,6 +47,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 // auth-expired event (one per accumulated listener).
 const authExpiredHandler = () => {
   useAuthStore.getState().logout();
+  // DASH-ELEC-276: notify operator why they were redirected, not a silent drop.
+  toast.error('Session expired — please log in again', { duration: 6000 });
   window.dispatchEvent(new Event('managementAuthNavigateLogin'));
 };
 
@@ -54,9 +57,7 @@ if (typeof window !== 'undefined') {
 
   // MGT-025: Remove the listener when Vite replaces this module during HMR
   // so that accumulated duplicate listeners don't pile up across hot reloads.
-  // @ts-expect-error Vite HMR
   if (import.meta.hot) {
-    // @ts-expect-error Vite HMR
     import.meta.hot.dispose(() => {
       window.removeEventListener('managementAuthExpired', authExpiredHandler);
     });

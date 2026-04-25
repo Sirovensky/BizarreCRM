@@ -12,12 +12,14 @@ export interface ApiErrorFields {
   code: string | null;
   requestId: string | null;
   message: string;
+  /** HTTP status code from the IPC envelope (DASH-ELEC-060), if available. */
+  status: number | null;
 }
 
 type ApiOrError = ApiResponse<unknown> | { message?: unknown; errorCode?: unknown; requestId?: unknown } | Error | unknown;
 
 export function extractApiError(input: ApiOrError): ApiErrorFields {
-  if (!input) return { code: null, requestId: null, message: 'Unknown error' };
+  if (!input) return { code: null, requestId: null, status: null, message: 'Unknown error' };
 
   if (typeof input === 'object') {
     // ApiResponse envelope path.
@@ -26,6 +28,7 @@ export function extractApiError(input: ApiOrError): ApiErrorFields {
       return {
         code: typeof env.code === 'string' ? env.code : null,
         requestId: typeof env.request_id === 'string' ? env.request_id : null,
+        status: typeof env.status === 'number' ? env.status : null,
         message: typeof env.message === 'string' && env.message ? env.message : 'Request failed',
       };
     }
@@ -34,15 +37,19 @@ export function extractApiError(input: ApiOrError): ApiErrorFields {
     return {
       code: typeof e.errorCode === 'string' ? e.errorCode : null,
       requestId: typeof e.requestId === 'string' ? e.requestId : null,
+      status: null,
       message: typeof e.message === 'string' && e.message ? e.message : 'Request failed',
     };
   }
-  return { code: null, requestId: null, message: String(input) };
+  return { code: null, requestId: null, status: null, message: String(input) };
 }
 
 export function formatApiError(input: ApiOrError): string {
   const f = extractApiError(input);
   const parts: string[] = [];
+  // DASH-ELEC-277: include the HTTP status so operators can distinguish 4xx
+  // client errors from 5xx server errors at a glance.
+  if (f.status !== null) parts.push(`[${f.status}]`);
   if (f.code) parts.push(f.code);
   if (f.requestId) parts.push(`ref ${f.requestId.slice(0, 8)}`);
   if (parts.length === 0) return f.message;

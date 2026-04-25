@@ -12,6 +12,7 @@
 import { ShieldAlert, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getAPI } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 export function BannerTagVerifyWarning() {
   const [bypass, setBypass] = useState<boolean | null>(null);
@@ -19,6 +20,9 @@ export function BannerTagVerifyWarning() {
 
   useEffect(() => {
     getAPI().system.getTagVerifyStatus().then((res) => {
+      // DASH-ELEC-048: propagate 401 so auth expiry is detected here, not
+      // only on the next health poll (up to 60 s later).
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setBypass(res.data.bypass);
       }
@@ -41,7 +45,7 @@ export function BannerTagVerifyWarning() {
         <span className="text-xs font-semibold text-red-300">
           UPDATE_SKIP_TAG_VERIFY is active —
         </span>{' '}
-        <span className="text-xs text-red-400/80">
+        <span className="text-xs text-red-400">
           Signed-tag verification is bypassed. Updates can be installed from
           unsigned git tags, removing the SEC-H95 supply-chain integrity check.
           Unset UPDATE_SKIP_TAG_VERIFY and restart the dashboard to re-enable

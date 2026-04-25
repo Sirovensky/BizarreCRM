@@ -11,6 +11,7 @@
 import { ShieldAlert, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getAPI } from '@/api/bridge';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 export function BannerCertWarning() {
   const [pinningEnabled, setPinningEnabled] = useState<boolean | null>(null);
@@ -19,6 +20,9 @@ export function BannerCertWarning() {
 
   useEffect(() => {
     getAPI().system.getCertPinningStatus().then((res) => {
+      // DASH-ELEC-048: propagate 401 so auth expiry is detected here, not
+      // only on the next health poll (up to 60 s later).
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setPinningEnabled(res.data.enabled);
         setReason(res.data.reason);
@@ -42,7 +46,7 @@ export function BannerCertWarning() {
         <span className="text-xs font-semibold text-amber-300">
           TLS cert pinning disabled —
         </span>{' '}
-        <span className="text-xs text-amber-400/80">
+        <span className="text-xs text-amber-400">
           {reason ??
             'server.cert not found. Start the CRM server at least once to generate certs and enable fingerprint pinning.'}
         </span>

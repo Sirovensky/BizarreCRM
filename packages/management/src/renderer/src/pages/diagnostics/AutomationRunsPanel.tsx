@@ -100,7 +100,7 @@ export function AutomationRunsPanel({ slug }: { slug: string }) {
               if (rows.length === 0) { toast('Nothing to export'); return; }
               const csv = toCsv(
                 ['created_at', 'automation_id', 'automation_name', 'trigger_event', 'action_type', 'target_entity_type', 'target_entity_id', 'status', 'depth', 'error_message'],
-                rows as unknown as Record<string, unknown>[],
+                rows,
               );
               downloadCsv(`automation-runs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, csv);
               toast.success(`Exported ${rows.length} rows`);
@@ -125,11 +125,11 @@ export function AutomationRunsPanel({ slug }: { slug: string }) {
       {summary && (
         <div className="flex items-center gap-2 flex-wrap text-xs">
           <SummaryChip label="total" count={summary.total} color="border-surface-700 text-surface-300" />
-          <SummaryChip label="success" count={summary.success} color="border-emerald-900/60 text-emerald-300 bg-emerald-950/30" />
-          <SummaryChip label="failure" count={summary.failure} color="border-red-900/60 text-red-300 bg-red-950/30" />
-          <SummaryChip label="skipped" count={summary.skipped} color="border-surface-700 text-surface-400" />
+          <SummaryChip label="success" count={summary.success} color="border-emerald-900/60 text-emerald-300 bg-emerald-950/30" onClick={() => setStatusFilter((f) => f === 'success' ? '' : 'success')} active={statusFilter === 'success'} />
+          <SummaryChip label="failure" count={summary.failure} color="border-red-900/60 text-red-300 bg-red-950/30" onClick={() => setStatusFilter((f) => f === 'failure' ? '' : 'failure')} active={statusFilter === 'failure'} />
+          <SummaryChip label="skipped" count={summary.skipped} color="border-surface-700 text-surface-400" onClick={() => setStatusFilter((f) => f === 'skipped' ? '' : 'skipped')} active={statusFilter === 'skipped'} />
           {summary.loop_rejected > 0 && (
-            <SummaryChip label="loop_rejected" count={summary.loop_rejected} color="border-amber-900/60 text-amber-300 bg-amber-950/30" />
+            <SummaryChip label="loop_rejected" count={summary.loop_rejected} color="border-amber-900/60 text-amber-300 bg-amber-950/30" onClick={() => setStatusFilter((f) => f === 'loop_rejected' ? '' : 'loop_rejected')} active={statusFilter === 'loop_rejected'} />
           )}
           {successRate !== null && (
             <span className="text-surface-500">
@@ -196,7 +196,21 @@ export function AutomationRunsPanel({ slug }: { slug: string }) {
   );
 }
 
-function SummaryChip({ label, count, color }: { label: string; count: number; color: string }) {
+function SummaryChip({ label, count, color, onClick, active }: { label: string; count: number; color: string; onClick?: () => void; active?: boolean }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        aria-label={`Filter by ${label}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border transition-opacity ${color} ${active ? 'ring-1 ring-current' : 'opacity-80 hover:opacity-100'}`}
+      >
+        <span className="font-mono">{count}</span>
+        <span className="text-surface-500">{label}</span>
+      </button>
+    );
+  }
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border ${color}`}>
       <span className="font-mono">{count}</span>

@@ -119,7 +119,7 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
               if (rows.length === 0) { toast('Nothing to export'); return; }
               const csv = toCsv(
                 ['created_at', 'event', 'endpoint', 'last_status', 'attempts', 'last_error'],
-                rows as unknown as Record<string, unknown>[],
+                rows,
               );
               downloadCsv(`webhook-failures-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, csv);
               toast.success(`Exported ${rows.length} rows`);
