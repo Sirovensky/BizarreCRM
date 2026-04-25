@@ -1470,6 +1470,72 @@
   .light-mode .tender-footer { color: #1a1816 !important; }
   .light-mode .inspector-row .ir-label { color: #5a5550 !important; }
   .light-mode .inspector-row .ir-val { color: #1a1816 !important; }
+
+  /* ─── Round 2: comprehensive light-mode visibility sweep ────────────── */
+
+  /* Topbar sub-text */
+  .light-mode .t-meta { color: #5a5550 !important; }
+  .light-mode .t-title { color: #1a1816 !important; }
+
+  /* Rail items (inactive) */
+  .light-mode .rail-item { color: #5a5550 !important; }
+
+  /* Cart column text */
+  .light-mode .ch-name { color: #1a1816 !important; }
+  .light-mode .ch-sub { color: #5a5550 !important; }
+  .light-mode .cn { color: #1a1816 !important; }
+  .light-mode .cs { color: #5a5550 !important; }
+  .light-mode .cp { color: #7a3a00 !important; }
+  .light-mode .trow { color: #5a5550 !important; }
+  .light-mode .ttotal .tl { color: #5a5550 !important; }
+  .light-mode .ttotal .ta { color: #1a1816 !important; }
+
+  /* Inspector body text */
+  .light-mode .ih-title { color: #1a1816 !important; }
+  .light-mode .ih-sub { color: #5a5550 !important; }
+  .light-mode .inspector-close { color: #5a5550 !important; }
+
+  /* Tender hero labels */
+  .light-mode .th-title { color: #1a1816 !important; }
+  .light-mode .th-sub { color: #5a5550 !important; }
+  .light-mode .th-amount { color: #7a3a00 !important; }
+
+  /* Receipt panel */
+  .light-mode .rh-label { color: var(--success) !important; }
+  .light-mode .rh-sub { color: #5a5550 !important; }
+  .light-mode .rh-amount { color: #1a1816 !important; }
+  .light-mode .rl-title { color: #1a1816 !important; }
+  .light-mode .rl-meta { color: #5a5550 !important; }
+  .light-mode .rl-row { color: #5a5550 !important; }
+  .light-mode .rl-row.total { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.18) !important; }
+  .light-mode .rl-foot { color: #8a847c !important; }
+
+  /* Share tiles */
+  .light-mode .share-tile .st-label { color: #1a1816 !important; }
+  .light-mode .share-tile .st-ico { font-size: 20px; }
+  .light-mode .share-tile.primary .st-label { color: #ffffff !important; }
+
+  /* Tile icon bg */
+  .light-mode .tile .t-icon { background: rgba(30,24,16,0.05) !important; }
+
+  /* Filter pill text */
+  .light-mode .filter-pill { background: rgba(30,24,16,0.04) !important; border-color: rgba(30,24,16,0.10) !important; color: #1a1816 !important; }
+  .light-mode .filter-pill.active { color: #ffffff !important; }
+
+  /* Nav sub-text and back button */
+  .light-mode .nav-sub { color: #5a5550 !important; }
+
+  /* ce-msg empty state */
+  .light-mode .ce-msg { color: #5a5550 !important; }
+
+  /* Loyalty celebration */
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08) !important; }
+
+  /* Receipt actions */
+  .light-mode .receipt-actions .btn-sec { color: #1a1816 !important; }
+
+  /* Pencil signature banner text */
+  .light-mode .pencil-banner { color: #1a1816 !important; background: rgba(11,82,96,0.08) !important; border-color: rgba(11,82,96,0.25) !important; }
 </style>
 </head>
 <body>
@@ -2908,7 +2974,7 @@
             cursor: pointer; text-align: center; letter-spacing: -0.01em;
             min-height: 72px;
           ">＋ Create new customer
-            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); margin-left: 8px; padding: 2px 6px; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;">⌘⇧N</span>
+            <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted-2); margin-left: 8px; padding: 2px 6px; border: 1px solid rgba(30,24,16,0.15); border-radius: 4px;">⌘⇧N</span>
           </button>
           <button class="gate-btn-walkin" style="
             flex: 1; padding: 22px 20px;
@@ -3069,7 +3135,7 @@
         <div class="inspector-close">✕</div>
       </div>
       <div class="inspector-body">
-        <div style="padding: 6px 0 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 12px 18px 4px;">On file · 2</div>
+        <div style="padding: 12px 18px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;">On file · 2</div>
         <div class="device-row selected">
           <div class="di">📱</div>
           <div style="flex:1;">
@@ -3085,16 +3151,16 @@
             <div style="font-size:13.5px; font-weight:700;">Apple Watch Series 8</div>
             <div style="font-size:11px; color:var(--muted); margin-top:2px;">Serial FH7…921 · 45mm</div>
           </div>
-          <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
+          <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(30,24,16,0.22);flex-shrink:0;"></div>
         </div>
         <div style="padding: 12px 18px 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;">Add new</div>
-        <div class="device-row" style="border-left: 3px dashed rgba(253,238,208,0.3);">
+        <div class="device-row" style="border-left: 3px dashed rgba(194,65,12,0.28);">
           <div class="di" style="background: linear-gradient(180deg,var(--primary-bright),var(--primary)); color:var(--on-primary); border-color: transparent; font-size:22px; font-weight:900;">+</div>
           <div style="flex:1;">
             <div style="font-size:13.5px; font-weight:700; color:var(--primary);">Add new device</div>
             <div style="font-size:11px; color:var(--muted); margin-top:2px;">Scan IMEI or pick make / model</div>
           </div>
-          <button style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--on);font-size:16px;" title="Scan IMEI">📷</button>
+          <button style="width:36px;height:36px;border-radius:10px;background:rgba(30,24,16,0.05);border:1px solid rgba(30,24,16,0.12);color:var(--on);font-size:16px;" title="Scan IMEI">📷</button>
           <span style="color:var(--primary);font-size:16px;">›</span>
         </div>
       </div>
@@ -3168,26 +3234,26 @@
       <div class="inspector-body">
         <div class="inspector-row">
           <div class="ir-label">What's the problem?</div>
-          <div style="margin-top:8px; border:1.5px solid rgba(253,238,208,0.35); border-radius:12px; padding:10px; background:rgba(255,255,255,0.03); font-size:13px; min-height:68px; line-height:1.5;">Dropped on sidewalk. Screen flickers on calls. Battery dies fast.<span style="color:var(--primary);">|</span></div>
+          <div style="margin-top:8px; border:1.5px solid rgba(30,24,16,0.15); border-radius:12px; padding:10px; background:#ffffff; font-size:13px; min-height:68px; line-height:1.5; color:#1a1816;">Dropped on sidewalk. Screen flickers on calls. Battery dies fast.<span style="color:var(--primary);">|</span></div>
           <div style="display:flex; justify-content:space-between; margin-top:4px;"><span style="color:var(--teal); font-size:11px;">🎤 Dictate</span><span style="color:var(--muted); font-size:11px;">87/2000</span></div>
         </div>
         <div class="inspector-row">
           <div class="ir-label">Device condition</div>
-          <div style="margin-top:8px; background:var(--surface-solid); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600;">Poor — visible damage<span style="color:var(--muted);">⌄</span></div>
+          <div style="margin-top:8px; background:#ffffff; border:1px solid rgba(30,24,16,0.12); border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:600; color:#1a1816;">Poor — visible damage<span style="color:var(--muted);">⌄</span></div>
         </div>
         <div class="inspector-row">
           <div class="ir-label">Quick symptoms</div>
           <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-            <div style="padding:5px 11px; border-radius:99px; background:rgba(253,238,208,0.14); border:1.5px solid rgba(253,238,208,0.45); color:var(--primary); font-size:11px; font-weight:700;">Screen cracked</div>
-            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Won't charge</div>
-            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Water damage</div>
-            <div style="padding:5px 11px; border-radius:99px; background:rgba(253,238,208,0.14); border:1.5px solid rgba(253,238,208,0.45); color:var(--primary); font-size:11px; font-weight:700;">Battery</div>
-            <div style="padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:11px; font-weight:600;">Other</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(194,65,12,0.10); border:1.5px solid rgba(194,65,12,0.30); color:var(--primary); font-size:11px; font-weight:700;">Screen cracked</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Won't charge</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Water damage</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(194,65,12,0.10); border:1.5px solid rgba(194,65,12,0.30); color:var(--primary); font-size:11px; font-weight:700;">Battery</div>
+            <div style="padding:5px 11px; border-radius:99px; background:rgba(30,24,16,0.05); border:1px solid rgba(30,24,16,0.12); color:#5a5550; font-size:11px; font-weight:600;">Other</div>
           </div>
         </div>
         <div class="inspector-row">
           <div class="ir-label">Internal notes (tech-only)</div>
-          <div style="margin-top:8px; border:1px dashed rgba(232,163,61,0.45); border-radius:10px; padding:9px 11px; background:rgba(232,163,61,0.04); font-size:12.5px; color:var(--muted);">Prior non-OEM repair visible.<span style="color:var(--warning);">|</span></div>
+          <div style="margin-top:8px; border:1px dashed rgba(161,91,0,0.40); border-radius:10px; padding:9px 11px; background:rgba(161,91,0,0.06); font-size:12.5px; color:#5a5550;">Prior non-OEM repair visible.<span style="color:var(--warning);">|</span></div>
         </div>
       </div>
       <div class="inspector-foot">
@@ -3233,9 +3299,9 @@
         <div class="filter-pill">All parts</div>
       </div>
       <div class="catalog" style="grid-template-columns: repeat(3, 1fr);">
-        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
-        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">⚙️</div><div class="t-name">Labor · screen replace</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
-        <div class="tile" style="border-color:rgba(253,238,208,0.38);"><div class="t-badge">In quote</div><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">🔧</div><div class="t-name">iPhone 14 Pro Screen</div><div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div></div>
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">⚙️</div><div class="t-name">Labor · screen replace</div><div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div></div>
+        <div class="tile" style="border-color:rgba(194,65,12,0.30);"><div class="t-badge">In quote</div><div class="t-icon">🔋</div><div class="t-name">iPhone 14 Battery</div><div class="t-row"><div class="t-price">$79</div><div class="t-stock low">3 low</div></div></div>
         <div class="tile"><div class="t-icon">⚙️</div><div class="t-name">Labor · battery</div><div class="t-row"><div class="t-price">$35</div><div class="t-stock">Service</div></div></div>
         <div class="tile"><div class="t-icon">🛡️</div><div class="t-name">Screen protector</div><div class="t-row"><div class="t-price">$19</div><div class="t-stock">36</div></div></div>
         <div class="tile"><div class="t-icon">🧽</div><div class="t-name">Cleaning service</div><div class="t-row"><div class="t-price">$12</div><div class="t-stock">Service</div></div></div>
@@ -3276,14 +3342,14 @@
       <div class="inspector-body">
         <div class="inspector-row">
           <div class="ir-label">Diagnostic notes</div>
-          <div style="margin-top:8px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:9px; background:rgba(255,255,255,0.03); font-size:12.5px; min-height:60px; color:var(--muted);">Screen flex faulty. Battery 61% health. OLED bleed top-left.<span style="color:var(--primary);">|</span></div>
+          <div style="margin-top:8px; border:1px solid rgba(30,24,16,0.12); border-radius:10px; padding:9px; background:#ffffff; font-size:12.5px; min-height:60px; color:#5a5550;">Screen flex faulty. Battery 61% health. OLED bleed top-left.<span style="color:var(--primary);">|</span></div>
         </div>
         <div class="inspector-row">
           <div class="ir-label">3 items in quote · estimate $327</div>
           <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="font-weight:600;">Screen</span><span style="color:var(--primary); font-weight:700;">$189</span></div>
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="font-weight:600;">Labor</span><span style="color:var(--primary); font-weight:700;">$60</span></div>
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0;"><span style="font-weight:600;">Battery</span><span style="color:var(--primary); font-weight:700;">$79</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(30,24,16,0.07);"><span style="font-weight:600; color:#1a1816;">Screen</span><span style="color:var(--primary); font-weight:700;">$189</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0; border-bottom:1px solid rgba(30,24,16,0.07);"><span style="font-weight:600; color:#1a1816;">Labor</span><span style="color:var(--primary); font-weight:700;">$60</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0;"><span style="font-weight:600; color:#1a1816;">Battery</span><span style="color:var(--primary); font-weight:700;">$79</span></div>
           </div>
         </div>
       </div>
@@ -3448,19 +3514,19 @@
       </div>
 
       <div class="catalog">
-        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
           <div class="t-badge">In cart</div>
           <div class="t-icon">🔧</div>
           <div class="t-name">iPhone 14 Pro Screen</div>
           <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
         </div>
-        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
           <div class="t-badge">In cart</div>
           <div class="t-icon">⚙️</div>
           <div class="t-name">Labor · screen replace</div>
           <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
         </div>
-        <div class="tile" style="border-color: rgba(253,238,208,0.38);">
+        <div class="tile" style="border-color: rgba(194,65,12,0.30);">
           <div class="t-badge">In cart</div>
           <div class="t-icon">🔌</div>
           <div class="t-name">USB-C 3 ft cable</div>
@@ -3505,9 +3571,9 @@
 
         <!-- Coupon field pinned at bottom of cart body -->
         <div style="padding: 4px 18px 14px;">
-          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(12px);">
-            <span style="color: var(--muted);">🏷️</span>
-            <span style="flex: 1; font-size: 12.5px; color: var(--muted);">Coupon code</span>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(30,24,16,0.03); border: 1px solid rgba(30,24,16,0.10); backdrop-filter: blur(12px);">
+            <span style="color: #5a5550;">🏷️</span>
+            <span style="flex: 1; font-size: 12.5px; color: #5a5550;">Coupon code</span>
             <span style="color: var(--teal); font-weight: 700; font-size: 12px;">APPLY</span>
           </div>
         </div>
@@ -3647,7 +3713,7 @@
         <div class="inspector-row">
           <div style="display: flex; justify-content: space-between; align-items: baseline;">
             <div class="ir-label">Unit price</div>
-            <div style="font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;">$14.00</div>
+            <div style="font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: #1a1816;">$14.00</div>
           </div>
         </div>
         <div class="inspector-row">
@@ -3658,11 +3724,11 @@
         </div>
         <div class="inspector-row">
           <div class="ir-label">Note</div>
-          <div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; color: var(--muted);">Add a note for the receipt…</div>
+          <div style="margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(30,24,16,0.03); border: 1px solid rgba(30,24,16,0.10); font-size: 13px; color: #5a5550;">Add a note for the receipt…</div>
         </div>
         <div class="inspector-row">
           <div class="ir-label">Audit</div>
-          <div style="margin-top: 8px; font-size: 11.5px; color: var(--muted); line-height: 1.6;">
+          <div style="margin-top: 8px; font-size: 11.5px; color: #5a5550; line-height: 1.6;">
             Added 12:04 PM by Pavel I.<br>
             No prior edits.
           </div>
@@ -3723,28 +3789,28 @@
       <!-- Due amount hero — large, confident -->
       <div style="padding: 28px 28px 8px; display: flex; align-items: flex-start; justify-content: space-between;">
         <div>
-          <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px;">Due now</div>
-          <div style="font-family: var(--font-display); font-size: 68px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
-          <div style="font-size: 12.5px; color: var(--muted); margin-top: 6px;">Sarah M. · 3 items</div>
+          <div style="font-size: 11px; font-weight: 600; color: #5a5550; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px;">Due now</div>
+          <div style="font-family: var(--font-display); font-size: 68px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: #1a1816;">$274.51</div>
+          <div style="font-size: 12.5px; color: #5a5550; margin-top: 6px;">Sarah M. · 3 items</div>
         </div>
         <div style="text-align: right; padding-top: 4px;">
-          <div style="font-size: 11.5px; color: var(--muted); margin-bottom: 4px;">Split tender</div>
+          <div style="font-size: 11.5px; color: #5a5550; margin-bottom: 4px;">Split tender</div>
           <div style="font-size: 12px; color: var(--teal); font-weight: 700; letter-spacing: 0.04em;">⊕ Add method</div>
         </div>
       </div>
 
       <!-- Member benefit banner -->
-      <div style="margin: 4px 24px 8px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(180deg, rgba(253,238,208,0.14), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.40); display: flex; gap: 14px; align-items: center; box-shadow: 0 6px 18px rgba(253,238,208,0.08);">
-        <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.65), 0 6px 16px rgba(253,238,208,0.30); flex-shrink: 0; filter: drop-shadow(0 0 8px rgba(253,238,208,0.30));">★</div>
+      <div style="margin: 4px 24px 8px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.01)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.28); display: flex; gap: 14px; align-items: center; box-shadow: 0 6px 18px rgba(194,65,12,0.06);">
+        <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.65), 0 6px 16px rgba(194,65,12,0.22); flex-shrink: 0; filter: drop-shadow(0 0 8px rgba(194,65,12,0.22));">★</div>
         <div style="flex: 1;">
           <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">GOLD member · benefits applied</div>
-          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">10% off auto · earning 55 pts · 230 pts to redeem ($11.50)</div>
+          <div style="font-size: 11.5px; color: #5a5550; margin-top: 2px;">10% off auto · earning 55 pts · 230 pts to redeem ($11.50)</div>
         </div>
         <span class="chip" style="font-family: var(--font-display); font-size: 14px; padding: 4px 12px;">SAVED $10</span>
         <span style="color: var(--teal); font-weight: 700; font-size: 11.5px; letter-spacing: 0.04em; white-space: nowrap;">REDEEM PTS</span>
       </div>
 
-      <div style="padding: 8px 24px 4px; font-size: 11px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Choose payment method</div>
+      <div style="padding: 8px 24px 4px; font-size: 11px; color: #8a847c; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;">Choose payment method</div>
 
       <!-- Method picker — 4-up, none selected yet, each shows as tappable -->
       <div class="tender-methods">
@@ -3772,15 +3838,15 @@
 
       <!-- Spacer + split tender hint -->
       <div style="flex: 1;"></div>
-      <div style="margin: 0 24px 16px; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.025); border: 1px dashed rgba(255,255,255,0.10); display: flex; gap: 12px; align-items: center;">
-        <span style="color: var(--muted); font-size: 18px;">⊕</span>
-        <div style="font-size: 12px; color: var(--muted);">Split tender — pick one method, enter partial amount, then pick another for the remainder. Balances update automatically.</div>
+      <div style="margin: 0 24px 16px; padding: 12px 16px; border-radius: 12px; background: rgba(30,24,16,0.025); border: 1px dashed rgba(30,24,16,0.12); display: flex; gap: 12px; align-items: center;">
+        <span style="color: #5a5550; font-size: 18px;">⊕</span>
+        <div style="font-size: 12px; color: #5a5550;">Split tender — pick one method, enter partial amount, then pick another for the remainder. Balances update automatically.</div>
       </div>
 
       <!-- Disabled confirm until method is picked -->
       <div class="tender-footer">
         <div class="tf-aux">Add tip</div>
-        <div class="tf-primary" style="opacity: 0.38; box-shadow: none; background: rgba(253,238,208,0.25);">
+        <div class="tf-primary" style="opacity: 0.38; box-shadow: none; background: rgba(194,65,12,0.12);">
           <span>Select a payment method</span>
         </div>
       </div>
@@ -4020,7 +4086,7 @@
 
         <!-- Share tiles — mid elevation, prominent -->
         <div style="margin-top: 16px;">
-          <div style="font-size: 10.5px; font-weight: 600; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 8px;">Send receipt to Sarah M.</div>
+          <div style="font-size: 10.5px; font-weight: 600; color: #8a847c; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 8px;">Send receipt to Sarah M.</div>
           <div class="share-grid">
             <div class="share-tile primary"><div class="st-ico">💬</div><div class="st-label">Text</div></div>
             <div class="share-tile"><div class="st-ico">✉️</div><div class="st-label">Email</div></div>
@@ -4034,9 +4100,9 @@
           <div class="lc-star">★</div>
           <div style="flex: 1;">
             <div style="font-size: 13.5px; font-weight: 700; color: var(--primary);">+55 pts earned · GOLD tier maintained</div>
-            <div style="font-size: 11.5px; color: var(--muted); margin-top: 3px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b> (free diagnostic + 15% off)</div>
+            <div style="font-size: 11.5px; color: #5a5550; margin-top: 3px;">285 pts total · 215 to <b style="color: var(--primary);">PLATINUM</b> (free diagnostic + 15% off)</div>
             <div class="lc-progress"></div>
-            <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-2); margin-top: 4px;"><span>GOLD · 285 pts</span><span>PLATINUM · 500 pts</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: #8a847c; margin-top: 4px;"><span>GOLD · 285 pts</span><span>PLATINUM · 500 pts</span></div>
           </div>
         </div>
 
@@ -4048,11 +4114,11 @@
         </div>
 
         <!-- Pencil signature banner -->
-        <div style="margin-top: 10px; padding: 14px 16px; border-radius: 14px; background: rgba(77,184,201,0.08); border: 1px solid rgba(77,184,201,0.30); color: #9be0ea; font-size: 13px; display: flex; gap: 12px; align-items: center;">
+        <div style="margin-top: 10px; padding: 14px 16px; border-radius: 14px; background: rgba(11,82,96,0.06); border: 1px solid rgba(11,82,96,0.22); color: #0b5260; font-size: 13px; display: flex; gap: 12px; align-items: center;">
           <span style="font-size: 20px;">✍</span>
           <div>
             <div style="font-weight: 700;">Signature captured with Pencil</div>
-            <div style="font-size: 11.5px; margin-top: 3px; color: var(--muted);">Archived to ticket #4829 · PKCanvasView · PNG 142 KB</div>
+            <div style="font-size: 11.5px; margin-top: 3px; color: #5a5550;">Archived to ticket #4829 · PKCanvasView · PNG 142 KB</div>
           </div>
         </div>
       </div>
@@ -4073,7 +4139,7 @@
           <div class="rl-row" style="color: var(--primary);"><span>★ GOLD member · 10% off</span><span>−$10.00</span></div>
           <div class="rl-row"><span>Tax · 8.5%</span><span>$21.51</span></div>
           <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
-          <div class="rl-row" style="padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.10); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+          <div class="rl-row" style="padding-top: 10px; border-top: 1px dashed rgba(30,24,16,0.12); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
           <div class="rl-row" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
         </div>
         <div class="rl-foot">Thank you · 30-day returns with receipt</div>

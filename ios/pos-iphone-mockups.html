@@ -1219,6 +1219,113 @@
   .light-mode .tender-hero .th-label { color: #5a5550 !important; }
   .light-mode .tender-footer { color: #1a1816 !important; }
   .light-mode .sp-method .mn { color: #1a1816 !important; }
+
+  /* ─── Round 2: comprehensive light-mode visibility sweep ────────────── */
+
+  /* Cart strip sub-text and total */
+  .light-mode .cart-strip .cs-name { color: #1a1816 !important; }
+  .light-mode .cart-strip .cs-meta { color: #5a5550 !important; }
+  .light-mode .cart-strip .cs-total { color: #7a3a00 !important; }
+  .light-mode .cart-strip .cs-count { color: #1a1816 !important; }
+
+  /* Cart row sub-text */
+  .light-mode .cart-row .cr-sub { color: #5a5550 !important; }
+
+  /* Totals rows */
+  .light-mode .totals-row { color: #5a5550 !important; }
+  .light-mode .total-line .tl-label { color: #5a5550 !important; }
+  .light-mode .total-line .tl-amount { color: #1a1816 !important; }
+
+  /* Sheet sub-text and rows */
+  .light-mode .sheet-sub { color: #5a5550 !important; }
+  .light-mode .sheet-row { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.07) !important; }
+  .light-mode .sheet-handle { background: rgba(30,24,16,0.18) !important; }
+
+  /* Share tiles non-primary label */
+  .light-mode .share-tile .st-label { color: #1a1816 !important; }
+  .light-mode .share-tile.primary .st-label { color: #ffffff !important; }
+
+  /* Receipt hero sub-text (already has rh-label/rh-sub but make explicit) */
+  .light-mode .receipt-hero .rh-sub { color: #5a5550 !important; }
+
+  /* Receipt list rows — muted rows and dashed dividers */
+  .light-mode .receipt-list .rl-row.muted { color: #5a5550 !important; }
+  .light-mode .receipt-list .rl-row.total { color: #1a1816 !important; border-top-color: rgba(30,24,16,0.18) !important; }
+  .light-mode .receipt-list { border-color: rgba(30,24,16,0.10) !important; }
+
+  /* Receipt list header border + inner dashes */
+  .light-mode .receipt-list [style*="border-bottom: 1px solid rgba(255,255,255"] { border-bottom-color: rgba(30,24,16,0.08) !important; }
+
+  /* Loyalty progress bar bg */
+  .light-mode .loyalty-celebration .lc-progress { background: rgba(30,24,16,0.08) !important; }
+
+  /* Tile icon bg */
+  .light-mode .tile .t-icon { background: rgba(30,24,16,0.05) !important; }
+
+  /* Filter chip default (inactive) bg already covered by .light-mode .filter-chip but reinforce */
+  .light-mode .filter-chip { background: rgba(30,24,16,0.04) !important; border-color: rgba(30,24,16,0.10) !important; color: #1a1816 !important; }
+  .light-mode .filter-chip.active { color: #ffffff !important; }
+
+  /* Nav sub-text and back button */
+  .light-mode .nav-sub { color: #5a5550 !important; }
+  .light-mode .nav-back { color: #c2410c !important; }
+
+  /* Progress bar bg stripes */
+  .light-mode [style*="background: rgba(255,255,255,0.06)"][style*="height: 3px"] { background: rgba(30,24,16,0.08) !important; }
+
+  /* Inline symptom chips that use rgba(255,255,255,0.04) bg — target by parent context */
+  /* These are inside .scroll inside .phone-body inside .light-mode — use class on the wrap */
+  .light-mode .symptom-chip-inactive {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #5a5550 !important;
+  }
+
+  /* Device icon backgrounds inside device-list rows in light mode */
+  .light-mode .device-icon-bg {
+    background: rgba(30,24,16,0.05) !important;
+    border-color: rgba(30,24,16,0.10) !important;
+  }
+
+  /* Split-tender hint box */
+  .light-mode .split-tender-hint {
+    background: rgba(30,24,16,0.03) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+  }
+
+  /* Section "Save above, or:" caption */
+  .light-mode .gate-caption { color: #8a847c !important; }
+
+  /* Textarea / input fields in light mode: dark borders + white bg */
+  .light-mode .repair-textarea {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.15) !important;
+    color: #1a1816 !important;
+  }
+
+  /* Dropdown "Device condition" in light mode */
+  .light-mode .condition-dropdown {
+    background: #ffffff !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #1a1816 !important;
+  }
+
+  /* Diagnostic notes textarea in quote step */
+  .light-mode .diagnostic-notes {
+    background: rgba(30,24,16,0.02) !important;
+    border-color: rgba(30,24,16,0.12) !important;
+    color: #5a5550 !important;
+  }
+
+  /* "Add new device" dashed row border */
+  .light-mode .add-device-row {
+    border-color: rgba(194,65,12,0.28) !important;
+  }
+
+  /* Unselected device radio button circle */
+  .light-mode .device-radio-unchecked {
+    border-color: rgba(30,24,16,0.20) !important;
+  }
 </style>
 </head>
 <body>
@@ -2387,8 +2494,8 @@
 
           <div class="sect-label">On file · 2</div>
           <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.38); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
-              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
+            <div style="background: var(--surface-solid); border: 1.5px solid rgba(30,24,16,0.18); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.10); display: flex; align-items: center; justify-content: center; font-size: 20px;">📱</div>
               <div style="flex: 1;">
                 <div style="font-size: 14px; font-weight: 700;">iPhone 14 Pro</div>
                 <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">IMEI 359…8821 · Space Black · 256 GB</div>
@@ -2396,25 +2503,25 @@
               </div>
               <div style="width: 20px; height: 20px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--on-primary); font-weight: 900;">✓</div>
             </div>
-            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
-              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
+            <div style="background: var(--surface-solid); border: 1px solid rgba(30,24,16,0.10); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.10); display: flex; align-items: center; justify-content: center; font-size: 20px;">⌚</div>
               <div style="flex: 1;">
                 <div style="font-size: 14px; font-weight: 700;">Apple Watch Series 8</div>
                 <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Serial FH7…921 · 45mm Aluminum</div>
               </div>
-              <div style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+              <div style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(30,24,16,0.22); flex-shrink: 0;"></div>
             </div>
           </div>
 
           <div class="sect-label" style="padding-top: 16px;">Add new</div>
           <div style="padding: 0 16px;">
-            <div style="background: transparent; border: 1.5px dashed rgba(253,238,208,0.4); border-radius: 14px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
-              <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: 0 4px 12px rgba(253,238,208,0.22);">+</div>
+            <div style="background: transparent; border: 1.5px dashed rgba(194,65,12,0.30); border-radius: 14px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; box-shadow: 0 4px 12px rgba(194,65,12,0.18);">+</div>
               <div style="flex: 1;">
                 <div style="font-size: 14px; font-weight: 700; color: var(--primary);">Add new device</div>
                 <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Scan IMEI or pick make / model / condition</div>
               </div>
-              <button style="width: 36px; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--on); font-size: 16px;" title="Scan IMEI">📷</button>
+              <button style="width: 36px; height: 36px; border-radius: 10px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: var(--on); font-size: 16px;" title="Scan IMEI">📷</button>
               <span style="color: var(--primary); font-size: 18px;">›</span>
             </div>
           </div>
@@ -2450,7 +2557,7 @@
           </div>
         </div>
         <!-- Progress bar -->
-        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
           <div style="height: 100%; width: 33%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
         </div>
 
@@ -2458,7 +2565,7 @@
 
           <div style="padding: 14px 16px 6px;">
             <div class="sect-label" style="padding: 0 0 6px;">What's the problem?</div>
-            <div style="border: 1.5px solid rgba(253,238,208,0.35); border-radius: 14px; padding: 12px; background: rgba(255,255,255,0.03); min-height: 80px; font-size: 13.5px; line-height: 1.5;">
+            <div style="border: 1.5px solid rgba(30,24,16,0.15); border-radius: 14px; padding: 12px; background: #ffffff; min-height: 80px; font-size: 13.5px; line-height: 1.5; color: #1a1816;">
               Dropped on sidewalk. Screen flickers on calls. Battery also dies fast.<span style="color: var(--primary);">|</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 4px;">
@@ -2469,8 +2576,8 @@
 
           <div style="padding: 8px 16px 6px;">
             <div class="sect-label" style="padding: 0 0 6px;">Device condition</div>
-            <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 13.5px; font-weight: 600;">Poor — visible damage</span>
+            <div style="background: #ffffff; border: 1px solid rgba(30,24,16,0.12); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13.5px; font-weight: 600; color: #1a1816;">Poor — visible damage</span>
               <span style="color: var(--muted); font-size: 16px;">⌄</span>
             </div>
           </div>
@@ -2478,17 +2585,17 @@
           <div style="padding: 8px 16px 6px;">
             <div class="sect-label" style="padding: 0 0 8px;">Quick-pick symptom</div>
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Screen cracked</div>
-              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Won't charge</div>
-              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Water damage</div>
-              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(253,238,208,0.14); border: 1.5px solid rgba(253,238,208,0.45); color: var(--primary); font-size: 12px; font-weight: 700;">Battery</div>
-              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); font-size: 12px; font-weight: 600;">Other</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(194,65,12,0.10); border: 1.5px solid rgba(194,65,12,0.30); color: var(--primary); font-size: 12px; font-weight: 700;">Screen cracked</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Won't charge</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Water damage</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(194,65,12,0.10); border: 1.5px solid rgba(194,65,12,0.30); color: var(--primary); font-size: 12px; font-weight: 700;">Battery</div>
+              <div style="padding: 7px 13px; border-radius: 99px; background: rgba(30,24,16,0.05); border: 1px solid rgba(30,24,16,0.12); color: #5a5550; font-size: 12px; font-weight: 600;">Other</div>
             </div>
           </div>
 
           <div style="padding: 8px 16px 6px;">
             <div class="sect-label" style="padding: 0 0 6px;">Internal notes (tech-only)</div>
-            <div style="border: 1px dashed rgba(232,163,61,0.45); border-radius: 12px; padding: 10px 12px; background: rgba(232,163,61,0.04); font-size: 13px; color: var(--muted);">Prior non-OEM repair visible on frame. <span style="color: var(--warning);">|</span></div>
+            <div style="border: 1px dashed rgba(161,91,0,0.40); border-radius: 12px; padding: 10px 12px; background: rgba(161,91,0,0.06); font-size: 13px; color: #5a5550;">Prior non-OEM repair visible on frame. <span style="color: var(--warning);">|</span></div>
           </div>
 
           <div style="height: 16px;"></div>
@@ -2521,7 +2628,7 @@
             <span class="chip" style="font-size: 10px; padding: 3px 8px; color: var(--muted);">Auto-save</span>
           </div>
         </div>
-        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
           <div style="height: 100%; width: 66%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
         </div>
 
@@ -2529,7 +2636,7 @@
 
           <div style="padding: 12px 16px 4px;">
             <div class="sect-label" style="padding: 0 0 8px;">Diagnostic notes</div>
-            <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,0.03); font-size: 13px; color: var(--muted);">Screen flex confirmed faulty. Battery at 61% health. OLED bleed visible top-left.<span style="color: var(--primary);">|</span></div>
+            <div style="border: 1px solid rgba(30,24,16,0.12); border-radius: 12px; padding: 10px 12px; background: #ffffff; font-size: 13px; color: #5a5550;">Screen flex confirmed faulty. Battery at 61% health. OLED bleed visible top-left.<span style="color: var(--primary);">|</span></div>
           </div>
 
           <div style="padding: 8px 16px 4px;">
@@ -2537,7 +2644,7 @@
 
             <!-- Part row checkable -->
             <div style="display: flex; flex-direction: column; gap: 6px;">
-              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
                 <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
                 <div style="flex: 1;">
                   <div style="font-size: 13px; font-weight: 600;">iPhone 14 Pro Screen</div>
@@ -2545,7 +2652,7 @@
                 </div>
                 <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$189</div>
               </div>
-              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
                 <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
                 <div style="flex: 1;">
                   <div style="font-size: 13px; font-weight: 600;">Labor · screen replace</div>
@@ -2553,16 +2660,16 @@
                 </div>
                 <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$60</div>
               </div>
-              <div style="background: var(--surface-solid); border: 1.5px solid rgba(253,238,208,0.35); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+              <div style="background: var(--surface-solid); border: 1.5px solid rgba(194,65,12,0.22); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
                 <div style="width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0;">✓</div>
                 <div style="flex: 1;">
                   <div style="font-size: 13px; font-weight: 600;">iPhone 14 Battery</div>
-                  <div style="font-size: 10.5px; color: var(--muted); color: var(--warning);">3 in stock — low</div>
+                  <div style="font-size: 10.5px; color: var(--warning);">3 in stock — low</div>
                 </div>
                 <div style="font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--primary);">$79</div>
               </div>
-              <div style="background: var(--surface-solid); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; opacity: 0.65;">
-                <div style="width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+              <div style="background: var(--surface-solid); border: 1px solid rgba(30,24,16,0.10); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; opacity: 0.65;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid rgba(30,24,16,0.20); flex-shrink: 0;"></div>
                 <div style="flex: 1;">
                   <div style="font-size: 13px; font-weight: 600;">Labor · battery replace</div>
                   <div style="font-size: 10.5px; color: var(--muted);">~20 min · add if replacing battery</div>
@@ -2573,7 +2680,7 @@
           </div>
 
           <!-- Running price estimate -->
-          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.10), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.35); display: flex; justify-content: space-between; align-items: baseline;">
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(194,65,12,0.06), rgba(194,65,12,0.01)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.28); display: flex; justify-content: space-between; align-items: baseline;">
             <div>
               <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">Estimate · 3 items</div>
               <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">+tax · final at pickup</div>
@@ -2615,13 +2722,13 @@
             <span class="chip primary" style="font-family: var(--font-display); font-size: 14px;">$327</span>
           </div>
         </div>
-        <div style="height: 3px; background: rgba(255,255,255,0.06);">
+        <div style="height: 3px; background: rgba(30,24,16,0.08);">
           <div style="height: 100%; width: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-bright));"></div>
         </div>
 
         <div class="scroll">
           <!-- Selected method strip -->
-          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(194,65,12,0.06); border: 1px solid rgba(194,65,12,0.20); display: flex; gap: 10px; align-items: center;">
             <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);">💵</div>
             <div style="flex: 1;">
               <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Deposit · $50 of $327</div>
@@ -2722,19 +2829,19 @@
         </div>
 
         <div class="catalog">
-          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
             <div class="t-badge">In cart</div>
             <div class="t-icon">🔧</div>
             <div class="t-name">iPhone 14 Pro Screen</div>
             <div class="t-row"><div class="t-price">$189</div><div class="t-stock">22</div></div>
           </div>
-          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
             <div class="t-badge">In cart</div>
             <div class="t-icon">⚙️</div>
             <div class="t-name">Labor · screen replace</div>
             <div class="t-row"><div class="t-price">$60</div><div class="t-stock">Service</div></div>
           </div>
-          <div class="tile" style="border-color: rgba(253,238,208,0.35);">
+          <div class="tile" style="border-color: rgba(194,65,12,0.30);">
             <div class="t-badge">In cart</div>
             <div class="t-icon">🔌</div>
             <div class="t-name">USB-C 3ft cable</div>
@@ -2817,7 +2924,7 @@
             </div>
             <div class="cr-price">$60.00</div>
           </div>
-          <div class="cart-row" style="background: rgba(253,238,208,0.06); border-left: 3px solid var(--primary);">
+          <div class="cart-row" style="background: rgba(194,65,12,0.05); border-left: 3px solid var(--primary);">
             <div class="cr-icon">🔌</div>
             <div style="flex: 1;">
               <div class="cr-name">USB-C 3 ft cable</div>
@@ -2949,17 +3056,17 @@
 
           <!-- Due amount hero -->
           <div style="padding: 28px 24px 20px; text-align: center; position: relative;">
-            <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
-            <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: var(--on);">$274.51</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">Sarah M. · 3 items</div>
+            <div style="font-size: 11px; font-weight: 600; color: #5a5550; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Due now</div>
+            <div style="font-family: var(--font-display); font-size: 62px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; color: #1a1816;">$274.51</div>
+            <div style="font-size: 12px; color: #5a5550; margin-top: 8px;">Sarah M. · 3 items</div>
           </div>
 
           <!-- Membership banner -->
-          <div style="margin: 0 16px 16px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(253,238,208,0.12), rgba(253,238,208,0.02)), var(--surface-solid); border: 1px solid rgba(253,238,208,0.38); display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 14px rgba(253,238,208,0.06);">
-            <span style="font-size: 22px; filter: drop-shadow(0 0 6px rgba(253,238,208,0.45));">★</span>
+          <div style="margin: 0 16px 16px; padding: 12px 14px; border-radius: 14px; background: linear-gradient(180deg, rgba(194,65,12,0.08), rgba(194,65,12,0.02)), var(--surface-solid); border: 1px solid rgba(194,65,12,0.18); display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 14px rgba(194,65,12,0.06);">
+            <span style="font-size: 22px;">★</span>
             <div style="flex: 1;">
               <div style="font-size: 12.5px; font-weight: 700; color: var(--primary);">GOLD member · 10% off applied</div>
-              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Earning 55 pts · $10 saved this sale</div>
+              <div style="font-size: 11px; color: #5a5550; margin-top: 1px;">Earning 55 pts · $10 saved this sale</div>
             </div>
             <span class="chip" style="font-family: var(--font-display); font-size: 12px; padding: 3px 9px;">SAVED $10</span>
           </div>
@@ -2991,7 +3098,7 @@
           </div>
 
           <!-- Split tender hint -->
-          <div style="margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.10); display: flex; gap: 10px; align-items: center;">
+          <div style="margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: rgba(30,24,16,0.03); border: 1px dashed rgba(30,24,16,0.12); display: flex; gap: 10px; align-items: center;">
             <span style="color: var(--muted); font-size: 15px;">⊕</span>
             <div style="font-size: 12px; color: var(--muted);">Split tender — pick method, enter partial, then pick another</div>
           </div>
@@ -3029,11 +3136,11 @@
         <div class="scroll">
 
           <!-- Selected method confirmation strip -->
-          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); display: flex; gap: 10px; align-items: center;">
-            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(253,238,208,0.22); flex-shrink: 0;">💵</div>
+          <div style="margin: 10px 16px 0; padding: 12px 14px; border-radius: 14px; background: rgba(194,65,12,0.06); border: 1px solid rgba(194,65,12,0.20); display: flex; gap: 10px; align-items: center;">
+            <div style="width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, var(--primary-bright), var(--primary)); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(194,65,12,0.12); flex-shrink: 0;">💵</div>
             <div style="flex: 1;">
               <div style="font-size: 13px; font-weight: 700; color: var(--primary);">Cash payment</div>
-              <div style="font-size: 11px; color: var(--muted); margin-top: 1px;">Due: $274.51 · enter amount received below</div>
+              <div style="font-size: 11px; color: #5a5550; margin-top: 1px;">Due: $274.51 · enter amount received below</div>
             </div>
             <span class="chip success" style="font-size: 10px;">Active</span>
           </div>
@@ -3154,8 +3261,8 @@
 
           <!-- Receipt preview — monospace, elevated -->
           <div class="receipt-list" style="margin-top: 12px;">
-            <div style="padding: 9px 14px 7px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;">Receipt #28014</span>
+            <div style="padding: 9px 14px 7px; border-bottom: 1px solid rgba(30,24,16,0.08); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: 700; color: #5a5550; letter-spacing: 0.06em; text-transform: uppercase;">Receipt #28014</span>
               <span class="chip success" style="font-size: 9px; padding: 2px 7px;">Sent ✓</span>
             </div>
             <div style="padding: 10px 14px 12px;">
@@ -3165,7 +3272,7 @@
               <div class="rl-row muted" style="color: var(--success);"><span>★ GOLD 10% off</span><span>−$10.00</span></div>
               <div class="rl-row muted"><span>Tax 8.5%</span><span>$21.51</span></div>
               <div class="rl-row total"><span>TOTAL</span><span>$274.51</span></div>
-              <div class="rl-row muted" style="padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
+              <div class="rl-row muted" style="padding-top: 8px; border-top: 1px dashed rgba(30,24,16,0.12); margin-top: 6px;"><span>Cash received</span><span>$300.00</span></div>
               <div class="rl-row muted" style="color: var(--success);"><span>Change</span><span>$25.49</span></div>
             </div>
           </div>
