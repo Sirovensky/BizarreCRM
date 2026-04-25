@@ -3,19 +3,19 @@ import SwiftUI
 import Core
 import DesignSystem
 
-/// Pinned right-column cart panel for the iPad POS register layout.
+// MARK: - PosIPadCartPanel
+
+/// Persistent right-column cart panel for the iPad POS register layout.
 ///
-/// Renders the running-total summary (subtotal / discount / tax / tip / fees /
-/// total / applied tenders / remaining) at the top, a tender-picker row in the
-/// middle, and the Charge CTA at the bottom — all inside the glass-backed
-/// cart column produced by `PosRegisterLayout`.
+/// Mockup spec (iPad screen 2):
+///   - Customer header — avatar + name + phone + line-count chip
+///   - Scrollable list of cart rows (tap → inspector)
+///   - Coupon field pinned at the bottom of the cart body
+///   - Totals block (Subtotal / Discount / Tax / Total)
+///   - Charge CTA (full-width, cream, keyboard shortcut ⌘P)
 ///
-/// **Not a replacement for `PosCartPanel`** — `PosCartPanel` is the full
-/// list-of-lines view shared by both iPhone and the iPad detail column in the
-/// legacy `NavigationSplitView` path. `PosIPadCartPanel` is the *condensed*
-/// totals + charge side-panel used exclusively in the new full-screen
-/// `PosRegisterLayout` where the catalog takes the left 70 % and this panel
-/// occupies the right 30 %.
+/// When an item is selected for the inspector (`editingItemId != nil`),
+/// the Charge button is replaced with "Save edit first" (disabled).
 public struct PosIPadCartPanel: View {
 
     // MARK: - Inputs
@@ -25,103 +25,238 @@ public struct PosIPadCartPanel: View {
     /// Called when the cashier taps Charge / Complete.
     let onCharge: () -> Void
 
-    /// Called when the cashier wants to open a quick tender picker row.
-    let onSelectTender: () -> Void
+    /// Called when a cart row is tapped (opens inspector).
+    var onEditItem: ((CartItem) -> Void)?
 
-    /// Scroll to the cart list (provided by parent as a focus trigger).
-    var onShowCartList: (() -> Void)?
+    /// The item currently being inspected — highlights that row.
+    var editingItemId: UUID?
+
+    /// Called when the cashier wants to open the coupon sheet.
+    var onShowCoupon: (() -> Void)?
+
+    @Environment(\.colorScheme) private var colorScheme
 
     // MARK: - Body
 
     public var body: some View {
         VStack(spacing: 0) {
-            cartSummaryHeader
+            // Customer header
+            if let customer = cart.customer {
+                cartCustomerHeader(customer: customer)
+                Divider().background(.bizarreOutline)
+            }
+
+            // Scrollable cart rows + coupon field
+            ScrollView {
+                VStack(spacing: 0) {
+                    if cart.isEmpty {
+                        emptyCartMessage
+                    } else {
+                        ForEach(cart.items) { item in
+                            iPadCartRow(item: item)
+                            Divider().background(.bizarreOutline.opacity(0.5))
+                        }
+                    }
+
+                    // Coupon field pinned in cart body (mockup: bottom of cart-body div)
+                    couponField
+                        .padding(.horizontal, 18)
+                        .padding(.top, 4)
+                        .padding(.bottom, 14)
+                }
+            }
+
             Divider().background(.bizarreOutline)
-            tenderPickerRow
-            Spacer(minLength: BrandSpacing.sm)
-            Divider().background(.bizarreOutline)
+
+            // Totals
             totalsBlock
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+
             Divider().background(.bizarreOutline)
+
+            // Charge / Save-edit-first footer
             chargeFooter
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.md)
         }
         .accessibilityIdentifier("pos.ipad.cartPanel")
     }
 
-    // MARK: - Sections
+    // MARK: - Customer header
 
-    /// Item count chip + "View cart" link at the top.
-    private var cartSummaryHeader: some View {
-        HStack(spacing: BrandSpacing.sm) {
+    private func cartCustomerHeader(customer: PosCustomer) -> some View {
+        HStack(spacing: BrandSpacing.md) {
+            // 32pt teal avatar
             ZStack {
-                Circle().fill(Color.bizarreOrange)
-                Text("\(cart.itemQuantity)")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnOrange)
-                    .monospacedDigit()
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text(customer.initials)
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(Color(hex: 0x002D35))
             }
             .frame(width: 32, height: 32)
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(cart.isEmpty ? "Cart empty" : "\(cart.lineCount) \(cart.lineCount == 1 ? "line" : "lines")")
-                    .font(.brandTitleSmall())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(customer.displayName)
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.bizarreOnSurface)
-                if !cart.isEmpty {
-                    Text("\(cart.itemQuantity) items")
-                        .font(.brandLabelSmall())
+                    .lineLimit(1)
+                if let sub = customerSubtitle(customer) {
+                    Text(sub)
+                        .font(.system(size: 12))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
                 }
             }
 
             Spacer(minLength: BrandSpacing.xs)
 
-            if let onShowCartList, !cart.isEmpty {
-                Button {
-                    BrandHaptics.tap()
-                    onShowCartList()
-                } label: {
-                    Text("View")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreOrange)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("View cart lines")
-                .accessibilityIdentifier("pos.ipad.viewCartLines")
+            // Line count chip (primary / cream)
+            if cart.lineCount > 0 {
+                Text("\(cart.lineCount) \(cart.lineCount == 1 ? "line" : "lines")")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: 0xFDEED0), in: Capsule())
+                    .accessibilityLabel("\(cart.lineCount) cart lines")
             }
         }
         .padding(.horizontal, BrandSpacing.md)
         .padding(.vertical, BrandSpacing.sm)
     }
 
-    /// Quick tender-type picker row. Tapping opens the full tender select sheet.
-    private var tenderPickerRow: some View {
-        Button {
-            BrandHaptics.tap()
-            onSelectTender()
-        } label: {
-            HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: "creditcard.fill")
-                    .foregroundStyle(.bizarreOrange)
-                    .accessibilityHidden(true)
-                Text("Choose tender")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                Spacer(minLength: BrandSpacing.xs)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, BrandSpacing.md)
-            .frame(minHeight: DesignTokens.Touch.minTargetSide)
-        }
-        .buttonStyle(.plain)
-        .disabled(cart.isEmpty)
-        .accessibilityIdentifier("pos.ipad.chooseTender")
+    private func customerSubtitle(_ customer: PosCustomer) -> String? {
+        if customer.isWalkIn { return "Walk-in" }
+        if let p = customer.phone, !p.isEmpty { return p }
+        if let e = customer.email, !e.isEmpty { return e }
+        return nil
     }
 
-    /// Running totals block — mirrors `PosCartPanel.totalsFooter` but without
-    /// the items list (the catalog grid occupies the left panel for that).
+    // MARK: - Cart row (iPad)
+
+    private func iPadCartRow(item: CartItem) -> some View {
+        let isEditing = item.id == editingItemId
+        return Button {
+            BrandHaptics.tap()
+            onEditItem?(item)
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.bizarreSurface2.opacity(0.7))
+                    Image(systemName: item.inventoryItemId == nil ? "pencil" : "shippingbox.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if let sku = item.sku, !sku.isEmpty {
+                            Text(sku)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                        Text("· Qty \(item.quantity)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(isEditing ? .bizarreOrange : .bizarreOnSurfaceMuted)
+                        if isEditing {
+                            Text("editing ›")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.bizarreOrange)
+                        }
+                    }
+                }
+
+                Spacer(minLength: BrandSpacing.xs)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(CartMath.formatCents(CartMath.toCents(item.unitPrice * Decimal(item.quantity))))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.bizarreOrange)
+                        .monospacedDigit()
+                    if item.discountCents > 0 {
+                        let orig = CartMath.toCents(item.unitPrice * Decimal(item.quantity)) + item.discountCents
+                        Text(CartMath.formatCents(orig))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .strikethrough()
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(isEditing ? Color.bizarreOrange.opacity(0.05) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
+        .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
+    }
+
+    // MARK: - Coupon field
+
+    private var couponField: some View {
+        Button {
+            BrandHaptics.tap()
+            onShowCoupon?()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "tag")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text("Coupon code")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Spacer()
+                Text("APPLY")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.bizarreTeal)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.bizarreSurface2.opacity(colorScheme == .dark ? 0.04 : 0.03))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color.bizarreOutline.opacity(colorScheme == .dark ? 0.08 : 0.10), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Enter or scan coupon code")
+        .accessibilityIdentifier("pos.ipad.couponField")
+    }
+
+    // MARK: - Empty cart message
+
+    private var emptyCartMessage: some View {
+        Text("Cart is empty")
+            .font(.brandBodyMedium())
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+            .frame(maxWidth: .infinity)
+            .padding(.top, BrandSpacing.lg)
+    }
+
+    // MARK: - Totals block
+
     private var totalsBlock: some View {
         VStack(spacing: BrandSpacing.sm) {
             totalsRow(label: "Subtotal", cents: cart.subtotalCents)
@@ -129,18 +264,18 @@ public struct PosIPadCartPanel: View {
             if cart.effectiveDiscountCents > 0 {
                 let label = cart.cartDiscountPercent
                     .map { "\(Int($0 * 100))% discount" } ?? "Discount"
-                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: .bizarreOrange)
+                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.couponDiscountCents > 0 {
-                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: .bizarreOrange)
+                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.pricingSavingCents > 0 {
                 totalsRow(label: "Promo savings", cents: -cart.pricingSavingCents, color: .bizarreTeal)
             }
 
-            totalsRow(label: "Tax", cents: cart.taxCents)
+            totalsRow(label: "Tax · 8.5%", cents: cart.taxCents)
 
             if cart.tipCents > 0 {
                 totalsRow(label: "Tip", cents: cart.tipCents)
@@ -152,9 +287,19 @@ public struct PosIPadCartPanel: View {
 
             Divider().background(.bizarreOutline)
 
-            totalsRow(label: "Total", cents: cart.totalCents, emphasized: true)
+            // Total — large
+            HStack(alignment: .lastTextBaseline) {
+                Text("Total")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Text(CartMath.formatCents(cart.totalCents))
+                    .font(.brandHeadlineMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+            }
 
-            // Applied tenders (gift cards / store credit)
+            // Applied tenders
             ForEach(cart.appliedTenders) { tender in
                 HStack {
                     Text(tender.label)
@@ -184,20 +329,67 @@ public struct PosIPadCartPanel: View {
                 totalsRow(label: "Remaining", cents: cart.remainingCents, emphasized: true)
             }
         }
-        .padding(.horizontal, BrandSpacing.md)
-        .padding(.vertical, BrandSpacing.sm)
     }
 
-    /// Charge CTA at the very bottom.
+    // MARK: - Charge footer
+
     private var chargeFooter: some View {
-        PosChargeButton(
-            totalCents: cart.appliedTenders.isEmpty ? cart.totalCents : cart.remainingCents,
-            isComplete: cart.isFullyTendered,
-            isEnabled: !cart.isEmpty,
-            action: onCharge
-        )
-        .padding(.horizontal, BrandSpacing.md)
-        .padding(.vertical, BrandSpacing.md)
+        let isEditing = editingItemId != nil
+        return Group {
+            if isEditing {
+                // Inspector open — Charge disabled (mockup: "Save edit first")
+                Text("Save edit first")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.bizarreSurface2.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+                    )
+                    .accessibilityIdentifier("pos.ipad.chargeDisabled")
+            } else {
+                Button {
+                    BrandHaptics.tapMedium()
+                    onCharge()
+                } label: {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Text(cart.isFullyTendered ? "Complete" : "Charge")
+                            .font(.brandTitleMedium())
+                        Text(CartMath.formatCents(
+                            cart.appliedTenders.isEmpty ? cart.totalCents : cart.remainingCents
+                        ))
+                        .font(.brandTitleMedium())
+                        .monospacedDigit()
+                        Spacer()
+                        Text("⌘ P")
+                            .font(.system(size: 14))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 16)
+                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(cart.isEmpty)
+                .keyboardShortcut("p", modifiers: .command)
+                .accessibilityLabel("Charge \(CartMath.formatCents(cart.totalCents))")
+                .accessibilityIdentifier("pos.ipad.chargeButton")
+            }
+        }
     }
 
     // MARK: - Helpers
@@ -215,7 +407,7 @@ public struct PosIPadCartPanel: View {
                 .foregroundStyle(emphasized ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
             Spacer()
             let isNegative = cents < 0
-            Text(isNegative ? "-\(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
+            Text(isNegative ? "− \(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
                 .font(emphasized ? .brandHeadlineMedium() : .brandBodyLarge())
                 .foregroundStyle(color ?? (emphasized ? .bizarreOnSurface : .bizarreOnSurface))
                 .monospacedDigit()
@@ -223,20 +415,43 @@ public struct PosIPadCartPanel: View {
     }
 }
 
+// MARK: - Color(hex:) helper
+
+private extension Color {
+    init(hex: Int, alpha: Double = 1) {
+        self.init(
+            red:   Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >>  8) & 0xFF) / 255,
+            blue:  Double((hex >>  0) & 0xFF) / 255,
+            opacity: alpha
+        )
+    }
+}
+
 // MARK: - Preview
 
 #Preview("iPad Cart Panel") {
-    let cart = Cart()
-    cart.add(CartItem(name: "Widget A", unitPrice: Decimal(string: "29.99")!, taxRate: 0.08))
-    cart.add(CartItem(name: "Widget B", unitPrice: Decimal(string: "14.50")!))
+    PreviewCartPanel()
+}
 
-    return PosIPadCartPanel(
-        cart: cart,
-        onCharge: {},
-        onSelectTender: {}
-    )
-    .frame(width: 320)
-    .background(Color.bizarreSurface1)
-    .preferredColorScheme(.dark)
+private struct PreviewCartPanel: View {
+    private let cart: Cart = {
+        let c = Cart()
+        c.add(CartItem(name: "iPhone 14 Pro Screen", sku: "IPH14P-S", unitPrice: Decimal(string: "189.00")!))
+        c.add(CartItem(name: "Labor · screen replacement", unitPrice: Decimal(string: "60.00")!))
+        c.add(CartItem(name: "USB-C 3 ft cable", sku: "USB-C3", unitPrice: Decimal(string: "14.00")!))
+        return c
+    }()
+
+    var body: some View {
+        PosIPadCartPanel(
+            cart: cart,
+            onCharge: {},
+            onEditItem: { _ in }
+        )
+        .frame(width: 420)
+        .background(Color.bizarreSurface1)
+        .preferredColorScheme(.dark)
+    }
 }
 #endif

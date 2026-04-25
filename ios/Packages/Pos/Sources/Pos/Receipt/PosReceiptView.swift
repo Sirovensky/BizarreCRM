@@ -212,15 +212,16 @@ public struct PosReceiptView: View {
         .frame(maxWidth: .infinity)
         .background(
             // Hero highest elevation: glass surface with success-tinted glow
-            ZStack {
-                Color.bizarreSurface1.opacity(0.85)
-                LinearGradient(
-                    colors: [Color.bizarreSuccess.opacity(0.06), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color.bizarreSurface1.opacity(0.85))
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.bizarreSuccess.opacity(0.06), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                 )
-            },
-            in: RoundedRectangle(cornerRadius: 24)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24)
