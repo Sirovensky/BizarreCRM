@@ -234,7 +234,7 @@ class PosEntryViewModel @Inject constructor(
                     // any deposit they paid at check-in. Falls back to gross
                     // total when the JOIN returned no row (legacy tickets
                     // without an invoice attached).
-                    dueCents = (((t.amountDue ?: t.total ?: 0.0)) * 100).toLong(),
+                    dueCents = Math.round((t.amountDue ?: t.total ?: 0.0) * 100),
                 )
             }
 
@@ -247,7 +247,7 @@ class PosEntryViewModel @Inject constructor(
                     ticketId = t.id,
                     description = t.firstDevice?.deviceName ?: "Ticket #${t.id}",
                     date = t.createdAt?.take(10) ?: "",
-                    amountCents = ((t.total ?: 0.0) * 100).toLong(),
+                    amountCents = Math.round((t.total ?: 0.0) * 100),
                 )
             }
 

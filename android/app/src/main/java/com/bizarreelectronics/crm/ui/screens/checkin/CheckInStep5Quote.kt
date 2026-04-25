@@ -177,7 +177,7 @@ private fun RepairLinesPlaceholder(
                 value = input,
                 onValueChange = { raw ->
                     input = raw
-                    val cents = (raw.toDoubleOrNull() ?: 0.0).times(100).toLong()
+                    val cents = Math.round((raw.toDoubleOrNull() ?: 0.0) * 100)
                     onSubtotalChange(cents)
                 },
                 label = { Text("Estimated repair cost") },

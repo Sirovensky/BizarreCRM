@@ -171,10 +171,17 @@ private fun BalanceHeroCard(state: PosTenderUiState) {
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
+            // M3 Expressive default trackColor tints close to the active color,
+            // which read as 'paid in full' on dark surfaces even at 0% paid.
+            // Force trackColor to surfaceVariant so the inactive segment reads
+            // as muted grey vs the green active segment.
             LinearProgressIndicator(
                 progress = { state.paidPercent },
                 modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                 color = LocalExtendedColors.current.success,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
             )
             Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -333,7 +340,9 @@ private fun CashTenderDialog(
     val remainingDollars = remainingCents / 100.0
     var input by remember { mutableStateOf("%.2f".format(remainingDollars)) }
     val received = (input.toDoubleOrNull() ?: 0.0)
-    val receivedCents = (received * 100).toLong()
+    // Math.round avoids the float-truncation bug where 16.31 * 100 = 1630.999...
+    // would .toLong() to 1630 and leave \$0.01 remaining on a fully-paid sale.
+    val receivedCents = Math.round(received * 100)
     val changeDollars = (received - remainingDollars).coerceAtLeast(0.0)
     val canApply = receivedCents > 0L
 

@@ -407,7 +407,8 @@ private fun DashedSlot(label: String, onClick: () -> Unit, modifier: Modifier = 
 private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var priceInput by remember { mutableStateOf("") }
-    val priceCents = ((priceInput.toDoubleOrNull() ?: 0.0) * 100).toLong()
+    // Math.round avoids float-truncation (e.g. 16.31 → 1630.999... → 1630).
+    val priceCents = Math.round((priceInput.toDoubleOrNull() ?: 0.0) * 100)
     val canAdd = name.isNotBlank() && priceCents > 0L
 
     AlertDialog(
@@ -451,7 +452,7 @@ private fun CartDiscountDialog(currentCents: Long, onApply: (Long) -> Unit, onDi
     var input by remember(currentCents) {
         mutableStateOf(if (currentCents > 0) "%.2f".format(currentCents / 100.0) else "")
     }
-    val cents = ((input.toDoubleOrNull() ?: 0.0) * 100).toLong()
+    val cents = Math.round((input.toDoubleOrNull() ?: 0.0) * 100)
 
     AlertDialog(
         onDismissRequest = onDismiss,

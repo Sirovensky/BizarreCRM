@@ -135,7 +135,7 @@ class PosCartViewModel @Inject constructor(
                         _uiState.update { it.copy(scanMessage = "No item for code $trimmed") }
                         return@onSuccess
                     }
-                    val priceCents = ((item.price ?: 0.0) * 100).toLong()
+                    val priceCents = Math.round((item.price ?: 0.0) * 100)
                     addInventoryItem(
                         itemId = item.id,
                         name = item.name ?: "Item #${item.id}",
