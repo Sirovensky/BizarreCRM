@@ -133,7 +133,7 @@ public struct PosReceiptView: View {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     Text("Signature captured with Pencil")
                         .font(.brandTitleSmall())
-                        .foregroundStyle(Color(red: 0.61, green: 0.88, blue: 0.91))
+                        .foregroundStyle(Color.bizarreTeal)
                     Text("Archived to ticket #\(ticketId) · PKCanvasView")
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -142,10 +142,10 @@ public struct PosReceiptView: View {
             }
             .padding(.vertical, BrandSpacing.sm + 2)
             .padding(.horizontal, BrandSpacing.md)
-            .background(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.08), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.30), lineWidth: 1)
+                    .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Signature captured with Pencil and archived to ticket \(ticketId)")
@@ -225,16 +225,20 @@ public struct PosReceiptView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .strokeBorder(Color.bizarreSuccess.opacity(0.20), lineWidth: 1)
+                .strokeBorder(Color.bizarreSuccess.opacity(0.35), lineWidth: 1)
         )
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("pos.receipt.hero")
     }
 
-    /// Label combining method + change info for cash transactions.
+    /// Label combining method + received + change for cash transactions.
+    /// Matches mockup: "Cash · $300 received · $25.49 change".
     private var cashDetailLabel: String {
         var parts = [vm.payload.methodLabel]
+        if let received = vm.payload.cashReceivedCents, received > 0 {
+            parts.append("$\(String(format: "%.2f", Double(received) / 100)) received")
+        }
         if let change = vm.payload.changeGivenCents, change > 0 {
             parts.append("$\(String(format: "%.2f", Double(change) / 100)) change")
         }
@@ -389,7 +393,9 @@ public struct PosReceiptView: View {
                 PosLoyaltyCelebrationView(
                     pointsDelta: delta,
                     tierBefore: vm.payload.loyaltyTierBefore,
-                    tierAfter: vm.payload.loyaltyTierAfter
+                    tierAfter: vm.payload.loyaltyTierAfter,
+                    pointsTotal: vm.payload.loyaltyPointsTotal,
+                    nextTierPoints: vm.payload.loyaltyNextTierPoints
                 )
             }
         } else {
@@ -401,9 +407,24 @@ public struct PosReceiptView: View {
 
     /// Inline JetBrains Mono receipt block — matches mockup "receipt-list" section.
     /// Lower visual elevation than the hero per mockup spec.
+    ///
+    /// Passes the invoice number for the header ("RECEIPT #28014") and a
+    /// "Sent ✓" chip when the most recent send succeeded.
     private func inlineReceiptPreview(text: String) -> some View {
-        PosReceiptListPreview(receiptText: text)
-            .accessibilityIdentifier("pos.receipt.inlinePreview")
+        PosReceiptListPreview(
+            receiptText: text,
+            receiptNumber: String(vm.payload.invoiceId),
+            sentChipLabel: sentChipLabel,
+            footerText: "Thank you · 30-day returns with receipt"
+        )
+        .accessibilityIdentifier("pos.receipt.inlinePreview")
+    }
+
+    /// Returns a chip label when the most recent send has settled to `.sent`.
+    /// Nil otherwise (no chip shown while idle or mid-flight).
+    private var sentChipLabel: String? {
+        if case .sent = vm.sendStatus { return "Sent ✓" }
+        return nil
     }
 
     // MARK: - Post-sale action row
@@ -486,18 +507,21 @@ public struct PosReceiptView: View {
     PosReceiptView(
         vm: PosReceiptViewModel(
             payload: PosReceiptPayload(
-                invoiceId: 42,
-                amountPaidCents: 12109,
-                changeGivenCents: 891,
+                invoiceId: 28014,
+                amountPaidCents: 27451,
+                changeGivenCents: 2549,
+                cashReceivedCents: 30000,
                 methodLabel: "Cash",
                 customerPhone: "+15558675309",
                 customerEmail: "jane@example.com",
-                loyaltyDelta: 127,
+                loyaltyDelta: 55,
                 loyaltyTierBefore: "Gold",
-                loyaltyTierAfter: "Platinum"
+                loyaltyTierAfter: "Gold",
+                loyaltyPointsTotal: 285,
+                loyaltyNextTierPoints: 500
             )
         ),
-        receiptText: "BizarreCRM Demo\n123 Main St\n\nTotal: $121.09\n\nThank you!",
+        receiptText: "BizarreCRM Demo\n123 Main St\n\nTotal: $274.51\n\nThank you!",
         paidAt: Date()
     )
     .preferredColorScheme(.dark)
