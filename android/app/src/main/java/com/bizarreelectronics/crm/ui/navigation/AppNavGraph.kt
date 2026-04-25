@@ -152,6 +152,10 @@ sealed class Screen(val route: String) {
         fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/photos/$deviceId"
     }
     data object Customers : Screen("customers")
+    /** Tag-filtered customer list. [tag] is URI-encoded in [createRoute]. */
+    data object CustomersFilteredByTag : Screen("customers?tag={tag}") {
+        fun createRoute(tag: String) = "customers?tag=${Uri.encode(tag)}"
+    }
     data object CustomerDetail : Screen("customers/{id}") {
         fun createRoute(id: Long) = "customers/$id"
     }
@@ -230,11 +234,18 @@ sealed class Screen(val route: String) {
     // Appointments (part of leads module)
     data object Appointments : Screen("appointments")
     data object AppointmentCreate : Screen("appointment-create")
+    data object AppointmentDetail : Screen("appointments/{appointmentId}") {
+        fun createRoute(id: Long) = "appointments/$id"
+    }
 
     // Estimates
     data object Estimates : Screen("estimates")
     data object EstimateDetail : Screen("estimates/{id}") {
         fun createRoute(id: Long) = "estimates/$id"
+    }
+    data object EstimateCreate : Screen("estimate-create?leadId={leadId}") {
+        fun createRoute(leadId: Long? = null): String =
+            if (leadId != null) "estimate-create?leadId=$leadId" else "estimate-create"
     }
 
     // Expenses
@@ -649,6 +660,7 @@ fun AppNavGraph(
             !currentRoute.startsWith("leads/") &&
             currentRoute != Screen.LeadCreate.route &&
             currentRoute != Screen.AppointmentCreate.route &&
+            !currentRoute.startsWith("appointments/") &&
             !currentRoute.startsWith("estimates/") &&
             currentRoute != Screen.ExpenseCreate.route &&
             !currentRoute.startsWith("settings/") &&
@@ -913,10 +925,29 @@ fun AppNavGraph(
                 navController = navController,
                 startDestination = startDest,
                 modifier = Modifier.weight(1f),
-                enterTransition = { fadeIn(animationSpec = tween(200)) },
-                exitTransition = { fadeOut(animationSpec = tween(200)) },
-                popEnterTransition = { fadeIn(animationSpec = tween(200)) },
-                popExitTransition = { fadeOut(animationSpec = tween(200)) },
+                // Foldable §23: horizontal slide transitions make predictive-back
+                // system gesture preview meaningful — the back-target screen slides
+                // in from the left as the user swipes. Navigation 2.8+ with
+                // enableOnBackInvokedCallback="true" in the manifest + the system
+                // handling predictive back means these transitions are replayed
+                // during the drag automatically. 200ms tween is fast enough to feel
+                // snappy on a phone but slow enough to be visible on a large tablet.
+                enterTransition = {
+                    slideInHorizontally(animationSpec = tween(200)) { it } +
+                        fadeIn(animationSpec = tween(200))
+                },
+                exitTransition = {
+                    slideOutHorizontally(animationSpec = tween(200)) { -it / 3 } +
+                        fadeOut(animationSpec = tween(200))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(animationSpec = tween(200)) { -it / 3 } +
+                        fadeIn(animationSpec = tween(200))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(animationSpec = tween(200)) { it } +
+                        fadeOut(animationSpec = tween(200))
+                },
             ) {
             // §2.7 L330 — the Login route accepts an optional `setupToken` query arg
             // delivered by DeepLinkBus when an invite link is tapped. The arg is
@@ -1167,6 +1198,24 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
                 )
             }
+            // 5.8.2: tag-filtered customer list launched from a TagChip tap.
+            composable(
+                route = Screen.CustomersFilteredByTag.route,
+                arguments = listOf(navArgument("tag") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }),
+            ) { backStackEntry ->
+                val tag = backStackEntry.arguments?.getString("tag").orEmpty()
+                @OptIn(ExperimentalSharedTransitionApi::class)
+                CustomerListScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
+                    initialTagFilter = tag,
+                    onCustomerClick = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
+                )
+            }
             composable(Screen.CustomerDetail.route) { backStackEntry ->
                 val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -1182,6 +1231,10 @@ fun AppNavGraph(
                     // Category step instead of forcing a second customer
                     // picker trip.
                     onCreateTicket = { id -> navController.navigate(Screen.CheckInEntry.createRoute(id)) },
+                    // 5.8.2: tag chip tap → tag-filtered customer list
+                    onNavigateToTagFilter = { tag ->
+                        navController.navigate(Screen.CustomersFilteredByTag.createRoute(tag))
+                    },
                 )
             }
             composable(Screen.CustomerCreate.route) {
@@ -1456,7 +1509,14 @@ fun AppNavGraph(
             composable(Screen.ReportTax.route) {
                 com.bizarreelectronics.crm.ui.screens.reports.TaxReportScreen()
             }
-            composable(Screen.ReportCustom.route) {
+            composable(
+                route = Screen.ReportCustom.route,
+                deepLinks = listOf(
+                    // §15.8 — custom-scheme deep-link: bizarrecrm://reports/custom/<id>
+                    // Allows sharing a saved custom report via shareCustomReport() in CustomReportScreen.
+                    navDeepLink { uriPattern = "bizarrecrm://reports/custom/{id}" },
+                ),
+            ) {
                 com.bizarreelectronics.crm.ui.screens.reports.CustomReportScreen()
             }
             composable(Screen.Employees.route) { backStackEntry ->
@@ -1781,12 +1841,25 @@ fun AppNavGraph(
             }
             composable(Screen.GlobalSearch.route) {
                 GlobalSearchScreen(
-                    onResult = { type, id ->
+                    onResult = { type, id, secondaryKey ->
                         when (type) {
-                            "ticket" -> navController.navigate(Screen.TicketDetail.createRoute(id))
-                            "customer" -> navController.navigate(Screen.CustomerDetail.createRoute(id))
-                            "invoice" -> navController.navigate(Screen.InvoiceDetail.createRoute(id))
-                            "inventory" -> navController.navigate(Screen.InventoryDetail.createRoute(id))
+                            "ticket"      -> navController.navigate(Screen.TicketDetail.createRoute(id))
+                            "customer"    -> navController.navigate(Screen.CustomerDetail.createRoute(id))
+                            "invoice"     -> navController.navigate(Screen.InvoiceDetail.createRoute(id))
+                            "inventory"   -> navController.navigate(Screen.InventoryDetail.createRoute(id))
+                            "employee"    -> navController.navigate(Screen.EmployeeDetail.createRoute(id))
+                            "lead"        -> navController.navigate(Screen.LeadDetail.createRoute(id))
+                            // Appointment — no detail route yet; land on list
+                            "appointment" -> navController.navigate(Screen.Appointments.route)
+                            // SMS thread — keyed by phone number, not numeric id
+                            "sms"         -> {
+                                val phone = secondaryKey
+                                if (!phone.isNullOrBlank()) {
+                                    navController.navigate(Screen.SmsThread.createRoute(phone))
+                                } else {
+                                    navController.navigate(Screen.Messages.route)
+                                }
+                            }
                         }
                     },
                 )
@@ -1833,6 +1906,17 @@ fun AppNavGraph(
                             popUpTo(Screen.Leads.route)
                         }
                     },
+                    // 8.3 — "Convert to estimate" navigates to the new estimate detail if
+                    // the server created one, or to EstimateCreate with lead prefill as
+                    // a fallback (404 path).
+                    onConvertedToEstimate = { estimateId ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(estimateId)) {
+                            popUpTo(Screen.Leads.route)
+                        }
+                    },
+                    onNavigateToEstimateCreate = { id ->
+                        navController.navigate(Screen.EstimateCreate.createRoute(leadId = id))
+                    },
                 )
             }
             composable(Screen.LeadCreate.route) {
@@ -1850,12 +1934,34 @@ fun AppNavGraph(
             composable(Screen.Appointments.route) {
                 com.bizarreelectronics.crm.ui.screens.leads.AppointmentListScreen(
                     onCreateClick = { navController.navigate(Screen.AppointmentCreate.route) },
+                    onAppointmentClick = { id ->
+                        navController.navigate(Screen.AppointmentDetail.createRoute(id))
+                    },
                 )
             }
             composable(Screen.AppointmentCreate.route) {
                 com.bizarreelectronics.crm.ui.screens.leads.AppointmentCreateScreen(
                     onBack = { navController.popBackStack() },
                     onCreated = { _ -> navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.AppointmentDetail.route,
+                arguments = listOf(navArgument("appointmentId") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.appointments.AppointmentDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id))
+                    },
+                    onNavigateToTicket = { id ->
+                        navController.navigate(Screen.TicketDetail.createRoute(id))
+                    },
+                    onNavigateToEstimate = { id ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(id))
+                    },
+                    // TODO(10.2): wire onNavigateToLead once LeadDetail route accepts a Long
+                    onNavigateToLead = null,
                 )
             }
 
@@ -1876,6 +1982,7 @@ fun AppNavGraph(
                 }
                 com.bizarreelectronics.crm.ui.screens.estimates.EstimateListScreen(
                     onEstimateClick = { id -> navController.navigate(Screen.EstimateDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.EstimateCreate.createRoute()) },
                 )
             }
             composable(Screen.EstimateDetail.route) { backStackEntry ->
@@ -1894,6 +2001,25 @@ fun AppNavGraph(
                             ?.savedStateHandle
                             ?.set("estimate_deleted", true)
                         navController.popBackStack()
+                    },
+                )
+            }
+            composable(
+                route = Screen.EstimateCreate.route,
+                arguments = listOf(
+                    navArgument("leadId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.estimates.EstimateCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(id)) {
+                            popUpTo(Screen.Estimates.route)
+                        }
                     },
                 )
             }

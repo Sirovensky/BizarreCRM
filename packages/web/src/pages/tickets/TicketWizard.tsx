@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -306,6 +306,7 @@ function DeviceModelSearch({
   deviceType: string;
   onSelect: (model: { id: number; name: string; manufacturer_name: string; category: string }) => void;
 }) {
+  const reactId = useId();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -331,12 +332,12 @@ function DeviceModelSearch({
 
   return (
     <div>
-      <FormLabel label="Device Model" required htmlFor="tw-device-model-search" />
+      <FormLabel label="Device Model" required htmlFor={`${reactId}tw-device-model-search`} />
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
         {isLoading && <Loader2 className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-surface-400" />}
         <input
-          id="tw-device-model-search"
+          id={`${reactId}tw-device-model-search`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder='Search — e.g. "iPhone 15", "Galaxy S24"...'
@@ -709,6 +710,10 @@ export function TicketWizard() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isKiosk = searchParams.get('mode') === 'kiosk';
+
+  // Per-instance ID prefix so multiple mounted wizards don't collide
+  // on their input IDs (e.g. TicketWizard rendered inside a modal over another page).
+  const reactId = useId();
 
   const [step, setStep] = useState(0);
   const [createdTicket, setCreatedTicket] = useState<any>(null);
@@ -1182,20 +1187,20 @@ export function TicketWizard() {
                   <div className="mt-4 rounded-lg border border-surface-200 bg-surface-50/50 p-4 dark:border-surface-700 dark:bg-surface-800/50">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
-                        <FormLabel label="First Name" required htmlFor="tw-new-customer-first" />
-                        <input id="tw-new-customer-first" value={newCustomer.first_name} onChange={(e) => setNewCustomer((p) => ({ ...p, first_name: e.target.value }))} placeholder="John" className={inputCls} />
+                        <FormLabel label="First Name" required htmlFor={`${reactId}tw-new-customer-first`} />
+                        <input id={`${reactId}tw-new-customer-first`} value={newCustomer.first_name} onChange={(e) => setNewCustomer((p) => ({ ...p, first_name: e.target.value }))} placeholder="John" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Last Name" required htmlFor="tw-new-customer-last" />
-                        <input id="tw-new-customer-last" value={newCustomer.last_name} onChange={(e) => setNewCustomer((p) => ({ ...p, last_name: e.target.value }))} placeholder="Doe" className={inputCls} />
+                        <FormLabel label="Last Name" required htmlFor={`${reactId}tw-new-customer-last`} />
+                        <input id={`${reactId}tw-new-customer-last`} value={newCustomer.last_name} onChange={(e) => setNewCustomer((p) => ({ ...p, last_name: e.target.value }))} placeholder="Doe" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Phone" htmlFor="tw-new-customer-phone" />
-                        <input id="tw-new-customer-phone" type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="(555) 123-4567" className={inputCls} />
+                        <FormLabel label="Phone" htmlFor={`${reactId}tw-new-customer-phone`} />
+                        <input id={`${reactId}tw-new-customer-phone`} type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="(555) 123-4567" className={inputCls} />
                       </div>
                       <div>
-                        <FormLabel label="Email" htmlFor="tw-new-customer-email" />
-                        <input id="tw-new-customer-email" type="email" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" className={inputCls} />
+                        <FormLabel label="Email" htmlFor={`${reactId}tw-new-customer-email`} />
+                        <input id={`${reactId}tw-new-customer-email`} type="email" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" className={inputCls} />
                       </div>
                     </div>
                     <div className="mt-4">
@@ -1227,14 +1232,14 @@ export function TicketWizard() {
             {/* Source + Referral */}
             <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
               <div>
-                <FormLabel label="Source" htmlFor="tw-source" />
-                <select id="tw-source" value={source} onChange={(e) => setSource(e.target.value)} className={inputCls}>
+                <FormLabel label="Source" htmlFor={`${reactId}tw-source`} />
+                <select id={`${reactId}tw-source`} value={source} onChange={(e) => setSource(e.target.value)} className={inputCls}>
                   {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <FormLabel label="Referred By" htmlFor="tw-referred-by" />
-                <select id="tw-referred-by" value={referredBy} onChange={(e) => setReferredBy(e.target.value)} className={inputCls}>
+                <FormLabel label="Referred By" htmlFor={`${reactId}tw-referred-by`} />
+                <select id={`${reactId}tw-referred-by`} value={referredBy} onChange={(e) => setReferredBy(e.target.value)} className={inputCls}>
                   <option value="">Select...</option>
                   {referralSources.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
@@ -1341,28 +1346,28 @@ export function TicketWizard() {
                 {/* IMEI / Serial / Passcode row */}
                 <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
-                    <FormLabel label="IMEI" htmlFor={`tw-device-${device._key}-imei`} />
-                    <input id={`tw-device-${device._key}-imei`} value={device.imei} onChange={(e) => updateDevice(device._key, { imei: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="IMEI number" />
+                    <FormLabel label="IMEI" htmlFor={`${reactId}tw-device-${device._key}-imei`} />
+                    <input id={`${reactId}tw-device-${device._key}-imei`} value={device.imei} onChange={(e) => updateDevice(device._key, { imei: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="IMEI number" />
                   </div>
                   <div>
-                    <FormLabel label="Serial" htmlFor={`tw-device-${device._key}-serial`} />
-                    <input id={`tw-device-${device._key}-serial`} value={device.serial} onChange={(e) => updateDevice(device._key, { serial: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="Serial number" />
+                    <FormLabel label="Serial" htmlFor={`${reactId}tw-device-${device._key}-serial`} />
+                    <input id={`${reactId}tw-device-${device._key}-serial`} value={device.serial} onChange={(e) => updateDevice(device._key, { serial: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="Serial number" />
                   </div>
                   <div>
-                    <FormLabel label="Passcode" htmlFor={`tw-device-${device._key}-passcode`} />
-                    <input id={`tw-device-${device._key}-passcode`} value={device.security_code} onChange={(e) => updateDevice(device._key, { security_code: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="Device passcode" />
+                    <FormLabel label="Passcode" htmlFor={`${reactId}tw-device-${device._key}-passcode`} />
+                    <input id={`${reactId}tw-device-${device._key}-passcode`} value={device.security_code} onChange={(e) => updateDevice(device._key, { security_code: e.target.value })} className={cn(inputCls, 'font-mono')} placeholder="Device passcode" />
                   </div>
                 </div>
 
                 {/* Color / Network row */}
                 <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <FormLabel label="Color" htmlFor={`tw-device-${device._key}-color`} />
-                    <input id={`tw-device-${device._key}-color`} value={device.color} onChange={(e) => updateDevice(device._key, { color: e.target.value })} className={inputCls} placeholder="e.g. Space Black" />
+                    <FormLabel label="Color" htmlFor={`${reactId}tw-device-${device._key}-color`} />
+                    <input id={`${reactId}tw-device-${device._key}-color`} value={device.color} onChange={(e) => updateDevice(device._key, { color: e.target.value })} className={inputCls} placeholder="e.g. Space Black" />
                   </div>
                   <div>
-                    <FormLabel label="Network / Carrier" htmlFor={`tw-device-${device._key}-network`} />
-                    <input id={`tw-device-${device._key}-network`} value={device.network} onChange={(e) => updateDevice(device._key, { network: e.target.value })} className={inputCls} placeholder="e.g. AT&T, Verizon" />
+                    <FormLabel label="Network / Carrier" htmlFor={`${reactId}tw-device-${device._key}-network`} />
+                    <input id={`${reactId}tw-device-${device._key}-network`} value={device.network} onChange={(e) => updateDevice(device._key, { network: e.target.value })} className={inputCls} placeholder="e.g. AT&T, Verizon" />
                   </div>
                 </div>
 
@@ -1411,9 +1416,9 @@ export function TicketWizard() {
 
                 {/* Issue / Notes */}
                 <div className="mb-4">
-                  <FormLabel label="Issue / Notes" htmlFor={`tw-device-${device._key}-notes`} />
+                  <FormLabel label="Issue / Notes" htmlFor={`${reactId}tw-device-${device._key}-notes`} />
                   <textarea
-                    id={`tw-device-${device._key}-notes`}
+                    id={`${reactId}tw-device-${device._key}-notes`}
                     value={device.additional_notes}
                     onChange={(e) => updateDevice(device._key, { additional_notes: e.target.value })}
                     rows={2}
@@ -1425,8 +1430,8 @@ export function TicketWizard() {
                 {/* Location + Warranty */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <FormLabel label="Device Location" htmlFor={`tw-device-${device._key}-location`} />
-                    <input id={`tw-device-${device._key}-location`} value={device.device_location} onChange={(e) => updateDevice(device._key, { device_location: e.target.value })} className={inputCls} placeholder="e.g. Front counter, Shelf A" />
+                    <FormLabel label="Device Location" htmlFor={`${reactId}tw-device-${device._key}-location`} />
+                    <input id={`${reactId}tw-device-${device._key}-location`} value={device.device_location} onChange={(e) => updateDevice(device._key, { device_location: e.target.value })} className={inputCls} placeholder="e.g. Front counter, Shelf A" />
                   </div>
                   <div>
                     <FormLabel label="Warranty" />
@@ -1573,11 +1578,11 @@ export function TicketWizard() {
                       {/* Service price + tax + discount */}
                       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <div>
-                          <FormLabel label="Service/Labor Price" htmlFor={`tw-device-${device._key}-price`} />
+                          <FormLabel label="Service/Labor Price" htmlFor={`${reactId}tw-device-${device._key}-price`} />
                           <div className="relative">
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                             <input
-                              id={`tw-device-${device._key}-price`}
+                              id={`${reactId}tw-device-${device._key}-price`}
                               type="text" inputMode="decimal" pattern="[0-9.]*"
                               value={device.price || ''}
                               onChange={(e) => updateDevice(device._key, { price: parseFloat(e.target.value) || 0 })}
@@ -1588,11 +1593,11 @@ export function TicketWizard() {
                           </div>
                         </div>
                         <div>
-                          <FormLabel label="Line Discount" htmlFor={`tw-device-${device._key}-line-discount`} />
+                          <FormLabel label="Line Discount" htmlFor={`${reactId}tw-device-${device._key}-line-discount`} />
                           <div className="relative">
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                             <input
-                              id={`tw-device-${device._key}-line-discount`}
+                              id={`${reactId}tw-device-${device._key}-line-discount`}
                               type="text" inputMode="decimal" pattern="[0-9.]*"
                               value={device.line_discount || ''}
                               onChange={(e) => updateDevice(device._key, { line_discount: parseFloat(e.target.value) || 0 })}
@@ -1631,26 +1636,26 @@ export function TicketWizard() {
               <h3 className="mb-4 text-sm font-semibold text-surface-700 dark:text-surface-300">Ticket Details</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <FormLabel label="Assigned To" htmlFor="tw-assigned-to" />
-                  <select id="tw-assigned-to" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className={inputCls}>
+                  <FormLabel label="Assigned To" htmlFor={`${reactId}tw-assigned-to`} />
+                  <select id={`${reactId}tw-assigned-to`} value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className={inputCls}>
                     <option value="">Unassigned</option>
                     {users.map((u) => <option key={u.id} value={String(u.id)}>{u.first_name} {u.last_name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <FormLabel label="Labels" htmlFor="tw-labels" />
-                  <input id="tw-labels" value={labels} onChange={(e) => setLabels(e.target.value)} className={inputCls} placeholder="urgent, vip (comma-separated)" />
+                  <FormLabel label="Labels" htmlFor={`${reactId}tw-labels`} />
+                  <input id={`${reactId}tw-labels`} value={labels} onChange={(e) => setLabels(e.target.value)} className={inputCls} placeholder="urgent, vip (comma-separated)" />
                 </div>
                 <div>
-                  <FormLabel label="Due Date" htmlFor="tw-due-date" />
-                  <input id="tw-due-date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
+                  <FormLabel label="Due Date" htmlFor={`${reactId}tw-due-date`} />
+                  <input id={`${reactId}tw-due-date`} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
                 </div>
                 <div>
-                  <FormLabel label="Additional Discount" htmlFor="tw-additional-discount" />
+                  <FormLabel label="Additional Discount" htmlFor={`${reactId}tw-additional-discount`} />
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">$</span>
                     <input
-                      id="tw-additional-discount"
+                      id={`${reactId}tw-additional-discount`}
                       type="text" inputMode="decimal" pattern="[0-9.]*"
                       value={ticketDiscount || ''}
                       onChange={(e) => setTicketDiscount(parseFloat(e.target.value) || 0)}
@@ -1668,14 +1673,14 @@ export function TicketWizard() {
                   )}
                 </div>
                 <div className="sm:col-span-2">
-                  <FormLabel label="Discount Reason" htmlFor="tw-discount-reason" />
-                  <input id="tw-discount-reason" value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} className={inputCls} placeholder="Reason for discount" />
+                  <FormLabel label="Discount Reason" htmlFor={`${reactId}tw-discount-reason`} />
+                  <input id={`${reactId}tw-discount-reason`} value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} className={inputCls} placeholder="Reason for discount" />
                 </div>
               </div>
               <div className="mt-4">
-                <FormLabel label="Internal Notes" htmlFor="tw-internal-notes" />
+                <FormLabel label="Internal Notes" htmlFor={`${reactId}tw-internal-notes`} />
                 <textarea
-                  id="tw-internal-notes"
+                  id={`${reactId}tw-internal-notes`}
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={2}

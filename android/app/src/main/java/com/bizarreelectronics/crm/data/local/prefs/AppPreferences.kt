@@ -1133,4 +1133,51 @@ class AppPreferences @Inject constructor(
     fun setNotifMatrixEnabled(eventId: String, channelId: String, enabled: Boolean) {
         prefs.edit().putBoolean("notif_matrix_${eventId}_$channelId", enabled).apply()
     }
+
+    // --- Global Search saved/pinned queries (item 8) -----------------------
+    //
+    // Stored as a single string under "global_search_saved_queries".
+    // Serialization: entries are separated by ASCII RS (0x1E); within each
+    // entry the three fields (id, name, query) are separated by ASCII US (0x1F).
+    // Plain prefs are sufficient — saved query names/terms are not PII credentials.
+
+    private val SAVED_QUERIES_ENTRY_SEP = ""   // ASCII RS
+    private val SAVED_QUERIES_FIELD_SEP = ""   // ASCII US
+
+    /**
+     * Raw serialized saved queries string, or null when none have been saved.
+     */
+    var rawSavedQueries: String?
+        get() = prefs.getString("global_search_saved_queries", null)
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove("global_search_saved_queries").apply()
+            } else {
+                prefs.edit().putString("global_search_saved_queries", value).apply()
+            }
+        }
+
+    /**
+     * Serialize a list of SavedQuery triples (id, name, query) into the raw string.
+     * Each triple is a list of exactly three non-null strings.
+     */
+    fun serializeSavedQueries(entries: List<Triple<String, String, String>>): String =
+        entries.joinToString(SAVED_QUERIES_ENTRY_SEP) { (id, name, query) ->
+            "$id$SAVED_QUERIES_FIELD_SEP$name$SAVED_QUERIES_FIELD_SEP$query"
+        }
+
+    /**
+     * Deserialize the raw string back into triples. Returns empty list on empty/null input.
+     */
+    fun deserializeSavedQueries(raw: String?): List<Triple<String, String, String>> {
+        if (raw.isNullOrEmpty()) return emptyList()
+        return runCatching {
+            raw.split(SAVED_QUERIES_ENTRY_SEP).filter { it.isNotBlank() }.mapNotNull { entry ->
+                val parts = entry.split(SAVED_QUERIES_FIELD_SEP, limit = 3)
+                if (parts.size == 3 && parts[0].isNotBlank() && parts[2].isNotBlank()) {
+                    Triple(parts[0], parts[1], parts[2])
+                } else null
+            }
+        }.getOrDefault(emptyList())
+    }
 }

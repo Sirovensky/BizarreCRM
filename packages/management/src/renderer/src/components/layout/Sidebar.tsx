@@ -113,6 +113,7 @@ export function Sidebar() {
         onClick={toggle}
         className="flex items-center justify-center py-3 border-t border-surface-800 text-surface-500 hover:text-surface-300 hover:bg-surface-800/60 transition-colors"
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed ? (
           <ChevronRight className="w-4 h-4" />

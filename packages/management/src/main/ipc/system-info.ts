@@ -234,7 +234,10 @@ export function registerSystemInfoIpc(): void {
     }
   });
 
-  ipcMain.handle('system:open-log-file', async () => {
+  // DASH-ELEC-206: Add `event` parameter so assertRendererOrigin can verify the
+  // caller is the renderer (not an injected script from a rogue webview).
+  ipcMain.handle('system:open-log-file', async (event) => {
+    assertRendererOrigin(event);
     // EL4: No more `exec(string)`. We resolve the pm2 binary to an absolute
     // path from PATH / APPDATA, then `spawn` with explicit args. If pm2
     // isn't installed we fall back to opening the server data folder.

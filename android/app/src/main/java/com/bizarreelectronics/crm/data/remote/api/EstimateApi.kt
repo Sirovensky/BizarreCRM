@@ -8,6 +8,8 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateEstimateRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -31,7 +33,10 @@ interface EstimateApi {
     suspend fun getEstimate(@Path("id") id: Long): ApiResponse<EstimateDetail>
 
     @POST("estimates")
-    suspend fun createEstimate(@Body request: CreateEstimateRequest): ApiResponse<EstimateDetail>
+    suspend fun createEstimate(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body request: CreateEstimateRequest,
+    ): ApiResponse<EstimateDetail>
 
     @PUT("estimates/{id}")
     suspend fun updateEstimate(@Path("id") id: Long, @Body request: UpdateEstimateRequest): ApiResponse<EstimateDetail>
@@ -65,6 +70,23 @@ interface EstimateApi {
      */
     @POST("estimates/{id}/convert-to-invoice")
     suspend fun convertToInvoice(@Path("id") id: Long): ApiResponse<@JvmSuppressWildcards Map<String, Any>>
+
+    /**
+     * PATCH /estimates/:id — partial update; used to mark as expired via {status: "expired"}.
+     * 404 tolerated; call-site falls back to POST .../expire.
+     */
+    @PATCH("estimates/{id}")
+    suspend fun patchEstimate(
+        @Path("id") id: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<EstimateDetail>
+
+    /**
+     * POST /estimates/:id/expire — alternative expire action for servers without PATCH.
+     * 404 tolerated; caller wraps in runCatching.
+     */
+    @POST("estimates/{id}/expire")
+    suspend fun expireEstimate(@Path("id") id: Long): ApiResponse<Unit>
 
     /**
      * GET /estimates/:id/versions — returns revision history.

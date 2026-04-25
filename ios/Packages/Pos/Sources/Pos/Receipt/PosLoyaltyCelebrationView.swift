@@ -107,16 +107,15 @@ public struct PosLoyaltyCelebrationView: View {
             }
             .frame(height: 6)
 
-            if let before = tierBefore, let after = tierAfter, before == after {
-                HStack {
-                    Text(before)
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Spacer()
-                    Text("Next tier")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
+            // Tier label row — matches mockup "GOLD 285 pts" / "PLATINUM 500 pts"
+            HStack {
+                Text(tierBefore?.uppercased() ?? "—")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Spacer()
+                Text((didTierUp ? tierAfter : (tierAfter.flatMap { "Next: \($0)" } ?? "Next tier"))?.uppercased() ?? "NEXT TIER")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
         .accessibilityHidden(true)

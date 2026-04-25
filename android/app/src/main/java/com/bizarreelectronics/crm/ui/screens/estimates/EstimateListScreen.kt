@@ -43,6 +43,7 @@ import com.bizarreelectronics.crm.util.formatAsMoney
 @Composable
 fun EstimateListScreen(
     onEstimateClick: (Long) -> Unit,
+    onCreateClick: (() -> Unit)? = null,
     viewModel: EstimateListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -93,6 +94,13 @@ fun EstimateListScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (onCreateClick != null && !state.isBulkMode) {
+                FloatingActionButton(onClick = onCreateClick) {
+                    Icon(Icons.Default.Add, contentDescription = "Create estimate")
+                }
+            }
+        },
         topBar = {
             Column {
                 if (state.isBulkMode) {

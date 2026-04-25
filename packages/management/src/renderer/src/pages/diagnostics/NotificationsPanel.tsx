@@ -107,7 +107,7 @@ export function NotificationsPanel({ slug }: { slug: string }) {
               if (rows.length === 0) { toast('Nothing to export'); return; }
               const csv = toCsv(
                 ['created_at', 'type', 'recipient', 'subject', 'status', 'error', 'retry_count', 'sent_at'],
-                rows as unknown as Record<string, unknown>[],
+                rows,
               );
               downloadCsv(`notifications-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, csv);
               toast.success(`Exported ${rows.length} rows`);
@@ -132,10 +132,10 @@ export function NotificationsPanel({ slug }: { slug: string }) {
       {summary && (
         <div className="flex items-center gap-2 flex-wrap text-xs">
           <SummaryChip label="total" count={summary.total} color="border-surface-700 text-surface-300" />
-          <SummaryChip label="sent" count={summary.sent} color="border-emerald-900/60 text-emerald-300 bg-emerald-950/30" />
-          <SummaryChip label="pending" count={summary.pending} color="border-amber-900/60 text-amber-300 bg-amber-950/30" />
-          <SummaryChip label="failed" count={summary.failed} color="border-red-900/60 text-red-300 bg-red-950/30" />
-          <SummaryChip label="cancelled" count={summary.cancelled} color="border-surface-700 text-surface-400" />
+          <SummaryChip label="sent" count={summary.sent} color="border-emerald-900/60 text-emerald-300 bg-emerald-950/30" onClick={() => setStatusFilter((f) => f === 'sent' ? '' : 'sent')} active={statusFilter === 'sent'} />
+          <SummaryChip label="pending" count={summary.pending} color="border-amber-900/60 text-amber-300 bg-amber-950/30" onClick={() => setStatusFilter((f) => f === 'pending' ? '' : 'pending')} active={statusFilter === 'pending'} />
+          <SummaryChip label="failed" count={summary.failed} color="border-red-900/60 text-red-300 bg-red-950/30" onClick={() => setStatusFilter((f) => f === 'failed' ? '' : 'failed')} active={statusFilter === 'failed'} />
+          <SummaryChip label="cancelled" count={summary.cancelled} color="border-surface-700 text-surface-400" onClick={() => setStatusFilter((f) => f === 'cancelled' ? '' : 'cancelled')} active={statusFilter === 'cancelled'} />
         </div>
       )}
 
@@ -200,7 +200,21 @@ export function NotificationsPanel({ slug }: { slug: string }) {
   );
 }
 
-function SummaryChip({ label, count, color }: { label: string; count: number; color: string }) {
+function SummaryChip({ label, count, color, onClick, active }: { label: string; count: number; color: string; onClick?: () => void; active?: boolean }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        aria-label={`Filter by ${label}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border transition-opacity ${color} ${active ? 'ring-1 ring-current' : 'opacity-80 hover:opacity-100'}`}
+      >
+        <span className="font-mono">{count}</span>
+        <span className="text-surface-500">{label}</span>
+      </button>
+    );
+  }
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border ${color}`}>
       <span className="font-mono">{count}</span>

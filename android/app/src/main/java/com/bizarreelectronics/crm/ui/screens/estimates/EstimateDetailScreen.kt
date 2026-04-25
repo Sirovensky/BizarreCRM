@@ -29,6 +29,9 @@ import com.bizarreelectronics.crm.ui.components.shared.LoadingIndicator
 import com.bizarreelectronics.crm.ui.screens.invoices.components.sendEmail
 import com.bizarreelectronics.crm.ui.screens.invoices.components.sendSms
 import com.bizarreelectronics.crm.util.formatAsMoney
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +51,7 @@ fun EstimateDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showExpireConfirm by remember { mutableStateOf(false) }
     var showSendSheet by remember { mutableStateOf(false) }
     val sendSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -64,6 +68,11 @@ fun EstimateDetailScreen(
             onConverted(ticketId)
             viewModel.clearConvertedTicket()
         }
+    }
+
+    // 8.4: sync expire confirm from VM state (overflow menu delegates to VM)
+    LaunchedEffect(state.showExpireConfirm) {
+        showExpireConfirm = state.showExpireConfirm
     }
 
     // AND-20260414-M7: navigate back once delete succeeds.
@@ -128,6 +137,24 @@ fun EstimateDetailScreen(
             },
             onDismiss = { showDeleteConfirm = false },
             isDestructive = true,
+        )
+    }
+
+    // 8.4 — Mark as expired confirm
+    if (showExpireConfirm) {
+        ConfirmDialog(
+            title = "Mark as Expired",
+            message = "Mark this estimate as expired? The customer will need a new revision.",
+            confirmLabel = "Mark Expired",
+            onConfirm = {
+                showExpireConfirm = false
+                viewModel.markAsExpired()
+            },
+            onDismiss = {
+                showExpireConfirm = false
+                viewModel.onMarkExpiredDismissed()
+            },
+            isDestructive = false,
         )
     }
 
@@ -242,6 +269,16 @@ fun EstimateDetailScreen(
                                 )
                             }
                             DropdownMenuItem(
+                                text = { Text("Mark as expired") },
+                                leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.onMarkExpiredRequested()
+                                },
+                                enabled = estimate != null &&
+                                    !estimate.status.equals("expired", ignoreCase = true),
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                 leadingIcon = {
                                     Icon(
@@ -288,6 +325,8 @@ fun EstimateDetailScreen(
                     isActionInProgress = state.isActionInProgress,
                     versions = state.versions,
                     selectedVersionIndex = state.selectedVersionIndex,
+                    versionNumber = state.versionNumber,
+                    lineItems = state.lineItems,
                     padding = padding,
                     onConvertToTicket = { viewModel.convertToTicket() },
                     onConvertToInvoice = { viewModel.convertToInvoice() },
@@ -308,6 +347,9 @@ private fun EstimateDetailContent(
     isActionInProgress: Boolean,
     versions: List<EstimateVersion>,
     selectedVersionIndex: Int,
+    /** Version number from the latest API response — shown as "v{n}" in header. */
+    versionNumber: Int,
+    lineItems: List<com.bizarreelectronics.crm.data.remote.dto.EstimateLineItem>,
     padding: PaddingValues,
     onConvertToTicket: () -> Unit,
     onConvertToInvoice: () -> Unit,
@@ -319,6 +361,25 @@ private fun EstimateDetailContent(
     val alreadyConverted = estimate.convertedTicketId != null ||
         estimate.status.equals("converted", ignoreCase = true)
 
+    // 8.4 — expiration banner: show when status == expired or validUntil < today
+    val isExpired = estimate.status.equals("expired", ignoreCase = true) || run {
+        val v = estimate.validUntil ?: return@run false
+        runCatching {
+            val expiryDate = LocalDate.parse(v.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
+            expiryDate.isBefore(LocalDate.now())
+        }.getOrDefault(false)
+    }
+
+    // Human-readable valid-until string
+    val validUntilFormatted: String? = estimate.validUntil?.take(10)?.let { iso ->
+        runCatching {
+            val d = LocalDate.parse(iso, DateTimeFormatter.ISO_LOCAL_DATE)
+            d.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()))
+        }.getOrDefault(iso)
+    }
+
+    val estimateNumber = estimate.orderId.ifBlank { "EST-${estimate.id}" }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -326,26 +387,68 @@ private fun EstimateDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Header card: order id + status badge
+        // 8.2 Header card: Estimate #{number} · v{version}, status SuggestionChip, valid-until
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // Top row: large estimate number + version label
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            estimate.orderId.ifBlank { "EST-${estimate.id}" },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            "Estimate #$estimateNumber",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
                         )
-                        BrandStatusBadge(
-                            label = estimate.status.replaceFirstChar { it.uppercase() },
-                            status = estimate.status,
+                        Text(
+                            "v$versionNumber",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    // Status SuggestionChip
+                    SuggestionChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                estimate.status.replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = when {
+                                estimate.status.equals("approved", ignoreCase = true) ->
+                                    MaterialTheme.colorScheme.primaryContainer
+                                estimate.status.equals("rejected", ignoreCase = true) ||
+                                    estimate.status.equals("expired", ignoreCase = true) ->
+                                    MaterialTheme.colorScheme.errorContainer
+                                else -> MaterialTheme.colorScheme.secondaryContainer
+                            },
+                            labelColor = when {
+                                estimate.status.equals("approved", ignoreCase = true) ->
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                estimate.status.equals("rejected", ignoreCase = true) ||
+                                    estimate.status.equals("expired", ignoreCase = true) ->
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                else -> MaterialTheme.colorScheme.onSecondaryContainer
+                            },
+                        ),
+                        border = null,
+                    )
+                    // Valid-until row
+                    if (validUntilFormatted != null) {
+                        Text(
+                            "Valid until $validUntilFormatted",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isExpired)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Text(
@@ -358,6 +461,39 @@ private fun EstimateDetailContent(
                             "Converted to ticket #${estimate.convertedTicketId}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 8.4 Expiration banner
+        if (isExpired) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Timer,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            "This estimate has expired. Send a new revision?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -392,6 +528,89 @@ private fun EstimateDetailContent(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+            }
+        }
+
+        // 8.2 Line items
+        if (lineItems.isNotEmpty()) {
+            item {
+                BrandCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Line Items",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        // Header row
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "Description",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "Qty",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(36.dp),
+                            )
+                            Text(
+                                "Unit",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(64.dp),
+                            )
+                            Text(
+                                "Total",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(72.dp),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        lineItems.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        item.description ?: item.itemName ?: "-",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    if (!item.itemSku.isNullOrBlank()) {
+                                        Text(
+                                            "SKU: ${item.itemSku}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "${item.quantity ?: 1}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.width(36.dp),
+                                )
+                                Text(
+                                    "$%.2f".format(item.unitPrice ?: 0.0),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.width(64.dp),
+                                )
+                                Text(
+                                    "$%.2f".format(item.total ?: 0.0),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.width(72.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -587,7 +806,7 @@ private fun VersionDropdown(
         onExpandedChange = { expanded = it },
     ) {
         OutlinedTextField(
-            value = selected?.let { "v${it.versionNumber} — ${it.createdAt.take(10)}" } ?: "",
+            value = selected?.let { "v${it.versionNumber} - ${it.createdAt.take(10)}" } ?: "",
             onValueChange = {},
             readOnly = true,
             label = { Text("Version") },
@@ -602,7 +821,7 @@ private fun VersionDropdown(
         ) {
             versions.forEachIndexed { index, version ->
                 DropdownMenuItem(
-                    text = { Text("v${version.versionNumber} — ${version.createdAt.take(10)} (${version.status})") },
+                    text = { Text("v${version.versionNumber} - ${version.createdAt.take(10)} (${version.status})") },
                     onClick = {
                         onVersionSelected(index)
                         expanded = false

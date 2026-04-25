@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.util.DeviceTokenManager
 import com.bizarreelectronics.crm.util.LanguageManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +60,8 @@ class SettingsViewModel @Inject constructor(
     private val webSocketEventHandler: WebSocketEventHandler,
     syncQueueDao: SyncQueueDao,
     private val pinPreferences: com.bizarreelectronics.crm.data.local.prefs.PinPreferences,
+    // §13.2 — unregister FCM token on logout.
+    private val deviceTokenManager: DeviceTokenManager,
     // §27 — exposes current language display name for the Language row subtitle.
     val languageManager: LanguageManager,
 ) : ViewModel() {
@@ -206,6 +209,10 @@ class SettingsViewModel @Inject constructor(
                     e,
                 )
             }
+            // §13.2 — delete FCM token from Firebase + server before clearing auth
+            // prefs so the DELETE call still has a valid auth token on the header.
+            // runCatching is inside DeviceTokenManager so any failure is non-fatal.
+            deviceTokenManager.unregister()
             authPreferences.clear()
             // §2.5 — drop PIN metadata on logout so next sign-in starts
             // with a clean slate (server still owns the PIN; this only

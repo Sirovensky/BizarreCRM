@@ -45,6 +45,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -97,14 +98,76 @@ fun CustomerListScreen(
     onCustomerClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
     onCreateClickWithContact: ((ImportedContact) -> Unit)? = null,
+    /** 5.8.2: pre-apply a tag filter when navigated from a TagChip tap. */
+    initialTagFilter: String = "",
     viewModel: CustomerListViewModel = hiltViewModel(),
 ) {
+    // Apply initial tag filter on first composition (5.8.2).
+    LaunchedEffect(initialTagFilter) {
+        if (initialTagFilter.isNotBlank()) {
+            viewModel.onTagFilterApplied(initialTagFilter)
+        }
+    }
     val state by viewModel.state.collectAsState()
     val lazyPagingItems = viewModel.customersPaged.collectAsLazyPagingItems()
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // 5.6.1: bulk tag input dialog state
+    var showBulkTagDialog by remember { mutableStateOf(false) }
+    var bulkTagInput by remember { mutableStateOf("") }
+
+    // 5.6.2: bulk delete undo snackbar — triggered by ViewModel
+    LaunchedEffect(state.pendingUndoDeleteIds) {
+        val ids = state.pendingUndoDeleteIds
+        if (ids.isNotEmpty()) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Deleted ${ids.size} customer(s)",
+                actionLabel = "Undo",
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                viewModel.onUndoBulkDelete(ids)
+            } else {
+                viewModel.clearPendingUndoDelete()
+            }
+        }
+    }
+
+    if (showBulkTagDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showBulkTagDialog = false; bulkTagInput = "" },
+            title = { Text("Bulk tag") },
+            text = {
+                OutlinedTextField(
+                    value = bulkTagInput,
+                    onValueChange = { bulkTagInput = it },
+                    label = { Text("Tag name") },
+                    singleLine = true,
+                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (bulkTagInput.isNotBlank()) {
+                            viewModel.onBulkTag(bulkTagInput.trim())
+                            showBulkTagDialog = false
+                            bulkTagInput = ""
+                        }
+                    },
+                    enabled = bulkTagInput.isNotBlank(),
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkTagDialog = false; bulkTagInput = "" }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     // ── Snackbar ──────────────────────────────────────────────────────────────
     LaunchedEffect(state.snackbarMessage) {
@@ -115,12 +178,16 @@ fun CustomerListScreen(
         }
     }
 
-    // ── Export CSV via SAF (plan:L884) ────────────────────────────────────────
+    // ── Export CSV via SAF (plan:L884 + 5.6.3) ───────────────────────��───────
+    // isBulkModeForExport captured at launch time via a mutable ref so the
+    // lambda can distinguish all-customers export from selected-only export.
+    var exportBulkMode by remember { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->
         if (uri != null) {
-            val csv = viewModel.buildCsvContent()
+            val csv = if (exportBulkMode) viewModel.buildSelectedCsvContent()
+                      else viewModel.buildCsvContent()
             context.contentResolver.openOutputStream(uri)?.use { out ->
                 out.write(csv.toByteArray())
             }
@@ -171,6 +238,7 @@ fun CustomerListScreen(
                         }
                         // Export CSV
                         IconButton(onClick = {
+                            exportBulkMode = false
                             exportLauncher.launch("customers_export.csv")
                         }) {
                             Icon(
@@ -205,8 +273,12 @@ fun CustomerListScreen(
             if (state.isBulkMode) {
                 BulkActionBar(
                     selectedCount = state.selectedIds.size,
-                    onTag = { viewModel.onBulkTag("VIP") },
+                    onTag = { showBulkTagDialog = true },
                     onDelete = { viewModel.onBulkDelete() },
+                    onExport = {
+                        exportBulkMode = true
+                        exportLauncher.launch("customers_selected_export.csv")
+                    },
                     onCancel = { viewModel.clearBulkSelection() },
                 )
             }
@@ -657,6 +729,7 @@ private fun BulkActionBar(
     selectedCount: Int,
     onTag: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
     onCancel: () -> Unit,
 ) {
     BottomAppBar(
@@ -674,9 +747,15 @@ private fun BulkActionBar(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
+            // Tag selected (5.6.1)
             IconButton(onClick = onTag) {
                 Icon(Icons.Default.Label, contentDescription = "Tag selected")
             }
+            // Export selected as CSV (5.6.3)
+            IconButton(onClick = onExport) {
+                Icon(Icons.Default.Download, contentDescription = "Export selected")
+            }
+            // Delete with undo (5.6.2)
             TextButton(
                 onClick = onDelete,
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(

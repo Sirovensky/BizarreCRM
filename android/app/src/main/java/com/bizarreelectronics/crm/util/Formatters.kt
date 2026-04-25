@@ -7,23 +7,7 @@ import java.util.Locale
 // with Long-based canonical APIs (formatAbsolute / formatRelative) plus the
 // legacy string overloads.
 
-object PhoneFormatter {
-    fun format(phone: String?): String {
-        if (phone.isNullOrBlank()) return ""
-        val digits = phone.replace(Regex("[^0-9]"), "")
-        return when {
-            digits.length == 10 -> "(${digits.substring(0, 3)}) ${digits.substring(3, 6)}-${digits.substring(6)}"
-            digits.length == 11 && digits.startsWith("1") -> "(${digits.substring(1, 4)}) ${digits.substring(4, 7)}-${digits.substring(7)}"
-            else -> phone
-        }
-    }
-
-    fun normalize(phone: String?): String {
-        if (phone.isNullOrBlank()) return ""
-        val digits = phone.replace(Regex("[^0-9]"), "")
-        return if (digits.length == 11 && digits.startsWith("1")) digits.substring(1) else digits
-    }
-}
+// PhoneFormatter extracted to PhoneFormatter.kt (item 3 / CROSS7).
 
 object CurrencyFormatter {
     private val format = NumberFormat.getCurrencyInstance(Locale.US)

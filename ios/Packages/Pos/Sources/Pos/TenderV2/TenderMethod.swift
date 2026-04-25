@@ -65,4 +65,14 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         default:    return nil
         }
     }
+
+    /// Subtitle shown on every method tile (ready or not) — matching mockup 5a/4a.
+    public var tileSubtitle: String {
+        switch self {
+        case .card:        return "Tap to Pay"
+        case .cash:        return "Enter amount"
+        case .giftCard:    return "Scan / enter"
+        case .storeCredit: return "Avail. balance"
+        }
+    }
 }

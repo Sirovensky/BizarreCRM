@@ -77,7 +77,7 @@ export function RecentActivityWidget() {
       </div>
 
       {loading ? (
-        <p className="text-xs text-surface-500">Loading…</p>
+        <p className="text-xs text-surface-500" aria-live="polite" aria-busy="true">Loading…</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Audit */}
@@ -92,7 +92,7 @@ export function RecentActivityWidget() {
               </Link>
             </div>
             {audit.length === 0 ? (
-              <p className="text-xs text-surface-600">No entries yet.</p>
+              <p className="text-xs text-surface-600">No audit log entries. System will record admin actions here when they occur.</p>
             ) : (
               <ul className="space-y-1.5">
                 {audit.map((e) => (

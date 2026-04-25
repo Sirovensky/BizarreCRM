@@ -115,7 +115,10 @@ fun SalesReportScreen(
             item {
                 ChartDrillThrough(
                     dateLabels = state.salesByDay.map { it.isoDate },
-                    onDrillThrough = onDrillThroughDate,
+                    onDrillThrough = { date ->
+                        viewModel.rememberFilterForDrill()
+                        onDrillThroughDate(date)
+                    },
                 ) {
                     SalesByDayBarChart(
                         points = state.salesByDay,
@@ -264,11 +267,41 @@ private fun buildSalesCsv(report: SalesReport, byDay: List<SalesByDayPoint>): St
 }
 
 private fun buildSalesHtml(report: SalesReport): String = buildString {
-    append("<html><body>")
-    append("<h1>Sales Report — Bizarre Electronics</h1>")
-    append("<p>Total Revenue: ${CurrencyFormatter.format(report.totalRevenue)}</p>")
-    append("<p>Transactions: ${report.transactionCount}</p>")
-    append("<p>Avg Transaction: ${CurrencyFormatter.format(report.averageTransaction)}</p>")
-    append("<p>Unique Customers: ${report.uniqueCustomers}</p>")
+    append("""
+        <html><head><meta charset="utf-8">
+        <style>
+          body{font-family:sans-serif;margin:24px;color:#1a1a1a}
+          h1{font-size:20px;margin-bottom:4px}
+          p.period{font-size:13px;color:#666;margin:0 0 16px}
+          table{width:100%;border-collapse:collapse;font-size:14px}
+          th{background:#2c2c2c;color:#fff;text-align:left;padding:8px 12px}
+          td{padding:8px 12px;border-bottom:1px solid #e0e0e0}
+          td.num{text-align:right}
+          tfoot td{font-weight:bold;border-top:2px solid #2c2c2c}
+        </style></head><body>
+        <h1>Sales Report — Bizarre Electronics</h1>
+        <p class="period">Exported ${java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(java.util.Date())}</p>
+        <table>
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Total Revenue</td><td class="num">${CurrencyFormatter.format(report.totalRevenue)}</td></tr>
+            <tr><td>Transactions</td><td class="num">${report.transactionCount}</td></tr>
+            <tr><td>Avg Transaction</td><td class="num">${CurrencyFormatter.format(report.averageTransaction)}</td></tr>
+            <tr><td>Unique Customers</td><td class="num">${report.uniqueCustomers}</td></tr>
+          </tbody>
+        </table>
+    """.trimIndent())
+    if (report.paymentMethods.isNotEmpty()) {
+        append("""
+            <h2 style="font-size:16px;margin-top:24px">Payment Methods</h2>
+            <table>
+              <thead><tr><th>Method</th><th>Transactions</th><th>Revenue</th></tr></thead>
+              <tbody>
+        """.trimIndent())
+        report.paymentMethods.forEach { m ->
+            append("<tr><td>${m.method}</td><td class=\"num\">${m.count}</td><td class=\"num\">${CurrencyFormatter.format(m.revenue)}</td></tr>")
+        }
+        append("</tbody></table>")
+    }
     append("</body></html>")
 }

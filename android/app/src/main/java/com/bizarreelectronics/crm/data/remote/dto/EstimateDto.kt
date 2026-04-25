@@ -71,6 +71,9 @@ data class EstimateDetail(
     val convertedTicketId: Long?,
     @SerializedName("line_items")
     val lineItems: List<EstimateLineItem>?,
+    /** Revision counter — defaults to 1 when server hasn't shipped versioning yet. */
+    @SerializedName("version_number")
+    val versionNumber: Int? = 1,
 ) {
     val customerName: String
         get() = listOfNotNull(customerFirstName, customerLastName).joinToString(" ").ifBlank { "Unknown" }
@@ -106,6 +109,9 @@ data class CreateEstimateRequest(
     val validUntil: String? = null,
     @SerializedName("line_items")
     val lineItems: List<CreateEstimateLineItem>,
+    /** Idempotency key — also sent as header; included in body for servers that read it there. */
+    @SerializedName("idempotency_key")
+    val idempotencyKey: String? = null,
 )
 
 data class CreateEstimateLineItem(

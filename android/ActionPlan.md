@@ -905,44 +905,44 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Delete customer** — confirm `AlertDialog` + warning if open tickets (offer reassign-or-cancel flow). (commit 99e0eee — AlertDialog + open-ticket warning message)
 
 ### 5.3 Create
-- [ ] Full create form (first/last/phone/email/organization/address/city/state/zip/notes).
-- [ ] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
-- [ ] **Phone normalize** — shared `PhoneFormatter` util using libphonenumber-android.
-- [ ] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
-- [ ] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
+- [x] Full create form (first/last/phone/email/organization/address/city/state/zip/notes).
+- [x] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
+- [x] **Phone normalize** — shared `PhoneFormatter` util using libphonenumber-android.
+- [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
+- [x] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
 - [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
-- [ ] **Idempotency** + offline temp-ID handling.
+- [x] **Idempotency** + offline temp-ID handling.
 
 ### 5.4 Edit
-- [ ] All fields editable. `PUT /customers/:id`.
-- [ ] Optimistic UI + rollback.
-- [ ] Concurrent-edit 409 banner.
+- [x] All fields editable. `PUT /customers/:id`.
+- [x] Optimistic UI + rollback.
+- [x] Concurrent-edit 409 banner.
 
 ### 5.5 Merge
-- [ ] `POST /customers/merge` with `{ keep_id, merge_id }`.
-- [ ] Search + select candidate; diff preview (which fields survive); confirmation.
-- [ ] Destructive — explicit warning that merge is irreversible past 24h window.
+- [x] `POST /customers/merge` with `{ keep_id, merge_id }`.
+- [x] Search + select candidate; diff preview (which fields survive); confirmation.
+- [x] Destructive — explicit warning that merge is irreversible past 24h window.
 
 ### 5.6 Bulk actions
-- [ ] Bulk tag (`POST /customers/bulk-tag`).
-- [ ] Bulk delete with undo.
-- [ ] Bulk export selected.
+- [x] Bulk tag (`POST /customers/bulk-tag`).
+- [x] Bulk delete with undo.
+- [x] Bulk export selected.
 
 ### 5.7 Asset tracking
-- [ ] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
-- [ ] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
+- [x] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
+- [x] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
 
 ### 5.8 Tags & segments
-- [ ] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
-- [ ] Color-coded with tenant-defined palette.
+- [x] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
+- [x] Color-coded with tenant-defined palette.
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold").
-- [ ] Customer detail header chip row for tags.
-- [ ] Tap tag → filter customer list.
-- [ ] Bulk-assign tags via list multi-select.
+- [x] Customer detail header chip row for tags.
+- [x] Tap tag → filter customer list.
+- [x] Bulk-assign tags via list multi-select.
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters.
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d").
 - [ ] Segments used by marketing (§37) and pricing rules.
-- [ ] Max 20 tags per customer (warn at 10).
+- [x] Max 20 tags per customer (warn at 10).
 - [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices).
 
 ### 5.9 Customer 360
@@ -1325,8 +1325,8 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room.
 
 ### 8.2 Detail
-- [ ] **Header** — estimate # + status + valid-until date.
-- [ ] **Line items** + totals.
+- [x] **Header** — estimate # + status + valid-until date.
+- [x] **Line items** + totals.
 - [x] **Send** — SMS / email; body includes approval link (customer portal). (commit 388f4c2 — send bottom sheet reuses SMS/Email intent helpers from wave 15)
 - [x] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (Compose Canvas). (commit 388f4c2 — POST + confirm dialog; 404-tolerant; signature capture deferred)
 - [x] **Reject** — reason required. (commit 388f4c2 — reject dialog with required-reason field; POST /estimates/:id/reject)
@@ -1336,14 +1336,14 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] **Customer-facing PDF preview** — "See what customer sees" button. (commit 388f4c2 — Print action in overflow menu via PrintManager + WebView — mirrors InvoiceSendActions)
 
 ### 8.3 Create
-- [ ] Same structure as invoice + validity window.
-- [ ] Convert from lead (prefill).
-- [ ] Line items from repair-pricing services + inventory parts + free-form.
-- [ ] Idempotency key.
+- [x] Same structure as invoice + validity window.
+- [x] Convert from lead (prefill).
+- [x] Line items from repair-pricing services + inventory parts + free-form.
+- [x] Idempotency key.
 
 ### 8.4 Expiration handling
-- [ ] Auto-expire when past validity date (server-driven).
-- [ ] Manual expire action.
+- [x] Auto-expire when past validity date (server-driven).
+- [x] Manual expire action.
 
 ### 8.5 E-sign (public page)
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
@@ -1354,7 +1354,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 ### 8.6 Versioning
 - [ ] Each edit creates new version; prior retained.
-- [ ] Version number visible on UI (e.g. "v3").
+- [x] Version number visible on UI (e.g. "v3").
 - [ ] Only "sent" versions archived for audit; drafts freely edited.
 - [ ] Side-by-side diff of v-n vs v-n+1.
 - [ ] Highlight adds / removes / price changes.
@@ -1403,8 +1403,8 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.4 Create
 - [x] Minimal form.
-- [ ] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
-- [ ] **Offline create** + reconcile.
+- [x] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
+- [x] **Offline create** + reconcile.
 
 ### 9.5 Lost-reason modal
 - [x] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text. (commit e3f5579 — `components/LostReasonDialog.kt` + `LostReasonCategory` enum + validation before confirm)
@@ -1425,24 +1425,24 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
 ### 10.2 Detail
-- [ ] Customer card + linked ticket / estimate / lead.
-- [ ] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
+- [x] Customer card + linked ticket / estimate / lead.
+- [x] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
 - [x] Reminder offsets (15min / 1h / 1day before) — respects per-user default. (commit c00bd78 — `ReminderOffsetPicker.kt` Off/15min/1h/1day/Custom SegmentedButton + custom OutlinedTextField)
 - [x] Quick actions chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket. (commit c00bd78 — Confirm/Reschedule/Cancel/No-show SuggestionChip row in detail header)
 - [x] Send-reminder manually (`POST /sms/send` + template). (commit c00bd78 — Send Reminder OutlinedButton → POST /appointments/:id/send-reminder; 404 tolerated)
 
 ### 10.3 Create
 - [ ] Minimal.
-- [ ] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
+- [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
 - [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
 - [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
-- [ ] **Idempotency** + offline temp-id.
+- [x] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
 - [x] Drag-to-reschedule (tablet day/week views) with `HapticFeedbackConstants.GESTURE_END` on drop.
 - [x] Cancel — ask "Notify customer?" (SMS/email). (commit c00bd78 — dialog with `notify_customer` checkbox → POST /appointments/:id/cancel)
 - [x] No-show — one-tap from detail; optional fee. (commit c00bd78 — single tap → PATCH `status="no_show"` + toast; fee flow deferred)
-- [ ] Recurring-event edits — "This event" / "This and following" / "All".
+- [x] Recurring-event edits — "This event" / "This and following" / "All".
 
 ### 10.5 Reminders
 - [ ] Server cron sends FCM N min before (per-user setting).
@@ -1562,8 +1562,8 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH /notifications/:id/dismiss` (verify)._
 
 ### 13.1 List
-- [ ] Base list.
-- [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
+- [x] Base list.
+- [x] **Tabs** — All / Unread / Assigned to me / Mentions.
 - [x] **Mark all read** action (top-bar button).
 - [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
 - [~] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
@@ -1760,20 +1760,20 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 15.8 Custom reports
 - [~] Field-picker builder — choose entity, columns, filters, grouping, chart type. (commit 570754f — `CustomReportScreen` saved queries list + bottom sheet DSL stub)
 - [~] Save as named report. (commit 570754f — stub)
-- [ ] Share via deep-link.
+- [x] Share via deep-link.
 
 ### 15.9 Drill-through
-- [ ] Every chart point tappable → filtered list.
-- [ ] Preserve filter context across drill levels (back stack in NavController).
+- [x] Every chart point tappable → filtered list.
+- [x] Preserve filter context across drill levels (back stack in NavController).
 
 ### 15.10 Scheduled reports
-- [ ] Tenant-level scheduled run (daily / weekly / monthly).
-- [ ] Delivery: email to recipients + in-app Notification entry + optional FCM push.
-- [ ] Pause / resume / delete schedule.
+- [x] Tenant-level scheduled run (daily / weekly / monthly).
+- [x] Delivery: email to recipients + in-app Notification entry + optional FCM push.
+- [x] Pause / resume / delete schedule.
 
 ### 15.11 Print
-- [ ] Reports printable via Android Print Framework as PDF.
-- [ ] PDF rendering via Compose → `PdfDocument.Page.canvas` or WebView-to-PDF for tables.
+- [x] Reports printable via Android Print Framework as PDF.
+- [x] PDF rendering via Compose → `PdfDocument.Page.canvas` or WebView-to-PDF for tables.
 
 ---
 ## 16. POS / Checkout
@@ -1928,13 +1928,13 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ## 18. Search (Global + Scoped)
 
 ### 18.1 Global search
-- [ ] Top bar search icon → full-screen search Activity.
-- [ ] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
+- [x] Top bar search icon → full-screen search Activity.
+- [x] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
 - [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert.
-- [ ] Debounced 300ms; results grouped by entity type with count chip.
-- [ ] Tap result → deep link.
+- [x] Debounced 300ms; results grouped by entity type with count chip.
+- [x] Tap result → deep link.
 - [x] Recent searches cached in DataStore.
-- [ ] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
+- [x] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
 
 ### 18.2 Scoped search per screen
 - [ ] Each list has its own `SearchBar` (Material 3) at top.
@@ -1945,12 +1945,12 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars).
 
 ### 18.4 Voice search
-- [ ] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
-- [ ] Requires `RECORD_AUDIO` at tap-time.
+- [x] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
+- [x] Requires `RECORD_AUDIO` at tap-time.
 
 ### 18.5 Recent + saved searches
-- [ ] Recent 10 shown under empty state.
-- [ ] Pin a query — named chip at top of search screen.
+- [x] Recent 10 shown under empty state.
+- [x] Pin a query — named chip at top of search screen.
 
 ### 18.6 Natural-language query (stretch)
 - [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter.
@@ -1962,9 +1962,9 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [ ] Opt-out per tenant.
 
 ### 18.8 Empty / loading states
-- [ ] Empty: "Try a different search" + tips.
-- [ ] Loading: shimmer rows.
-- [ ] No network: "Showing cached results" banner.
+- [x] Empty: "Try a different search" + tips.
+- [x] Loading: shimmer rows.
+- [x] No network: "Showing cached results" banner.
 
 ---
 ## 19. Settings
@@ -2301,11 +2301,11 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 23.5 Window insets
 - [x] Edge-to-edge via `WindowCompat.setDecorFitsSystemWindows(window, false)`.
 - [~] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently.
-- [ ] Respect 3-button vs gesture navigation.
+- [x] Respect 3-button vs gesture navigation.
 
 ### 23.6 Predictive back
-- [ ] `PredictiveBackHandler` on every non-root screen; animations preview the back target.
-- [ ] Custom enter/exit transitions survive the drag.
+- [x] `PredictiveBackHandler` on every non-root screen; animations preview the back target.
+- [x] Custom enter/exit transitions survive the drag.
 
 ---
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
@@ -5012,6 +5012,60 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/theme/Theme.kt`, `ui/compon
 - [x] **LOGIN-MOCK-114 (Layout). `IME push-up`: when the keyboard is raised on the Server step (screen-07/08), the Connect button and footer row scroll out of view because the card `Column` is inside a `verticalScroll` but the `Box(contentAlignment = Center)` does not shrink — the centered column can sit partially below the IME.** LoginScreen.kt:1859–1873. The outer `Box` has `imePadding()`, which reduces the Box's available height when the keyboard is up. However, `contentAlignment = Alignment.Center` means the Column is vertically centered within the *remaining* Box height. On screens where the card is taller than (available-height − status-bar), the card's bottom portion (Connect button, footer row) is clipped under the IME. Screens 07/08 show this exactly: only the field and a partial button are visible with the keyboard up. Fix: change `contentAlignment = Alignment.Center` to `contentAlignment = Alignment.TopCenter` and replace the `Spacer(Modifier.height(32.dp))` above the wordmark with `Spacer(Modifier.weight(1f))` inside a `Column(Modifier.fillMaxHeight())` wrapping the scroll column's siblings — but since the column is already in a `verticalScroll`, weight cannot be used there. Instead: keep `TopCenter` and increase the `verticalScroll` `Column`'s top breathing spacer from 32dp to `WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp` so content starts below the status bar naturally without a Center anchor, and the card is always reachable by scrolling.
 
 
+## Login-flow mockup parity wave — 2026-04-24
+
+### Wave-2 Finder-E copy fidelity
+
+Scope: exact string comparison of every visible text node in screens 01–11 against `LoginScreen.kt`. Items 001–089 were filed in Wave 1; this wave starts at 090. Mockup source: `screen-01-login.png`, `screen-02-register.png`, `screen-03-register-filled.png`, `screen-04-url-only.png`, `screen-05-filled.png`, `screen-06-after-create.png`, `screen-07-back.png`, `screen-08-retry.png`, `screen-09-create-result.png`, `screen-10-signed-in.png`, `screen-11-post-2fa.png`.
+
+- [ ] **LOGIN-MOCK-090 (Copy). "Register new shop" link is sentence-case while "Register New Shop" heading on the next screen is title-case — inconsistent capitalisation for the same destination.** `ServerStep` line 2262: `Text("Register new shop", ...)`. Mockup screen-01 renders it as "Register new shop" (sentence-case), which the code matches. However the Register form heading at line 2283 is `"Register New Shop"` (title-case), confirmed by mockup screen-02. The two surfaces name the same destination differently. Decide on one rule; if title-case wins, fix line 2262. `LoginScreen.kt:2262, 2283`.
+
+- [ ] **LOGIN-MOCK-091 (Copy). Self-hosted mode subtitle "Enter your self-hosted server address" has no mockup backing — copy is unreviewed.** When `state.useCustomServer == true`, `ServerStep` shows `"Enter your self-hosted server address"` (line 2172). None of the 11 mockup screens depict the self-hosted subtitle. The cloud-mode subtitle `"Enter your shop name to connect"` is confirmed by screens 01, 07, 08; the self-hosted variant is live UI copy that was never validated against a mockup frame. `LoginScreen.kt:2172`.
+
+- [ ] **LOGIN-MOCK-092 (Copy). "Server URL" label (self-hosted mode) is live but unreviewed; conflicts in noun with "Shop URL" on the Register form.** The field label `"Server URL"` (line 2184) only renders in self-hosted mode, which no mockup depicts. The Register step uses `"Shop URL"` (line 2302, confirmed by mockup screens 02–06). Two different nouns ("Server URL" vs "Shop URL") describe analogous URL-entry fields with no mockup to adjudicate. `LoginScreen.kt:2184, 2302`.
+
+- [ ] **LOGIN-MOCK-093 (Copy). "Use BizarreCRM Cloud" toggle label has no mockup backing.** The `TextButton` in `ServerStep` shows `"Use BizarreCRM Cloud"` (line 2256) when self-hosted mode is active. No mockup screen shows this toggle state — only `"Self-hosted?"` (confirmed screen-01) is reviewed. The reverse-toggle label is live copy never validated against design. `LoginScreen.kt:2256`.
+
+- [ ] **LOGIN-MOCK-094 (Copy). TwoFaVerifyStep title "Two-Factor Authentication" and body "Enter the 6-digit code from your authenticator app" have no mockup backing.** All 11 mockup screens show only the *setup* step (`"Set Up Two-Factor Auth"` / `"Scan this QR code…"`). The verify-step strings at lines 3377 and 3380 are live UI copy that has never been reviewed. Note that the setup-step title and body at lines 3181 and 3184 exactly match the mockup. `LoginScreen.kt:3377, 3380`.
+
+- [ ] **LOGIN-MOCK-095 (Copy). SSO, magic-link, and passkey button labels on the Credentials step have no mockup backing.** `"Sign in with SSO"` (line 2757), `"Email me a link"` (line 2811), and `"Use passkey"` (line 2851) are all live on the Credentials step but do not appear in any of the 11 mockup screens. All three are feature-flag-gated copy that has never been reviewed against design. `LoginScreen.kt:2757, 2811, 2851`.
+
+- [ ] **LOGIN-MOCK-096 (Copy). Entire magic-link bottom-sheet copy block is unreviewed against any mockup.** `MagicLinkRequestSheet` contains: `"Sign in with a magic link"` (line 2882), `"We'll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Email address"` label (line 2899), `"Send link"` button (line 2927), `"Check your email"` sent banner (line 2949), `"A sign-in link was sent to …"` body (line 2955), and resend controls (lines 2989, 2991). No mockup screen depicts this sheet. `LoginScreen.kt:2882–2991`.
+
+- [ ] **LOGIN-MOCK-097 (Copy). "Origin header required" error in screen-06 is a raw server message, not a client-owned string — wording is outside the app's control.** Mockup `screen-06-after-create.png` shows the red inline error `"Origin header required"` below the password field on the Register form. In code the text is the raw server JSON `message` field surfaced at line 758 (`rJson.optString("message", "Registration failed")`); the string `"Origin header required"` does not appear in the source. A server-wording change propagates to the UI silently. Consider a client-side map from known technical server messages to user-readable strings. `LoginScreen.kt:755–758`.
+
+- [ ] **LOGIN-MOCK-098 (Copy). Loading-state inline text "Connecting to your server…" and "Checking sign-in method…" are live copy with no mockup coverage.** Lines 2441 and 2665 use Unicode HORIZONTAL ELLIPSIS (U+2026) correctly, but neither loading state is shown in any of the 11 mockup screens. The copy has never been reviewed against design. `LoginScreen.kt:2441, 2665`.
+
+- [ ] **LOGIN-MOCK-099 (Copy). Error banner strings "You're offline. Connect to sign in." and "Can't reach this server. Check the address." have no mockup backing.** The offline banner (line 2520) and unreachable-host banner (line 2548) render on the Credentials step. No mockup screen depicts either error state. Both are live copy unreviewed against design. `LoginScreen.kt:2520, 2548`.
+
+- [ ] **LOGIN-MOCK-100 (Copy). The ".bizarrecrm.com" suffix is rendered from `BuildConfig.BASE_DOMAIN` at runtime and is invisible to string-search tooling.** Mockup screens 01–06 show `.bizarrecrm.com` as an inline suffix on both the "Shop Name" and "Shop URL" fields. In code both render `".$CLOUD_DOMAIN"` where `CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` (line 110). The displayed string matches the mockup in production, but any `BASE_DOMAIN` rename in `build.gradle` silently breaks both fields with no compile error or test failure. Add a compile-time assertion or screenshot snapshot asserting `CLOUD_DOMAIN == "bizarrecrm.com"`. `LoginScreen.kt:110, 2209, 2308`.
+
+## Login-flow mockup parity wave — 2026-04-24
+
+### Wave-2 Finder-D pixel-spacing deltas
+
+- [ ] **LOGIN-MOCK-090 (Layout). Status-bar inset applied twice — wordmark pushed ~28 dp too far down.** `LoginScreen.kt:1858` applies `.statusBarsPadding()` to the root `Box` *and* also wraps it in `Scaffold { innerPadding -> Box(Modifier.padding(innerPadding)) }`. On most phones `Scaffold` with no `topBar` still delivers a non-zero `innerPadding.top` equal to the status-bar height when `WindowInsets` are consumed at the Scaffold level, so `statusBarsPadding()` on the child Box applies the same inset a second time. Net result: the wordmark sits ~28 dp (typical status-bar height) lower than the mockup. Fix: remove `.statusBarsPadding()` from the `Box` at line 1858 and rely solely on `innerPadding` from the Scaffold. Alternatively, pass `contentWindowInsets = WindowInsets(0)` to Scaffold so `innerPadding` is zeroed and the manual `.statusBarsPadding()` is the single source of truth.
+
+- [ ] **LOGIN-MOCK-091 (Layout). Hero top spacer 80 dp — mockup shows ~48 dp above wordmark.** `LoginScreen.kt:1869` `Spacer(Modifier.height(80.dp))` before the "Bizarre CRM" headline. In all mockups (screen-01, screen-07, screen-08) the distance from the top of the visible content area to the wordmark baseline is approximately 48 dp (measured as roughly one-fifth of the card-to-top space on a 392 dp tall viewport above the card). 80 dp leaves the upper ~40 % of the screen completely empty, making the layout feel top-heavy on smaller phones. Reduce to `48.dp`.
+
+- [ ] **LOGIN-MOCK-092 (Layout). Wave-divider-to-tab-strip gap too wide: 12 dp + wave height + 24 dp = ~52 dp; mockup shows ~16 dp.** `LoginScreen.kt:1884–1886`: `Spacer(12.dp)` → `WaveDivider()` → `Spacer(24.dp)` → `LoginTabBar(...)`. The wave SVG itself has intrinsic height (~8–12 dp depending on the path). Total vertical budget from subtitle baseline to tab top is therefore ~48–52 dp. The mockups (screen-01, screen-07, screen-08) show the wave sitting ~8 dp below the subtitle and the tab strip sitting ~8 dp below the wave — total ~28 dp including the wave path itself. Remediation: change `Spacer(Modifier.height(12.dp))` at line 1884 to `8.dp` and `Spacer(Modifier.height(24.dp))` at line 1886 to `8.dp`.
+
+- [ ] **LOGIN-MOCK-093 (Layout). Tab-strip-to-card gap 24 dp; mockup shows ~12 dp.** `LoginScreen.kt:1988` `Spacer(Modifier.height(24.dp))` sits between `LoginTabBar(...)` and the `AnimatedContent` Surface (the card). Every mockup (screen-01, screen-07, screen-09) shows the card top edge approximately 12 dp below the tab indicator underline, not 24 dp. Change to `Spacer(Modifier.height(12.dp))`.
+
+- [ ] **LOGIN-MOCK-094 (Layout). Register step: double-gap between first field's supporting text and second field.** `RegisterStep` (lines 2299–2317): `OutlinedTextField` for Shop URL has `supportingText` which M3 renders with 4 dp top padding and a minimum height of ~16 dp. After the field, the code also adds `Spacer(Modifier.height(16.dp))` at line 2317 before Shop Display Name. This produces a compound gap of ≈36 dp (supportingText + spacer). The mockup (screen-02, screen-04, screen-05) shows all inter-field distances equal at ~8 dp below the supporting text line. Fix: remove the explicit `Spacer(Modifier.height(16.dp))` at line 2317 and rely on the built-in M3 `supportingText` bottom clearance alone, or reduce the spacer to `4.dp`. Apply the same fix after the password field's supportingText before the error text block (line 2377 area): there is no spacer there, but the error text renders with no top margin, visually cramped. Add `Spacer(Modifier.height(4.dp))` before the error block and remove the `Spacer(Modifier.height(16.dp))` at line 2377, collapsing to a single `Spacer(Modifier.height(8.dp))` above the Create Shop button.
+
+- [ ] **LOGIN-MOCK-095 (Layout). Card internal padding 20 dp on all sides; mockup shows 24 dp horizontal / 20 dp vertical.** `LoginScreen.kt:2010` `Column(modifier = Modifier.padding(20.dp))` applies uniform 20 dp to all four sides of the card content. The mockups (screen-01, screen-09) show the heading text and field left edges sitting ~24 dp from the card edge (measured as slightly wider than the icon width ~20 dp + 4 dp gap). Change to `Modifier.padding(horizontal = 24.dp, vertical = 20.dp)` so field icons align with the card's 16 dp corner radius visual indent.
+
+- [ ] **LOGIN-MOCK-096 (Layout). Credentials step: header-block-to-username-field spacer 16 dp; mockup shows ~24 dp.** `CredentialsStep` line 2634: `Spacer(Modifier.height(16.dp))` between the back-arrow/title/store-name `Row` and the Username `OutlinedTextField`. The mockup (screen-09) shows a noticeably larger breathing space — approximately 24 dp — between the "Sign In / Testing 123 Shop" block and the Username field top border. The `Row` containing the `IconButton` has M3's default 40 dp minimum touch height, so the visual bottom of the store-name text is already ~8 dp above the Row bottom edge; combined with only 16 dp spacer this makes the gap feel compressed. Change `Spacer(Modifier.height(16.dp))` to `Spacer(Modifier.height(20.dp))` at line 2634.
+
+- [ ] **LOGIN-MOCK-097 (Layout). 2FA setup: QR container has zero internal padding — QR bleeds to box edge.** `TwoFaSetupStep` lines 2213–2234: `Box(Modifier.fillMaxWidth().height(200.dp))` directly contains the 200 dp `Image`. The box and image are the same dimension so the QR bitmap occupies the full box with no breathing room. Mockup (screen-10) shows the QR code centered inside a slightly inset region with ~8 dp white-space on all four sides between the QR quiet zone and the surrounding card surface. Fix: reduce the Image size to `180.dp` (or `min(containerWidth - 32.dp, 200.dp)`) and keep the Box at 200 dp; alternatively add `Modifier.padding(8.dp)` to the Image so the QR quiet zone is not flush with the Surface background.
+
+- [ ] **LOGIN-MOCK-098 (Layout). 2FA verify step: subtitle-to-TOTP-field gap is 24 dp; all other steps use 16 dp — inconsistent.** `TwoFaVerifyStep` line 3381: `Spacer(Modifier.height(24.dp))` between the subtitle text and `TotpCodeInputContent`. Every other step (ServerStep line 2177, RegisterStep line 2296, CredentialsStep line 2634, SetPasswordStep line 3113) uses `Spacer(Modifier.height(16.dp))` between subtitle and first field. The 24 dp spacer is an outlier that makes the verify card look taller than the others. Change to `Spacer(Modifier.height(16.dp))` at line 3381.
+
+- [ ] **LOGIN-MOCK-099 (Layout). ServerStep footer row has no bottom padding — card bottom is flush with card surface.** `ServerStep` ends with the `Row` of `TextButton` items ("Self-hosted?" / "Register new shop") at lines 2250–2265. There is no trailing `Spacer` after this row, so the card's 20 dp uniform padding provides the only bottom clearance. When `imePadding()` on the root Box lifts the entire Column to avoid the keyboard (screen-08), the bottom of the card lands visually flush with the `RoundedCornerShape(16.dp)` corner arc, and the footer text clips against the bottom arc at small viewport heights. Add `Spacer(Modifier.height(4.dp))` after the footer `Row` in `ServerStep` so the card bottom padding is a consistent 24 dp (20 dp card padding + 4 dp spacer). Apply the same fix to `RegisterStep` (no trailing spacer after the Create Shop button at line 2409) and `CredentialsStep` (no trailing spacer after the last TextButton block).
+
+- [ ] **LOGIN-MOCK-100 (Layout). Manual-key surface horizontal padding 12 dp / vertical 10 dp; mockup shows 16 dp / 12 dp.** `TwoFaSetupStep` line 3270: `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` on the `SelectionContainer` inside the manual-key `Surface`. The mockup (screen-10) shows the monospace key text with visibly wider side margins and slightly taller top/bottom margins. Change to `Modifier.padding(horizontal = 16.dp, vertical = 12.dp)` to match the 16 dp horizontal gutter used elsewhere in the card and provide a comfortable 12 dp vertical breathing room for the tall bodyLarge mono text.
+
 ---
 
 ## Login-flow mockup parity wave — 2026-04-24
@@ -5231,3 +5285,28 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 - [ ] **LOGIN-MOCK-217 (Security). Login screen content — including the live TOTP field and `BackupCodesDisplay`'s 10-code grid — is not suppressed on secondary/presentation displays, meaning a device casting to a Chromecast or connected via HDMI broadcasts the credentials form to anyone watching the external screen.** `MainActivity.kt:162-163`: `FLAG_SECURE` is set when `screenCapturePreventionEnabled` is true, which blocks screencap but does NOT prevent mirroring to an Android `Presentation` display — the `Presentation` API and `DisplayManager` bypass `FLAG_SECURE` on secondary outputs unless `FLAG_SECURE` is also set on the Presentation window explicitly. No `DisplayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)` check exists in the login flow. `BackupCodesDisplay.kt` is the highest-severity surface — backup codes visible on a conference-room TV is a direct credential exposure. Remediation: (a) in `MainActivity.onCreate`, register a `DisplayManager.DisplayListener`; when `onDisplayAdded` fires while the nav back-stack contains an auth screen, show a `Presentation` on the secondary display with a plain `Surface(color = Color.Black)` overlay (add `FLAG_SECURE` to its window) until the auth destination is exited; (b) alternatively, in `LoginScreen` and `BackupCodesDisplay`, add `window.addFlags(FLAG_SECURE)` unconditionally via `SideEffect` regardless of the user pref, and clear it in `DisposableEffect { onDispose { window.clearFlags(FLAG_SECURE) } }`. File: `MainActivity.kt:148-170`; `BackupCodesDisplay.kt:59-207`.
 
 - [ ] **LOGIN-MOCK-218 (UX). There is no Wear OS companion surface for authentication — the `android/` project has no `:wear` module, no `DataClient`/`MessageClient` dependency, and no `WEARABLE_CONFIGURATION` meta-data in `AndroidManifest.xml`. This is correct and intentional for v1.0 but should be explicitly documented as deferred to prevent it from surfacing as an accidental gap in future adaptive-layout audits.** `android/app/build.gradle.kts` (full file): no `com.google.android.wearable` or `androidx.wear.compose` dependency. `AndroidManifest.xml` (full file): no `<meta-data android:name="com.google.android.wearable.standalone">`. A Wear OS companion showing ticket-ready or incoming-call alerts would require a separate `:wear` Gradle module, `Wearable.DataClient` / `MessageClient` sync channel, Wear Compose UI, and a Wear-side auth-token derivation flow — non-trivial scope, correctly deferred. Remediation: no code change in this wave. Add to the §23 Foldable & Desktop-Mode Polish section: `[ ] Wear OS companion module (deferred post-v1.0) — separate :wear module, DataClient sync, Wear Compose auth surface, token derivation. Revisit if shop owners request wrist alerts for ticket-ready / incoming-call events.` File: `android/ActionPlan.md` §23 (documentation-only addition).
+- [ ] **LOGIN-MOCK-115 (Copy). Shop-URL field supporting text uses ASCII hyphen-minus (U+002D) "3–30 characters: letters, numbers, hyphens" but the mockup renders an en-dash (U+2013) between "3" and "30".** Code at `LoginScreen.kt:2313` and `LoginScreen.kt` search: `supportingText = { Text("3–30 characters: letters, numbers, hyphens") }` — the dash character in the string literal is the ASCII hyphen-minus U+002D (i.e. `"3-30 characters: letters, numbers, hyphens"`). Mockup screens 02, 03, 04, 05, 06 all show "3–30 characters: letters, numbers, hyphens" with a visually wider dash between "3" and "30" that is unambiguously an en-dash (U+2013). Fix: change the literal to `"3–30 characters: letters, numbers, hyphens"`. `LoginScreen.kt:2313`.
+
+- [ ] **LOGIN-MOCK-116 (Copy). "Register new shop" footer link is sentence-case; "Register New Shop" heading on the destination screen is title-case — same destination, two different capitalisation rules across a single tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — the mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02, 03, 04, 05, 06 confirm title-case there. The link and its destination heading are the same named action with conflicting capitalisation. Both cannot be correct simultaneously; the capitalization rule must be resolved and applied consistently. Code: link `"Register new shop"` at line 2262 vs heading `"Register New Shop"` at line 2283. No change is correct until design decides; flag for decision.
+
+- [ ] **LOGIN-MOCK-117 (Copy). "Create your repair shop on BizarreCRM" subtitle uses a closed compound "BizarreCRM" (no space) while the wordmark renders "Bizarre CRM" (with space) — inconsistent brand name form.** `RegisterStep` subtitle `LoginScreen.kt:2292`: `Text("Create your repair shop on BizarreCRM")`. Mockup screen-02 shows "Create your repair shop on BizarreCRM" — same closed form. However the app wordmark at `LoginScreen.kt:1871` is `"Bizarre CRM"` with a space, confirmed by all 11 mockup screens. Two different forms of the brand name ("Bizarre CRM" vs "BizarreCRM") coexist with no explicit style guide rationale. Verify which is authoritative in body copy vs the wordmark; if brand guidance mandates "Bizarre CRM" everywhere, fix line 2292.
+
+- [ ] **LOGIN-MOCK-118 (Copy). "Set Up Two-Factor Auth" heading uses Title Case with a terminal abbreviation "Auth" — no trailing period in mockup, code matches, but abbreviation vs full word "Authentication" is undocumented.** `TwoFaSetupStep` `LoginScreen.kt:3181`: `Text("Set Up Two-Factor Auth", ...)`. Mockup screen-10 shows "Set Up Two-Factor Auth" — matches. However `TwoFaVerifyStep` `LoginScreen.kt:3377` uses the *expanded* form `"Two-Factor Authentication"` for the verify-step heading. The same feature domain uses "Auth" (abbreviated) in the setup step and "Authentication" (full word) in the verify step. Decide on one canonical term for the 2FA step headings and apply it to both; current code has `"Set Up Two-Factor Auth"` at line 3181 vs `"Two-Factor Authentication"` at line 3377.
+
+- [ ] **LOGIN-MOCK-119 (Copy). 2FA verify step subtitle "Enter the 6-digit code from your authenticator app" differs in structure from the setup step subtitle "Scan this QR code with Google Authenticator or any TOTP app" — the verify step names a generic concept ("authenticator app") while setup names a specific product ("Google Authenticator").** `TwoFaVerifyStep` `LoginScreen.kt:3380`: `Text("Enter the 6-digit code from your authenticator app")`. `TwoFaSetupStep` `LoginScreen.kt:3184`: `Text("Scan this QR code with Google Authenticator or any TOTP app")`. Mockup screen-10 confirms the setup subtitle exactly. The verify step subtitle has no mockup backing and uses a different product-mention pattern. If the design intent is to name Google Authenticator on both steps for discoverability, the verify subtitle should read "Enter the 6-digit code from Google Authenticator or any TOTP app". Flag for design review.
+
+- [ ] **LOGIN-MOCK-120 (Copy). Loading button state on "Connect" shows only a spinner with no text; mockup loading state is absent from the screen set but the empty-loading pattern is inconsistent with other CTA states that carry in-progress copy.** `ServerStep` `LoginScreen.kt:2241–2244`: when `state.isLoading`, the Connect `Button` renders only `CircularProgressIndicator` with no accompanying text label. `CredentialsStep` passkey loading state at line 2842 renders `CircularProgressIndicator` + `Text("Signing in…")`. `MagicLinkRequestSheet` send button at line 2920 renders only a spinner. No mockup screen depicts a loading state for the Connect or Create Shop buttons, so there is no mockup source of truth. Recommend harmonising: either all loading CTAs show spinner-only or all show spinner + in-progress label. Currently there are three different patterns (spinner-only on Connect, spinner + text on passkey, spinner-only on magic-link send).
+
+- [ ] **LOGIN-MOCK-121 (Copy). "Connecting to your server…" probe-overlay text uses Unicode HORIZONTAL ELLIPSIS (U+2026) — correct — but the string `"Signing in…"` on the passkey loading state at line 2843 also uses U+2026 correctly. However `LoginScreen.kt:2146` renders `"Sign-in expires in $label"` with a plain ASCII hyphen-minus (U+002D) in "Sign-in". Verify whether the style guide calls for an en-dash, hyphen-minus, or space-hyphen-space in compound adjective "sign-in". The mockup does not show a countdown; copy unreviewed.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. The ASCII hyphen in "sign-in" is grammatically correct as a hyphenated compound modifier, but worth confirming it aligns with the style guide treatment of hyphenated terms elsewhere in the app. No mockup backs this string.
+
+- [ ] **LOGIN-MOCK-122 (Copy). "Origin header required" error shown in mockup screen-06 is a raw server-side message surfaced verbatim; no client-owned translation string exists.** `LoginScreen.kt:755–758`: `registerShop()` extracts the server error via `rJson.optString("message", "Registration failed")` and sets it as `state.error`. Screen-06 shows the red inline copy "Origin header required" below the Admin Password field — this is the exact server JSON `message` value echoed through to the UI. There is no client-side mapping of known server error codes to user-friendly strings. A server-phrasing change silently changes the displayed copy with no code review. Add a client-side map from known technical messages (e.g. `"Origin header required"`) to user-friendly alternatives (e.g. `"Unable to register — please contact support"`). `LoginScreen.kt:755–758`.
+
+- [ ] **LOGIN-MOCK-123 (Copy). Tab comment at `LoginScreen.kt:2031` explicitly describes the active indicator as "purple (#8B5CF6)" but the brand accent is cream (#FDEED0) — contradicts brand-color guide.** `LoginTabBar` Composable comment lines 2031–2032: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The brand colour guide mandates cream `#FDEED0` as the primary accent; purple appears in older mockups and was explicitly deprecated. The indicator tint is actually driven by `MaterialTheme.colorScheme.primary` at runtime (line 2044), so the rendered colour is correct if the theme is set up properly. The stale comment is a copy-fidelity risk: it misleads developers into hardcoding `#8B5CF6` when debugging. Update the comment to reference `MaterialTheme.colorScheme.primary` (cream on the cream theme). `LoginScreen.kt:2031`.
+
+- [ ] **LOGIN-MOCK-124 (Copy). Apostrophe in "You've been signed out" and "You're offline" uses a straight apostrophe (U+0027) — Kotlin string literals do not automatically smart-quote.** `LoginScreen.kt:1908`: `"You've been signed out. Sign back in to continue."` and `LoginScreen.kt:2520`: `"You're offline. Connect to sign in."` Both use straight apostrophe U+0027. Compose renders straight apostrophes on-screen. Many style guides require curly/typographic apostrophe U+2019. Mockup screens do not depict these error states, so no mockup source of truth exists. Confirm whether the copy style guide mandates U+2019; if so, update all apostrophised strings in `LoginScreen.kt` (`"You've"` line 1908, `"You're"` line 2520, `"Passwords don't match"` line 983, `"Can't undo"` in undo stack copy, `"We'll send"` line 2888, `"won't show again"` in backup codes, etc.).
+
+- [ ] **LOGIN-MOCK-125 (Copy). "Minimum 8 characters" supporting text on the Admin Password field is sentence-case with no trailing period — mockup screen-02 confirms the exact string; code matches but the field-label analogue "Shop URL" supporting text "3–30 characters…" is also lowercase with no period, creating a consistent pattern that should be documented.** `LoginScreen.kt:2362`: `supportingText = { Text("Minimum 8 characters") }`. Mockup screen-02 shows "Minimum 8 characters" — exact match. Both supporting-text strings ("3–30 characters: letters, numbers, hyphens" at line 2313 and "Minimum 8 characters" at line 2362) follow sentence-case, no trailing period, no capitalisation of the first word. This is the correct pattern and matches the mockup. Flagging as a confirmatory pass — no fix needed, but the style rule should be recorded in §67 (Copy & Content Style Guide) to prevent future regressions.
+
+- [ ] **LOGIN-MOCK-126 (Copy). "Sign-in timed out. Please start over." snackbar message and "View setup guide" informational TextButton have no mockup backing — copy is unreviewed.** `LoginScreen.kt:1764`: snackbar message `"Sign-in timed out. Please start over."`. `LoginScreen.kt:2491`: `Text("View setup guide")` inside the needs-setup banner. Neither string appears in any of the 11 mockup screens. Both are live UI copy delivered to real users with no design review. "Please start over." ends with a period — consistent with error-message convention but unconfirmed. "View setup guide" is sentence-case with no trailing period — consistent but unreviewed. Flag both for design sign-off on wording and punctuation.
+
+- [ ] **LOGIN-MOCK-127 (Copy). Extra UI strings with no mockup analog are present on the Credentials step and represent potential scope-creep copy that needs design review: "Sign in with SSO" (line 2757), "Choose your sign-in provider" (line 2765 sheet title), "Email me a link" (line 2811), "Sign in with a magic link" (line 2882 sheet title), "We'll send a one-time sign-in link to your email. The link expires in 15 minutes." (line 2888), "Use passkey" (line 2851), "Signing in…" (line 2843), "Send link" (line 2927), "Resend link" (line 2991), "Resend in ${cooldownSec}s" (line 2989).** None of these strings appear in any of the 11 mockup screens. All are gated on feature flags (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) but the copy itself has never been reviewed against a design mockup for tone, capitalisation, or punctuation. Each should receive a mockup frame or explicit copy-approval comment before shipping. `LoginScreen.kt:2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2989, 2991`.

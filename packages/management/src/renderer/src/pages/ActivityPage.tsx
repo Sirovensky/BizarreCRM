@@ -58,7 +58,7 @@ export function ActivityPage() {
         Activity
       </h1>
 
-      <div className="flex items-center gap-1 border-b border-surface-800 -mt-2">
+      <div role="tablist" aria-label="Activity sections" className="flex items-center gap-1 border-b border-surface-800 -mt-2">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = active === tab.id;
@@ -66,6 +66,10 @@ export function ActivityPage() {
           return (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`tabpanel-${tab.id}`}
+              id={`tab-${tab.id}`}
               onClick={() => setTab(tab.id)}
               className={`flex items-center gap-2 px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
                 isActive
@@ -85,7 +89,12 @@ export function ActivityPage() {
         })}
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div
+        role="tabpanel"
+        id={`tabpanel-${active}`}
+        aria-labelledby={`tab-${active}`}
+        className="flex-1 min-h-0"
+      >
         {active === 'alerts' && <SecurityAlertsPage />}
         {active === 'audit' && <AuditLogPage />}
         {active === 'sessions' && <SessionsPage />}

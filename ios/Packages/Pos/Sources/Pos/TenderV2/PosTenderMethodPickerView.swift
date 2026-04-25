@@ -57,11 +57,9 @@ public struct PosTenderMethodPickerView: View {
                     .padding(.top, BrandSpacing.lg)
                     .padding(.horizontal, BrandSpacing.base)
 
-                // Split hint (shown once a leg has been applied)
-                if coordinator.isSplit {
-                    splitHintRow
-                        .padding(.horizontal, BrandSpacing.base)
-                }
+                // Split hint — always visible (mockup spec)
+                splitHintRow
+                    .padding(.horizontal, BrandSpacing.base)
 
                 // Member-benefit banner (stub — Agent H wires real data)
                 if let tier = loyaltyTierLabel {
@@ -81,52 +79,56 @@ public struct PosTenderMethodPickerView: View {
 
     private var totalHeader: some View {
         VStack(spacing: BrandSpacing.xxs) {
-            if coordinator.isSplit {
-                Text("Remaining")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(theme.muted)
-            } else {
-                Text("Select payment method")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(theme.muted)
-            }
+            Text(coordinator.isSplit ? "Remaining" : "Due now")
+                .font(.brandLabelSmall())
+                .foregroundStyle(theme.muted)
+                .tracking(1.4)
+                .textCase(.uppercase)
             Text(CartMath.formatCents(coordinator.remaining))
-                .font(.brandDisplayMedium())
+                .font(.brandDisplayLarge())
                 .foregroundStyle(theme.on)
                 .monospacedDigit()
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .accessibilityIdentifier("pos.tenderV2.remaining")
         }
+        .multilineTextAlignment(.center)
     }
 
-    // MARK: - Split hint row
+    // MARK: - Split hint row (always visible — matches mockup 5a/4a)
 
     private var splitHintRow: some View {
         HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "creditcard.and.123")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(theme.teal)
-                .accessibilityHidden(true)
-            Text("Split tender — add another payment")
-                .font(.brandBodyMedium())
+            Text("⊕")
+                .font(.system(size: 15))
                 .foregroundStyle(theme.muted)
-            Spacer()
-            // Applied tenders count chip
-            Text("\(coordinator.appliedTenders.count) applied")
+                .accessibilityHidden(true)
+            Text(coordinator.isSplit
+                 ? "Split tender — pick another method for the remainder"
+                 : "Split tender — pick method, enter partial, then pick another")
                 .font(.brandLabelSmall())
-                .foregroundStyle(theme.onPrimary)
-                .padding(.horizontal, BrandSpacing.sm)
-                .padding(.vertical, BrandSpacing.xxs)
-                .background(theme.primary, in: Capsule())
+                .foregroundStyle(theme.muted)
+            if coordinator.isSplit {
+                Spacer()
+                Text("\(coordinator.appliedTenders.count) applied")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(theme.onPrimary)
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .background(theme.primary, in: Capsule())
+            }
         }
-        .padding(BrandSpacing.sm)
-        .background(theme.surfaceElev.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(theme.surfaceElev.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(theme.outline, lineWidth: 0.5)
+                .stroke(style: StrokeStyle(lineWidth: 0.8, dash: [4, 3]))
+                .foregroundStyle(theme.outline)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Split tender in progress. \(coordinator.appliedTenders.count) leg(s) applied. Remaining: \(CartMath.formatCents(coordinator.remaining)).")
+        .accessibilityLabel(coordinator.isSplit
+            ? "Split tender in progress. \(coordinator.appliedTenders.count) leg(s) applied. Remaining: \(CartMath.formatCents(coordinator.remaining))."
+            : "Split tender hint")
     }
 
     // MARK: - Member benefit banner
@@ -134,28 +136,43 @@ public struct PosTenderMethodPickerView: View {
     private func memberBenefitBanner(tier: String) -> some View {
         // Stub layout — Agent H replaces this with `MembershipBenefitBanner`.
         HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "star.circle.fill")
-                .foregroundStyle(theme.warning)
-                .font(.system(size: 18))
-                .accessibilityHidden(true)
+            // Star badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        LinearGradient(
+                            colors: [theme.primaryBright, theme.primary],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 38, height: 38)
+                    .shadow(color: theme.primary.opacity(0.3), radius: 6, y: 4)
+                Image(systemName: "star.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(theme.onPrimary)
+            }
+            .accessibilityHidden(true)
+            // Labels
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(tier)
+                Text("\(tier) member · benefits applied")
                     .font(.brandLabelLarge())
-                    .foregroundStyle(theme.on)
-                Text("Member benefits available")
+                    .foregroundStyle(theme.primary)
+                Text("Member discount applied · earning loyalty points")
                     .font(.brandLabelSmall())
                     .foregroundStyle(theme.muted)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding(BrandSpacing.md)
-        .background(theme.primarySoft, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, BrandSpacing.sm)
+        .padding(.horizontal, BrandSpacing.md)
+        .background(theme.primarySoft, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(theme.primary.opacity(0.3), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(theme.primary.opacity(0.35), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(tier) member. Benefits available at checkout.")
+        .accessibilityLabel("\(tier) member. Benefits applied at checkout.")
     }
 
     // MARK: - Method grid
@@ -192,7 +209,7 @@ private struct MethodTile: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: BrandSpacing.sm) {
+            VStack(spacing: BrandSpacing.xs) {
                 Image(systemName: method.systemImage)
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(iconColor)
@@ -201,12 +218,12 @@ private struct MethodTile: View {
                     .font(.brandLabelLarge())
                     .foregroundStyle(labelColor)
                     .multilineTextAlignment(.center)
-                if !method.isReady, let hint = method.notReadyHint {
-                    Text(hint)
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(theme.muted)
-                        .multilineTextAlignment(.center)
-                }
+                // Always show subtitle (mockup 5a/4a)
+                let subtitle = method.isReady ? method.tileSubtitle : (method.notReadyHint ?? method.tileSubtitle)
+                Text(subtitle)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(theme.muted)
+                    .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, BrandSpacing.lg)

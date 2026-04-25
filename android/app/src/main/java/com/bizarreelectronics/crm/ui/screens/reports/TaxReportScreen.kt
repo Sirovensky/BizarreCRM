@@ -52,6 +52,7 @@ fun TaxReportScreen(
                     ReportsExportActions(
                         reportTitle = "Tax_Report",
                         csvContent = { buildTaxCsv(taxRows, total) },
+                        printHtmlContent = { buildTaxHtml(taxRows, total) },
                     )
                 },
             )
@@ -135,4 +136,34 @@ private fun buildTaxCsv(rows: List<TaxRow>, total: String): String = buildString
     appendLine("Tax Class,Amount Collected")
     rows.forEach { appendLine("${it.label},${it.amount}") }
     appendLine("Total,$total")
+}
+
+private fun buildTaxHtml(rows: List<TaxRow>, total: String): String = buildString {
+    append("""
+        <html><head><meta charset="utf-8">
+        <style>
+          body{font-family:sans-serif;margin:24px;color:#1a1a1a}
+          h1{font-size:20px;margin-bottom:4px}
+          p.period{font-size:13px;color:#666;margin:0 0 16px}
+          table{width:100%;border-collapse:collapse;font-size:14px}
+          th{background:#2c2c2c;color:#fff;text-align:left;padding:8px 12px}
+          td{padding:8px 12px;border-bottom:1px solid #e0e0e0}
+          td.num{text-align:right}
+          tfoot td{font-weight:bold;border-top:2px solid #2c2c2c}
+        </style></head><body>
+        <h1>Tax Report — Bizarre Electronics</h1>
+        <p class="period">Exported ${java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(java.util.Date())}</p>
+        <table>
+          <thead><tr><th>Tax Class</th><th>Amount Collected</th></tr></thead>
+          <tbody>
+    """.trimIndent())
+    rows.forEach { row ->
+        append("<tr><td>${row.label}</td><td class=\"num\">${row.amount}</td></tr>")
+    }
+    append("""
+          </tbody>
+          <tfoot><tr><td>Total</td><td class="num">$total</td></tr></tfoot>
+        </table>
+        </body></html>
+    """.trimIndent())
 }

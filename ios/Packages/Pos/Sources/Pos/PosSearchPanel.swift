@@ -5,9 +5,12 @@ import DesignSystem
 import Inventory
 import Networking
 
-/// Item-picker column. Houses the search bar, the results list, and the
-/// "Add custom line" entry point. On iPhone this sits under the cart; on
-/// iPad it's the leading column of the split view.
+// MARK: - PosSearchPanel
+
+/// Item-picker column. Houses the search bar, category filter chips,
+/// a 2-column tile grid of results (matching mockup screen 2), and the
+/// "Add custom line" entry point. On iPhone this is the full catalog tab;
+/// on iPad it is the leading column of the register layout.
 struct PosSearchPanel: View {
     @Bindable var search: PosSearchViewModel
     let onPick: (InventoryListItem) -> Void
@@ -17,11 +20,16 @@ struct PosSearchPanel: View {
     var onCreateCustomer: (() -> Void)? = nil
     var onFindCustomer: (() -> Void)? = nil
 
+    /// IDs currently in the cart — drives the "In cart" badge on tiles.
+    var cartItemInventoryIds: Set<Int64> = []
+
     /// When set, the panel is waiting for results matching a scanned
-    /// barcode so it can auto-pick the first hit. Cleared as soon as
-    /// that pick fires or the results finish loading empty.
+    /// barcode so it can auto-pick the first hit.
     @State private var pendingScanCode: String?
     @State private var showingScanSheet: Bool = false
+
+    /// Active category filter — nil means "All" / "Matches" pseudo-chip.
+    @State private var activeCategory: String? = nil
 
     var body: some View {
         ZStack {
@@ -31,6 +39,7 @@ struct PosSearchPanel: View {
                     .padding(.horizontal, BrandSpacing.base)
                     .padding(.top, BrandSpacing.sm)
                     .padding(.bottom, BrandSpacing.xs)
+                filterChips
                 resultsContent
             }
         }
@@ -40,10 +49,6 @@ struct PosSearchPanel: View {
             }
         }
         .onChange(of: search.results) { _, newResults in
-            // When the scan-driven fetch lands, auto-add the first row
-            // and clear the pending flag. If the scan produced zero
-            // matches we still drop the flag so a stale code doesn't
-            // re-trigger on the next organic fetch.
             guard let scanCode = pendingScanCode, !search.isLoading else { return }
             _ = scanCode
             if let first = newResults.first {
@@ -63,11 +68,9 @@ struct PosSearchPanel: View {
         search.onQueryChange(trimmed)
     }
 
-    /// Prominent glass-styled search field. Tall 48pt minimum so thumb
-    /// accuracy is ok at the top of a larger-screen iPhone. Trailing
-    /// `barcode.viewfinder` button opens the §17.2 DataScannerViewController
-    /// sheet; on a matched payload we stuff the query and auto-add the
-    /// first search result to the cart.
+    // MARK: - Search field
+
+    /// Prominent glass-styled search field. 48pt minimum thumb-friendly height.
     private var searchField: some View {
         HStack(spacing: BrandSpacing.sm) {
             Image(systemName: "magnifyingglass")
@@ -108,6 +111,61 @@ struct PosSearchPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
     }
 
+    // MARK: - Filter chips (mockup: chip-row / items-filters)
+
+    @ViewBuilder
+    private var filterChips: some View {
+        // Build chip labels: first chip is "Matches · N" when results exist, else "All"
+        let categories = derivedCategories
+        if !categories.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // "All / Matches" chip
+                    let matchLabel = search.results.isEmpty
+                        ? "All"
+                        : (search.query.isEmpty ? "All" : "Matches · \(search.results.count)")
+                    PosFilterChip(
+                        label: matchLabel,
+                        isActive: activeCategory == nil
+                    ) {
+                        activeCategory = nil
+                    }
+                    ForEach(categories, id: \.self) { cat in
+                        PosFilterChip(
+                            label: cat,
+                            isActive: activeCategory == cat
+                        ) {
+                            activeCategory = cat
+                        }
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, 10)
+            }
+        }
+    }
+
+    /// Derive category labels from search results using itemType as category.
+    private var derivedCategories: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for item in search.results {
+            if let cat = item.itemType, !cat.isEmpty, !seen.contains(cat) {
+                seen.insert(cat)
+                result.append(cat)
+            }
+        }
+        return result
+    }
+
+    /// Filter the results by active category (itemType).
+    private var filteredResults: [InventoryListItem] {
+        guard let cat = activeCategory else { return search.results }
+        return search.results.filter { $0.itemType == cat }
+    }
+
+    // MARK: - Results area
+
     @ViewBuilder
     private var resultsContent: some View {
         if search.isLoading {
@@ -134,73 +192,89 @@ struct PosSearchPanel: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if search.results.isEmpty {
-            // Empty state doubles as the POS home screen — feature scan +
-            // customer-attach + custom-line entry points so staff have
-            // somewhere to tap without scrolling through an error-looking
-            // placeholder.
-            ScrollView {
-                VStack(spacing: BrandSpacing.md) {
-                    Image(systemName: search.query.isEmpty ? "barcode.viewfinder" : "questionmark.folder")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .accessibilityHidden(true)
-                    Text(search.query.isEmpty ? "Start a sale" : "No matches")
-                        .font(.brandTitleMedium())
-                        .foregroundStyle(.bizarreOnSurface)
-                    if search.query.isEmpty {
-                        Text("Type a name, SKU, or barcode to add items. Attach a customer first to track history.")
-                            .font(.brandBodyMedium())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, BrandSpacing.lg)
-                    }
-
-                    if showsCustomerCTAs, search.query.isEmpty {
-                        customerCTAStack
-                            .padding(.top, BrandSpacing.sm)
-                    }
-
-                    Button {
-                        onAddCustom()
-                    } label: {
-                        Label("Add a custom line", systemImage: "plus.circle.fill")
-                            .font(.brandTitleSmall())
-                            .foregroundStyle(.bizarreOrange)
-                            .padding(.horizontal, BrandSpacing.base)
-                            .padding(.vertical, BrandSpacing.sm)
-                    }
-                    .buttonStyle(.plain)
-                    .hoverEffect(.highlight)
-                    .background(Color.bizarreSurface1, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5))
-                    .accessibilityIdentifier("pos.addCustomLine")
-                    .accessibilityLabel("Add a custom line to cart")
-                }
-                .padding(.top, BrandSpacing.xl)
-                .padding(.horizontal, BrandSpacing.base)
-                .frame(maxWidth: .infinity)
-            }
+            emptyOrHome
         } else {
-            List(search.results) { item in
-                Button {
-                    BrandHaptics.success()
-                    onPick(item)
-                } label: {
-                    PosSearchRow(item: item)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.highlight)
-                .listRowBackground(Color.bizarreSurface1)
-                .accessibilityLabel("Add \(item.displayName) to cart")
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            // 2-column tile grid (mockup: grid-template-columns: 1fr 1fr)
+            catalogGrid
         }
     }
 
-    /// Three-button customer-attach stack shown on the POS home screen
-    /// when no customer is attached yet. Matches desktop's walk-in /
-    /// find / create workflow so staff have an obvious starting point.
+    // MARK: - Catalog tile grid
+
+    private var catalogGrid: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
+                ForEach(filteredResults) { item in
+                    PosCatalogTile(
+                        item: item,
+                        isInCart: cartItemInventoryIds.contains(item.id)
+                    ) {
+                        BrandHaptics.success()
+                        onPick(item)
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, 4)
+            .padding(.bottom, BrandSpacing.xl)
+        }
+    }
+
+    // MARK: - Empty / home state
+
+    private var emptyOrHome: some View {
+        ScrollView {
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: search.query.isEmpty ? "barcode.viewfinder" : "questionmark.folder")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text(search.query.isEmpty ? "Start a sale" : "No matches")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                if search.query.isEmpty {
+                    Text("Type a name, SKU, or barcode to add items. Attach a customer first to track history.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, BrandSpacing.lg)
+                }
+
+                if showsCustomerCTAs, search.query.isEmpty {
+                    customerCTAStack
+                        .padding(.top, BrandSpacing.sm)
+                }
+
+                Button {
+                    onAddCustom()
+                } label: {
+                    Label("Add a custom line", systemImage: "plus.circle.fill")
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOrange)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .background(Color.bizarreSurface1, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5))
+                .accessibilityIdentifier("pos.addCustomLine")
+                .accessibilityLabel("Add a custom line to cart")
+            }
+            .padding(.top, BrandSpacing.xl)
+            .padding(.horizontal, BrandSpacing.base)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - Customer CTAs
+
     private var customerCTAStack: some View {
         VStack(spacing: BrandSpacing.sm) {
             if let onWalkIn {
@@ -272,8 +346,155 @@ struct PosSearchPanel: View {
     }
 }
 
-/// Result row in the POS picker — shows name + SKU + price. No stock
-/// colour coding at scaffold level; coming in §16.2.
+// MARK: - PosFilterChip
+
+/// Single category filter chip. Active state uses cream fill.
+struct PosFilterChip: View {
+    let label: String
+    let isActive: Bool
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isActive ? Color(hex: 0x2B1400) : .bizarreOnSurface)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    isActive
+                        ? Color(hex: 0xFDEED0)
+                        : Color.bizarreSurface2.opacity(0.6),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        isActive ? Color(hex: 0xFDEED0) : Color.bizarreOutline.opacity(0.9),
+                        lineWidth: 0.5
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel(label + (isActive ? ", selected" : ""))
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        .accessibilityIdentifier("pos.filter.\(label)")
+    }
+}
+
+// MARK: - PosCatalogTile (iPhone 2-col + iPad grid)
+
+/// Single catalog tile — 110pt min height, 2-column grid.
+/// Shows: "In cart" badge (top-right) · icon · name · price (cream) · stock count.
+/// Matches mockup .tile class exactly.
+struct PosCatalogTile: View {
+    let item: InventoryListItem
+    var isInCart: Bool = false
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack(alignment: .topTrailing) {
+                // Card body
+                VStack(alignment: .leading, spacing: 6) {
+                    // Icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.bizarreSurface2.opacity(0.6))
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(width: 34, height: 34)
+
+                    Text(item.displayName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+
+                    // Price + stock row (pinned to bottom)
+                    HStack(alignment: .lastTextBaseline) {
+                        if let cents = item.priceCents {
+                            // Cream/primary price — Barlow Condensed in mockup
+                            Text(CartMath.formatCents(cents))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color(hex: 0xFDEED0))
+                                .monospacedDigit()
+                        }
+                        Spacer()
+                        stockBadge
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, minHeight: 110, alignment: .leading)
+                .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(
+                            isInCart
+                                ? Color(hex: colorScheme == .dark ? 0xFDEED0 : 0xC2410C, alpha: colorScheme == .dark ? 0.35 : 0.30)
+                                : Color.bizarreOutline.opacity(0.4),
+                            lineWidth: isInCart ? 1 : 0.5
+                        )
+                )
+
+                // "In cart" badge — top-right corner
+                if isInCart {
+                    Text("In cart")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(Color(hex: 0x2B1400))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Color(hex: 0xFDEED0), in: Capsule())
+                        .padding(.top, 8)
+                        .padding(.trailing, 8)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel(
+            "\(item.displayName)\(isInCart ? ", in cart" : "")" +
+            (item.priceCents.map { ", \(CartMath.formatCents($0))" } ?? "")
+        )
+        .accessibilityAddTraits(isInCart ? [.isSelected] : [])
+        .accessibilityIdentifier("pos.catalogTile.\(item.id)")
+    }
+
+    @ViewBuilder
+    private var stockBadge: some View {
+        // InventoryListItem.inStock is the quantity on hand; nil = service/unknown
+        if let qty = item.inStock {
+            let isLow = item.isLowStock || qty <= 3
+            if isLow {
+                Text("\(qty) low")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color(hex: 0xE8A33D)) // warning
+            } else {
+                Text("\(qty)")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color(hex: 0x34C47E)) // success
+            }
+        } else {
+            // No stock field = service item
+            Text("Service")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(Color(hex: 0x34C47E))
+        }
+    }
+}
+
+// MARK: - PosSearchRow (list fallback, kept for reference)
+
+/// Result row in the POS picker — list style fallback (not used when grid is active).
 struct PosSearchRow: View {
     let item: InventoryListItem
 
@@ -295,12 +516,25 @@ struct PosSearchRow: View {
             if let cents = item.priceCents {
                 Text(CartMath.formatCents(cents))
                     .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
+                    .foregroundStyle(.bizarreOrange)
                     .monospacedDigit()
             }
         }
         .padding(.vertical, BrandSpacing.xs)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Color(hex:) helper
+
+private extension Color {
+    init(hex: Int, alpha: Double = 1) {
+        self.init(
+            red:   Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >>  8) & 0xFF) / 255,
+            blue:  Double((hex >>  0) & 0xFF) / 255,
+            opacity: alpha
+        )
     }
 }
 #endif

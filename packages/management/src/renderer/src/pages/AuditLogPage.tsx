@@ -85,7 +85,7 @@ export function AuditLogPage() {
               if (filtered.length === 0) { toast('Nothing to export'); return; }
               const csv = toCsv(
                 ['created_at', 'admin_username', 'action', 'details', 'ip_address'],
-                filtered as unknown as Record<string, unknown>[],
+                filtered,
               );
               const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
               downloadCsv(`audit-log-${stamp}.csv`, csv);

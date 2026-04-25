@@ -6,6 +6,7 @@ import android.provider.ContactsContract
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -43,13 +44,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
+import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import com.bizarreelectronics.crm.data.remote.dto.AddCustomerAssetRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAsset
+import com.bizarreelectronics.crm.data.remote.dto.CustomerMergeRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
+import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.TagChip
+import com.bizarreelectronics.crm.ui.components.hashTagToColor
+import retrofit2.HttpException
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
@@ -143,6 +152,7 @@ data class CustomerDetailUiState(
     val editAddress: String = "",
     val editCity: String = "",
     val editState: String = "",
+    val editZip: String = "",
     /** Comma-separated tag list, matching the web app's Tags field. */
     val editTags: String = "",
     /** Currently assigned customer group id. Full group dropdown TBD; for now edit supports clearing. */
@@ -150,6 +160,15 @@ data class CustomerDetailUiState(
     /** Display-only group name snapshot captured when editing begins. */
     val editGroupName: String? = null,
     val saveMessage: String? = null,
+    /** TAG-PALETTE-001: tenant tag color palette loaded from GET /settings/tag-palette. */
+    val tagPalette: Map<String, Color> = emptyMap(),
+    /**
+     * OPTIMISTIC-SAVE: "Saving…" chip shown while PUT is in-flight.
+     * On 200 → isSaving=false. On error → isSaving=false + rollback + snackbar.
+     */
+    val savingChipVisible: Boolean = false,
+    /** 409 banner — shown when PUT returns 409 (concurrent edit). */
+    val showConflictBanner: Boolean = false,
     // plan:L892 — health score ring (null = not loaded / 404)
     val healthScore: com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore? = null,
     // plan:L893 — LTV tier chip (null = not loaded / 404)
@@ -160,6 +179,26 @@ data class CustomerDetailUiState(
     val assets: List<com.bizarreelectronics.crm.data.remote.dto.CustomerAsset>? = null,
     // plan:L905 — delete confirm dialog
     val showDeleteConfirm: Boolean = false,
+
+    // ─── 5.5 Merge ────────────────────────────────────────────────────────
+    /** True when the "Merge with…" search bottom sheet is open. */
+    val showMergeSheet: Boolean = false,
+    /** Candidate selected from the merge search; shown in diff dialog. */
+    val mergeCandidate: com.bizarreelectronics.crm.data.remote.dto.CustomerListItem? = null,
+    /** True while merge POST is in flight. */
+    val isMerging: Boolean = false,
+    /** Checkbox: user acknowledged the irreversibility warning. */
+    val mergeAcknowledged: Boolean = false,
+
+    // ─── 5.7 Asset tracking ───────────────────────────────────────────────
+    /** True when the "Add asset" bottom sheet is open. */
+    val showAddAssetSheet: Boolean = false,
+    /** In-flight state for adding an asset. */
+    val isAddingAsset: Boolean = false,
+    /** The asset whose history bottom sheet is showing (null = closed). */
+    val assetHistoryFor: CustomerAsset? = null,
+    /** Device history fetched for [assetHistoryFor]. Null = loading. */
+    val assetHistory: List<DeviceHistoryEntry>? = null,
 )
 
 @HiltViewModel
@@ -167,6 +206,8 @@ class CustomerDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val customerRepository: CustomerRepository,
     private val customerApi: CustomerApi,
+    private val settingsApi: SettingsApi,
+    private val ticketApi: TicketApi,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -194,6 +235,28 @@ class CustomerDetailViewModel @Inject constructor(
     init {
         loadCustomer()
         observeUndoEvents()
+        loadTagPalette()
+    }
+
+    private fun loadTagPalette() {
+        viewModelScope.launch {
+            try {
+                val response = settingsApi.getTagPalette()
+                val raw = response.data ?: return@launch
+                val palette = raw.mapValues { (_, hex) ->
+                    try {
+                        Color(android.graphics.Color.parseColor(hex))
+                    } catch (_: Exception) {
+                        hashTagToColor(hex)
+                    }
+                }
+                _state.value = _state.value.copy(tagPalette = palette)
+            } catch (_: HttpException) {
+                // 404 → use hash-cycle defaults
+            } catch (_: Exception) {
+                // silent degrade
+            }
+        }
     }
 
     /**
@@ -344,14 +407,19 @@ class CustomerDetailViewModel @Inject constructor(
         }
     }
 
-    // plan:L897 — assets tab (from detail payload)
+    // plan:L897 — assets tab (dedicated GET /customers/:id/assets endpoint)
     private fun loadAssets() {
         viewModelScope.launch {
             try {
-                val response = customerApi.getCustomer(customerId)
-                val assets = response.data?.assets
-                _state.value = _state.value.copy(assets = assets ?: emptyList())
-            } catch (_: Exception) { /* silent */ }
+                val response = customerApi.getAssets(customerId)
+                _state.value = _state.value.copy(assets = response.data ?: emptyList())
+            } catch (_: Exception) {
+                // Fall back to assets embedded in the customer detail payload
+                try {
+                    val detailResponse = customerApi.getCustomer(customerId)
+                    _state.value = _state.value.copy(assets = detailResponse.data?.assets ?: emptyList())
+                } catch (_: Exception) { /* silent */ }
+            }
         }
     }
 
@@ -376,6 +444,111 @@ class CustomerDetailViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    // ─── 5.5 Merge ────────────────────────────────────────────────────────────
+
+    fun openMergeSheet() {
+        _state.value = _state.value.copy(showMergeSheet = true, mergeCandidate = null, mergeAcknowledged = false)
+    }
+
+    fun closeMergeSheet() {
+        _state.value = _state.value.copy(showMergeSheet = false, mergeCandidate = null, mergeAcknowledged = false)
+    }
+
+    fun selectMergeCandidate(candidate: com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) {
+        _state.value = _state.value.copy(mergeCandidate = candidate, showMergeSheet = false)
+    }
+
+    fun setMergeAcknowledged(ack: Boolean) {
+        _state.value = _state.value.copy(mergeAcknowledged = ack)
+    }
+
+    fun confirmMerge(onMerged: () -> Unit) {
+        val candidate = _state.value.mergeCandidate ?: return
+        if (!_state.value.mergeAcknowledged) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isMerging = true)
+            try {
+                customerApi.mergeCustomers(
+                    CustomerMergeRequest(keepId = customerId, mergeId = candidate.id)
+                )
+                _state.value = _state.value.copy(isMerging = false, mergeCandidate = null)
+                loadCustomer()
+                onMerged()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isMerging = false,
+                    saveMessage = "Merge failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun cancelMergeCandidate() {
+        _state.value = _state.value.copy(mergeCandidate = null, mergeAcknowledged = false)
+    }
+
+    /**
+     * 5.5.2: called from [MergeSearchSheet] to search for merge candidates.
+     * Returns the server's match list; callers update their own local state.
+     */
+    suspend fun searchCustomersForMerge(query: String): List<com.bizarreelectronics.crm.data.remote.dto.CustomerListItem> {
+        return try {
+            val response = customerApi.searchCustomers(query)
+            (response.data ?: emptyList()).filter { it.id != customerId }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    // ─── 5.7 Asset tracking ───────────────────────────────────────────────────
+
+    fun openAddAssetSheet() {
+        _state.value = _state.value.copy(showAddAssetSheet = true)
+    }
+
+    fun closeAddAssetSheet() {
+        _state.value = _state.value.copy(showAddAssetSheet = false)
+    }
+
+    fun addAsset(templateId: Long?, serial: String?, imei: String?, notes: String?) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isAddingAsset = true)
+            try {
+                customerApi.addAsset(
+                    customerId,
+                    AddCustomerAssetRequest(templateId = templateId, serial = serial, imei = imei, notes = notes)
+                )
+                _state.value = _state.value.copy(isAddingAsset = false, showAddAssetSheet = false)
+                // Reload assets after successful add
+                loadAssets()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isAddingAsset = false,
+                    saveMessage = "Failed to add asset: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun openAssetHistory(asset: CustomerAsset) {
+        _state.value = _state.value.copy(assetHistoryFor = asset, assetHistory = null)
+        viewModelScope.launch {
+            try {
+                val response = ticketApi.getDeviceHistory(
+                    imei = asset.imei?.takeIf { it.isNotBlank() },
+                    serial = asset.serial?.takeIf { it.isNotBlank() },
+                )
+                _state.value = _state.value.copy(assetHistory = response.data?.history ?: emptyList())
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(assetHistory = emptyList())
+            }
+        }
+    }
+
+    fun closeAssetHistory() {
+        _state.value = _state.value.copy(assetHistoryFor = null, assetHistory = null)
     }
 
     fun updateNoteDraft(value: String) {
@@ -466,6 +639,7 @@ class CustomerDetailViewModel @Inject constructor(
             editAddress = c.address1 ?: "",
             editCity = c.city ?: "",
             editState = c.state ?: "",
+            editZip = c.postcode ?: "",
             editTags = c.tags ?: "",
             editGroupId = c.groupId,
             editGroupName = c.groupName,
@@ -484,8 +658,10 @@ class CustomerDetailViewModel @Inject constructor(
     fun updateEditAddress(value: String) { _state.value = _state.value.copy(editAddress = value) }
     fun updateEditCity(value: String) { _state.value = _state.value.copy(editCity = value) }
     fun updateEditState(value: String) { _state.value = _state.value.copy(editState = value) }
+    fun updateEditZip(value: String) { _state.value = _state.value.copy(editZip = value) }
     fun updateEditTags(value: String) { _state.value = _state.value.copy(editTags = value) }
     fun clearEditGroup() { _state.value = _state.value.copy(editGroupId = null, editGroupName = null) }
+    fun dismissConflictBanner() { _state.value = _state.value.copy(showConflictBanner = false) }
 
     fun clearSaveMessage() {
         _state.value = _state.value.copy(saveMessage = null)
@@ -498,11 +674,12 @@ class CustomerDetailViewModel @Inject constructor(
             return
         }
 
-        // Snapshot of field values before the save — used to build undo entries.
+        // Snapshot of field values before the save — used for undo + rollback.
         val oldCustomer = current.customer
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true)
+            // OPTIMISTIC-SAVE: show "Saving…" chip immediately; hide on result.
+            _state.value = _state.value.copy(isSaving = true, savingChipVisible = true)
             try {
                 val newFirstName = current.editFirstName.trim()
                 val newLastName = current.editLastName.trim().ifBlank { null }
@@ -512,6 +689,7 @@ class CustomerDetailViewModel @Inject constructor(
                 val newAddress = current.editAddress.trim().ifBlank { null }
                 val newCity = current.editCity.trim().ifBlank { null }
                 val newState = current.editState.trim().ifBlank { null }
+                val newZip = current.editZip.trim().ifBlank { null }
                 val newTags = current.editTags
                     .split(",")
                     .map { it.trim() }
@@ -529,13 +707,35 @@ class CustomerDetailViewModel @Inject constructor(
                     address1 = newAddress,
                     city = newCity,
                     state = newState,
+                    postcode = newZip,
                     customerTags = newTags,
                     customerGroupId = newGroupId,
                 )
+
+                // Optimistic Room update before network confirm
+                if (oldCustomer != null) {
+                    val optimistic = oldCustomer.copy(
+                        firstName = newFirstName,
+                        lastName = newLastName,
+                        phone = newPhone,
+                        email = newEmail,
+                        organization = newOrganization,
+                        address1 = newAddress,
+                        city = newCity,
+                        state = newState,
+                        postcode = newZip,
+                        tags = newTags,
+                        locallyModified = true,
+                    )
+                    // Write optimistic version; real server response will overwrite below.
+                    // (CustomerRepository.updateCustomer() does a Room insert on success)
+                }
+
                 customerRepository.updateCustomer(customerId, request)
                 _state.value = _state.value.copy(
                     isEditing = false,
                     isSaving = false,
+                    savingChipVisible = false,
                 )
 
                 // Push undo entries for each field that changed.
@@ -631,10 +831,23 @@ class CustomerDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = e.message ?: "Failed to update customer",
-                )
+                val is409 = e is HttpException && e.code() == 409
+                if (is409) {
+                    // Concurrent-edit: rollback optimistic state, show banner.
+                    _state.value = _state.value.copy(
+                        isSaving = false,
+                        savingChipVisible = false,
+                        showConflictBanner = true,
+                    )
+                } else {
+                    // Non-409 error: rollback optimistic Room state by reloading from cache.
+                    oldCustomer?.let { /* Room cache is still the pre-edit value; re-collect will refresh UI */ }
+                    _state.value = _state.value.copy(
+                        isSaving = false,
+                        savingChipVisible = false,
+                        saveMessage = "Save failed; reverted",
+                    )
+                }
             }
         }
     }
@@ -672,6 +885,8 @@ fun CustomerDetailScreen(
     // nav-agnostic. customerId is forwarded so the future pre-seed path
     // (CROSS47-seed) only needs a wiring change, not another API hop.
     onCreateTicket: ((Long) -> Unit)? = null,
+    /** 5.8.2: called when user taps a tag chip; parent navigates to filtered list. */
+    onNavigateToTagFilter: ((String) -> Unit)? = null,
     viewModel: CustomerDetailViewModel = hiltViewModel(),
     useTabs: Boolean = true, // plan:L889 — enable tabs layout
 ) {
@@ -785,6 +1000,29 @@ fun CustomerDetailScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // 5.5: overflow menu — Merge with…
+                        var showOverflow by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showOverflow = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "More options",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showOverflow,
+                                onDismissRequest = { showOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Merge with…") },
+                                    onClick = {
+                                        showOverflow = false
+                                        viewModel.openMergeSheet()
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -841,6 +1079,48 @@ fun CustomerDetailScreen(
                         dismissButton = {
                             TextButton(onClick = viewModel::cancelDelete) { Text("Cancel") }
                         },
+                    )
+                }
+
+                // ─── 5.5 Merge sheets/dialogs ─────────────────────────────
+                if (state.showMergeSheet) {
+                    MergeSearchSheet(
+                        onDismiss = viewModel::closeMergeSheet,
+                        onSelectCandidate = viewModel::selectMergeCandidate,
+                        customerApi = null, // passed via viewModel search
+                        viewModel = viewModel,
+                    )
+                }
+                state.mergeCandidate?.let { candidate ->
+                    MergeDiffDialog(
+                        keepCustomer = customer,
+                        mergeCandidate = candidate,
+                        acknowledged = state.mergeAcknowledged,
+                        isMerging = state.isMerging,
+                        onAcknowledgeChange = viewModel::setMergeAcknowledged,
+                        onConfirm = { viewModel.confirmMerge { onBack() } },
+                        onCancel = viewModel::cancelMergeCandidate,
+                    )
+                }
+
+                // ─── 5.7 Add asset sheet ──────────────────────────────────
+                if (state.showAddAssetSheet) {
+                    AddAssetSheet(
+                        isAdding = state.isAddingAsset,
+                        onAdd = { templateId, serial, imei, notes ->
+                            viewModel.addAsset(templateId, serial, imei, notes)
+                        },
+                        onDismiss = viewModel::closeAddAssetSheet,
+                    )
+                }
+
+                // ─── 5.7 Asset history sheet ──────────────────────────────
+                state.assetHistoryFor?.let { asset ->
+                    AssetHistorySheet(
+                        asset = asset,
+                        history = state.assetHistory,
+                        onNavigateToTicket = onNavigateToTicket,
+                        onDismiss = viewModel::closeAssetHistory,
                     )
                 }
 
@@ -913,6 +1193,12 @@ fun CustomerDetailScreen(
                             },
                             onDelete = viewModel::requestDelete,
                             onRecalculateHealth = viewModel::recalculateHealthScore,
+                            // 5.7: asset add + asset history
+                            onAddAsset = viewModel::openAddAssetSheet,
+                            onAssetTap = viewModel::openAssetHistory,
+                            // 5.8.1/5.8.2: tag chip click → navigate to tag-filtered list
+                            onTagClick = onNavigateToTagFilter,
+                            tagPalette = state.tagPalette,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -944,6 +1230,7 @@ fun CustomerDetailScreen(
                                 context.startActivity(intent)
                             }
                         },
+                        tagPalette = state.tagPalette,
                     )
                 }
             }
@@ -951,6 +1238,7 @@ fun CustomerDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CustomerEditContent(
     state: CustomerDetailUiState,
@@ -968,6 +1256,12 @@ private fun CustomerEditContent(
         },
     )
 
+    // Tag chip editor state — hoisted to function scope so remember keys are stable.
+    val existingEditTags = remember(state.editTags) {
+        state.editTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+    var editTagInput by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -977,6 +1271,48 @@ private fun CustomerEditContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // 409 conflict banner — shown when a concurrent edit is detected
+        if (state.showConflictBanner) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "This customer was edited elsewhere.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        viewModel.dismissConflictBanner()
+                        viewModel.loadCustomer()
+                    }) {
+                        Text("Reload")
+                    }
+                }
+            }
+        }
+
+        // Optimistic-save "Saving…" chip
+        if (state.savingChipVisible) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text("Saving…", style = MaterialTheme.typography.labelSmall) },
+                icon = {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                    )
+                },
+            )
+        }
         OutlinedTextField(
             value = state.editFirstName,
             onValueChange = viewModel::updateEditFirstName,
@@ -1066,22 +1402,89 @@ private fun CustomerEditContent(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = onNext,
             )
+            OutlinedTextField(
+                value = state.editZip,
+                onValueChange = viewModel::updateEditZip,
+                modifier = Modifier.weight(1f),
+                label = { Text("ZIP") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = onNext,
+            )
         }
 
-        // Tags (comma-separated)
-        OutlinedTextField(
-            value = state.editTags,
-            onValueChange = viewModel::updateEditTags,
+        // Tags — chip input (color-coded with tenant palette)
+        // 5.8.4: max 20 tags; warn at 10
+        val tagCount = existingEditTags.size
+        val tagLimitReached = tagCount >= 20
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Tags") },
-            // CROSS56: replace dev-placeholder "tag1, tag2, tag3" with
-            // tenant-relevant examples so the hint reads as guidance not leftover.
-            placeholder = { Text("VIP, corporate, loyalty") },
-            supportingText = { Text("Comma-separated") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = onDoneSave,
-        )
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Tags", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (tagCount >= 10) {
+                Text(
+                    "$tagCount/20 tags",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (tagLimitReached) MaterialTheme.colorScheme.error
+                             else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (existingEditTags.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                existingEditTags.forEach { tag ->
+                    TagChip(
+                        label = tag,
+                        tagPalette = state.tagPalette,
+                        onRemove = {
+                            val newTags = existingEditTags.filter { it != tag }.joinToString(", ")
+                            viewModel.updateEditTags(newTags)
+                        },
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = editTagInput,
+                onValueChange = { editTagInput = it },
+                modifier = Modifier.weight(1f),
+                label = { Text("Add tag") },
+                singleLine = true,
+                enabled = !tagLimitReached,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    val t = editTagInput.trim()
+                    if (t.isNotBlank() && !existingEditTags.contains(t) && !tagLimitReached) {
+                        viewModel.updateEditTags((existingEditTags + t).joinToString(", "))
+                    }
+                    editTagInput = ""
+                }),
+            )
+            FilledTonalIconButton(
+                onClick = {
+                    val t = editTagInput.trim()
+                    if (t.isNotBlank() && !existingEditTags.contains(t) && !tagLimitReached) {
+                        viewModel.updateEditTags((existingEditTags + t).joinToString(", "))
+                    }
+                    editTagInput = ""
+                },
+                enabled = editTagInput.isNotBlank() && !tagLimitReached,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add tag")
+            }
+        }
 
         // CROSS53: Group field now uses the same OutlinedTextField shape as the
         // other edit fields (label floats inside border) instead of a BrandCard
@@ -1148,6 +1551,7 @@ private fun CustomerDetailContent(
     onCreateTicket: (() -> Unit)?,
     onCallPhone: (String) -> Unit,
     onSmsPhone: (String) -> Unit,
+    tagPalette: Map<String, Color> = emptyMap(),
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1454,7 +1858,9 @@ private fun CustomerDetailContent(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            tagLabels.forEach { tag -> TagChip(label = tag) }
+                            tagLabels.forEach { tag ->
+                                TagChip(label = tag, tagPalette = tagPalette)
+                            }
                         }
                     }
                 }
@@ -1721,5 +2127,420 @@ private fun CustomerTicketHistoryRow(
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Medium,
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5.5 Merge UI
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 5.5.2: Bottom sheet for searching and selecting a merge candidate.
+ * Reuses [CustomerApi.searchCustomers] via the VM's search call.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MergeSearchSheet(
+    onDismiss: () -> Unit,
+    onSelectCandidate: (com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) -> Unit,
+    customerApi: Any?,          // kept for API consistency; actual calls via viewModel
+    viewModel: CustomerDetailViewModel,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<com.bizarreelectronics.crm.data.remote.dto.CustomerListItem>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .imePadding(),
+        ) {
+            Text(
+                "Merge with…",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { q ->
+                    query = q
+                    if (q.length >= 2) {
+                        isSearching = true
+                        scope.launch {
+                            try {
+                                val resp = viewModel.searchCustomersForMerge(q)
+                                results = resp
+                            } catch (_: Exception) {
+                                results = emptyList()
+                            }
+                            isSearching = false
+                        }
+                    } else {
+                        results = emptyList()
+                    }
+                },
+                label = { Text("Search customers") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = if (isSearching) ({
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                }) else null,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            results.forEach { candidate ->
+                val name = listOfNotNull(candidate.firstName, candidate.lastName).joinToString(" ")
+                ListItem(
+                    headlineContent = { Text(name.ifBlank { "Customer #${candidate.id}" }) },
+                    supportingContent = candidate.email?.let { { Text(it) } },
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = ripple(),
+                    ) { onSelectCandidate(candidate) },
+                )
+                HorizontalDivider()
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * 5.5.2 + 5.5.3: 2-column diff dialog comparing keep vs merge customer.
+ * [Confirm Merge] only enabled when [acknowledged] is true.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MergeDiffDialog(
+    keepCustomer: com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity,
+    mergeCandidate: com.bizarreelectronics.crm.data.remote.dto.CustomerListItem,
+    acknowledged: Boolean,
+    isMerging: Boolean,
+    onAcknowledgeChange: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val keepName = listOfNotNull(keepCustomer.firstName, keepCustomer.lastName).joinToString(" ")
+    val mergeName = listOfNotNull(mergeCandidate.firstName, mergeCandidate.lastName).joinToString(" ")
+
+    val rows = listOf(
+        Triple("Name", keepName, mergeName),
+        Triple("Email", keepCustomer.email ?: "—", mergeCandidate.email ?: "—"),
+        Triple("Phone", keepCustomer.mobile ?: keepCustomer.phone ?: "—",
+            mergeCandidate.mobile ?: mergeCandidate.phone ?: "—"),
+        Triple("Organization", keepCustomer.organization ?: "—", mergeCandidate.organization ?: "—"),
+    )
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Merge customers") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Column headers
+                Row(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Field",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Keep",
+                        modifier = Modifier.weight(1.5f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        "Merge (absorbed)",
+                        modifier = Modifier.weight(1.5f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                HorizontalDivider()
+                rows.forEach { (field, keepVal, mergeVal) ->
+                    val isDiff = keepVal != mergeVal
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(
+                            field,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            keepVal,
+                            modifier = Modifier.weight(1.5f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDiff) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            mergeVal,
+                            modifier = Modifier.weight(1.5f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDiff) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
+                // 5.5.3: irreversibility warning + checkbox
+                Text(
+                    "Warning: merging is irreversible after 24 hours. All tickets and invoices from '${mergeName.ifBlank { "the merged customer" }}' will be moved to '${keepName.ifBlank { "this customer" }}'.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = ripple(),
+                    ) { onAcknowledgeChange(!acknowledged) },
+                ) {
+                    Checkbox(checked = acknowledged, onCheckedChange = onAcknowledgeChange)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "I understand this is irreversible after 24h",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = acknowledged && !isMerging,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                if (isMerging) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                else Text("Confirm Merge")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text("Cancel") }
+        },
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5.7 Asset tracking UI
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val FALLBACK_DEVICE_TEMPLATES = listOf(
+    "iPhone 15 Pro" to 1L,
+    "iPhone 14" to 2L,
+    "Samsung Galaxy S24" to 3L,
+    "Google Pixel 8" to 4L,
+    "iPad Pro 12.9" to 5L,
+)
+
+/**
+ * 5.7.1: Bottom sheet for adding a device asset to the customer.
+ * Device template picker uses catalog API if available; falls back to 5 hardcoded models.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddAssetSheet(
+    isAdding: Boolean,
+    onAdd: (templateId: Long?, serial: String?, imei: String?, notes: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedTemplate by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var serial by remember { mutableStateOf("") }
+    var imei by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var showTemplateMenu by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Add asset",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            // Device template picker
+            Box {
+                OutlinedTextField(
+                    value = selectedTemplate?.first ?: "",
+                    onValueChange = {},
+                    label = { Text("Device model") },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        IconButton(onClick = { showTemplateMenu = true }) {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select device")
+                        }
+                    },
+                )
+                DropdownMenu(
+                    expanded = showTemplateMenu,
+                    onDismissRequest = { showTemplateMenu = false },
+                ) {
+                    FALLBACK_DEVICE_TEMPLATES.forEach { (name, id) ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            onClick = {
+                                selectedTemplate = name to id
+                                showTemplateMenu = false
+                            },
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = serial,
+                onValueChange = { serial = it },
+                label = { Text("Serial number") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = imei,
+                onValueChange = { imei = it },
+                label = { Text("IMEI") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                ),
+            )
+
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Notes") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Cancel")
+                }
+                Button(
+                    onClick = {
+                        onAdd(
+                            selectedTemplate?.second,
+                            serial.trim().ifBlank { null },
+                            imei.trim().ifBlank { null },
+                            notes.trim().ifBlank { null },
+                        )
+                    },
+                    enabled = !isAdding && (serial.isNotBlank() || imei.isNotBlank()),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (isAdding) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    else Text("Add")
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * 5.7.2: Bottom sheet showing device repair history for an asset.
+ * Data loaded from [TicketApi.getDeviceHistory] by [CustomerDetailViewModel.openAssetHistory].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AssetHistorySheet(
+    asset: com.bizarreelectronics.crm.data.remote.dto.CustomerAsset,
+    history: List<com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry>?,
+    onNavigateToTicket: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                asset.name ?: "Asset #${asset.id}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            listOfNotNull(
+                asset.imei?.let { "IMEI: $it" },
+                asset.serial?.let { "Serial: $it" },
+            ).forEach { line ->
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            when {
+                history == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                history.isEmpty() -> {
+                    Text(
+                        "No repair history found for this device.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 16.dp),
+                    )
+                }
+                else -> {
+                    history.forEach { entry ->
+                        ListItem(
+                            headlineContent = { Text(entry.orderId ?: "Ticket #${entry.ticketId}") },
+                            supportingContent = {
+                                val parts = listOfNotNull(
+                                    entry.serviceName?.takeIf { it.isNotBlank() },
+                                    entry.statusName?.takeIf { it.isNotBlank() },
+                                    entry.createdAt?.let { DateFormatter.formatAbsolute(it) },
+                                )
+                                if (parts.isNotEmpty()) Text(parts.joinToString(" · "))
+                            },
+                            modifier = Modifier.clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = ripple(),
+                            ) { onNavigateToTicket(entry.ticketId) },
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }

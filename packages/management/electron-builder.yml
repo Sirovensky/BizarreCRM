@@ -94,8 +94,11 @@ directories:
   output: release
   buildResources: assets
 
+asar: true
+
 files:
   - dist/**/*
+  - "!dist/**/*.map"
   - node_modules/**/*
   - "!node_modules/**/*.map"
   - "!node_modules/**/*.md"
@@ -104,23 +107,21 @@ files:
   - "!node_modules/**/.github/**"
 
 extraResources:
+  # DASH-ELEC-042: removed packages/server/src/**, packages/web/src/**,
+  # packages/shared/src/** — raw TypeScript source inflated the installer with
+  # un-needed TSX. Server and web only need their compiled dist/ output at
+  # runtime. packages/shared is now limited to dist/ + package.json only.
   - from: ../../
     to: crm-source
     filter:
-      - packages/server/src/**
       - packages/server/dist/**
       - packages/server/certs/**
       - packages/server/package.json
       - packages/server/tsconfig.json
-      - packages/web/src/**
       - packages/web/dist/**
       - packages/web/package.json
-      - packages/web/tsconfig.json
-      - packages/web/vite.config.ts
-      - packages/web/tailwind.config.ts
-      - packages/web/postcss.config.js
-      - packages/web/index.html
-      - packages/shared/**
+      - packages/shared/dist/**
+      - packages/shared/package.json
       - package.json
       - package-lock.json
       - tsconfig.base.json

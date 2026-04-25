@@ -75,6 +75,16 @@ interface AuthApi {
     @POST("auth/device-token")
     suspend fun registerDeviceToken(@Body body: Map<String, String>): ApiResponse<Unit>
 
+    // §13.2 — unregister a device token on logout.
+    // Server removes its record so no further push messages are routed to this
+    // installation after the session ends.  Token is passed as a query param so
+    // DELETE has no request body (REST convention; avoids body-less DELETE quirks
+    // in some reverse proxies).
+    @DELETE("auth/device-token")
+    suspend fun deleteDeviceToken(
+        @retrofit2.http.Query("token") token: String,
+    ): ApiResponse<Unit>
+
     // U6 fix: profile-screen password and PIN changes. The server endpoints
     // may or may not yet exist under these exact paths (an audit task to add
     // them is tracked server-side). Body shape matches the other auth endpoints

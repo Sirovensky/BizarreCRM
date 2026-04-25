@@ -69,8 +69,18 @@ export function ResetPasswordPage() {
         navigate('/login', { replace: true });
       }, 3000);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } } | undefined;
-      setError(e?.response?.data?.message || 'Failed to reset password. The link may have expired.');
+      // SEC-WEB-FA-005: avoid revealing whether the token was valid, expired,
+      // or otherwise malformed. A generic message keeps probing attackers
+      // from distinguishing failure modes via UX text.
+      const e = err as { response?: { status?: number; data?: { message?: string } } } | undefined;
+      const status = e?.response?.status;
+      // Surface server-provided message ONLY for explicit validation errors
+      // (400) where the server already controls disclosure; otherwise stay
+      // generic.
+      const msg = status === 400 && e?.response?.data?.message
+        ? e.response.data.message
+        : 'Failed to reset password. Please request a new reset link.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

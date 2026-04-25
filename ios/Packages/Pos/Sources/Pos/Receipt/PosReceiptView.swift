@@ -42,8 +42,8 @@ public struct PosReceiptView: View {
     /// the transaction settles.
     public let paidAt: Date
 
-    @State private var showReceiptPreview: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     public init(
         vm: PosReceiptViewModel,
@@ -61,9 +61,6 @@ public struct PosReceiptView: View {
             scrollBody
         }
         .sensoryFeedback(.success, trigger: paidAt)
-        .sheet(isPresented: $showReceiptPreview) {
-            receiptPreviewSheet
-        }
         .accessibilityIdentifier("pos.receipt.root")
     }
 
@@ -71,50 +68,127 @@ public struct PosReceiptView: View {
 
     private var scrollBody: some View {
         ScrollView {
-            VStack(spacing: BrandSpacing.lg) {
-                Spacer(minLength: BrandSpacing.xl)
-                heroSection
-                shareTileGrid
-                loyaltyCelebration
-                if receiptText != nil {
-                    receiptPreviewToggle
-                }
-                postSaleActionRow
-                Spacer(minLength: BrandSpacing.xl)
+            if sizeClass == .regular {
+                // iPad: 2-column layout — left (hero + share + loyalty + actions) / right (receipt preview)
+                iPadLayout
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.vertical, BrandSpacing.xl)
+            } else {
+                // iPhone: single-column vertical stack
+                iPhoneLayout
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.vertical, BrandSpacing.xl)
             }
-            .padding(.horizontal, BrandSpacing.base)
         }
         .scrollBounceBehavior(.basedOnSize)
     }
 
+    // MARK: - iPhone layout (single column)
+
+    private var iPhoneLayout: some View {
+        VStack(spacing: BrandSpacing.lg) {
+            heroSection
+            shareTileGrid
+            loyaltyCelebration
+            if let text = receiptText {
+                inlineReceiptPreview(text: text)
+            }
+            postSaleActionRow
+        }
+    }
+
+    // MARK: - iPad layout (2-column)
+
+    private var iPadLayout: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.lg) {
+            // Left: hero + share + loyalty + pencil banner + post-sale actions
+            VStack(spacing: BrandSpacing.lg) {
+                heroSection
+                shareTileGrid
+                loyaltyCelebration
+                pencilSignatureBanner
+                postSaleActionRow
+            }
+            .frame(maxWidth: .infinity)
+
+            // Right: inline receipt preview (lowest elevation per mockup)
+            if let text = receiptText {
+                inlineReceiptPreview(text: text)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    // MARK: - Pencil signature banner (iPad only)
+
+    /// Teal banner shown on iPad receipt when a signature was captured via
+    /// Apple Pencil (PKCanvasView). Matches mockup iPad screen 5.
+    @ViewBuilder
+    private var pencilSignatureBanner: some View {
+        if sizeClass == .regular, let ticketId = vm.payload.signedTicketId {
+            HStack(spacing: BrandSpacing.sm) {
+                Text("✍")
+                    .font(.system(size: 20))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text("Signature captured with Pencil")
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(Color(red: 0.61, green: 0.88, blue: 0.91))
+                    Text("Archived to ticket #\(ticketId) · PKCanvasView")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, BrandSpacing.sm + 2)
+            .padding(.horizontal, BrandSpacing.md)
+            .background(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.08), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.30), lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Signature captured with Pencil and archived to ticket \(ticketId)")
+            .accessibilityIdentifier("pos.receipt.pencilBanner")
+        }
+    }
+
     // MARK: - Hero
 
+    /// Celebration hero — highest visual elevation per mockup spec.
+    /// Glass container with radial success glow, "Payment complete" label,
+    /// hero amount in Barlow Condensed, and cash change row.
     private var heroSection: some View {
         VStack(spacing: BrandSpacing.md) {
-            // Radial glow + check mark
+            // Radial glow behind check mark
             ZStack {
-                // Radial success glow
                 RadialGradient(
-                    colors: [Color.bizarreSuccess.opacity(0.35), .clear],
+                    colors: [Color.bizarreSuccess.opacity(0.40), .clear],
                     center: .center,
                     startRadius: 20,
-                    endRadius: 80
+                    endRadius: 90
                 )
-                .frame(width: 160, height: 160)
+                .frame(width: 180, height: 180)
                 .accessibilityHidden(true)
 
                 Circle()
                     .fill(Color.bizarreSuccess.opacity(0.18))
-                    .frame(width: 100, height: 100)
+                    .frame(width: 104, height: 104)
                     .accessibilityHidden(true)
 
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 76, weight: .semibold))
+                    .font(.system(size: 80, weight: .semibold))
                     .foregroundStyle(.bizarreSuccess)
                     .accessibilityHidden(true)
             }
 
-            // Amount — Barlow Condensed, 54–64pt, Dynamic Type capped
+            // "Payment complete" label — matches mockup
+            Text("Payment complete")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityIdentifier("pos.receipt.completionLabel")
+
+            // Amount — Barlow Condensed hero, Dynamic Type capped
             Text(CartMath.formatCents(vm.payload.amountPaidCents))
                 .font(
                     .custom("BarlowCondensed-SemiBold", size: 60, relativeTo: .largeTitle)
@@ -126,30 +200,45 @@ public struct PosReceiptView: View {
                 .accessibilityLabel("Amount charged: \(CartMath.formatCents(vm.payload.amountPaidCents))")
                 .accessibilityIdentifier("pos.receipt.amount")
 
-            // Method label
-            Text(vm.payload.methodLabel)
+            // Method + optional cash detail
+            Text(cashDetailLabel)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("pos.receipt.methodLabel")
-
-            // Change row for cash
-            if let change = vm.payload.changeGivenCents, change > 0 {
-                HStack(spacing: BrandSpacing.xs) {
-                    Text("Change")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Text(CartMath.formatCents(change))
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .monospacedDigit()
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Change given: \(CartMath.formatCents(change))")
-            }
         }
+        .padding(.vertical, BrandSpacing.xl)
+        .padding(.horizontal, BrandSpacing.lg)
+        .frame(maxWidth: .infinity)
+        .background(
+            // Hero highest elevation: glass surface with success-tinted glow
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color.bizarreSurface1.opacity(0.85))
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.bizarreSuccess.opacity(0.06), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(Color.bizarreSuccess.opacity(0.20), lineWidth: 1)
+        )
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("pos.receipt.hero")
+    }
+
+    /// Label combining method + change info for cash transactions.
+    private var cashDetailLabel: String {
+        var parts = [vm.payload.methodLabel]
+        if let change = vm.payload.changeGivenCents, change > 0 {
+            parts.append("$\(String(format: "%.2f", Double(change) / 100)) change")
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Share tile grid
@@ -308,23 +397,13 @@ public struct PosReceiptView: View {
         }
     }
 
-    // MARK: - Receipt preview toggle
+    // MARK: - Inline receipt preview
 
-    private var receiptPreviewToggle: some View {
-        Button {
-            showReceiptPreview = true
-        } label: {
-            HStack(spacing: BrandSpacing.xs) {
-                Image(systemName: "doc.text")
-                Text("View receipt")
-                    .font(.brandBodyMedium())
-            }
-            .foregroundStyle(.bizarreOrange)
-        }
-        .buttonStyle(.borderless)
-        .accessibilityLabel("View full receipt")
-        .accessibilityHint("Opens a preview of the receipt text")
-        .accessibilityIdentifier("pos.receipt.viewReceiptButton")
+    /// Inline JetBrains Mono receipt block — matches mockup "receipt-list" section.
+    /// Lower visual elevation than the hero per mockup spec.
+    private func inlineReceiptPreview(text: String) -> some View {
+        PosReceiptListPreview(receiptText: text)
+            .accessibilityIdentifier("pos.receipt.inlinePreview")
     }
 
     // MARK: - Post-sale action row
@@ -399,27 +478,6 @@ public struct PosReceiptView: View {
         .accessibilityIdentifier(identifier)
     }
 
-    // MARK: - Receipt preview sheet
-
-    private var receiptPreviewSheet: some View {
-        NavigationStack {
-            ZStack {
-                Color.bizarreSurfaceBase.ignoresSafeArea()
-                if let text = receiptText {
-                    PosReceiptListPreview(receiptText: text)
-                        .padding(BrandSpacing.base)
-                }
-            }
-            .navigationTitle("Receipt")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { showReceiptPreview = false }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
 }
 
 // MARK: - Preview

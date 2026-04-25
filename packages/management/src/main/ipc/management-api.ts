@@ -13,6 +13,7 @@ import {
   apiRequest,
   setSuperAdminToken,
   setServerPort,
+  getServerBase,
   getCertPinningStatus,
 } from '../services/api-client.js';
 import { allowClose, getMainWindow } from '../window.js';
@@ -35,12 +36,17 @@ const Schema2faSetup = z.object({
 
 const SchemaSetPassword = z.object({
   challengeToken: z.string().min(1).max(2048),
-  password: z.string().min(1).max(1024),
+  // DASH-ELEC-062: align IPC schema with UI-enforced minimum of 10 chars.
+  // Previously min(1) meant devtools could bypass the renderer's 10-char rule.
+  password: z.string().min(10).max(1024),
 });
 
+// DASH-ELEC-246, DASH-ELEC-254: Enforce min lengths at the IPC layer so devtools
+// cannot bypass the renderer's UI guards and set a trivially-weak password or
+// a one-character username during first-run setup.
 const SchemaSetup = z.object({
-  username: z.string().min(1).max(256),
-  password: z.string().min(1).max(1024),
+  username: z.string().min(3).max(256),
+  password: z.string().min(8).max(1024),
 });
 
 const SchemaRange = z.object({
@@ -56,7 +62,7 @@ const SchemaId = z.object({
 });
 
 const SchemaRoute = z.object({
-  route: z.string().min(1).max(512),
+  route: z.string().min(1).max(512).regex(/^\/[a-zA-Z0-9\/_:*-]{0,511}$/),
 });
 
 const SchemaFilename = z.object({
@@ -74,12 +80,15 @@ const SchemaAuditUpdateResult = z.object({
 // and forwarded it verbatim as `?${p}`, allowing arbitrary query-string injection).
 // Each field is now individually validated; the query string is built main-side
 // from the validated fields so the renderer can never inject extra parameters.
+// DASH-ELEC-240: Add tenant_slug so the renderer can scope audit-log queries
+// to a specific tenant.  Uses the same slug pattern as SchemaSlug.
 const SchemaAuditLogParams = z.object({
   limit: z.number().int().min(1).max(500).optional(),
   offset: z.number().int().min(0).optional(),
   action: z.string().max(128).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  tenant_slug: z.string().min(1).max(256).regex(/^[a-zA-Z0-9_-]+$/).optional(),
 }).strict();
 
 const SchemaBrowseDrive = z.object({
@@ -120,7 +129,7 @@ const SchemaCreateTenant = z.object({
 // schema entry server-side automatically reaches the dashboard without
 // a coordinated IPC patch. We still bound value length defensively.
 const SchemaUpdateConfig = z
-  .record(z.string().min(1).max(64), z.string().max(8192))
+  .record(z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/), z.string().max(8192))
   .refine(
     (obj) => Object.keys(obj).length > 0,
     { message: 'At least one config key must be provided' }
@@ -262,11 +271,17 @@ const SchemaTenantAuthEventsQuery = z.object({
 // Log viewer: only whitelisted file names are accepted. The whitelist is
 // hard-coded to prevent path-traversal — even though `assertSafePath` would
 // normally guard fs reads, the log viewer never accepts an arbitrary path.
-const LOG_FILE_WHITELIST = ['bizarre-crm.out.log', 'bizarre-crm.err.log'] as const;
-type LogFileName = typeof LOG_FILE_WHITELIST[number];
+// DASH-ELEC-210: extend to direct-mode log names so non-PM2 deployments can
+// view logs. PM2 names first, then direct-mode counterparts.
+const LOG_FILE_WHITELIST = [
+  'bizarre-crm.out.log',
+  'bizarre-crm.err.log',
+  'bizarre-crm.direct.out.log',
+  'bizarre-crm.direct.err.log',
+] as const;
 
 const SchemaTailLog = z.object({
-  name: z.enum(LOG_FILE_WHITELIST as unknown as [LogFileName, ...LogFileName[]]),
+  name: z.enum([...LOG_FILE_WHITELIST] as const),
   lines: z.number().int().min(1).max(2000),
 }).strict();
 
@@ -726,6 +741,10 @@ function writeEnvAtomic(envPath: string, content: string): void {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const bakPath = path.join(dir, `.env.bak-${stamp}`);
       fs.copyFileSync(envPath, bakPath);
+      // Restrict backup to owner-only; copyFileSync inherits source ACL which
+      // may be world-readable on shared/multi-user Windows installs, leaking
+      // Stripe keys, JWT_SECRET, etc. (DASH-ELEC-082)
+      try { fs.chmodSync(bakPath, 0o600); } catch { /* non-POSIX FS, best-effort */ }
       // Prune old backups. Directory listing is cheap — a single .env location
       // rarely has more than a handful of siblings.
       const backups = fs
@@ -857,25 +876,45 @@ function tailFile(filePath: string, lines: number): { content: string; size: num
   }
 }
 
+/**
+ * DASH-ELEC-060: Propagate the HTTP status code into the IPC response envelope
+ * so the renderer's handleApiResponse() can check `status === 401` as the
+ * primary signal rather than relying on fragile substring matching of error
+ * messages. All authenticated handlers return `bodyOf(res)` instead of
+ * `res.body` so the status field is always present.
+ */
+function bodyOf<T extends { status: number; body: object }>(res: T): T['body'] & { status: number } {
+  return { ...res.body, status: res.status };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapHandler(fn: (...args: any[]) => Promise<any>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return async (...args: any[]) => {
     try {
       return await fn(...args);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // MGT-021: Differentiate network errors from generic handler failures.
       // Callers can inspect `offline: true` to show a "server offline" state
       // rather than a generic error toast.
-      const code = err?.code || err?.cause?.code;
+      const e = err as { code?: string; cause?: { code?: string }; message?: string } | null;
+      const code = e?.code || e?.cause?.code;
+      // DASH-ELEC-228: ECONNRESET (server closed the socket mid-transfer) and
+      // EPIPE (write to a closed socket) are also transient network conditions
+      // that operators should see as "server offline" rather than generic errors.
       const isNetwork =
         code === 'ECONNREFUSED' ||
         code === 'ETIMEDOUT' ||
         code === 'ENOTFOUND' ||
-        code === 'ENETUNREACH';
+        code === 'ENETUNREACH' ||
+        code === 'ECONNRESET' ||
+        code === 'EPIPE' ||
+        // DASH-ELEC-227: The api-client raises 'Request timeout' via req.setTimeout;
+        // this message-based check catches it when err.code hasn't been set.
+        (e?.message ?? '').toLowerCase().includes('request timeout');
       return {
         success: false,
-        message: String(err?.message || 'Unknown error'),
+        message: String(e?.message || 'Unknown error'),
         offline: isNetwork,
       };
     }
@@ -925,7 +964,7 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:setup-status', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/setup-status', null, 'none');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Super-Admin Auth (2FA flow) ────────────────────────────────
@@ -934,7 +973,7 @@ export function registerManagementIpc(): void {
     assertRendererOrigin(event);
     const args = SchemaLogin.parse({ username, password });
     const res = await apiRequest('POST', '/super-admin/api/login', args, 'none');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:2fa-verify', wrapHandler(async (event, challengeToken: unknown, code: unknown) => {
@@ -944,21 +983,21 @@ export function registerManagementIpc(): void {
     if (res.body.success && (res.body.data as { token?: string })?.token) {
       setSuperAdminToken((res.body.data as { token: string }).token);
     }
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:2fa-setup', wrapHandler(async (event, challengeToken: unknown) => {
     assertRendererOrigin(event);
     const { challengeToken: ct } = Schema2faSetup.parse({ challengeToken });
     const res = await apiRequest('POST', '/super-admin/api/login/2fa-setup', { challengeToken: ct }, 'none');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:set-password', wrapHandler(async (event, challengeToken: unknown, password: unknown) => {
     assertRendererOrigin(event);
     const args = SchemaSetPassword.parse({ challengeToken, password });
     const res = await apiRequest('POST', '/super-admin/api/login/set-password', args, 'none');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // Local-only mutation: clears the cached super-admin JWT in this process.
@@ -976,20 +1015,20 @@ export function registerManagementIpc(): void {
     assertRendererOrigin(event);
     const args = SchemaSetup.parse({ username, password });
     const res = await apiRequest('POST', '/api/v1/management/setup', args, 'none');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:get-stats', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/stats');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:get-stats-history', wrapHandler(async (event, range: unknown) => {
     assertRendererOrigin(event);
     const { range: r } = SchemaRange.parse({ range });
     const res = await apiRequest('GET', `/api/v1/management/stats/history?range=${encodeURIComponent(r)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Super-Admin Dashboard ──────────────────────────────────────
@@ -997,7 +1036,7 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:get-dashboard', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/dashboard');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Tenants (super-admin API) ──────────────────────────────────
@@ -1005,7 +1044,7 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:list-tenants', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/tenants');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:create-tenant', wrapHandler(async (event, data: unknown) => {
@@ -1017,35 +1056,35 @@ export function registerManagementIpc(): void {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant data' };
     }
     const res = await apiRequest('POST', '/super-admin/api/tenants', parsed.data);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:get-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
     const res = await apiRequest('GET', `/super-admin/api/tenants/${encodeURIComponent(s)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:suspend-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
     const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/suspend`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:activate-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
     const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/activate`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:delete-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
     const res = await apiRequest('DELETE', `/super-admin/api/tenants/${encodeURIComponent(s)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // TPH6: additive repair for any tenant not in 'active' status.
@@ -1053,7 +1092,7 @@ export function registerManagementIpc(): void {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
     const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/repair`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Platform Config ────────────────────────────────────────────
@@ -1061,13 +1100,13 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:get-config', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/config');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:get-config-schema', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/config/schema');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:update-config', wrapHandler(async (event, updates: unknown) => {
@@ -1081,7 +1120,7 @@ export function registerManagementIpc(): void {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid config update' };
     }
     const res = await apiRequest('PUT', '/super-admin/api/config', parsed.data);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Security Alerts ────────────────────────────────────────────
@@ -1105,7 +1144,7 @@ export function registerManagementIpc(): void {
     if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
     const qs = qp.toString();
     const res = await apiRequest('GET', `/super-admin/api/security-alerts${qs ? '?' + qs : ''}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:acknowledge-alert', wrapHandler(async (event, id: unknown) => {
@@ -1115,13 +1154,13 @@ export function registerManagementIpc(): void {
       return { success: false, message: 'Invalid alert id' };
     }
     const res = await apiRequest('POST', `/super-admin/api/security-alerts/${parsed.data}/acknowledge`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:acknowledge-all-alerts', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/super-admin/api/security-alerts/acknowledge-all');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Admin Tools ────────────────────────────────────────────────
@@ -1135,13 +1174,13 @@ export function registerManagementIpc(): void {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
     }
     const res = await apiRequest('POST', '/super-admin/api/admin-tools/reset-rate-limits', parsed.data);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/super-admin/api/admin-tools/backfill-cloudflare-dns');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:rotate-jwt-secret', wrapHandler(async (event, purpose: unknown) => {
@@ -1151,7 +1190,7 @@ export function registerManagementIpc(): void {
       return { success: false, message: 'Invalid purpose (expected access / refresh / both)' };
     }
     const res = await apiRequest('POST', '/super-admin/api/rotate-jwt-secret', { purpose: parsed.data });
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:list-rate-limits', wrapHandler(async (event, payload: unknown) => {
@@ -1165,7 +1204,7 @@ export function registerManagementIpc(): void {
     if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
     const qs = qp.toString();
     const res = await apiRequest('GET', `/super-admin/api/admin-tools/rate-limits${qs ? '?' + qs : ''}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:list-tenant-auth-events', wrapHandler(async (event, params: unknown) => {
@@ -1182,7 +1221,7 @@ export function registerManagementIpc(): void {
     if (parsed.data.limit) qp.set('limit', String(parsed.data.limit));
     const qs = qp.toString();
     const res = await apiRequest('GET', `/super-admin/api/tenant-auth-events${qs ? '?' + qs : ''}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:list-tenant-notifications', wrapHandler(async (event, params: unknown) => {
@@ -1200,7 +1239,7 @@ export function registerManagementIpc(): void {
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/notifications${qs ? '?' + qs : ''}`
     );
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:list-tenant-webhook-failures', wrapHandler(async (event, params: unknown) => {
@@ -1217,7 +1256,7 @@ export function registerManagementIpc(): void {
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/webhook-failures${qs ? '?' + qs : ''}`
     );
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:retry-tenant-webhook-failure', wrapHandler(async (event, params: unknown) => {
@@ -1230,7 +1269,7 @@ export function registerManagementIpc(): void {
       'POST',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/webhook-failures/${parsed.data.id}/retry`
     );
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:list-tenant-automation-runs', wrapHandler(async (event, params: unknown) => {
@@ -1248,7 +1287,7 @@ export function registerManagementIpc(): void {
       'GET',
       `/super-admin/api/tenants/${encodeURIComponent(parsed.data.slug)}/automation-runs${qs ? '?' + qs : ''}`
     );
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Audit Log ──────────────────────────────────────────────────
@@ -1267,7 +1306,7 @@ export function registerManagementIpc(): void {
     if (validated.endDate !== undefined) qs.set('endDate', validated.endDate);
     const qsStr = qs.toString();
     const res = await apiRequest('GET', `/super-admin/api/audit-log${qsStr ? `?${qsStr}` : ''}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Sessions ───────────────────────────────────────────────────
@@ -1275,14 +1314,14 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:get-sessions', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/super-admin/api/sessions');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('super-admin:revoke-session', wrapHandler(async (event, id: unknown) => {
     assertRendererOrigin(event);
     const { id: sessionId } = SchemaId.parse({ id });
     const res = await apiRequest('DELETE', `/super-admin/api/sessions/${encodeURIComponent(sessionId)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Crashes (management API) ───────────────────────────────────
@@ -1290,32 +1329,32 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:get-crashes', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/crashes');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:get-crash-stats', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/crash-stats');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:get-disabled-routes', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/disabled-routes');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:reenable-route', wrapHandler(async (event, route: unknown) => {
     assertRendererOrigin(event);
     const { route: r } = SchemaRoute.parse({ route });
     const res = await apiRequest('POST', '/api/v1/management/reenable-route', { route: r });
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:clear-crashes', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/management/clear-crashes');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Updates ────────────────────────────────────────────────────
@@ -1323,13 +1362,13 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:get-update-status', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/update-status');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:check-updates', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/management/check-updates');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:perform-update', async (event) => {
@@ -1667,7 +1706,7 @@ export function registerManagementIpc(): void {
           errorMessage: validated.errorMessage ?? null,
         }
       );
-      return res.body;
+      return bodyOf(res);
     })
   );
 
@@ -1676,13 +1715,13 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:restart-server', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/management/restart');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('management:stop-server', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/management/stop');
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Backup ─────────────────────────────────────────────────────
@@ -1690,13 +1729,13 @@ export function registerManagementIpc(): void {
   ipcMain.handle('admin:get-status', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/admin/status');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:list-drives', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/admin/drives');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:browse-drive', wrapHandler(async (event, drivePath: unknown) => {
@@ -1705,7 +1744,7 @@ export function registerManagementIpc(): void {
     const { drivePath: rawPath } = SchemaBrowseDrive.parse({ drivePath });
     const safePath = assertSafePath(rawPath);
     const res = await apiRequest('GET', `/api/v1/admin/drives/browse?path=${encodeURIComponent(safePath)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:create-folder', wrapHandler(async (event, parentPath: unknown, name: unknown) => {
@@ -1714,19 +1753,19 @@ export function registerManagementIpc(): void {
     const { parentPath: rawParent, name: folderName } = SchemaCreateFolder.parse({ parentPath, name });
     const safePath = assertSafePath(rawParent);
     const res = await apiRequest('POST', '/api/v1/admin/drives/mkdir', { path: safePath, name: folderName });
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:list-backups', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/admin/backups');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:run-backup', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/admin/backup');
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:update-backup-settings', wrapHandler(async (event, settings: unknown) => {
@@ -1738,14 +1777,14 @@ export function registerManagementIpc(): void {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid backup settings' };
     }
     const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', parsed.data);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:delete-backup', wrapHandler(async (event, filename: unknown) => {
     assertRendererOrigin(event);
     const { filename: f } = SchemaFilename.parse({ filename });
     const res = await apiRequest('DELETE', `/api/v1/admin/backups/${encodeURIComponent(f)}`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   ipcMain.handle('admin:restore-backup', wrapHandler(async (event, filename: unknown) => {
@@ -1755,7 +1794,7 @@ export function registerManagementIpc(): void {
     // before swapping in the restore target, so a mid-restore crash still
     // leaves a rollback path. UI still confirms with type-the-filename below.
     const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`);
-    return res.body;
+    return bodyOf(res);
   }));
 
   // ── Generic Env Settings Editor (SEC-H94 et al) ────────────────
@@ -1823,7 +1862,7 @@ export function registerManagementIpc(): void {
       }
       // SECURITY: reject control chars + newlines so a malicious value
       // can't inject a second .env line below the one we are writing.
-      if (/[\r\n\u0000]/.test(value)) {
+      if (/[\r\n\t\u0000]/.test(value)) {
         return { success: false, message: `${key} contains forbidden characters` };
       }
     }
@@ -1847,19 +1886,20 @@ export function registerManagementIpc(): void {
     const files = LOG_FILE_WHITELIST.map((name) => {
       const resolved = resolveLogPath(name);
       if (!resolved.ok) {
-        return { name, path: null, size: 0, mtime: null, exists: false, error: resolved.message };
+        // Omit absolute path — leaks install dir, username, and layout
+        // (DASH-ELEC-086). Renderer only needs name/size/mtime/exists.
+        return { name, size: 0, mtime: null, exists: false, error: resolved.message };
       }
       try {
         const stat = fs.statSync(resolved.path);
         return {
           name,
-          path: resolved.path,
           size: stat.size,
           mtime: stat.mtime.toISOString(),
           exists: true,
         };
       } catch {
-        return { name, path: resolved.path, size: 0, mtime: null, exists: false };
+        return { name, size: 0, mtime: null, exists: false };
       }
     });
     return { success: true, data: { files } };
@@ -1897,7 +1937,9 @@ export function registerManagementIpc(): void {
   ipcMain.handle('system:open-browser', async (event) => {
     assertRendererOrigin(event);
     try {
-      await shell.openExternal('https://localhost');
+      // Use getServerBase() so non-default ports (e.g. PORT=8443) open the
+      // correct URL instead of always hitting https://localhost (DASH-ELEC-088).
+      await shell.openExternal(getServerBase());
       return { success: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

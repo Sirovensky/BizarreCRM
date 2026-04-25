@@ -7,6 +7,358 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
+
+### P0
+- [x] WEB-W3-001. **Inventory stocktake barcode scan uses partial keyword search — wrong item selected on scan.** CLOSED 2026-04-24 — see DONETODOS. `pages/inventory/StocktakePage.tsx`. Fix: exact match by barcode/SKU first; only fall back to keyword if no exact hit.
+- [x] WEB-W3-002. **Stocktake quick-scan defaults to `in_stock+1` not absolute count — corrupts data.** CLOSED 2026-04-24 — see DONETODOS. `StocktakePage.tsx`. Fix: scan must record absolute count input or be a separate "increment" mode clearly labeled.
+- [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
+- [ ] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** `pages/pos/CashRegisterPage.tsx` / `unified-pos`. Fix: each card leg of split tender must call BlockChyp `charge` for that amount; only mark paid on terminal success.
+- [ ] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** `pages/billing/`. Fix: implement `POST /payment-links` with token, public `/pay/:token` page that runs BlockChyp Hosted Checkout.
+
+### P1 (silent no-op)
+- [x] WEB-W3-006. **Auto-reorder uses raw item ID input — no search, no enable/disable toggle.** CLOSED 2026-04-24 — see DONETODOS. `pages/inventory/AutoReorderPage.tsx`. Fix: replace ID input with item picker (autocomplete by SKU/name); add per-item enabled toggle.
+- [x] WEB-W3-007. **Bin locations: no edit/rename for existing bins.** CLOSED 2026-04-24 — 1b4b77a6 `BinLocationsPage.tsx` pencil icon → inline rename; `PUT /bin-locations/:id` now accepts `code` field.
+- [x] WEB-W3-008. **Inventory age buckets capped at 100, no pagination.** CLOSED 2026-04-24 — see DONETODOS. `InventoryAgePage.tsx`. Fix: add pagination params + load-more.
+- [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
+- [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
+- [x] WEB-W3-011. **Serial numbers page uses raw item ID input; no cross-item serial search.** CLOSED 2026-04-24 — see DONETODOS. `SerialNumbersPage.tsx`. Fix: item picker + `GET /inventory/serials?serial=` global search.
+- [x] WEB-W3-012. **Shrinkage page uses raw item ID input.** CLOSED 2026-04-24 — see DONETODOS. `ShrinkagePage.tsx`. Fix: item picker.
+- [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
+- [x] WEB-W3-014. **`wholesale_price` missing from inventory edit form.** CLOSED 2026-04-24 — see DONETODOS. `InventoryDetailPage.tsx`. Fix: add field; route already accepts column.
+- [x] WEB-W3-015. **POS "Other" payment has no reference capture.** CLOSED 2026-04-24 — see DONETODOS. `CashRegisterPage.tsx`. Fix: add reference field on Other tender (e.g. check #, voucher code).
+- [ ] WEB-W3-016. **POS Z-report Print prints full page not modal.** `pages/pos/`. Fix: `window.print()` after wrapping report in print-only stylesheet, or open new window with z-report HTML.
+- [ ] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** `pages/billing/`. Fix: wire bulk-select + `POST /invoices/send-reminder` per row.
+- [x] WEB-W3-018. **Payment-links page uses raw Customer/Invoice ID inputs.** CLOSED 2026-04-24 — see DONETODOS. `pages/billing/`. Fix: pickers.
+- [ ] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** `pages/billing/`. Fix: structured editor — list of steps with day-offset + channel + template selector.
+- [ ] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** `pages/subscriptions/`. Fix: implement `POST /subscriptions/:id/run-billing` that creates invoice + charges saved card via BlockChyp tokenized CNP.
+- [x] WEB-W3-021. **Expenses create form has no receipt upload.** CLOSED 2026-04-24 — see DONETODOS. `pages/expenses/`. Fix: add file upload wired to `expenseReceipts.routes.ts`.
+- [x] WEB-W3-022. **Gift cards: no balance-adjustment UI.** CLOSED 2026-04-24 — see DONETODOS. `pages/gift-cards/`. Fix: add adjust modal calling existing balance-adjust route, or add route if missing.
+- [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
+- [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
+
+### P2 (cosmetic / missing UI)
+- [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
+- [x] WEB-W3-026. **Inventory age: no date-range filter; cost shows per-unit not total.** CLOSED 2026-04-24 — see DONETODOS. `InventoryAgePage.tsx`.
+- [x] WEB-W3-027. **Shrinkage: no filter by reason/date; no export.** CLOSED 2026-04-24 — see DONETODOS. `ShrinkagePage.tsx`.
+- [x] WEB-W3-028. **Print Barcode hidden when no SKU/UPC.** CLOSED 2026-04-24 — see DONETODOS. `InventoryDetailPage.tsx`. Fix: generate UUID-based barcode fallback or show disabled with tooltip.
+- [ ] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`.
+- [ ] WEB-W3-030. **Subscriptions Cancel has no end-date display.** `pages/subscriptions/`.
+- [x] WEB-W3-031. **Expenses list has no category/date filter.** CLOSED 2026-04-24 — see DONETODOS. `pages/expenses/`.
+- [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
+- [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
+- [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
+- [x] WEB-W3-035. **Loaners list: no search / status filter.** CLOSED 2026-04-24 — see DONETODOS. `pages/loaners/`.
+- [x] WEB-W3-036. **Catalog device-filter: 2-char minimum with no visible hint.** CLOSED 2026-04-24 — see DONETODOS. `pages/catalog/`. Fix: add hint text.
+- [ ] WEB-W3-037. **Team goals: only 3 hardcoded metric types.** `pages/team/`. Fix: load metrics from server enum or expand list.
+
+## Web Audit Wave-WEB-2026-04-24 — settings tabs + setup wizard (search agent A1)
+
+### P0
+- [x] WEB-W1-001. **`pos_require_pin_sale` / `pos_require_pin_ticket` — PIN gate frontend-only; direct API bypass.** CLOSED 2026-04-24 — see DONETODOS.
+  - File: `packages/web/src/pages/settings/PosSettings.tsx:220-236`
+  - Fix: enforce server-side. POS routes should require a PIN-validation header on tendering / ticket actions when these flags are true. Add middleware `requirePosPin` reading store_config + `pos_pin_hash`.
+
+### P1 (silent no-op)
+- [ ] WEB-W1-002. **`ticket_show_closed` stored but never read by backend.** — `TicketsRepairsSettings.tsx`. Fix: tickets list route filters out closed tickets when false (`statuses NOT IN (closed, canceled)`).
+- [x] WEB-W1-003. **`ticket_show_empty` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-008.
+- [ ] WEB-W1-004. **`ticket_default_view` client-only, `kanban` option unimplemented but marked live.** — flip to `coming_soon` until kanban default works, or add server-side default-view persistence.
+- [ ] WEB-W1-005. **`ticket_default_filter` — date-range value assigned to `statusFilter` variable (type mismatch).** — `TicketsRepairsSettings.tsx`. Fix: split into `ticket_default_date_filter` + `ticket_default_status_filter`.
+- [ ] WEB-W1-006. **`ticket_default_pagination` key-name drift between save and read.** — verify save key matches consumed key in `tickets.routes.ts`.
+- [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
+- [x] WEB-W1-008. **`repair_default_input_criteria` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-010 (autoFocus IMEI/Serial in RepairsTab).
+- [x] WEB-W1-009. **`ticket_default_sort_order` / `ticket_default_date_sort` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-009.
+- [x] WEB-W1-010. **POS keys `pos_show_repairs/products/miscellaneous` vs backend's `pos_show_devices/services/etc.` — different key sets.** CLOSED 2026-04-24 — see DONETODOS. — `PosSettings.tsx` + `pos.routes.ts`. Pick one set, drop the other, write migration to map old → new.
+- [x] WEB-W1-011. **`pos_show_out_of_stock` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-005.
+- [x] WEB-W1-012. **`pos_show_invoice_notes` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-007.
+- [x] WEB-W1-013. **`pos_show_outstanding_alert` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-006.
+- [ ] WEB-W1-014. **`pos_show_images` dead.** — wire into POS catalog tile render.
+- [ ] WEB-W1-015. **`pos_show_discount_reason` dead.** — wire into POS discount modal (require reason input when true).
+- [ ] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** — `ReceiptSettings.tsx` + print route. Pick canonical value; migrate stored.
+- [ ] WEB-W1-017. **8x `receipt_cfg_*_page` variants — 2 of 8 wired (security_code_page + po_so_page) per WEB-WA-003/004; remaining 6 still saved-but-not-read.** Identify the other 6 keys + wire each into letter renderer.
+- [x] WEB-W1-018. **`receipt_cfg_line_price_incl_tax_thermal` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-002.
+- [x] WEB-W1-019. **Invoice branding keys client-side only; server-sent invoices unbranded.** CLOSED 2026-04-24 — see DONETODOS. — `InvoiceSettings.tsx`. Fix: server-side PDF/email render must read same branding keys.
+- [x] WEB-W1-020. **`invoice_payment_terms` no runtime consumer.** CLOSED 2026-04-24 — see DONETODOS. — wire into invoice create + PDF render.
+- [x] WEB-W1-021. **Voice inputs uncontrolled (`defaultChecked`/DOM query) — brittle save.** CLOSED 2026-04-24 — see DONETODOS. — `SmsVoiceSettings.tsx`. Convert to controlled inputs with React state.
+- [ ] WEB-W1-022. **`POST /settings/sms/reload` endpoint existence unverified.** — `SmsVoiceSettings.tsx`. Verify route in `settings.routes.ts`; if missing, add (re-init Twilio client from updated creds) or remove button.
+- [x] WEB-W1-023. **`lead_auto_assign` + `estimate_followup_days` registry trim verified.** CLOSED 2026-04-24 — verified absent from settingsDeadToggles.ts post-commit a0a81865.
+- [ ] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed in `blockchyp.ts`.** — verify; if not read, wire terminal-capture toggle.
+
+### P2 (cosmetic / missing UI)
+- [ ] WEB-W1-025. **`checkin_default_category` hardcoded option list.** — `PosSettings.tsx`. Fix: load options from `categories` table.
+- [ ] WEB-W1-026. **`receipt_header` / `receipt_footer` written by two separate forms — last-write-wins.** — `ReceiptSettings.tsx`. Fix: single source of truth form.
+- [x] WEB-W1-027. **`theme_primary_color` requires page refresh to apply after save.** CLOSED 2026-04-24 — see DONETODOS. — wire `useEffect` listener on store_config update; re-run AppShell color setter.
+- [x] WEB-W1-028. **Webhook event list hardcoded in UI.** CLOSED 2026-04-24 — see DONETODOS. — load from server (`/webhooks/events` enum).
+- [ ] WEB-W1-029. **`auto_reply_enabled` / `auto_reply_message` missing from SmsVoiceSettings UI** (already wired backend in WEB-WB-001). — add inputs to surface.
+- [ ] WEB-W1-030. **3CX keys (`tcx_*`) missing from SmsVoiceSettings.** — these are intentionally dead; either hide or render with Coming Soon badge.
+- [ ] WEB-W1-031. **`notification_digest_mode` / `notification_digest_hour` missing from NotificationsSettings.** — render with Coming Soon badge until digest dispatcher exists.
+- [x] WEB-W1-032. **`settingsSearchIndex` includes `coming_soon` entries pointing to tabs with no UI controls.** CLOSED 2026-04-24 — see DONETODOS. — filter coming_soon-without-UI from index.
+- [x] WEB-W1-033. **`findMetadataOnlyDeadKeys()` never called — drift goes undetected.** CLOSED 2026-04-24 — see DONETODOS. — call in dev-only banner inside SettingsPage to surface drift.
+- [ ] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection before advancing.** — `pages/setup/`. Add `POST /setup/test-smtp` route + button on step.
+- [ ] WEB-W1-035. **Setup wizard: no "back" navigation between sub-steps.** — add Back button reading wizard step state.
+
+## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
+
+### P0 (blocks workflow / data loss)
+- [ ] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.**
+  - File: `packages/web/src/pages/invoices/` (list, bulk action handler)
+  - Symptom: button reports success; customer never contacted.
+  - Fix: in invoices route, on reminder action enqueue notification via `services/notifications.ts` (email + SMS per customer prefs) before timestamping.
+- [ ] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).**
+  - File: `packages/web/src/pages/invoices/` (InstallmentPlanWizard component)
+  - Fix: add `packages/server/src/routes/installments.routes.ts` with create/list/cancel handlers + migration for `installment_plans` table OR remove wizard until built.
+- [ ] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route — likely 404.**
+  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` or `TicketActions.tsx`
+  - Fix: confirm endpoint in `tickets.routes.ts`; if missing, add `POST /tickets/:id/clone-warranty` that copies ticket with `is_warranty=true` and parent reference.
+- [ ] WEB-W2-004. **Ticket merge dialog calls unverified route — likely 404.**
+  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` (merge dialog)
+  - Fix: implement `POST /tickets/merge` that consolidates devices/notes/payments under target ticket id and soft-deletes source.
+
+### P1 (silent no-op / broken feature)
+- [x] WEB-W2-005. **Overview-bar status buttons send string group names, not numeric IDs.** CLOSED 2026-04-24 — 1233b978
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
+  - Fix: map group label → status_id before query param.
+- [ ] WEB-W2-006. **Bulk "Assign" missing from UI although backend supports it.**
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx` (bulk action menu)
+  - Fix: add Assign action wired to existing bulk endpoint.
+- [x] WEB-W2-007. **Saved filter presets not persisted — lost on reload.** CLOSED 2026-04-24 — see DONETODOS.
+  - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
+  - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
+- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
+  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
+- [x] WEB-W2-009. **Unassign sends `null as any` — type-unsafe.** CLOSED 2026-04-24 — 1233b978
+  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
+  - Fix: type assignee field as `number | null`; route accepts null.
+- [x] WEB-W2-010. **Appointment note field name mismatch (`note` saved vs `notes` displayed).** CLOSED 2026-04-24 — 42e9b254
+  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
+  - Fix: normalize to `notes` in DB + payload + display.
+- [ ] WEB-W2-011. **Activity filter tabs are client-side only — incomplete if backend paginates.**
+  - File: `packages/web/src/pages/tickets/TicketNotes.tsx`
+  - Fix: pass filter as query param to activity endpoint; rebuild filtering server-side.
+- [x] WEB-W2-012. **DeviceEditForm silently drops `device_type`, `color`, `network`, `pre_conditions`.** CLOSED 2026-04-24 — 3062bde3
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx`
+  - Fix: include these fields in PUT payload; verify route accepts them.
+- [x] WEB-W2-013. **Price editing uses `prompt()` — blocked on iOS Safari.** CLOSED 2026-04-24 — 2f381cdc
+  - File: `packages/web/src/pages/tickets/TicketPayments.tsx`
+  - Fix: replace `prompt()` with inline modal/input.
+- [ ] WEB-W2-014. **`repairPricingApi` import — backend route unverified.**
+  - File: `packages/web/src/pages/tickets/TicketWizard.tsx`
+  - Fix: confirm `repairPricing.routes.ts` shape matches client; align if not.
+- [x] WEB-W2-015. **Wallet pass `window.open(blob)` blocked by popup policies.** CLOSED 2026-04-24 — 5699cb5e
+  - File: `packages/web/src/pages/customers/CustomerDetailPage.tsx`
+  - Fix: trigger anchor download with `download` attr instead of `window.open`.
+- [ ] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: hide button until partner integration exists, or wire to real provider.
+- [ ] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.**
+  - File: `packages/server/src/routes/blockchyp.routes.ts`
+  - Fix: implement adjustTip per BlockChyp SDK or remove tip-adjust UI button.
+- [ ] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.**
+  - File: `packages/web/src/pages/invoices/` + `packages/server/src/routes/creditNotes.routes.ts`
+  - Fix: add columns via migration if missing or drop fields from form.
+- [ ] WEB-W2-019. **Estimate line items display-only after creation — can't edit.**
+  - File: `packages/web/src/pages/estimates/`
+  - Fix: add inline edit + PUT `/estimates/:id/line-items/:lineId`.
+- [ ] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.**
+  - File: `packages/web/src/pages/estimates/`
+  - Fix: add Reject action calling existing status route.
+- [x] WEB-W2-021. **Lead appointment note field mismatch (same as WEB-W2-010).** CLOSED 2026-04-24 — 42e9b254
+  - File: `packages/web/src/pages/leads/`
+  - Fix: same normalization to `notes`.
+- [ ] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: pass active filter params to stats endpoint OR compute from filtered result set.
+- [ ] WEB-W2-023. **Overdue count computed from current page only — inaccurate.**
+  - File: `packages/web/src/pages/invoices/`
+  - Fix: dedicated `/invoices/stats?overdue=1` query independent of pagination.
+
+### P2 (cosmetic / minor UX)
+- [x] WEB-W2-024. **Dead `_unusedMut` mutation variable.** CLOSED 2026-04-24 — 1233b978 — `pages/tickets/TicketListPage.tsx` — remove.
+- [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
+- [x] WEB-W2-026. **QC sign-off button always visible regardless of status.** CLOSED 2026-04-24 — 3e278dda — `pages/tickets/TicketDetailPage.tsx` — gate visibility on status === ready_for_qc.
+- [x] WEB-W2-027. **Appointment `end_time` uses locale-pinned `toLocaleTimeString`.** CLOSED 2026-04-24 — 42e9b254 — `pages/tickets/TicketSidebar.tsx` — use app date helper.
+- [x] WEB-W2-028. **`outstanding_balance` column not sortable.** CLOSED 2026-04-24 — a67ec4cb — `pages/customers/CustomerListPage.tsx` — add sort param.
+- [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
+- [x] WEB-W2-030. **Membership date uses `toLocaleDateString()` not app helper.** CLOSED 2026-04-24 — 5699cb5e — `pages/customers/CustomerDetailPage.tsx`.
+- [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
+- [ ] WEB-W2-032. **No sortable columns on invoice table.** — `pages/invoices/`.
+- [ ] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** — `pages/estimates/`.
+- [ ] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** — add print stylesheet or PDF route.
+- [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
+- [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
+- [x] WEB-W2-037. **MissingPartsCard supplier links use `window.open` — popup blocker risk.** CLOSED 2026-04-24 — b0801919 — `pages/dashboard/` — use anchor with `target="_blank" rel="noopener"`.
+
+## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
+
+### P0 (data loss / broken submit)
+
+- [ ] WEB-S6-001. **TicketCreatePage: no signature capture — Android intake collects customer signature at check-in but web skips it entirely.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (entire file — no signature widget)
+  - Android has a multi-step wizard with canvas signature capture; web has none.
+  - Fix: add a Step 4 "Signature" using an HTML5 `<canvas>` component; POST base64 to `POST /ticket-signatures` (route exists in `ticketSignatures.routes.ts`) after ticket creation. Gate "Create Ticket" on signature when `require_signature` store config is true.
+
+- [ ] WEB-S6-002. **TicketCreatePage: no deposit collection step — ticket can be created with zero deposit even when store requires one.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (no deposit UI)
+  - Android has a tender/deposit step before finalizing intake. Web skips it; customer hands over device with no deposit on file.
+  - Fix: add optional Step 5 "Deposit" using `DepositCollectModal` (already exists at `packages/web/src/pages/billing/DepositCollectModal.tsx`); trigger after ticket creation if `require_deposit` setting is on.
+
+- [ ] WEB-S6-003. **TicketDevices: price edit uses `window.prompt()` in two places — blocked on iOS Safari and unavailable in iframe embeds.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` lines 728 and 835
+  - Both the device header price button and Asset Issues price button use `prompt()`. This was fixed in TicketPayments (WEB-W2-013) but NOT in TicketDevices.
+  - Fix: replace both `prompt()` calls with the same inline-edit pattern used in `TicketPayments.tsx` (controlled `<input>` that saves on blur/Enter).
+
+- [ ] WEB-S6-004. **InventoryCreatePage: supplier field absent — new items cannot be linked to a supplier at creation time, breaking auto-reorder.**
+  - File: `packages/web/src/pages/inventory/InventoryCreatePage.tsx` (form state has no `supplier_id`)
+  - Backend `INSERT INTO inventory_items` accepts `supplier_id` and auto-reorder groups by supplier; but create form has no picker.
+  - Fix: add a supplier select dropdown populated by `GET /inventory/suppliers`. On submit, include `supplier_id` in payload.
+
+- [ ] WEB-S6-005. **InventoryDetailPage: variants tab entirely absent — no way to view or create product variants (color/size/grade) from the detail page.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (no variant section)
+  - `inventoryVariants.routes.ts` exists server-side. Android catalog shows variant selection. Web detail page only shows the parent item.
+  - Fix: add a "Variants" accordion section that lists child variants and allows creating new ones via `POST /inventory/:id/variants`.
+
+### P1 (silent no-op / missing feature parity)
+
+- [ ] WEB-S6-006. **TicketCreatePage: initial status not selectable — always defaults to server's `is_default` status.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (statuses fetched but never shown in form)
+  - `statusData` is fetched but the array is never rendered. Server supports `body.status_id` on create.
+  - Fix: add a "Status" select to Step 3 populated from `statuses` array; send chosen `status_id` in payload.
+
+- [ ] WEB-S6-007. **TicketCreatePage: labels field is free-text comma-split — no autocomplete from existing labels, easy typo divergence.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` line 597–601
+  - Android shows existing labels as chips; web is a plain text input.
+  - Fix: load distinct label values from `GET /ticket-labels`; render as multi-select chips or combobox.
+
+- [ ] WEB-S6-008. **TicketDevices DeviceEditForm: `pre_conditions` read from device but never editable — field in form state is never rendered as UI.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` line 180 (`pre_conditions` in state) — no input element for it
+  - Backend stores pre/post conditions as JSON array. The edit form captures the field in state but has no checkbox or multi-input UI for it.
+  - Fix: add a "Pre-repair Conditions" checklist using a configurable list (or free-text tags) that writes to `form.pre_conditions`; `post_conditions` similarly absent.
+
+- [ ] WEB-S6-009. **InventoryDetailPage: price history absent — no way to see how retail/cost price changed over time.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (stock movements shown, price history is not)
+  - Android audit references price history. The server has `inventory_price_history` table (migration 006 or similar). No route or UI exposes it on web.
+  - Fix: add `GET /inventory/:id/price-history` route if missing; render as mini timeline under Pricing card.
+
+- [ ] WEB-S6-010. **InventoryDetailPage: multi-location stock absent — only shows single `in_stock` total, not per-location breakdown.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx`
+  - `locations.routes.ts` and `inventory` route accept `location_id`. Android likely shows per-location stock. Web detail shows one number.
+  - Fix: add `GET /inventory/:id/locations` or query `inventory_locations` join; render per-location stock table with per-location adjust button.
+
+- [ ] WEB-S6-011. **CustomerCreatePage: address geocoding absent — no lat/lng stored, breaking field-service map routing.**
+  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` — no geocode call on address blur
+  - `fieldService.routes.ts` expects lat/lng on customers for route optimization. Android likely geocodes on save.
+  - Fix: on `address1`/`city`/`state` blur, call `GET /api/v1/geocode?address=…` (add route or use nominatim) and silently set `lat`/`lng` in payload.
+
+- [ ] WEB-S6-012. **CustomerCreatePage: custom fields absent — all `custom_fields` defined in settings are invisible on the create form.**
+  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` (no `customFieldsApi` import or render)
+  - `customFields.routes.ts` provides a list of entity-scoped custom fields. Android intake shows them. Web create page skips them entirely.
+  - Fix: fetch `GET /custom-fields?entity=customer`; render as additional form fields; include in payload as `custom_field_values`.
+
+- [ ] WEB-S6-013. **EmployeeListPage: "Add Employee" is a plain `<a href="/settings/users">` — breaks SPA navigation and loses keyboard focus context.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` line 378–384
+  - The button is an `<a>` tag, not a `<Link>`. Full page reload on click. Should use React Router `<Link>` or `useNavigate`.
+  - Fix: replace with `<Link to="/settings/users">` from react-router-dom.
+
+- [ ] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no pay_rate field anywhere
+  - Android employee detail shows pay rate. `employees.routes.ts` presumably stores it. Web page has clock-in/out and commissions but no pay rate management.
+  - Fix: add pay rate display in `EmployeeExpandedRow`; allow edit via `PATCH /employees/:id` with `pay_rate` field.
+
+- [ ] WEB-S6-015. **EmployeeListPage: no time-off request UI — employees cannot submit time-off from this page; managers cannot approve/deny.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no timeOff import or render
+  - `timeOff.routes.ts` exists. `ShiftSchedulePage.tsx` shows time-off approval for managers but not from the employees list. No way for an employee to request time off from the Employees page.
+  - Fix: add a "Request Time Off" button in `EmployeeExpandedRow` that opens a modal posting to `POST /time-off`.
+
+- [ ] WEB-S6-016. **EmployeeListPage: `detailQueries` constructed but never consumed — N+1 queries fire but result is unused dead code.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` lines 322–329
+  - `detailQueries` array is built and the comment says "We'll fetch details within the table rendering via separate queries" — the variable is never passed anywhere. The per-row query inside `EmployeeRow` is the real path, making this array purely dead.
+  - Fix: remove `detailQueries` array and `employeeDetails` Map (lines 322–329) entirely.
+
+- [ ] WEB-S6-017. **CommunicationPage: no email thread view — channel supports `both` in campaigns but Communications page only shows SMS + Calls; email conversations unreachable.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` — `mainView` state only `'messages' | 'calls'`
+  - If email channel is used (campaigns, direct replies), there's no inbox tab to read/reply to emails.
+  - Fix: add `'email'` tab to `mainView` toggle; query email threads via a new `emailApi.threads()` endpoint or expose under existing inbox.
+
+- [ ] WEB-S6-018. **CommunicationPage: "Link existing customer" silently overwrites customer's `mobile` with conversation phone — existing mobile lost if different.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 765 (`customerApi.update(customerId, { mobile: phone })`)
+  - If the customer already has a different mobile number, this PUT replaces it. No warning or merge prompt.
+  - Fix: before overwriting, check if customer already has a mobile. If so, prompt "Replace existing mobile XXXX with YYYY?" or add a secondary phone field.
+
+- [ ] WEB-S6-019. **AutomationsListPage: is a thin wrapper for `AutomationsTab` — the same tab is also at `/settings/automations`. No per-automation detail/edit page exists; editing is in-list only.**
+  - File: `packages/web/src/pages/automations/AutomationsListPage.tsx`
+  - Complex automations with many conditions cannot be edited comfortably in a cramped in-list form. Android likely has a dedicated edit screen.
+  - Fix: add `/automations/:id` detail page with full condition/action builder UI; link from list rows.
+
+- [ ] WEB-S6-020. **CampaignsPage: `trigger_rule_json` stored on campaign but never editable — no trigger rule builder in create modal.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` line 44 (field exists in type) and `CreateCampaignModal` (no trigger_rule field in form)
+  - Scheduled/triggered campaigns (birthday, churn) require a rule but the create modal has no way to configure when it fires.
+  - Fix: add trigger rule builder to `CreateCampaignModal`: date-offset picker for birthday/winback, threshold for churn warning, etc.
+
+- [ ] WEB-S6-021. **CampaignsPage: no campaign edit — after creation only delete/status-toggle possible; name, body, segment, channel are immutable from UI.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` — no edit modal, no edit button
+  - Fix: add an edit button per row that opens `CreateCampaignModal` pre-populated; PUT to `campaignsApi.update(id, payload)`.
+
+- [ ] WEB-S6-022. **SegmentsPage: rule builder only supports single-condition rules — no AND/OR compound conditions.**
+  - File: `packages/web/src/pages/marketing/SegmentsPage.tsx` — `RULE_FIELDS` implies one condition per segment
+  - Useful audience segments (e.g. "LTV > $500 AND churned > 90 days") require multiple conditions. Current builder creates one rule object.
+  - Fix: allow adding multiple conditions with AND/OR connectors; serialize as `{ op: 'and', conditions: [...] }` to `rule_json`.
+
+- [ ] WEB-S6-023. **PartnerReportPage: no loading/error state — if the PDF endpoint is slow or returns 500, user sees nothing.**
+  - File: `packages/web/src/pages/reports/PartnerReportPage.tsx` — `openReport()` is a bare `window.open` with no try/catch
+  - Fix: wrap in async fetch, show spinner while generating, toast on error (non-200 status).
+
+- [ ] WEB-S6-024. **TaxReportPage: date range allows `from > to` — server returns empty or incorrect data silently.**
+  - File: `packages/web/src/pages/reports/TaxReportPage.tsx` — no date-order validation before `openReport()`
+  - Fix: add `if (from > to) { toast.error('From date must be before To date'); return; }` before opening URL.
+
+- [ ] WEB-S6-025. **TeamChatPage: polling is unconditional — 5-second interval fires even when page is not active/visible, wasting bandwidth.**
+  - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 68 (`refetchInterval: 5_000`) — comment says "only while visible" but `document.visibilityState` check is missing
+  - Fix: add `refetchIntervalInBackground: false` to the query options (TanStack Query v5 default) or add a `visibilitychange` listener that pauses refetch.
+
+- [ ] WEB-S6-026. **TeamChatPage: no message pagination — loads last 200 messages then stops; older history inaccessible.**
+  - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 69 (`?limit=200`)
+  - Fix: add "Load older" button that appends `?before=<oldest_id>` to query; prepend results to message list.
+
+- [ ] WEB-S6-027. **GoalsPage: goal edit absent — goals can only be created or deleted, not modified (target value, dates, employee assignment).**
+  - File: `packages/web/src/pages/team/GoalsPage.tsx` — no edit button or modal
+  - Fix: add edit button per goal row; re-use create form in edit mode; PUT to `/team/goals/:id`.
+
+- [ ] WEB-S6-028. **PerformanceReviewsPage: no pagination on review history — all reviews for an employee load in one query; slow for long-tenured staff.**
+  - File: `packages/web/src/pages/team/PerformanceReviewsPage.tsx` line 54 (`/team/reviews?user_id=…` — no limit/page params)
+  - Fix: add `limit=20&page=N` to query; render paginator under review list.
+
+### P2 (UX / cosmetic / missing polish)
+
+- [ ] WEB-S6-029. **TicketCreatePage: no form persistence — navigating away mid-fill (e.g. to look up a customer) loses all entered device data with no warn.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx`
+  - Fix: serialize form state to `sessionStorage` on change; restore on mount; clear on successful submit. Show `beforeunload` warning if form is dirty.
+
+- [ ] WEB-S6-030. **TicketDevices: photo thumbnails use `/uploads/` relative path — breaks when page is embedded or origin differs from asset server.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` lines 968, 987, 1063, 1082 (`src={'/uploads/${photo.file_path}'}`)
+  - Fix: resolve through `GET /api/v1/info` `server_url` (already used for QR codes) so photo URLs are absolute and work from any origin.
+
+- [ ] WEB-S6-031. **TicketDevices: photo caption field not editable — `photo.caption` is read for alt-text but there is no UI to set or change it.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` — no caption input in `PhotoUploadSection`
+  - Fix: add optional caption input to `PhotoUploadSection`; include in `FormData`; persist via `PUT /ticket-photos/:id`.
+
+- [ ] WEB-S6-032. **InventoryCreatePage: `wholesale_price` field absent at creation — only retail and cost; wholesale must be set post-creation via edit.**
+  - File: `packages/web/src/pages/inventory/InventoryCreatePage.tsx` — form state has no `wholesale_price`
+  - Backend `INSERT` does not include it on create (line 224). `wholesale_price` column exists and is used in PO/supplier workflows.
+  - Fix: add wholesale price input next to cost/retail; include in create payload.
+
+- [ ] WEB-S6-033. **EmployeeListPage: clock-in status depends on `employee-detail` query per row — N+1 API calls on page load with many employees.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` `EmployeeRow` component (calls `employeeApi.get(employee.id)` per row)
+  - With 20 employees that's 20 separate API calls just to show clock status.
+  - Fix: add `is_clocked_in` and `weekly_hours` to `GET /employees` list response; eliminate per-row detail fetch for status display.
+
+- [ ] WEB-S6-034. **CommunicationPage: conversation search is client-side filter over loaded conversations only — unread threads outside current page invisible to search.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 1370 (`searchFilter` filters `conversations` array in-memory)
+  - Fix: debounce search input and pass `q=` param to `GET /sms/conversations`; server-side full-text search across all conversations.
+
+- [ ] WEB-S6-035. **CommunicationPage: "Create New Customer" from Link Customer popover navigates away from the active conversation — conversation context lost.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 815 (`navigate('/customers/new?phone=…')`)
+  - Fix: open `CustomerCreatePage` in a slide-over panel or modal instead of full navigation; return customer ID to popover on success.
+
 ### Wave-75 scan-loop findings (2026-04-24) — customer GDPR re-auth (blocked on user WIP)
 - [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
   <!-- meta: scope=server/routes; files=packages/server/src/routes/customers.routes.ts:1870-1890; fix=checkWindowRate('customer_gdpr_reauth',userId:ip,5,3600_000)+cap-password<=72+recordWindowFailure-on-mismatch; BLOCKED: file is user WIP (never touch per project rule) -->
@@ -701,7 +1053,6 @@ Verified working. Not TODOs.
 ### Wave-49 scan-loop findings (2026-04-23) — web/components
 
 ### Wave-50 scan-loop findings (2026-04-23) — web/pages
-  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketWizard.tsx; fix=wire-all-FormLabel-with-useId -->
 
 ### Wave-52 scan-loop findings (2026-04-23) — web/layout + web/auth
 
@@ -741,3 +1092,1125 @@ Verified working. Not TODOs.
 ### Wave-62 scan-loop findings (2026-04-24) — hooks + middleware + routes
 
 ### Wave-61 scan-loop findings (2026-04-23) — server middleware + migrations + routes + web stores
+
+### Wave-Loop Finder-A run 2026-04-24 — web/pages auth+signup+landing+dashboard+settings+team+super-admin+setup+billing+subscriptions+employees
+- [ ] WEB-FA-001. **[HIGH] LoginPage: Unhandled error in session restore:** setupStatus() throws but catch block silently drops error — could leave user in inconsistent auth state.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:109-112; fix=add-error-logging-and-retry -->
+- [x] WEB-FA-003. **[HIGH] SignupPage: Unsafe error type casting:** `(err as any)?.response?.data?.message` — no type narrowing. Define ApiError interface. FIXED 2026-04-24 by Fixer-C — replaced `(err as any)` with typed `{ response?: { data?: { message?: string; error?: string } } }` shape + Error fallback.
+  <!-- meta: scope=web/pages/signup; files=packages/web/src/pages/signup/SignupPage.tsx:215-216; fix=define-typed-error-handler -->
+- [x] WEB-FA-004. **[MED] LoginPage: Null-unsafe refreshToken assertion:** `completeLogin(data.accessToken, data.refreshToken!, data.user!)` — could undefined on partial 2FA response. FIXED 2026-04-24 by Fixer-C — replaced non-null assertions with explicit null-check that surfaces a "Login response was incomplete" server error before completeLogin.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:184-186; fix=add-null-check-before-assertion -->
+- [x] WEB-FA-005. **[MED] ResetPasswordPage: Information leak in error message:** "The link may have expired" reveals token validity. Generic error preferred. FIXED 2026-04-24 by Fixer-C — generic "Failed to reset password. Please request a new reset link." default; only surface server message on explicit 400 validation error.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/ResetPasswordPage.tsx:73; fix=use-generic-error-message -->
+- [ ] WEB-FA-007. **[MED] TeamChatPage: Unsafe error typing:** `e: any` in onError handlers — no type narrowing for API response.
+  <!-- meta: scope=web/pages/team; files=packages/web/src/pages/team/TeamChatPage.tsx:91,110; fix=define-tanstack-error-type -->
+- [ ] WEB-FA-008. **[MED] DunningPage: Unvalidated JSON parse in mutation:** `JSON.parse(stepsText)` throws but no try/catch — bad input crashes mutation.
+  <!-- meta: scope=web/pages/billing; files=packages/web/src/pages/billing/DunningPage.tsx:66-72; fix=wrap-json-parse-with-error-handling -->
+- [ ] WEB-FA-009. **[MED] LoginPage: Field errors not cleared on edit:** fieldErrors state persists after user clears input — confusing UX.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:466-481; fix=clear-field-errors-on-change -->
+- [ ] WEB-FA-010. **[MED] SignupPage: hCaptcha script injected without CSP nonce:** Dynamic script append bypasses CSP if nonce required.
+  <!-- meta: scope=web/pages/signup; files=packages/web/src/pages/signup/SignupPage.tsx:169-174; fix=add-csp-nonce-or-defer -->
+- [ ] WEB-FA-012. **[MED] LandingPage: Direct DOM mutation in event handlers:** `onMouseEnter/Leave` mutate `.style.color` — anti-pattern, triggers reflow, not memoized.
+  <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx:477-480; fix=use-css-pseudo-classes-or-classname-toggle -->
+- [ ] WEB-FA-013. **[MED] DashboardPage: Hard-coded supplier domains:** mobilesentrix.com, phonelcdparts.com — not configurable from Settings.
+  <!-- meta: scope=web/pages/dashboard; files=packages/web/src/pages/dashboard/DashboardPage.tsx:174-177; fix=move-to-catalog-provider-config -->
+- [ ] WEB-FA-014. **[MED] LoginPage: Session restore not cached:** authApi.me() called on every page load, no staleTime. Multi-tab = N requests.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:145-157; fix=add-staleTime-to-query -->
+- [ ] WEB-FA-015. **[MED] SubscriptionsListPage: Missing loading skeleton:** TableSkeleton defined but never used while first query loads.
+  <!-- meta: scope=web/pages/billing; files=packages/web/src/pages/billing/SubscriptionsListPage.tsx:63-70; fix=conditionally-render-skeleton -->
+- [ ] WEB-FA-016. **[MED] SignupPage: Slug check not cancelled:** Debounced checkSlug() no abort — fast typing creates race conditions.
+  <!-- meta: scope=web/pages/signup; files=packages/web/src/pages/signup/SignupPage.tsx:81-114; fix=add-abort-controller-to-requests -->
+- [ ] WEB-FA-017. **[LOW] SettingsPage: UnsavedChangesGuard partially wired:** Provider imported but Settings tabs may not all consume useUnsavedChanges hook.
+  <!-- meta: scope=web/pages/settings; files=packages/web/src/pages/settings/SettingsPage.tsx:46-48; fix=audit-all-tab-components-for-hook -->
+- [ ] WEB-FA-018. **[LOW] DunningPage: Hard-coded template IDs:** Default stepsText includes `template_id: "overdue_1"` — no enum validation.
+  <!-- meta: scope=web/pages/billing; files=packages/web/src/pages/billing/DunningPage.tsx:52-54; fix=fetch-templates-list-server-side -->
+- [ ] WEB-FA-019. **[LOW] ResetPasswordPage: Unsafe button type:** "Back to login" button without `type="button"` in form — defaults to submit.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/ResetPasswordPage.tsx:156-159; fix=add-type-button-attribute -->
+- [ ] WEB-FA-020. **[LOW] TeamChatPage: Mention regex allows invalid patterns:** UI accepts patterns server rejects.
+  <!-- meta: scope=web/pages/team; files=packages/web/src/pages/team/TeamChatPage.tsx:117; fix=sync-regex-with-server-username-rules -->
+- [x] WEB-FA-021. **[LOW] DashboardPage: Untyped parameter:** `queueSummary: any` — no schema, makes contract opaque. FIXED 2026-04-24 by Fixer-C — added `OrderQueueSummary` + `OrderQueueItem` interfaces, swapped `any` props + `any[]` queueItems decl, removed redundant `as number` cast on estimated_cost render.
+  <!-- meta: scope=web/pages/dashboard; files=packages/web/src/pages/dashboard/DashboardPage.tsx:202; fix=define-type-for-queueSummary -->
+- [ ] WEB-FA-022. **[LOW] TenantsListPage: Super-admin token not refreshed:** localStorage token persists without refresh flow.
+  <!-- meta: scope=web/pages/super-admin; files=packages/web/src/pages/super-admin/TenantsListPage.tsx:67; fix=implement-token-refresh-interceptor -->
+- [ ] WEB-FA-023. **[LOW] LoginPage: Auto-redirect ignores onboarding state:** Redirects to '/' but no check if user completed onboarding wizard.
+  <!-- meta: scope=web/pages/auth; files=packages/web/src/pages/auth/LoginPage.tsx:119; fix=check-wizard_completed-before-redirect -->
+- [ ] WEB-FA-024. **[LOW] SignupPage: Brand font duplicated import:** Google Fonts import in style tag — should be in global CSS to dedupe across pages.
+  <!-- meta: scope=web/pages/signup; files=packages/web/src/pages/signup/SignupPage.tsx:249-251; fix=move-to-shared-global-css -->
+
+### Finder-C web polish findings (2026-04-24) — pages/{tickets,loaners,leads,automations,marketing,communications,reports,reviews,photo-capture,portal,print,tracking,tv,voice,expenses}
+- [ ] WEB-FC-001. **[HIGH] TicketPayments / TicketDevices edit price uses browser `prompt()`.** Inline-edit of labor + part prices calls `window.prompt()` — jarring, non-stylable, blocks the event loop, can't be validated (rejects empty/NaN silently), and is often disabled on mobile browsers — staff cannot edit prices on iOS Safari.
+  <!-- meta: scope=web/pages/tickets; files=packages/web/src/pages/tickets/TicketPayments.tsx:85,105 packages/web/src/pages/tickets/TicketDevices.tsx:702,809; fix=replace-prompt-with-inline-numeric-input-or-small-modal-dialog -->
+- [x] WEB-FC-002. **[HIGH] Marketing campaign "Run now" and "Delete" fire immediately with no confirm.** One click on `Run now` dispatches the full segment (SMS + email) to potentially thousands of recipients with no confirmation, recipient-count preview requirement, or undo. `Delete` also immediately destroys the campaign row without ConfirmDialog.
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:229,261; fix=wrap-both-in-ConfirmDialog-with-recipient-count-shown-for-runNow -->
+  FIXED 2026-04-24 by Fixer-D — Run-now opens a danger ConfirmDialog that fetches recipient count via campaignsApi.preview() and shows it in the message. Delete opens a danger ConfirmDialog with the campaign name. Both block dispatch/destruction until explicit confirmation.
+- [ ] WEB-FC-003. **[HIGH] Customer-facing tracking portal has no dark-mode styles.** `TrackingPage.tsx` uses only `text-slate-*`, `bg-white`, `border-slate-*` etc. with zero `dark:` variants. On a customer phone set to dark mode the entire portal is bright-white and the status badge text becomes unreadable on some color values.
+  <!-- meta: scope=web/pages/tracking; files=packages/web/src/pages/tracking/TrackingPage.tsx:288-770; fix=add-dark-variants-or-force-light-scheme-with-color-scheme-CSS -->
+- [ ] WEB-FC-004. **[HIGH] Portal uses `text-gray-*` exclusively — no dark mode and diverges from surface-* tokens.** Every portal top-level screen (`PortalLogin`, `PortalRegister`, `PortalDashboard`, `PortalEstimatesView`, `PortalInvoicesView`, `PortalTicketDetail`, `CustomerPortalPage`) ships `bg-gray-*` / `text-gray-*` instead of the `surface-*` + `dark:` ramp used elsewhere — customer sees an inconsistent brand and no dark-mode support.
+  <!-- meta: scope=web/pages/portal; files=packages/web/src/pages/portal/PortalLogin.tsx packages/web/src/pages/portal/PortalDashboard.tsx packages/web/src/pages/portal/PortalEstimatesView.tsx packages/web/src/pages/portal/PortalInvoicesView.tsx packages/web/src/pages/portal/PortalTicketDetail.tsx packages/web/src/pages/portal/PortalRegister.tsx; fix=swap-gray-*-for-surface-*-tokens-with-dark-variants -->
+- [ ] WEB-FC-005. **[HIGH] Modals in this scope lack `role="dialog"` + `aria-modal="true"` + focus trap.** `LoanersPage.ReturnDialog`, `ReviewsPage.ReplyModal`, `CampaignsPage.CreateCampaignModal`/`PreviewModal`, `SegmentsPage.CreateSegmentModal`/`MembersModal`, `CalendarPage` new-appointment, and `ExpensesPage` inline form all render as plain `<div>` overlays. Keyboard users can Tab past the modal into the obscured page, and Esc does nothing. Only `portal/components/ReviewPromptModal.tsx` sets the pair.
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/loaners/LoanersPage.tsx:39 packages/web/src/pages/reviews/ReviewsPage.tsx:72 packages/web/src/pages/marketing/CampaignsPage.tsx:335 packages/web/src/pages/marketing/SegmentsPage.tsx:235,330 packages/web/src/pages/leads/CalendarPage.tsx:203; fix=shared-Modal-primitive-with-role-dialog+aria-modal+focus-trap+Esc-close -->
+- [x] WEB-FC-006. **[HIGH] Lead pipeline: only way to move a card is a button hidden by `opacity-0 group-hover:opacity-100` — unreachable on touch + keyboard.** `LeadPipelinePage.tsx` LeadCard's "move" affordance is invisible until mouse hover, so touch devices (tablet kiosk, phone) and keyboard-only users cannot progress leads through the pipeline. Also the `fixed inset-0 z-10` backdrop is not a real dismissible popover (no Esc, no focus trap).
+  <!-- meta: scope=web/pages/leads; files=packages/web/src/pages/leads/LeadPipelinePage.tsx:101; fix=always-visible-move-button-or-focus-within-reveal-plus-keyboard-nav -->
+  FIXED 2026-04-24 by Fixer-D — Removed opacity-0 hover trap on the move button; it is now always visible and tappable on touch. Added aria-haspopup/aria-expanded/aria-label, role="menu" on the popover, Esc-to-dismiss with focus return to the trigger, and auto-focus of the first menu option when opened.
+- [ ] WEB-FC-007. **[MED] Segment delete button has no confirm dialog — destructive single-click.** `SegmentsPage.tsx:171` `remove.mutate(s.id)` deletes the segment immediately; a mis-click destroys a hand-built customer segment that may be referenced by running campaigns.
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/SegmentsPage.tsx:171; fix=add-ConfirmDialog-and-check-for-campaigns-referencing-segment -->
+- [ ] WEB-FC-008. **[MED] Loaners page has no "Add loaner device" CTA — page is viewer-only.** `LoanersPage.tsx` renders devices + a return dialog, but offers zero way to register a new loaner, edit one, or assign one to a customer. Page is only useful if loaners are seeded elsewhere (no such UI exists in scope); staff must hit the API directly.
+  <!-- meta: scope=web/pages/loaners; files=packages/web/src/pages/loaners/LoanersPage.tsx; fix=add-Create+Edit+Assign-UI-and-status-filters -->
+- [x] WEB-FC-009. **[MED] TV display publicly shows customer first names — PII leak on a screen in the shop lobby.** `TvDisplayPage.tsx:159` renders `ticket.customer_first_name || 'Walk-in'` alongside device + repair status and a short `T-1042` order ID. Any passerby can correlate a customer with their device and pickup time.
+  <!-- meta: scope=web/pages/tv; files=packages/web/src/pages/tv/TvDisplayPage.tsx:159; fix=show-initials-like-J.-or-gate-behind-store_config.tv_show_names-toggle-default-off -->
+  FIXED 2026-04-24 by Fixer-D — TV ticket card now renders only the first-name initial followed by a period (e.g. "J.") instead of the full first name; "Walk-in" fallback preserved.
+- [ ] WEB-FC-010. **[MED] `NpsTrendPage` monthly chart ignores sign — negative NPS looks identical to positive NPS.** Bar height is `Math.max(4, Math.abs(m.nps))` at NpsTrendPage.tsx:96, so nps=-60 renders the same tall bar as nps=+60. Owners viewing a crisis month see a reassuring chart.
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/NpsTrendPage.tsx:94-105; fix=center-axis-at-0+position-bars-above-or-below-baseline-by-sign+red-below-zero -->
+- [ ] WEB-FC-011. **[MED] `NpsTrendPage` + `ReferralsDashboard` swallow all query errors into empty-state.** Both `queryFn` wrap the call in `try/catch` and return a fabricated "zeros / unavailable" payload on ANY failure — 401 (session expired), 500 (server bug), and CORS errors all render identically to "no data yet". Owners cannot distinguish "I have no reviews" from "the server is broken".
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/NpsTrendPage.tsx:42-52 packages/web/src/pages/marketing/ReferralsDashboard.tsx:86-94; fix=let-react-query-surface-the-error-or-distinguish-status-codes-before-rendering-empty -->
+- [ ] WEB-FC-012. **[MED] `ReferralsDashboard` computes stats from only the first page of rows.** Server returns rows with no pagination metadata, and the page computes `total`, `converted`, `conversion_rate`, and the leaderboard from that array — totals understate reality as soon as there are >N referrals. No "showing X of Y" footer.
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/ReferralsDashboard.tsx:52-75,98; fix=add-/reports/referrals/stats-endpoint-or-iterate-pagination-before-computing -->
+- [ ] WEB-FC-013. **[MED] Portal `PhotoGallery` uses `window.confirm()` and silently swallows delete errors.** `PhotoGallery.tsx:41` shows browser-native confirm (unstylable, Safari-on-iOS can block), and the hide mutation catch is `/* swallow */` — if the server rejects the delete the photo reappears on next load but the customer thinks it was deleted.
+  <!-- meta: scope=web/pages/portal; files=packages/web/src/pages/portal/components/PhotoGallery.tsx:41,47; fix=replace-confirm-with-shared-ConfirmDialog+toast-on-error+refetch-immediately -->
+- [ ] WEB-FC-014. **[MED] `TaxReportPage` and `PartnerReportPage` open server-rendered HTML via `window.open(..., '_blank', 'noopener')` with no loading/auth-fail fallback.** Date range has no validation — `from > to` still opens a blank report. A logged-out session opens the server's 401 HTML in a new tab, which looks like the feature is broken rather than "please log in".
+  <!-- meta: scope=web/pages/reports; files=packages/web/src/pages/reports/TaxReportPage.tsx:20-28 packages/web/src/pages/reports/PartnerReportPage.tsx:15-18; fix=validate-from<=to+HEAD-preflight-or-fetch+blob+open-with-revocation-or-inline-iframe-preview -->
+- [ ] WEB-FC-015. **[MED] Voice recording playback opens an auth-bearing URL via `window.open` — fails if session token is an axios header interceptor rather than a cookie.** `VoiceCallsListPage.tsx:48` opens recordings in a new tab relying on credentials being present on the new-tab request; if only the axios interceptor carries the bearer, the new tab gets 401. Also no filters (date, direction, caller), so the list is linear-only.
+  <!-- meta: scope=web/pages/voice; files=packages/web/src/pages/voice/VoiceCallsListPage.tsx:47-49,115-124; fix=fetch-recording-as-blob-via-api-client-then-URL.createObjectURL+add-filters -->
+- [ ] WEB-FC-016. **[MED] `PhotoCapturePage` passes a bearer token via `?t=<token>` query string — exposes token in browser history, referrer headers, and server access logs.** `PhotoCapturePage.tsx:10,72` reads `t` from search params and uses it as `Authorization: Bearer ${token}`; the token lingers in history even after upload. Shoulder-surf + shared-device risk for the photo-upload token.
+  <!-- meta: scope=web/pages/photo-capture; files=packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:10,72; fix=single-use-short-TTL-token+scrub-from-URL-on-mount-via-history.replaceState -->
+- [ ] WEB-FC-017. **[MED] Aggressive `any` leaks across ticket + communications + calendar + campaigns surfaces.** 40+ `: any` annotations in `TicketDetailPage`, `TicketListPage`, `TicketWizard`, `TicketDevices`, `CommunicationPage`, `CalendarPage`, `CampaignsPage`, etc. — e.g. `const smsMessages: any[]`, `const grades: any[] = pricingData?.grades || []`, `mutationFn: (data: any) => ticketApi.create(data)`. Invalidates compile-time guards on mutation payloads and list renders.
+  <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketDetailPage.tsx:91,140,222,242,379 packages/web/src/pages/tickets/TicketWizard.tsx:180,324,408,420,435,910,1901 packages/web/src/pages/communications/CommunicationPage.tsx:680,767,793,1107,2141 packages/web/src/pages/leads/CalendarPage.tsx:191 packages/web/src/pages/marketing/CampaignsPage.tsx:106,139,314,329; fix=share-types-via-@bizarre-crm/shared-and-tighten-mutation-payload-types -->
+- [ ] WEB-FC-018. **[MED] `ExpensesPage` renders edit form inline above the table instead of as a modal — loses scroll position on edit.** `ExpensesPage.tsx:156-184` the "Add/Edit Expense" form appears between filters and the table, pushing data below the fold. Editing an expense on page 3 scrolls the user up to the form and loses row context; on mobile the form takes the full viewport with no dim overlay.
+  <!-- meta: scope=web/pages/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:156-184; fix=promote-to-modal-with-role-dialog+aria-modal-or-drawer-on-mobile -->
+- [ ] WEB-FC-019. **[MED] `CampaignsPage` + `SegmentsPage` read `err?.response?.data?.error` where server actually returns `message`.** Toasts "Failed to create campaign" when the server sent a descriptive 400 payload under `.message`. Campaigns then look mysteriously broken to the owner.
+  <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:329-330 packages/web/src/pages/marketing/SegmentsPage.tsx:229-231; fix=standardize-on-err.response.data.message-fallback-to-err.message -->
+- [ ] WEB-FC-020. **[LOW] `TvDisplayPage` has no error state — a dead API keeps the skeleton pulsing forever.** `TvDisplayPage.tsx:58-70` ignores `isError`/`error`; a wall-mounted TV sits on loading skeletons indefinitely during a server outage.
+  <!-- meta: scope=web/pages/tv; files=packages/web/src/pages/tv/TvDisplayPage.tsx:58-135; fix=render-error-state-with-timestamp+auto-retry-countdown -->
+- [ ] WEB-FC-021. **[LOW] `CalendarPage` new-appointment form uses 24-hour hour selects (00-23) with no AM/PM — mismatches US shop convention.** `CalendarPage.tsx:256,274` drops raw "14" into the select; US operators expect 2 PM. `formatTime` on line 57 already uses en-US 12-hour elsewhere.
+  <!-- meta: scope=web/pages/leads; files=packages/web/src/pages/leads/CalendarPage.tsx:256,274; fix=display-12h-label-with-am/pm-indicator-keep-24h-value-internally -->
+- [ ] WEB-FC-022. **[LOW] `downloadCsv` helper revokes object URL synchronously after `.click()` — race on Firefox/Safari can cancel the download.** `ReportsPage.tsx:115-131` calls `URL.revokeObjectURL(url)` immediately; some browsers have not yet started the download when revoke fires.
+  <!-- meta: scope=web/pages/reports; files=packages/web/src/pages/reports/ReportsPage.tsx:115-131; fix=defer-revoke-via-setTimeout(...,0)-or-remove-anchor-on-next-tick -->
+- [ ] WEB-FC-023. **[LOW] `AutomationsListPage` is a 28-line pass-through wrapper around `AutomationsTab` — two URLs for one feature hurts navigation memory.** `AutomationsListPage.tsx:4-8` explicitly flags the duplication; also reachable via `/settings/automations`. Pick one canonical route and redirect the other.
+  <!-- meta: scope=web/pages/automations; files=packages/web/src/pages/automations/AutomationsListPage.tsx:1-28; fix=pick-one-canonical-route-and-redirect-the-other -->
+- [ ] WEB-FC-024. **[LOW] `PortalLogin` + `TrackingPage` rate-limit messages don't read server `Retry-After` header.** `PortalLogin.tsx:42,68` and `TrackingPage.tsx:179-181` say "wait a minute… try again later" with no countdown. Customer retries immediately, gets rejected again, gives up.
+  <!-- meta: scope=web/pages/portal,tracking; files=packages/web/src/pages/portal/PortalLogin.tsx:42,68 packages/web/src/pages/tracking/TrackingPage.tsx:179-181; fix=read-Retry-After-from-429-response+countdown-timer-before-next-attempt -->
+- [ ] WEB-FC-025. **[LOW] TrackingPage `InvoiceStatusBadge` uses slate/green/amber/red with no `dark:` variants — near-invisible on dark-mode UA.** `TrackingPage.tsx:758-770` `colors` map is light-only (`bg-slate-100 text-slate-600` etc.); customer on a dark-themed phone opening `/track` sees nearly-illegible status chips against the already-unstyled dark viewport.
+  <!-- meta: scope=web/pages/tracking; files=packages/web/src/pages/tracking/TrackingPage.tsx:756-770; fix=add-dark:bg-*-text-*-variants-or-force-color-scheme-light -->
+
+### Finder-B web polish findings 2026-04-24 — web/pages pos+unified-pos+catalog+inventory+customers+invoices+estimates+gift-cards
+
+- [ ] WEB-FB-001. **[HIGH] Gift-card list `formatCurrency` mislabels param as `cents` but treats it as dollars.** `GiftCardsListPage.tsx` `formatCurrency(cents)` is `` `$${cents.toFixed(2)}` `` — no `/100`. Detail page uses the same signature but clearly treats the input as dollars. If server migrates to storing cents (the rest of POS already does), every balance shown is 100x wrong and silently breaks.
+  <!-- meta: scope=web/gift-cards; files=packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-48,262,347; fix=rename-param-to-dollars-and-consume-utils/format-formatCurrency -->
+
+- [ ] WEB-FB-002. **[HIGH] CheckoutModal tax calc rounds each line then re-rounds total — float drift on multi-item sales.** `useCheckoutTotals` accumulates float-dollar `subtotal`/`taxableAmount`, then does `Math.round(taxableAmount * rate * 100) / 100` and `Math.round((subtotal + tax - discountAmount) * 100) / 100`. `BottomActions.cartTotalCents` correctly runs cents-pure — so the customer-facing total in CheckoutModal can diverge from the cents-accurate server total by ±1¢ on 3+ item carts.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/CheckoutModal.tsx:33-74; fix=accumulate-in-cents-like-BottomActions.cartTotalCents-and-/100-only-for-display -->
+
+- [ ] WEB-FB-003. **[HIGH] RepairsTab is a 30-site `any`-soup — type-safety black hole.** Every models/services/grades/tickets/customers/checks payload is `any[]` or `as any`. A server rename (`is_default` → `default`) never fails at build, goes silent at runtime. Same pattern in UnifiedPosPage hydrate, LeftPanel iconMap, etc.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:76,184,196,251,281,349,359,374,380,387,395,431,444,492,639,648,917,932,957,983,984,1007,1015,1031,1038,1064,1067,1100,1220; fix=add-shared-DeviceModel/RepairService/Grade/Ticket/Customer-types -->
+
+- [x] WEB-FB-004. **[HIGH] CatalogPage CSV parser uses naive `split(',')` — any quoted field with a comma corrupts the row.** Supplier CSVs routinely have `"OLED Assembly, Black, Grade A"`. The result: SKU becomes `OLED Assembly`, name becomes `Black`, price `NaN`. Also only splits on `\n`, breaks on CRLF.
+  <!-- meta: scope=web/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:188-205; fix=use-papaparse-or-a-proper-tokenizer-with-quote-and-CRLF-support -->
+  FIXED 2026-04-24 by Fixer-D — Replaced naive split-based parsing with an inline RFC-4180-style tokenizer (parseCsvRows) that correctly handles quoted fields containing commas, escaped quotes ("" inside quoted strings), CR/LF/CRLF row terminators, and embedded newlines inside quoted values. No new dependency added.
+
+- [ ] WEB-FB-005. **[HIGH] InventoryListPage "Order All on Supplier Sites" loop fires up to 20 `window.open` in one click — browsers block all but the first.** Popup-blockers enforce a 1-per-gesture quota. Toast claims "Opened 20 supplier pages" but only 1 tab opens in Chrome/Safari/Firefox.
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:591-616; fix=open-first-tab-inline-then-queue-rest-behind-sequential-user-clicks-or-render-staging-page-with-manual-links -->
+
+- [ ] WEB-FB-006. **[MED] InvoiceDetailPage print windows bypass axios auth.** `window.open('/print/ticket/<id>?...', '_blank')` can't attach `Authorization: Bearer`. If the print route is behind normal auth (localStorage token), tab 401s with no UX. Mirror the `FA-M26` wallet-pass blob-URL pattern instead.
+  <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305,625; fix=fetch-HTML-with-axios-then-open-blob-URL -->
+
+- [ ] WEB-FB-007. **[MED] Native `window.confirm` vs async `confirm(...)` from `@/stores/confirmStore` used inconsistently across inventory/invoices.** StocktakePage, BinLocationsPage, AutoReorderPage, InvoiceListPage drop into blocking native dialog (ignores dark mode + brand fonts). Estimates/pos/customers/tickets all use the themed `await confirm(...)`.
+  <!-- meta: scope=web/inventory+invoices; files=packages/web/src/pages/inventory/AutoReorderPage.tsx:148,290,packages/web/src/pages/inventory/BinLocationsPage.tsx:206,packages/web/src/pages/inventory/StocktakePage.tsx:332,343,packages/web/src/pages/invoices/InvoiceListPage.tsx:171; fix=swap-native-confirm-for-await-confirm -->
+
+- [ ] WEB-FB-008. **[MED] EstimateList create-modal asks for per-line `tax_amount` as a flat dollar — no rate, no taxability flag.** Creates estimates that can't round-trip through CheckoutModal's tax engine (which applies `useDefaultTaxRate * taxableAmount`). Converting estimate → ticket drops or double-counts tax.
+  <!-- meta: scope=web/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:70-71,109,128-130; fix=replace-tax_amount-with-per-line-taxable:boolean-apply-store-rate-on-submit -->
+
+- [ ] WEB-FB-009. **[MED] CheckoutModal split-payment "covers total" check compares floats.** `splitTotal < totals.total` — both floats. Combined with WEB-FB-002 drift, a cashier can hit a phantom under-by-a-cent error or, worse, pass a sale a cent short. Compare ints in cents.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/CheckoutModal.tsx:181-186,321; fix=compare-splitTotalCents<totalCents-both-ints -->
+
+- [ ] WEB-FB-010. **[MED] SuccessScreen SMS receipt hardcodes `$` symbol + en-US format.** `Receipt for Invoice #...: Total $${total.toFixed(2)}. Paid: $${total.toFixed(2)}.` Tenants in EUR/GBP/CAD send wrong symbol to customers.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/SuccessScreen.tsx:101; fix=use-utils/format-formatCurrency -->
+
+- [ ] WEB-FB-011. **[MED] CustomerDetailPage wallet-pass blob open breaks on Safari iPad.** `window.open(blobUrl, '_blank')` — Safari rewrites to `about:blank` on iPad (documented POS platform), pass never renders. .pkpass content-type should trigger an `<a download>` anchor fallback.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:198-220; fix=if-pkpass-mime-use-anchor-download-else-blob-open -->
+
+- [ ] WEB-FB-012. **[MED] CustomerDetailPage tickets/invoices/communications renderers all `any`-typed.** `sorted: any[]`, `communications: any[]`, `(msg: any, i: number)`, `(inv: any)`, `(ticket: any)`, `updateField(key: string, value: any)`. Server field rename goes silent.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:855,1110,1464,1479,1596,1640,1654; fix=consume-shared-Customer/Ticket/Invoice/Communication-types -->
+
+- [ ] WEB-FB-013. **[MED] Manager-PIN form allows unlimited retries with no visible lockout UX.** 4-digit PIN (10k combos, trivially brute-forceable from an in-store tablet) with generic "Invalid manager PIN" error, no disabled cooldown, no audit-log surface. `/pos-enrich/manager-verify-pin` may rate-limit server-side but the UI never shows it.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/BottomActions.tsx:488-570; fix=surface-server-lockout+exponential-backoff+6-8-digit-PIN-minimum -->
+
+- [ ] WEB-FB-014. **[MED] InventoryListPage bulk filters type items as `any`.** `items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts')` etc. — any backend field rename silently yields empty filters.
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:593-594; fix=introduce-InventoryItem-type -->
+
+- [ ] WEB-FB-015. **[LOW] ShrinkagePage `safeHref` accepts protocol-relative URLs.** `raw.startsWith('/')` matches `//attacker.example.com/foo` which browsers treat as absolute cross-origin. Rare (server-stored data) but trivially fixed by rejecting `startsWith('//')` first.
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/ShrinkagePage.tsx:18-26; fix=reject-startsWith('//')-before-returning -->
+
+- [ ] WEB-FB-016. **[LOW] LeftPanel `iconMap: Record<string, any>` silences missing-icon cases.** Unknown `type` renders nothing instead of failing at build.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/LeftPanel.tsx:152; fix=type-as-Record<SuggestionType,LucideIcon>-exhaustive-keys -->
+
+- [ ] WEB-FB-017. **[LOW] RepairsTab CustomerStep search error shows toast but UI still renders "no results".** `catch { setResults([]); console.warn(...); toast.error(...) }` — the empty list state lies as "no matches". Cashier may miss the toast while focused on the form.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:1003-1010; fix=track-searchState='error'-render-retry-button-in-results-area -->
+
+- [ ] WEB-FB-018. **[LOW] EstimateDetailPage versions typed `any[]` — diff-field drift goes silent.** `const versions: any[] = versionsData?.data?.data || [];` — ENR-LE6 versioning needs a shared `EstimateVersion` shape.
+  <!-- meta: scope=web/estimates; files=packages/web/src/pages/estimates/EstimateDetailPage.tsx:49,86; fix=add-EstimateVersion-to-shared-package -->
+
+- [ ] WEB-FB-019. **[LOW] GiftCardDetailPage strips sign from redemption amounts — only color distinguishes from purchases.** `formatCurrency(Math.abs(amount))` for a redemption of $25 renders "$25.00" in red — same visual as any other transaction. Explicit `-$25.00` prefix matches POS convention and helps colorblind users.
+  <!-- meta: scope=web/gift-cards; files=packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:36-38,44-49; fix=prefix-"-"-for-redemption-or-drop-Math.abs -->
+
+- [ ] WEB-FB-020. **[LOW] BinLocationsPage heatmap colors have no dark-mode variants — invisible on dark theme.** `bg-yellow-200`, `bg-surface-100`, `bg-surface-50` have no `dark:` partners — breaks brand-surface-ramp alignment (§project_brand_surface_ramp).
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/BinLocationsPage.tsx:111-118; fix=add-dark:bg-yellow-900/30+dark:text-yellow-200-etc -->
+
+- [ ] WEB-FB-021. **[LOW] StocktakePage / BinLocationsPage / AutoReorderPage `bg-white`+`border-surface-200` cards have no `dark:` partner — pure white in dark theme.** Same brand-surface-ramp gap.
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/StocktakePage.tsx:279,302,355,packages/web/src/pages/inventory/BinLocationsPage.tsx:145,199,packages/web/src/pages/inventory/AutoReorderPage.tsx:180; fix=batch-add-dark:bg-surface-900+dark:border-surface-700 -->
+
+- [ ] WEB-FB-022. **[LOW] RepairsTab `ticketApi.list({ status_id: 'active' as any })` — enum cast hides server contract.** Works today because backend coerces, breaks silently if coercion tightens.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:1064; fix=add-status-filter-enum-to-ticketApi-types-or-filter-client-side -->
+
+- [ ] WEB-FB-023. **[LOW] InvoiceListPage bulk action has no partial-success reporting.** User selects 5 unpaid invoices; a colleague voids one mid-click; server fails on the void, bulk mutation reports generic "Bulk action failed". Surface per-invoice results.
+  <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:153-174; fix=server+client-return-per-row-success/failure-map -->
+
+- [ ] WEB-FB-024. **[LOW] Repair labor price input silently coerces non-numeric to 0.** `parseFloat(manualPrice) || 0`. Cashier typos `12o.50` (letter o), labor charged $0 with no visual feedback.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/RepairsTab.tsx:415; fix=validate-on-blur+red-border-on-NaN-block-submit -->
+
+- [ ] WEB-FB-025. **[LOW] UnifiedPos hydration from `?ticket=` hardcodes `taxable:false` on labor + `taxable:true` on parts with no cashier indicator.** Jurisdictions that tax labor need a visible toggle indicator per repair line.
+  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:255,283; fix=honor-tax-class-from-ticket-record+badge-on-labor-line -->
+
+### Wave-Loop Finder-F run 2026-04-24 — deeper page audit (forms/mutations/perf/i18n/cents)
+
+- [ ] WEB-FF-001. **[HIGH] DeviceTemplatesPage cents math floors fractional cents — saved labor cost / suggested price loses ¢ on float-input.** `Math.round(form.est_labor_cost_dollars * 100)` and `Math.round(form.suggested_price_dollars * 100)` — entering `19.99` gets `Math.round(1998.9999999998) = 1999` today but `0.1 + 0.2`-style inputs (e.g. computed defaults) silently drop ¢. Should round via cents-pure helper (parse string → bigint cents) like the rest of POS.
+  <!-- meta: scope=web/settings; files=packages/web/src/pages/settings/DeviceTemplatesPage.tsx:106-107; fix=use-cents-pure-helper-from-utils/money.ts -->
+
+- [ ] WEB-FF-002. **[HIGH] PortalEstimatesView optimistic approval has no rollback — customer sees "approved" forever even when server rejects.** `handleApprove` does `setEstimates(prev => prev.map(...))` synchronously after `await api.approveEstimate(id)`. The `catch` block only sets `error` text; the optimistic UI state is never reverted. Customer reads "Approved 2026-04-24" while shop side sees no approval — payment dispute risk.
+  <!-- meta: scope=web/portal; files=packages/web/src/pages/portal/PortalEstimatesView.tsx:21-33; fix=apply-optimistic-update-before-await+revert-in-catch -->
+
+- [ ] WEB-FF-003. **[HIGH] Web pages use zero `Intl.NumberFormat` / `Intl.DateTimeFormat` — every currency, percent, date is hand-formatted with hardcoded en-US locale + `$` symbol.** 98 `toLocaleString`/`toLocaleDateString` calls, 106 `toFixed(...)` calls in pages but **0** Intl uses. EUR/GBP/CAD tenants, RTL languages, and any non-en-US locale see broken formatting. Single-tenant settings already include a `locale` field that's never read.
+  <!-- meta: scope=web/all-pages; files=packages/web/src/pages/**/*.tsx; fix=create-utils/format.ts-formatCurrency/formatDate-using-Intl+respect-tenant-locale -->
+
+- [ ] WEB-FF-004. **[HIGH] LeadPipelinePage `updateMut` (drag-to-status) has no optimistic update + rollback — UI lags the server every move on slow 3G.** `mutationFn: leadApi.update(id, {status})` only does `invalidateQueries` on success. On a 1.5s mobile request the lead card stays in the OLD column for ~2s, so staff frequently click "move" again, accidentally double-moving past the intended stage.
+  <!-- meta: scope=web/leads; files=packages/web/src/pages/leads/LeadPipelinePage.tsx:239-247; fix=onMutate-cancel+setQueryData(pipeline)+rollback-in-onError-mirroring-TicketListPage:891 -->
+
+- [ ] WEB-FF-005. **[HIGH] CampaignsPage `updateStatus` mutation has no `onError` handler — pause/resume failures are silent.** `updateStatus = useMutation({ mutationFn, onSuccess: invalidate })` — if the server rejects (rate-limited, segment deleted, validation error) the user sees no feedback, just a stale list. CampaignsPage has 5 mutations, only 4 handle errors.
+  <!-- meta: scope=web/marketing; files=packages/web/src/pages/marketing/CampaignsPage.tsx:129-136; fix=add-onError-toast.error-and-rollback-status-pill -->
+
+- [ ] WEB-FF-006. **[HIGH] CustomerCreatePage validation doesn't clear `errors[field]` when user types into the offending field — error message stays red even after correction.** `updateField` only updates `form`, not `errors`. User submits with empty `first_name`, types John, the red border + "First name is required" stay until next blur or re-submit. Same gap on email field.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerCreatePage.tsx:140-181,217; fix=clear-errors[key]-on-each-updateField-call -->
+
+- [ ] WEB-FF-007. **[HIGH] All form pages use ZERO `aria-invalid` / `aria-describedby` — screen readers cannot announce field errors.** Verified across LoginPage (`fieldErrors.username/password`), CustomerCreatePage (`errors.first_name/email`), TicketCreatePage (validation toasts only), ExpensesPage (validation via toast.error), DeviceTemplatesPage. Visual border + sub-label exists, but blind users get no programmatic hint that the field failed validation. WCAG 4.1.2 / 3.3.1 violation across the app.
+  <!-- meta: scope=web/all-forms; files=packages/web/src/pages/auth/LoginPage.tsx:475-488,packages/web/src/pages/customers/CustomerCreatePage.tsx:213-221; fix=add-aria-invalid={!!errors.x}+aria-describedby="x-error"+id-on-error-paragraph -->
+
+- [ ] WEB-FF-008. **[HIGH] Detail pages have NO `@media print` stylesheet — Ctrl+P from /invoices/:id, /tickets/:id, /estimates/:id, /customers/:id prints sidebar nav + filters + buttons, not the document.** Only `/print/*` routes have `@page`+`@media print` rules. Owners reflexively Ctrl+P a TicketDetailPage and waste paper. The print CSS lives only at `PrintPage.tsx:993-1007` + `globals.css:65`.
+  <!-- meta: scope=web/all-detail-pages; files=packages/web/src/pages/{invoices,tickets,estimates,customers}/*DetailPage.tsx,packages/web/src/styles/globals.css:65; fix=add-shared-@media-print-{sidebar,filters,actions:hidden}-or-redirect-Ctrl+P-to-/print -->
+
+- [ ] WEB-FF-009. **[MED] InventoryListPage receive-scan commits run `for (item of ...) await api.create(item)` — 50-row sessions take 50× round-trip latency.** Sequential awaits at lines 1203-1228 for `receiveScanFromCatalog` + `receiveScanQuickAdd`. Should be `Promise.allSettled(items.map(i => api.x(i)))` so 50 items take 1× RTT instead of 50×. Visible 5-15s spinner on busy days.
+  <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:1203-1228; fix=Promise.allSettled+aggregate-toasts-by-success/failure-bucket -->
+
+- [ ] WEB-FF-010. **[MED] RepairPricingTab `gradesQuery` does sequential `getPrices()` then `api.get('/grades')` — waterfall + dynamic `import('@/api/client')` per render.** First `await repairPricingApi.getPrices()` is unused (result discarded), then `await import('@/api/client')` then `await api.get(...grades)`. Three serial awaits where one would do; comment in code admits the workaround.
+  <!-- meta: scope=web/settings; files=packages/web/src/pages/settings/RepairPricingTab.tsx:471-476; fix=add-getGrades(priceId)-to-repairPricingApi+drop-dynamic-import -->
+
+- [ ] WEB-FF-011. **[MED] CalendarPage hardcodes `'en-US'` locale on every date/time format helper.** `formatTime(iso).toLocaleTimeString('en-US', ...)`, `formatDateShort.toLocaleDateString('en-US', ...)`, plus same hardcoding in TicketListPage:1267 (`.toLocaleString('en-US', {month:'long'})`). Self-flagged at file:51 with `@audit-flag` comment but not fixed. Tenants in non-US locales see Apr 24 instead of 24 Apr.
+  <!-- meta: scope=web/leads,web/tickets; files=packages/web/src/pages/leads/CalendarPage.tsx:51-62,packages/web/src/pages/tickets/TicketListPage.tsx:1267; fix=use-shared-utils/format.ts+respect-navigator.language-or-tenant.locale -->
+
+- [ ] WEB-FF-012. **[MED] ExpensesPage form default date uses UTC midnight slice — entering an expense at 7pm PST shows tomorrow's date.** `new Date().toISOString().slice(0, 10)` returns the UTC YYYY-MM-DD; in any timezone west of UTC after ~4-5pm local the picker pre-fills the wrong day. Same pattern in CustomerListPage:327, SettingsPage:791, others using `toISOString().slice(0,10)` for display.
+  <!-- meta: scope=web/expenses; files=packages/web/src/pages/expenses/ExpensesPage.tsx:46,72,103; fix=use-toLocaleDateString('sv-SE')-or-Intl.DateTimeFormat-with-tenant-tz -->
+
+- [ ] WEB-FF-013. **[MED] Many `<img>` tags in lists/detail screens missing `loading="lazy"` — long inventory/dashboard scrolls fetch all images upfront.** `CatalogPage.tsx:501,601` (catalog grid, can be 100+ items), `DashboardPage.tsx:335` (popular products row), `TicketDevices.tsx:943,962,1038,1057` (pre/post repair photo grid, often 8+ per ticket), `InventoryDetailPage.tsx:370` (barcode), `setup/StepLogo.tsx:75` (preview). Only Communications + Portal + Landing have `loading="lazy"`.
+  <!-- meta: scope=web/multiple; files=packages/web/src/pages/catalog/CatalogPage.tsx:501,601,packages/web/src/pages/dashboard/DashboardPage.tsx:335,packages/web/src/pages/tickets/TicketDevices.tsx:943,962,1038,1057; fix=add-loading="lazy"-decoding="async"-to-non-fold-imgs -->
+
+- [ ] WEB-FF-014. **[MED] Most list pages use `key={i}` (array index) for skeletons + import-preview rows — re-render shifts state/animations onto wrong rows.** Found in CustomerListPage.tsx:830, EstimateListPage.tsx:47,501, TicketListPage.tsx:1308,1548,1648, LeadListPage.tsx:82,442, GiftCardsListPage.tsx:223, TvDisplayPage.tsx:104,168, InvoiceListPage.tsx:225,234,253,262, plus PortalInvoicesView.tsx:133 + PortalTicketDetail.tsx:141. Skeletons are mostly fine, but the import-preview rows (CustomerListPage:830) and chart `<Cell key={i}>` mappings flicker on data change.
+  <!-- meta: scope=web/multiple; files=packages/web/src/pages/customers/CustomerListPage.tsx:830,packages/web/src/pages/portal/PortalInvoicesView.tsx:133,packages/web/src/pages/invoices/InvoiceListPage.tsx:225,253; fix=use-stable-id-or-content-hash-where-data-can-mutate -->
+
+- [ ] WEB-FF-015. **[MED] DashboardPage / NpsTrendPage / ReportsPage useQuery never check `isError` — any 401/500 keeps the skeleton or empties to "0" indefinitely.** DashboardPage.tsx has 12+ `useQuery` calls, every one only destructures `{ data, isLoading }`. A logged-out token shows pulsing skeletons forever; staff think dashboard is "loading slow" when it's actually 401-looped. ReportsPage same pattern (existing FC-011 covers Nps/Referrals).
+  <!-- meta: scope=web/dashboard,web/reports; files=packages/web/src/pages/dashboard/DashboardPage.tsx:858,866,874,1182,1507,1629,1665,1673; fix=destructure-isError-and-render-error-state-or-bubble-to-ErrorBoundary -->
+
+- [ ] WEB-FF-016. **[MED] CustomerListPage importMutation invalidates AFTER server returns but never optimistically inserts rows — UI feels frozen for ~1s on Import-N.** Big CSV imports run server-side; the toast appears with count but `customers` cache only refreshes after `invalidateQueries`. Optimistic insert of `importPreview` rows would be immediate.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerListPage.tsx:228-239; fix=onMutate-prepend-importPreview-to-cache+rollback-in-onError -->
+
+- [ ] WEB-FF-017. **[MED] InvoiceListPage uses `new Date(inv.due_on) < new Date()` for "overdue" — string-without-Z is parsed as local time vs UTC depending on browser.** Line 378 + 47 + 501. Server-stored `due_on` strings sometimes lack the `Z` suffix; Safari treats `2026-04-24T00:00:00` as local, Chrome as UTC. A bill due "today" appears overdue on iOS Safari for tenants east of UTC.
+  <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:47,378,501; fix=normalize-due_on-server-side-to-Z+use-shared-isoToDate-helper -->
+
+- [ ] WEB-FF-018. **[MED] CustomerCreatePage email validator regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` accepts `a@b.c` but rejects valid `user+tag@example.co.uk` is fine yet `用户@例子.广告` (IDN) is rejected.** The regex is also missing length cap (RFC 5321 = 254 chars) so a 5KB string passes. Pair with WEB-FF-007 — no aria-invalid means SR users get no feedback either way.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerCreatePage.tsx:148; fix=use-shared-isValidEmail-helper-with-length-cap+IDN-allowance-or-let-server-be-source-of-truth -->
+
+- [ ] WEB-FF-019. **[LOW] CustomerDetailPage `${memberData.monthly_price.toFixed(2)}/mo` — float multiplication lurking.** Lines 920, 1016 (tier list), 1526 (ticket totals), 1615/1618 (invoice totals). All `.toFixed(2)` on numbers that are *probably* dollars-as-float from the server. If membership price is migrated to cents (matching POS migration), every value is 100× wrong silently — same risk as WEB-FB-001 gift card.
+  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:920,1016,1526,1615,1618; fix=accept-cents-from-server+single-formatCurrency(cents)-helper -->
+
+- [ ] WEB-FF-020. **[LOW] PortalInvoicesView + PortalTicketDetail + PortalEstimatesView use `i > 0 ? 'border-t border-gray-50' : ''` row-zebra — no `<tbody>` keying improvement and no zebra in dark mode.** `border-gray-50` is light-only. Combined with WEB-FC-004 (no dark variants on portal) — invisible row separators on dark phones.
+  <!-- meta: scope=web/portal; files=packages/web/src/pages/portal/PortalInvoicesView.tsx:133,packages/web/src/pages/portal/PortalTicketDetail.tsx:141,packages/web/src/pages/portal/PortalEstimatesView.tsx:80; fix=add-dark:border-gray-800+stable-keys-by-line-id -->
+
+- [ ] WEB-FF-021. **[LOW] InvoiceListPage Recharts `<Cell key={i}>` re-keys on every data refresh — slice colors flicker on poll-driven refresh.** Lines 225, 253 — `key={i}` is fine for static datasets but the queries refetch on `staleTime` expiry; React reconciles wrong cell→color pairings on data length change, making slices visually jump.
+  <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:225,253; fix=key-by-entry.name-or-method-id -->
+
+- [ ] WEB-FF-022. **[LOW] MembershipSettings + RepairPricingTab + DeviceTemplatesPage display prices via raw `${price.toFixed(2)}` template — locale + currency symbol assumed USD.** Same root cause as WEB-FF-003; specifically MembershipSettings.tsx:120,569 + RepairPricingTab.tsx:568,569,767,924,927,930. Tenant-onboarding wizard already collects locale but it never reaches these surfaces.
+  <!-- meta: scope=web/settings; files=packages/web/src/pages/settings/MembershipSettings.tsx:120,569,packages/web/src/pages/settings/RepairPricingTab.tsx:568-930; fix=replace-template-strings-with-formatCurrency(amount,tenant.currency) -->
+
+- [ ] WEB-FF-023. **[LOW] LeadDetailPage timeline mixes `new Date(r.remind_at) < new Date()` overdue check inside a memoized list — re-evaluates only when deps change, so a reminder ticking past "now" while the page is open never flips to "Overdue" until next refetch.** `useMemo` deps are `[appointments, reminders, lead]`; clock advancing alone won't re-render. Edge case but visible during shift change-overs.
+  <!-- meta: scope=web/leads; files=packages/web/src/pages/leads/LeadDetailPage.tsx:274-298; fix=add-1-min-tick-state-as-useMemo-dep-or-compute-status-at-render-time -->
+
+- [ ] WEB-FF-024. **[LOW] Dashboard / DeviceTemplatesPage / GoalsPage use `(numerator / denominator) * 100` for progress bars without guarding NaN — division by zero when `total_entities=0` or `target_value=0` produces `NaN%` in the inline style.** `SettingsPage.tsx:2694` + `team/GoalsPage.tsx:142` already guard with `Math.min(100, ...)` but not `isNaN`. Renders as `width: NaN%` (browsers ignore, bar shows 0). Cosmetic but flags broken telemetry.
+  <!-- meta: scope=web/multiple; files=packages/web/src/pages/settings/SettingsPage.tsx:2694,packages/web/src/pages/team/GoalsPage.tsx:142,packages/web/src/pages/tickets/TicketListPage.tsx:1232-1238; fix=guard-Number.isFinite(pct)-or-fall-to-0 -->
+
+- [ ] WEB-FF-025. **[LOW] CalendarPage month grid filters all appointments per cell (`appointments.filter(...)` × 42 cells) on every render — O(N×42).** Light at 50 appts (still 2100 isSameDay calls per render), but on a busy month with 500 appts that's 21k Date constructions per render. Build a `Map<day, Appointment[]>` once with `useMemo`.
+  <!-- meta: scope=web/leads; files=packages/web/src/pages/leads/CalendarPage.tsx:378-382; fix=useMemo-bucketed-by-yyyy-mm-dd -->
+
+### Wave-Loop Finder-D run 2026-04-24 — components/hooks/stores/api/utils
+
+- [ ] WEB-FD-001. **[HIGH] Sidebar `RecentViews` does not validate the `type` field, only `path` — `type` flows into the React `key` and (label) is shown in collapsed-mode.** `Sidebar.tsx:255-277` accepts any string for `type`/`label` from `localStorage.recent_views`. While `path` is restricted to `startsWith('/')`, an attacker who can write to localStorage (XSS in another sub-app, malicious browser extension) controls the visible text rendered in the truncated collapsed sidebar (`item.label.slice(0, 6)`). The entry can be used as a phishing surface ("Settings"-spoofed link to a `/normal/path`).
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Sidebar.tsx:255-277; fix=whitelist-type-against-known-set+cap-label-length+strip-control-chars -->
+
+- [ ] WEB-FD-002. **[HIGH] `CustomerHistorySidebar` renders attacker-controllable `photoUrl` straight into `<img src>` with no protocol allow-list.** `tickets/CustomerHistorySidebar.tsx:39-45,121-122` reads `photos[0].url || photos[0].path` from server payload. Server is trusted today, but a tenant-scoped DB-row poison or unsanitised CSV import that lets a customer-controlled string land as `data:image/svg+xml,<svg onload=…>` IS rendered (most browsers block `javascript:` in img — but `data:` SVG with embedded script is the live vector). Mirror `getIFixitUrl`'s allow-list (only http/https + restricted MIME prefixes).
+  <!-- meta: scope=web/components/tickets; files=packages/web/src/components/tickets/CustomerHistorySidebar.tsx:39-45,121-122; fix=safeImageUrl-helper-rejecting-javascript:+restrict-data:-to-png/jpeg/webp -->
+
+- [ ] WEB-FD-003. **[HIGH] `useWebSocket` sends bearer token in WebSocket `auth` payload over plaintext `ws:` when running on `http:` origin.** `useWebSocket.ts:27-45,247-249` derives protocol from `loc.protocol === 'https:' ? 'wss:' : 'ws:'`. On a same-origin HTTP dev/staging deploy the access token is shipped in `JSON.stringify({ type: 'auth', token })` over an unencrypted socket — token is then valid for the full refresh window if intercepted. Either refuse to connect on non-HTTPS origins (production) or use a short-lived ws-only nonce instead of the bearer JWT.
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useWebSocket.ts:27-45,247-249; fix=guard-loc.protocol==='https:'-in-prod+swap-to-ws-nonce-from-server -->
+
+- [ ] WEB-FD-004. **[HIGH] `client.ts` `forceLogout()` posts `Authorization: Bearer <oldToken>` to `/auth/logout` AFTER clearing localStorage; concurrent refresh in another tab can race.** `client.ts:155-180` reads `accessToken` from localStorage, removes it, then asynchronously calls `logoutClient.post('/auth/logout', …, { headers: { Authorization: 'Bearer <token>' } })`. If a parallel tab refreshed the token between read and post, this fires a logout against an already-invalidated token (server may 401 silently) AND the in-flight token sits in a closure for the duration of the request. Read+invalidate atomically, or use the cookie session for logout.
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:155-180; fix=use-cookie-session-for-logout+drop-Authorization-header -->
+
+- [ ] WEB-FD-005. **[HIGH] `usePosKeyboardShortcuts` swallows F1-F6 and `AppShell` independently rebinds F2/F3/F4/F6 — same key fires two handlers and order is undefined.** `usePosKeyboardShortcuts.ts:59-69` calls `event.preventDefault()` for every key in `KEY_MAP`. `AppShell.tsx:104-110` has a separate window listener for F2/F3/F4/F6. While POS is mounted, F2 = "Products tab" AND `navigate('/pos')` (idempotent, but masks bugs). F5 (Refresh) is also stolen by usePosKeyboardShortcuts as "Complete sale" with no opt-out — cashier expecting F5 to refresh during a frozen POS gets a checkout-modal pop instead.
+  <!-- meta: scope=web/hooks+web/components/layout; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts:28-69,packages/web/src/components/layout/AppShell.tsx:100-115; fix=pick-one-binding-per-Fkey+document-deviation-from-browser-defaults -->
+
+- [ ] WEB-FD-006. **[MED] `useDraft` writes to `localStorage` under caller-supplied key with no namespace prefix — collision risk with library/3p keys.** `useDraft.ts:13,40,73,88` stores `localStorage[key] = value`. Any caller passing `key='auth'`, `'theme'`, `'token'` collides with app keys. Mirror `useDismissible`'s `bizarrecrm:dismiss:` prefix (e.g. `bizarrecrm:draft:`) — also makes auth-clear teardown trivial (regex sweep on logout).
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useDraft.ts:13,40,73,88; fix=add-bizarrecrm:draft:-prefix+iterate-keys-on-auth-cleared -->
+
+- [ ] WEB-FD-007. **[MED] `useUndoableAction` unmount-fire path runs `actionRef.current(runArgs)` AFTER cleanup with no guard against the user's auth being cleared during the 5-second window.** `useUndoableAction.tsx:196-216`: a destructive deletion scheduled, user clicks "Logout" within 5s, AppShell unmounts the host component, the cleanup fires the action against the now-stale token (best case: 401 + a console error; worst case: the request was queued before logout-cleanup so it runs as the previous user). Skip the unmount fire when `useAuthStore.getState().isAuthenticated === false`.
+  <!-- meta: scope=web/hooks; files=packages/web/src/hooks/useUndoableAction.tsx:196-216; fix=guard-on-isAuthenticated+visibilityState -->
+
+- [ ] WEB-FD-008. **[MED] `CommandPalette` `recentSearches` is captured ONCE at mount via lazy `useState(getRecentSearches)` — newly saved searches do not appear when the palette is reopened in the same session.** `CommandPalette.tsx:131,205,378-388`: `saveRecentSearch()` writes to sessionStorage, but `[recentSearches]` state never re-reads. Open palette, search "iPhone 14", select a result; close; reopen — "iPhone 14" still does not appear under Recent until full page reload. Either re-read on `commandPaletteOpen=true` or move the recent list to a Zustand store synced to sessionStorage.
+  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/CommandPalette.tsx:131,205,378; fix=re-read-on-open+useEffect[commandPaletteOpen] -->
+
+- [ ] WEB-FD-009. **[MED] `BalanceBadge` shows non-localised "due" suffix even when `cents < 0` (credit balance) — confusing label.** `billing/BalanceBadge.tsx:23,40`: `Math.abs(cents)` is used for thresholds + display, so a $50 CREDIT renders as "$50.00 due" in green-ish gray. Distinguish credit vs debit: if `cents > 0` → "due"; `cents < 0` → "credit"; or hide the badge entirely on credit.
+  <!-- meta: scope=web/components/billing; files=packages/web/src/components/billing/BalanceBadge.tsx:23,40; fix=branch-on-sign-of-cents+separate-label -->
+
+- [ ] WEB-FD-010. **[MED] `ConfirmDialog` focus trap never restores focus on close — keyboard users land on `<body>` after dismissing.** `shared/ConfirmDialog.tsx:32-72`: opens, focuses confirm button, but `onCancel/onConfirm` never re-focuses the originating element. A staff member tabbing through a list, hitting a delete button, dismissing the dialog — keyboard focus is dropped to `<body>` and they have to Tab from the start. Capture `document.activeElement` in `useEffect(() => …, [open])` and restore on close.
+  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/ConfirmDialog.tsx:32-72; fix=save-prevFocus-on-open+restore-on-close -->
+
+- [ ] WEB-FD-011. **[MED] `Header` polls `notificationApi.unreadCount()` + `smsApi.unreadCount()` on a 30s interval that runs even after auth-cleared — fires 401 storms during logout race.** `layout/Header.tsx:97-123`: the polling effect depends only on the two memoised callbacks; it does not subscribe to `bizarre-crm:auth-cleared`. After logout, the next 30-second tick sends both counts with the (now-cleared) Authorization header → both 401 → response interceptor tries the refresh path → fails → emits another logout-required event. Listen for `auth-cleared` to clearInterval, or short-circuit the fetch when `isAuthenticated === false`.
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:97-123; fix=add-auth-cleared-listener+gate-on-isAuthenticated -->
+
+- [ ] WEB-FD-012. **[MED] `BenchTimer` and several other tickets components use `(res: any) =>` in mutation `onSuccess` for response unwrapping.** `tickets/BenchTimer.tsx:144,146`, `tickets/DeviceTemplatePicker.tsx:88-90`, `tickets/DefectReporterButton.tsx:61-66` reach into `res.data.data.<x>` with `any`-cast — server contract drift goes silent. Define typed response shapes (e.g. `BenchStopResponse { total_seconds, labor_cost_cents }`) and have `benchApi.timer.stop` return them.
+  <!-- meta: scope=web/components/tickets+api; files=packages/web/src/components/tickets/BenchTimer.tsx:142-151,packages/web/src/components/tickets/DeviceTemplatePicker.tsx:85-99,packages/web/src/components/tickets/DefectReporterButton.tsx:51-77; fix=type-bench/template/defect-responses-in-api/endpoints.ts -->
+
+- [ ] WEB-FD-013. **[MED] `AppShell` global keydown handler captures F2/F3/F4/F6 with no opt-out — collides with `usePosKeyboardShortcuts` and any modal/dialog that wants F-keys.** `AppShell.tsx:100-115`: the only guard is `isTypingInField()`, but a focused dialog (`ConfirmDialog`, `UpgradeModal`, `PinModal`, etc.) with no input still steals F2-F6 navigations away from the user. Skip handling when `document.querySelector('[role="dialog"][aria-modal="true"]')` is present.
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/AppShell.tsx:100-115; fix=skip-when-modal-open-or-when-pos-mounted -->
+
+- [ ] WEB-FD-014. **[MED] `endpoints.ts` is 27k tokens / single-file mega-export — every page-level import drags the whole module graph.** Vite tree-shakes named exports but TypeScript declaration-merging across the file means a typo in one route forces a typecheck on every consumer. Split into `endpoints/{auth,ticket,customer,inventory,…}.ts` re-exported via `endpoints/index.ts`. Bundle and HMR cost: every chunk pulls every endpoint definition.
+  <!-- meta: scope=web/api; files=packages/web/src/api/endpoints.ts; fix=split-by-domain+re-export-via-barrel -->
+
+- [ ] WEB-FD-015. **[MED] `SuccessCelebration`/`useMilestoneToasts`/`GettingStartedWidget` each inject their own `<style>` keyframes via DOM injection — three separate confetti CSS rule-sets stacked.** `onboarding/SuccessCelebration.tsx:78-114`, `onboarding/useMilestoneToasts.ts:55-86`, `onboarding/GettingStartedWidget.tsx:158-194` all build a fresh `<style>` per fire and rely on `host.remove()` 3-4 seconds later. Two milestones in flight at once = two `<style>` blocks added to `<body>`. Move the keyframes to global CSS (`index.css`) once and reuse.
+  <!-- meta: scope=web/components/onboarding; files=packages/web/src/components/onboarding/SuccessCelebration.tsx:78-114,packages/web/src/components/onboarding/useMilestoneToasts.ts:55-86,packages/web/src/components/onboarding/GettingStartedWidget.tsx:158-194; fix=share-keyframes-via-global-css+reuse-host-element -->
+
+- [ ] WEB-FD-016. **[MED] `Header` renders `user.role` raw without translation — non-English users see "admin"/"manager"/"technician" English strings.** `Header.tsx:394` `{user?.role ?? 'Unknown'}`. The roles are i18n keys server-side but the UI never maps them. Mirror `FEATURE_NAMES` shared constant with `ROLE_LABELS`.
+  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:394; fix=add-ROLE_LABELS-shared-map+lookup -->
+
+- [ ] WEB-FD-017. **[MED] `client.ts` request interceptor calls `scheduleTokenRefresh()` on every authenticated request — the JWT base64 payload is decoded + JSON.parsed every time then bails on `refreshScheduled` flag.** `client.ts:135-148`: not catastrophic but wasteful — N requests/page = N decodes. Cache the parsed `exp` claim on the token's first decode and skip the work until a different token string is observed.
+  <!-- meta: scope=web/api; files=packages/web/src/api/client.ts:135-148,82-132; fix=memoise-decoded-exp-by-token-string -->
+
+- [ ] WEB-FD-018. **[LOW] `formatPhone` returns input unchanged for any string of length ≠ 10/11 starting digits — UK +44, AU +61, MX +52 callers see whatever they typed, no normalisation.** `utils/format.ts:118-131`: comment claims "preserve user formatting"; in practice a half-formatted "(303) 261-19" returns `"(303) 261-19"` raw with no `+1` prefix or fix. CROSS13 canonical format only kicks in at exactly 10 or 11 digits.
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/format.ts:118-131; fix=use-libphonenumber-js-or-document-non-US-skip-explicitly -->
+
+- [ ] WEB-FD-019. **[LOW] `confirmStore`'s `confirm()` cancels the previous resolver with `false` synchronously inside the new `confirm` call — caller's `await confirm(...)` chain may run before the new dialog is mounted.** `stores/confirmStore.ts:33-44`: `prev(false)` runs in the same microtask as `set({ open: true, … })`. If the previous awaiter then triggers another `confirm()` synchronously (e.g. a chained "are you sure? are you really sure?"), the second `confirm` overwrites the slot before React renders the first.
+  <!-- meta: scope=web/stores; files=packages/web/src/stores/confirmStore.ts:33-44; fix=defer-prev(false)-via-queueMicrotask-or-setTimeout(0) -->
+
+- [ ] WEB-FD-020. **[LOW] `safeColor` rejects all non-hex colors (no rgb/hsl/named) — utility is intentional but unflagged: callers passing `currentColor` or CSS vars silently fall back to grey.** `utils/safeColor.ts:6-11`: the regex matches only `#hex`. A theme-aware color like `var(--brand-500)` or `currentColor` returns the fallback `#6b7280`. Either expand the allow-list to safe non-script forms, or rename to `safeHexColor` for clarity.
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/safeColor.ts:6-11; fix=rename-to-safeHexColor+document-non-hex-rejection -->
+
+- [ ] WEB-FD-021. **[LOW] `CommissionPeriodLock` opens server CSV export via `window.open('/api/v1/team/payroll/export.csv?period=…','_blank')` — bypasses axios auth interceptor.** `team/CommissionPeriodLock.tsx:88-93`: the new tab carries cookies but no `Authorization: Bearer` header. If the server is bearer-only (no cookie session for tenant auth), the export link 401s. Same pattern flagged in WEB-FB-006 for InvoiceDetailPage prints; reuse blob-fetch download instead of `window.open`.
+  <!-- meta: scope=web/components/team; files=packages/web/src/components/team/CommissionPeriodLock.tsx:88-93; fix=axios-blob-fetch+createObjectURL+anchor-download -->
+
+- [ ] WEB-FD-022. **[LOW] `MentionPicker` fetches the full `/employees` list with `staleTime: 60_000` — no name filter, returns every employee row including inactive/terminated ones.** `team/MentionPicker.tsx:26-34`: the picker shows everyone returned by `/employees`. A 50-employee shop renders 50 buttons in a 64px-tall dropdown. Add `?active=true&search=<typed>` and an input for filtering inside the picker.
+  <!-- meta: scope=web/components/team; files=packages/web/src/components/team/MentionPicker.tsx:26-73; fix=add-active=true+typed-search-filter -->
+
+- [ ] WEB-FD-023. **[LOW] `PageErrorBoundary` reload-loop sentinel uses `sessionStorage` keyed on `window.location.href` — query strings or hashes flip the URL and bypass the loop guard.** `shared/PageErrorBoundary.tsx:69-100`: a chunk that errors at `/tickets?status=open` then redirects to `?status=closed` would each get a fresh "first reload" pass. Strip query+hash before comparing or use `window.location.pathname`.
+  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/PageErrorBoundary.tsx:69-100; fix=use-pathname-for-sentinel-url -->
+
+- [ ] WEB-FD-024. **[LOW] `phoneFormat.formatStorePhoneAsYouType` returns raw value when digits >11 — allows 11+ digits to pass through with no `+` prefix when the user typed a non-US country code without one.** `utils/phoneFormat.ts:48`: `if (digits.length > 11) return value` — a user pasting "447911123456" (UK without +) gets the raw 12-char string back, not the canonical international form. Tighten to require `+` for non-US.
+  <!-- meta: scope=web/utils; files=packages/web/src/utils/phoneFormat.ts:40-54; fix=require-leading-plus-for-non-US-or-document-the-pass-through -->
+
+- [ ] WEB-FD-025. **[LOW] `BulkActionBar` uses `animate-in slide-in-from-bottom` Tailwind class — no `prefers-reduced-motion` opt-out.** `shared/BulkActionBar.tsx:31-39`: WCAG 2.3.3 (Animation from Interactions) requires user-controlled disable for any non-essential animation. Wrap in `motion-safe:` or honour `motion-reduce:` to disable the slide.
+  <!-- meta: scope=web/components/shared; files=packages/web/src/components/shared/BulkActionBar.tsx:31-39; fix=motion-safe:slide-in-from-bottom -->
+
+### Wave-Loop Finder-E run 2026-04-24 — root configs + cross-cutting a11y
+
+- [ ] WEB-FE-001. **[HIGH] No Content-Security-Policy meta nor any other security headers in index.html.** `index.html` ships only `referrer=no-referrer` + `theme-color`; no `Content-Security-Policy`, no `X-Content-Type-Options`, no frame-ancestor lockdown. SaaS app accepts third-party Google-Fonts CSS already (`fonts.googleapis.com`) so a strict CSP is overdue. Static-host fallback (Vite preview, raw S3) ships zero header policy and `SignupPage` injects hCaptcha script dynamically (§FA-010) — both go unconstrained.
+  <!-- meta: scope=web/root; files=packages/web/index.html:3-15; fix=add-meta-http-equiv-Content-Security-Policy+X-Content-Type-Options-nosniff+belt-and-suspenders-with-server-helmet -->
+
+- [ ] WEB-FE-002. **[HIGH] No skip-to-main-content link anywhere in the app shell — keyboard users tab through the full sidebar (~30 links) on every page nav.** `AppShell.tsx:172` jumps straight to `<main>` with no `<a href="#main-content">Skip to content</a>` and no `id="main-content"` target. Grep across all of `packages/web/src` returns zero hits for skip-link patterns. WCAG 2.4.1 Bypass Blocks fails for every internal page.
+  <!-- meta: scope=web/a11y; files=packages/web/src/components/layout/AppShell.tsx:127-176; fix=insert-sr-only-focus-visible-skip-link-as-first-child-of-body+id=main-content-on-<main> -->
+
+- [ ] WEB-FE-003. **[HIGH] Tailwind config + Google-Fonts link still ship Inter + Fredoka One — diverges from canonical Saved By Zero / Bebas Neue / Futura per §project_brand_fonts.** `index.html:18` loads `Fredoka+One` + `Inter`, `tailwind.config.ts:58` declares `sans: ['Inter', …]`. MEMORY explicitly lists "Web (Fredoka One) … all wrong; needs alignment". Brand drift visible site-wide.
+  <!-- meta: scope=web/root; files=packages/web/index.html:18,packages/web/tailwind.config.ts:57-60; fix=swap-Google-Fonts-href-to-Bebas+Jost+JetBrains+self-host-Saved-By-Zero+Futura+update-tailwind-fontFamily.sans -->
+
+- [ ] WEB-FE-004. **[HIGH] Manifest theme_color (`#bc398f` magenta) doesn't match index.html theme-color (`#FBF3DB` cream) — chrome address-bar flickers between colors on PWA install.** `manifest.json:8` sets `theme_color: #bc398f`, `index.html:15` sets `theme-color: #FBF3DB`, brand cream is `#fdeed0` (tailwind primary.200). Three different "primary" colors.
+  <!-- meta: scope=web/root; files=packages/web/public/manifest.json:7-8,packages/web/index.html:15,packages/web/tailwind.config.ts:21; fix=unify-on-#fdeed0-cream-or-document-rationale -->
+
+- [ ] WEB-FE-005. **[HIGH] Vite build has no `manualChunks` strategy — recharts + lucide-react + react-query risk bundling into the main page chunk.** `vite.config.ts:58-61` only sets `outDir` + `sourcemap:false`. recharts is imported by 4 pages (~120 KB); 154 lucide-react imports across the app — without `optimizeDeps.include` + `manualChunks: { recharts, lucide }` the chunk graph is opaque.
+  <!-- meta: scope=web/root; files=packages/web/vite.config.ts:58-61; fix=add-rollupOptions.output.manualChunks-for-vendor-react-recharts-lucide+verify-with-rollup-plugin-visualizer -->
+
+- [ ] WEB-FE-006. **[HIGH] Forms across `packages/web/src/pages` ship 197 `outline-none` / `focus:outline-none` declarations with no replacement focus ring on a large fraction of them.** `globals.css:50-54` defines a global `*:focus-visible` ring, but Tailwind utilities applied to a wrapper `<button>` like `focus:outline-none` strip it without `focus-visible:ring-*` replacement on many sites — keyboard navigation goes invisible. WCAG 2.4.7.
+  <!-- meta: scope=web/a11y; files=packages/web/src/pages/**/*.tsx,packages/web/src/components/**/*.tsx; fix=codemod-replace-focus:outline-none-with-focus-visible:ring-2+focus-visible:ring-primary-500 -->
+
+- [ ] WEB-FE-007. **[HIGH] `globals.css` `.btn-primary` is hard-coded green (`#16a34a`/`#15803d`/`#22c55e`) — diverges from brand cream (`primary-200=#fdeed0` per tailwind.config.ts) and from Android `LightColorScheme.primary=#a66d1f`.** Every `.btn-primary` button on the web is green-on-white while the brand surface ramp (project memo) is Zinc + cream. Visible color mismatch with mockups.
+  <!-- meta: scope=web/styles; files=packages/web/src/styles/globals.css:104-111; fix=swap-btn-primary-to-bg-primary-600+text-primary-900-OR-delete-and-use-tailwind-utilities-only -->
+
+- [ ] WEB-FE-008. **[MED] Global `*:focus-visible` outline color (`#22c55e` green) clashes with new cream brand and is hard to perceive on dark-mode green-on-zinc focused surfaces.** `globals.css:50-54` hard-codes the legacy green. Should reference `--ring` token tied to `primary-600` or `accent-500`.
+  <!-- meta: scope=web/styles; files=packages/web/src/styles/globals.css:50-54; fix=replace-with-CSS-var-+update-tailwind-theme.ringColor.DEFAULT -->
+
+- [ ] WEB-FE-009. **[MED] Global queryClient + axios singletons in `main.tsx` / `api/client.ts` are module-scoped — bfcache restore (Safari/Firefox) reuses the in-memory cache populated by the previous user session.** `main.tsx:95` `const queryClient = new QueryClient(...)`; logout `clear()` runs only on the originating tab. A bfcached tab will show previous user data for one frame before any refetch — and never refetches if `staleTime` hasn't elapsed.
+  <!-- meta: scope=web/root; files=packages/web/src/main.tsx:95-103,packages/web/src/api/client.ts:42; fix=listen-pageshow-event.persisted+force-clear+full-router-replace-to-/login -->
+
+- [ ] WEB-FE-010. **[MED] `<html lang="en">` is hard-coded — the app already i18n's currency in some pages (§FB-010) but never sets `lang` per tenant locale.** Screen-reader pronunciation for non-English tenants (es-MX, fr-CA on the roadmap) is wrong; WCAG 3.1.1 Language of Page.
+  <!-- meta: scope=web/a11y; files=packages/web/index.html:2; fix=expose-tenant.locale-via-meta-and-update-document.documentElement.lang-on-mount -->
+
+- [ ] WEB-FE-011. **[MED] No global error boundary `componentDidCatch` reporting — uncaught render errors only `console.error()`, never reach a server crash endpoint.** `main.tsx:64-67` swallows the error info into the browser console. Production has no Sentry equivalent — operators only learn about white-screens via customer complaints.
+  <!-- meta: scope=web/root; files=packages/web/src/main.tsx:64-67; fix=POST-to-/api/client-errors-with-message+stack+componentStack+tenant+release -->
+
+- [ ] WEB-FE-012. **[MED] `globals.css` `.input` focus ring also hard-codes green (`#22c55e`/`#4ade80`) — divergent from brand cream + matches the rest of the legacy palette.** Inputs across forms have green-on-cream focus accents that fight the new visual language.
+  <!-- meta: scope=web/styles; files=packages/web/src/styles/globals.css:148-160; fix=swap-input-focus-color-to-primary-600+ring-primary-200 -->
+
+- [ ] WEB-FE-013. **[MED] App-wide tables (`CustomerListPage`, `CustomerDetailPage`, `NotificationTemplatesTab`, `SettingsPage`, `AuditLogsTab`) have zero `scope="col"` / `scope="row"` / `<caption>` — screen readers can't associate cells to headers.** `grep -l 'scope="col"' packages/web/src/pages` returns 2 matches against ~20+ table sites. WCAG 1.3.1.
+  <!-- meta: scope=web/a11y; files=packages/web/src/pages/customers/CustomerListPage.tsx:705-710,packages/web/src/pages/settings/AuditLogsTab.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx; fix=add-scope=col-on-th+visually-hidden-caption -->
+
+- [ ] WEB-FE-014. **[MED] Forms across pages have only 3 `aria-invalid` / `aria-describedby` hits total — 99 % of inputs render error text in a sibling `<p>` with no programmatic association.** Screen readers don't announce "required, error: phone number invalid" alongside the field. WCAG 3.3.1, 4.1.2.
+  <!-- meta: scope=web/a11y; files=packages/web/src/pages/auth/LoginPage.tsx,packages/web/src/pages/signup/SignupPage.tsx,packages/web/src/pages/customers/CustomerCreatePage.tsx; fix=wire-aria-invalid+aria-describedby=field-name-error-id-for-every-validated-input -->
+
+- [ ] WEB-FE-015. **[MED] `CashRegisterPage` cash in/out form has two unlabeled `<input>` (only `placeholder=`) — placeholder-as-label is a known WCAG 1.3.1 + 3.3.2 fail and breaks autofill.** `CashRegisterPage.tsx:128-131` Amount + Reason inputs have no `<label htmlFor>` nor `aria-label`. Same pattern across many search bars.
+  <!-- meta: scope=web/a11y; files=packages/web/src/pages/pos/CashRegisterPage.tsx:128-131; fix=add-visually-hidden-label+for-attr-or-aria-label -->
+
+- [ ] WEB-FE-016. **[MED] Components in `components/team/*` + `components/billing/*` use `text-gray-*` exclusively (zero `dark:` variants).** `CommissionPeriodLock.tsx` 7 hits, `TicketHandoffModal.tsx` 4 hits, `MentionPicker.tsx` 4 hits, `RefundReasonPicker.tsx` 5 hits, `FinancingButton.tsx` etc. — all unreadable in dark mode and diverge from the surface-* token ramp (§project_brand_surface_ramp). Same class as FC-003/FC-004 but in shared components.
+  <!-- meta: scope=web/components; files=packages/web/src/components/team/CommissionPeriodLock.tsx:97-177,packages/web/src/components/team/TicketHandoffModal.tsx:82-112,packages/web/src/components/team/MentionPicker.tsx:56-70,packages/web/src/components/billing/RefundReasonPicker.tsx:55-78,packages/web/src/components/billing/FinancingButton.tsx:76; fix=codemod-text-gray-N-to-text-surface-N+dark:text-surface-(1000-N) -->
+
+- [ ] WEB-FE-017. **[MED] `index.html` viewport tag missing `viewport-fit=cover` — iOS Safari notch/home-indicator areas not respected, content clipped at the bottom of `/customer-portal` on iPhone.** `index.html:5` is the bare `width=device-width,initial-scale=1.0`. Customer-portal already runs on iPhone Safari per FC-003.
+  <!-- meta: scope=web/root; files=packages/web/index.html:5; fix=append-viewport-fit=cover+adopt-env(safe-area-inset-*)-in-AppShell+portal-pages -->
+
+- [ ] WEB-FE-018. **[MED] `index.html:18` Google Fonts CSS loaded synchronously without `preload` + `media=print` swap — render-blocks first paint by 200-400 ms on cold load.** `<link href="…fonts.googleapis.com…" rel="stylesheet">` is the canonical render-blocking pattern. Combined with FE-003 (wrong fonts) the fix is one PR: swap fonts + change strategy.
+  <!-- meta: scope=web/root; files=packages/web/index.html:16-18; fix=preconnect+rel=preload-as=style+onload="this.rel='stylesheet'"+noscript-fallback -->
+
+- [ ] WEB-FE-019. **[MED] `App.tsx` route table mounts `<TrackingPage>`, `<CustomerPortalPage>`, `<PrintPage>` outside the `<PageErrorBoundary>` wrapper used for the auth'd shell.** Lines 374-378: `print/ticket/:id`, `track`, `customer-portal/*` render naked — a render error in any of these (signed-in customer view, kiosk TV, print preview) crashes the whole React tree. Only `/tv` + `/photo-capture` get `<PageErrorBoundary>`.
+  <!-- meta: scope=web/root; files=packages/web/src/App.tsx:374-378; fix=wrap-each-public-route-in-PageErrorBoundary -->
+
+- [ ] WEB-FE-020. **[MED] No `<Route>`-level error boundary on `/login`, `/setup`, `/reset-password/:token` — auth pages crash the whole app instead of degrading.** Same diff as FE-019 but on auth surface (lines 368-371). Reset-password is opened from email — a stale token causing a render exception today shows the global ErrorBoundary's hard-coded inline-styles screen with no "Back to login" path.
+  <!-- meta: scope=web/root; files=packages/web/src/App.tsx:368-371; fix=wrap-auth-routes-in-PageErrorBoundary-with-recovery-CTA -->
+
+- [ ] WEB-FE-021. **[LOW] `LoadingScreen`, `PageLoader`, `NotFoundPage`, `SetupFailedScreen` all live inside `App.tsx` (~270 lines) — bloat the Suspense root chunk and fight code-splitting because they ride along with the router rather than the lazy pages.** Move to `components/shared/` so the single non-lazy entry stays minimal.
+  <!-- meta: scope=web/root; files=packages/web/src/App.tsx:93-265; fix=extract-LoadingScreen+PageLoader+NotFoundPage+SetupFailedScreen-to-components/shared/-and-import -->
+
+- [ ] WEB-FE-022. **[LOW] `NotFoundPage` uses `text-gray-800/600` (no dark variants) and `bg-primary-600` button (legacy primary, will look orange-on-cream after FE-007 swap).** `App.tsx:96-103` — already diverges from brand surface ramp + green-vs-cream confusion.
+  <!-- meta: scope=web/root; files=packages/web/src/App.tsx:93-105; fix=text-surface-*+dark:text-surface-*+btn-primary-class -->
+
+- [ ] WEB-FE-023. **[LOW] `ErrorBoundary` fallback in `main.tsx:71-87` uses hard-coded inline styles — ignores dark theme, fonts, and brand entirely.** Even if the rest of the app is dark-mode + cream, a render error drops the user into a white card with `#f9fafb` background + `#2563eb` blue button. Replace with Tailwind classes so the boundary at least respects `prefers-color-scheme`.
+  <!-- meta: scope=web/root; files=packages/web/src/main.tsx:71-87; fix=swap-inline-styles-for-tailwind-classes-with-dark:-variants -->
+
+- [ ] WEB-FE-024. **[LOW] `globals.css:13-15` `html { transition: background-color 0.2s ease, color 0.2s ease }` causes a flash on every theme change AND adds 200 ms of paint cost on every navigation.** Browsers can't skip the transition for class-list flips so the dark-mode toggle visibly fades — also slows initial-paint metrics by triggering a transition on first mount when the dark class lands.
+  <!-- meta: scope=web/styles; files=packages/web/src/styles/globals.css:13-15; fix=scope-transition-to-html.theme-transitioning-class+toggle-class-around-the-flip-only -->
+
+- [ ] WEB-FE-025. **[LOW] `public/sw.js` self-unregisters but is still served — every page load fetches `/sw.js`, registers, then unregisters; one wasted request + one wasted SW lifecycle per cold load.** The unregister loop in `index.html:48-59` already kills any cached SW; serving `sw.js` at all is now redundant. Manifest still lists `start_url:/` so PWA installs will succeed but find no SW.
+  <!-- meta: scope=web/root; files=packages/web/public/sw.js:1-11,packages/web/index.html:47-60; fix=delete-public/sw.js+remove-unregister-script-after-N-weeks-of-deploy -->
+
+## Web Audit Wave-WEB-2026-04-24 Search S4 — auth + setup + portal
+
+### Auth pages (`packages/web/src/pages/auth/`)
+- [x] WEB-S4-001. **P1 — `LoginPage`: "Forgot password" sends without valid email format.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-002. **P1 — `LoginPage` 2FA setup step has no Back button.** `LoginPage.tsx:576-611`. Fix: add Back button calling setStep('password').
+- [x] WEB-S4-003. **P1 — `ResetPasswordPage` shows full form when token missing from URL.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-004. **P2 — `LoginPage` first-run setup has no confirm-password.** `LoginPage.tsx:447-467`. Fix: add confirm-password field.
+- [ ] WEB-S4-005. **P2 — `LoginPage` first-run setup: no password strength indicator.** `LoginPage.tsx:380-467`. Fix: zxcvbn bar or complexity hint.
+- [ ] WEB-S4-006. **P2 — `LoginPage` no hCaptcha widget in Forgot panel despite backend demanding it after CAPTCHA_FAILURE_THRESHOLD.** `LoginPage.tsx:520-535`. Fix: read captcha_required from 429, render widget, attach token.
+- [x] WEB-S4-007. **P2 — `LoginPage` setup token URL `/setup/:token` has no Route in App.tsx — completely dead.** CLOSED 2026-04-24 — already present at App.tsx:370 (pre-existing)
+- [ ] WEB-S4-008. **P2 — Trusted-device "90 days" checkbox has no help text or revoke link.** `LoginPage.tsx:626-634`. Fix: tooltip + link to sessions settings.
+
+### Setup wizard (`packages/web/src/pages/setup/`)
+- [ ] WEB-S4-009. **P1 — `StepEmailSmtp` no test-connection button.** Fix: add POST /settings/test-smtp + button.
+- [ ] WEB-S4-010. **P1 — `StepSmsProvider` no test-SMS button.** Fix: add POST /settings/test-sms + button.
+- [ ] WEB-S4-011. **P1 — `StepReceipts` "Save receipt layout" only marks completedCards visually; no data check.** Fix: require ≥1 non-empty field before onComplete.
+- [ ] WEB-S4-012. **P2 — `StepLogo` accent-color text input has no hex validation — accepts `javascript:alert(1)`.** Fix: hex regex check.
+- [ ] WEB-S4-013. **P2 — `StepBusinessHours` `to < from` not validated; closed-day inputs persist values.** Fix: validate range per open day.
+- [ ] WEB-S4-014. **P2 — `StepStoreInfo` phone field double-formats on edit.** Fix: stripPhone before formatStorePhoneAsYouType.
+- [ ] WEB-S4-015. **P2 — Wizard re-entry possible during isLoading flicker.** `SetupPage.tsx:156-167`. Fix: render Loader2 until status resolves.
+- [ ] WEB-S4-016. **P2 — `StepTax` POSTs immediately, can dup `Sales Tax`.** Fix: idempotency upsert by name.
+- [ ] WEB-S4-017. **P2 — `StepDefaultStatuses` 25 serial PATCHes with no rollback.** Fix: bulk endpoint or Promise.allSettled with partial-failure surfaced.
+- [ ] WEB-S4-018. **P2 — Skip from welcome step writes empty store_name.** Fix: hide skip on welcome+store steps OR validate non-empty store_name.
+
+### Customer portal (`packages/web/src/pages/portal/`)
+- [ ] WEB-S4-019. **P1 — `PortalRegister` step 2 advances without API verify; no resend timer.** Fix: Resend with 30s cooldown + clearer error attribution.
+- [ ] WEB-S4-020. **P1 — Portal Sign In phone has no formatting/strip — backend gets unstripped value.** Fix: strip non-digits before submit.
+- [ ] WEB-S4-021. **P1 — `PortalTicketDetail` fetch errors silently swallowed.** Fix: error state + retry button + 404-vs-network distinction.
+- [ ] WEB-S4-022. **P1 — Portal widget `postMessage` uses wrong target origin for cross-origin embeds.** `CustomerPortalPage.tsx:109,217`. Fix: use '*' or configured allowed parent origins.
+- [ ] WEB-S4-023. **P2 — `loginWithToken` discards `has_account` from verifySession response.** `usePortalAuth.ts:59-70`. Fix: pass has_account through.
+- [ ] WEB-S4-024. **P2 — `PortalDashboard`/`PortalEstimatesView`/`PortalInvoicesView` no error boundaries.** Fix: error+retry per view.
+- [ ] WEB-S4-025. **P2 — `PayNowButton` same-origin guard rejects external BlockChyp URLs.** `PayNowButton.tsx:43-56`. Fix: relax to https-only or config allowlist.
+- [ ] WEB-S4-026. **P2 — `enrichApi.ts` base `/portal/api/v2` differs from main `/api/v1/portal` — proxy mismatch risk.** Fix: verify mount + add error logging.
+- [ ] WEB-S4-027. **P2 — `PortalRegister` no Resend code; back-link clears phone.** Fix: Resend button + 30s timer; preserve phone.
+
+### Photo capture
+- [ ] WEB-S4-028. **P1 — `PhotoCapturePage` no token-expiry detection — generic "Upload failed" on 401.** Fix: detect 401, show "QR expired, ask shop for new link".
+- [ ] WEB-S4-029. **P2 — No 20-photo cap enforcement.** `PhotoCapturePage.tsx:156-167`. Fix: disable add-more when length>=20.
+- [ ] WEB-S4-030. **P2 — "Add More Photos" doesn't reset error.** Fix: setError('') in onClick.
+
+### Print page
+- [x] WEB-S4-031. **P1 — `/print/ticket/:id` UNAUTHENTICATED — anyone with ID reads PII, IMEI, passcodes.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-032. **P2 — `ticket: any` cast erases type safety in customer-facing render.** Fix: cast to PrintTicket.
+- [ ] WEB-S4-033. **P2 — Note content uses regex strip not DOMPurify.** `PrintPage.tsx:704`. Fix: DOMPurify.sanitize ALLOWED_TAGS:[].
+
+### Landing page
+- [ ] WEB-S4-034. **P1 — Fabricated testimonials (Mike R/Sarah L/James K) — FTC risk.** Fix: replace with real or mark illustrative + disclaimer.
+- [x] WEB-S4-035. **P1 — Footer Contact/Privacy hrefs `#contact`/`#privacy` are dead anchors.** CLOSED 2026-04-24 — 4bef1377
+- [ ] WEB-S4-036. **P2 — `getTenantUrl` fails on localhost (single-segment hostname).** Fix: detect localhost, offer path-based fallback.
+- [ ] WEB-S4-037. **P2 — "Get Started Free" → /signup which is gated on isMultiTenantMode; 404 on self-host.** Fix: gate landing route behind multi-tenant or show install instructions.
+
+### Super-admin
+- [x] WEB-S4-038. **P1 — Impersonation `completeLogin` uses stub user data (empty first/last/email).** CLOSED 2026-04-24 — 4bef1377
+- [x] WEB-S4-039. **P1 — No Suspend/Reactivate UI in TenantsListPage.** CLOSED 2026-04-24 — 4bef1377
+- [ ] WEB-S4-040. **P2 — TOTP step no autoFocus on 6-digit input.** Fix: autoFocus + auto-submit on length===6.
+- [ ] WEB-S4-041. **P2 — No pagination — fetches all tenants in one request.** Fix: server-side pagination params.
+- [ ] WEB-S4-042. **P2 — Sign-out doesn't call server logout — token remains valid.** Fix: superAdminApi.logout() before removeItem.
+
+## Web Audit Wave-WEB-2026-04-24 Search S5 — cross-cutting UX
+
+- [x] WEB-S5-001. **[P1] Raw `window.confirm()` in 6 sites — breaks Electron/PWA.** CLOSED 2026-04-24 — 0392b06d (InvoiceListPage fixed; remaining sites: StocktakePage, BinLocationsPage, AutoReorderPage, PhotoGallery)
+- [x] WEB-S5-002. **[P1] `GlobalConfirmDialog` doesn't forward `requireTyping`/`confirmText` from store path — friction unreachable for bulk-deletes.** CLOSED 2026-04-24 — 0392b06d
+- [x] WEB-S5-003. **[P1] 28 of 40 modal overlays missing `role="dialog"` — SR announces as plain divs.** CLOSED 2026-04-24 — 1f6a4cad — backdrop aria-hidden + inner panel role=dialog added across 29 modal components.
+- [x] WEB-S5-004. **[P1] `ConfirmDialog` backdrop uses `role="presentation"` — should be `aria-hidden="true"`.** CLOSED 2026-04-24 — 7dc1e479
+- [x] WEB-S5-005. **[P1] `SwitchUserModal` no dialog semantics, no focus trap.** CLOSED 2026-04-24 — 7dc1e479 — role=dialog + aria-modal + focus trap + Escape handler added.
+- [x] WEB-S5-006. **[P1] `EmployeeListPage` local date helpers skip UTC-Z fix — off-by-one near midnight.** CLOSED 2026-04-24 — 04f27b14
+- [x] WEB-S5-007. **[P1] `formatDate`/`formatDateTime` skip UTC-Z normalisation that `timeAgo` applies.** CLOSED 2026-04-24 — 04f27b14
+- [ ] WEB-S5-008. **[P1] 55 files call `toLocaleDateString`/`toLocaleTimeString` direct — inconsistent + no UTC fix + ignores tenant locale.** Fix: codemod to shared helpers; add formatTime.
+- [ ] WEB-S5-009. **[P2] Header notification polling uses 2 setInterval — 6 calls per tab per 30s; runs in background.** `Header.tsx:79-123`. Fix: useQuery refetchInterval+refetchIntervalInBackground:false.
+- [ ] WEB-S5-010. **[P2] Notification badge updates silently — no aria-live region.** Fix: sr-only aria-live=polite mirror.
+- [x] WEB-S5-011. **[P2] Global F-key shortcuts fire through open modals — F4 navigates and abandons modals.** CLOSED 2026-04-24 — 7dc1e479 — querySelector guard added.
+- [x] WEB-S5-012. **[P2] `KeyboardShortcutsPanel` close fires on Escape AND `?` — `?` toggles open then close in same event.** CLOSED 2026-04-24 — 7dc1e479 — Escape-only close; role=dialog + aria-labelledby added.
+- [x] WEB-S5-013. **[P2] `CommandPalette` inner card has no `role="dialog"` / `aria-modal`.** CLOSED 2026-04-24 — 7dc1e479
+- [x] WEB-S5-014. **[P2] `CommandPalette` recent-searches stale after first open.** CLOSED 2026-04-24 — 7dc1e479 — setRecentSearches(getRecentSearches()) on open.
+- [x] WEB-S5-015. **[P2] `CommandPalette` invoice icon uses purple — violates brand-color rule (cream).** CLOSED 2026-04-24 — 7dc1e479 — text-purple-500 → text-brand-600.
+- [ ] WEB-S5-016. **[P2] Sidebar collapsed recent-views truncated to 6 chars with no tooltip.** Fix: SidebarTooltipWrapper.
+- [x] WEB-S5-017. **[P2] `SidebarSection` toggle missing `aria-expanded`.** CLOSED 2026-04-24 — 7dc1e479 — aria-expanded + aria-controls added.
+- [x] WEB-S5-018. **[P2] `BulkActionBar` no role=toolbar; tabbable while modal in front.** CLOSED 2026-04-24 — 7dc1e479 — role=toolbar + aria-label added.
+- [x] WEB-S5-019. **[P2] `ExportButton` no distinct aria-label per button — duplicates announced.** CLOSED 2026-04-24 — 7dc1e479 — ariaLabel prop added.
+- [ ] WEB-S5-020. **[P2] `PrintPreviewModal` iframe-poll race can double-fire print dialog.** Fix: `done` guard.
+- [ ] WEB-S5-021. **[P2] `SignatureCanvas` reads pen color before dark class lands — first dark render wrong color.** Fix: useEffect + matchMedia.
+- [x] WEB-S5-022. **[P2] `useWebSocket` duplicate `sms_received` invalidation entries — 2x toasts per SMS.** CLOSED 2026-04-24 — 1939e5ea
+- [ ] WEB-S5-023. **[P2] `useWebSocket` reconnect race: visibilitychange handler doesn't clear pending timer.** Fix: clearTimeout before connect.
+- [x] WEB-S5-024. **[P2] `authStore.checkAuth` bypasses `sharedRefreshPromise` mutex — parallel refresh.** CLOSED 2026-04-24 — 1939e5ea
+- [ ] WEB-S5-025. **[P2] `uiStore` matchMedia listener leaks across HMR reloads.** Fix: import.meta.hot?.dispose().
+- [ ] WEB-S5-026. **[P2] `useDraft` localStorage keys not user-scoped — User B sees User A drafts.** Fix: prefix with userId; clear on auth-cleared.
+- [x] WEB-S5-027. **[P2] `SkeletonTable` widths use Math.random — re-flashes on StrictMode + SSR mismatch.** CLOSED 2026-04-24 — 7dc1e479 — deterministic formula (i % 4) * 30.
+- [x] WEB-S5-028. **[P2] `QuickSmsModal` maxLength=1600 vs counter MAX_CHARS=160 — false urgency.** CLOSED 2026-04-24 — 7dc1e479 — MAX_LENGTH=MAX_CHARS*10 constant; textarea uses MAX_LENGTH.
+- [ ] WEB-S5-029. **[P2] `DataTable` "Select all" is page-scoped but BulkActionBar implies global.** Fix: cross-page selection banner.
+- [ ] WEB-S5-030. **[P2] `DataTable` "Showing X-Y of Z" hidden when total undefined.** Fix: require total OR derive count.
+- [x] WEB-S5-031. **[P2] `UpgradeModal` priceCents toFixed without null guard — renders "NaN".** CLOSED 2026-04-24 — 1939e5ea
+- [x] WEB-S5-032. **[P3] `AppShell` mounts dead `KeyboardShortcutsPanel` — Header has its own.** CLOSED 2026-04-24 — 7dc1e479 — dead import, state, and render removed.
+- [ ] WEB-S5-033. **[P3] `authStore.logout` only removes accessToken — leaves recent_views, theme, drafts for next user.** Fix: clear CRM-namespaced keys on auth-cleared.
+- [ ] WEB-S5-034. **[P3] `PageErrorBoundary.handleReload` doesn't clear CHUNK_RELOAD_SENTINEL.** Fix: sessionStorage.removeItem.
+- [ ] WEB-S5-035. **[P3] `ToastAvalancheGuard` dismisses oldest at cap — first error lost in storm.** Fix: dedup by message first.
+- [ ] WEB-S5-036. **[P3] `ToastAvalancheGuard` Promise.resolve().then() may not re-announce on AT.** Fix: setTimeout(0).
+- [ ] WEB-S5-037. **[P3] `ConfirmDialog`/`CommandPalette` use setTimeout(50) for focus — focus ring mid-animation on slow devices.** Fix: requestAnimationFrame.
+- [ ] WEB-S5-038. **[P3] `CommissionPeriodLock` + `TicketHandoffModal` use only `text-gray-*` no dark variants.** Fix: codemod to surface tokens.
+- [x] WEB-S5-039. **[P3] `SwitchUserModal` + `PinModal` use teal-600 — diverges from primary-600.** CLOSED 2026-04-24 — 7dc1e479 — teal-600 → primary-600/700 in both modals.
+- [ ] WEB-S5-040. **[P3] `useSettings` creates N parallel useQuery subscriptions — coerceSettings runs N times.** Fix: lift into SettingsContext.
+- [x] WEB-S5-041. **[P3] `EmployeeListPage` admin role badge uses purple — violates brand rule.** CLOSED 2026-04-24 — 7dc1e479 — bg-purple-100 → bg-brand-100/text-brand-700.
+- [ ] WEB-S5-042. **[P3] `useDismissible` localStorage not user-scoped — same as W5-026.** Fix: prefix + clear on auth-cleared.
+- [ ] WEB-S5-043. **[P3] `formatDate`/`formatDateTime` hard-code `'en-US'` — non-US tenants ignored.** Fix: use `_locale`.
+- [ ] WEB-S5-044. **[P3] `DataTable` sortable `<th>` adds `role="button"` — strips implicit columnheader role.** Fix: remove role; aria-sort + tabIndex sufficient.
+
+## Web Audit Wave-WEB-2026-04-24 Search S7 — data integrity + edge cases
+
+### P0 — data loss / silent corruption / security
+
+- [ ] WEB-S7-001. **TicketListPage silently swallows API errors — blank list on any network/server failure.** `packages/web/src/pages/tickets/TicketListPage.tsx` (useQuery block, `isError` never destructured). Pattern: `const { data, isLoading, isFetching } = useQuery(…)` — isError missing. Fix: destructure `isError`, render `<ErrorState>` with retry button when true.
+
+- [ ] WEB-S7-002. **InventoryListPage has no error state and no loading skeleton — API failure renders blank page with no feedback.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Both `isError` and skeleton rows absent. Fix: destructure `isError` + render `<ErrorState>`; add `<SkeletonTable>` during `isLoading`.
+
+- [ ] WEB-S7-003. **InvoiceListPage has no error state — API failure silently empties invoice list.** `packages/web/src/pages/invoices/InvoiceListPage.tsx`. `isError` never destructured from `useQuery`. Fix: same ErrorState pattern as CustomerListPage (which handles it correctly).
+
+- [ ] WEB-S7-004. **InvoiceDetailPage has no error state — `isLoading` used but `isError` absent; invalid invoice ID renders spinner forever.** `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` line 56-60. `enabled: isValidId` guard exists but no error branch. Fix: destructure `isError`, render error page on failure.
+
+- [ ] WEB-S7-005. **POS barcode lookup has no AbortController — stale scan result can overwrite current cart item if scanner fires twice rapidly.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx` (barcode handler). Fix: create AbortController per lookup; cancel previous on new scan; ignore stale responses via `signal`.
+
+- [ ] WEB-S7-006. **`GET /inventory` route missing `asyncHandler` wrapper — unhandled promise rejection crashes the process instead of returning 500.** `packages/server/src/routes/inventory.routes.ts` line 1 of GET `/` handler: `router.get('/', async (req, res) => {` — no asyncHandler. Fix: wrap with `asyncHandler(async (req, res) => {…})` to route errors through global error middleware.
+
+- [ ] WEB-S7-007. **Settings page — all tabs reachable by any authenticated user via direct URL; no role guard on Danger Zone, Audit Logs, Data Retention, or API Keys tabs.** `packages/web/src/App.tsx` (ProtectedRoute wraps `/settings/*` with auth-only check). `packages/web/src/pages/settings/SettingsPage.tsx` tab rendering. Fix: add `requireAdminOrManager` check per sensitive tab in SettingsPage, or add `AdminRoute` wrapper in App.tsx for `/settings/danger`, `/settings/audit`, etc.
+
+- [ ] WEB-S7-008. **`SuperAdminRoute` reads JWT from localStorage with no expiry check — expired tokens pass the route guard; backend still enforces but flickers to super-admin UI.** `packages/web/src/App.tsx` SuperAdminRoute component. Fix: decode JWT and check `exp` field before rendering; redirect to login if expired.
+
+### P1 — wrong data displayed / partial data loss / bad UX under edge cases
+
+- [ ] WEB-S7-009. **Reports date preset "all time" hardcodes `from: '2020-01-01'` — any data before 2020 excluded from all-time reports.** `packages/web/src/pages/dashboard/DashboardPage.tsx` localYmd / date preset switch (case `'all'`). Fix: change to a far-past sentinel like `'2000-01-01'` or fetch `MIN(created_at)` from server.
+
+- [ ] WEB-S7-010. **Dashboard and CustomerDetailPage use hardcoded `$` + `.toFixed(2)` for currency in several spots — ignores store currency/locale settings.** `packages/web/src/pages/dashboard/DashboardPage.tsx` ("Estimated cost to order" line) and `packages/web/src/pages/customers/CustomerDetailPage.tsx` (lines ~1541, ~1630, ~1633). Fix: replace all occurrences with `formatCurrency()`.
+
+- [ ] WEB-S7-011. **CheckoutModal order summary uses hardcoded `$` + `.toFixed(2)` — ignores currency settings.** `packages/web/src/pages/unified-pos/CheckoutModal.tsx` lines ~406, ~408, ~414, ~419. Fix: replace with `formatCurrency()`.
+
+- [ ] WEB-S7-012. **InvoiceDetailPage credit note max input shows hardcoded `$` + `.toFixed(2)` in placeholder/label text — confuses non-USD shops.** `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` line 720. Fix: `formatCurrency(invoice.total)` in label; plain numeric value for placeholder.
+
+- [ ] WEB-S7-013. **Ticket list `fromDate`/`toDate` filter accepted server-side without ISO format validation — malformed date string produces undefined SQL behavior (SQLite datetime() returns NULL silently).** `packages/server/src/routes/tickets.routes.ts` date filter section. Fix: validate with `Date.parse()` or regex `/^\d{4}-\d{2}-\d{2}$/` before adding to query conditions; return 400 on invalid format.
+
+- [ ] WEB-S7-014. **Customer list `from_date`/`to_date` accepted without format validation — same silent-NULL issue as S7-013.** `packages/server/src/routes/customers.routes.ts` date filter block. Fix: same Date.parse / regex guard + 400 on invalid.
+
+- [ ] WEB-S7-015. **Sort by computed nullable columns (`total_spent`, `outstanding_balance`, `ticket_count`) has no NULLS LAST clause — customers with no tickets jump to top on ASC sort.** `packages/server/src/routes/customers.routes.ts` ORDER BY construction. Fix: append `NULLS LAST` to ORDER BY for these three columns (SQLite 3.30+ supports it).
+
+- [ ] WEB-S7-016. **POS transaction route does per-line sequential `await adb.get()` for each inventory item inside a for-loop — N+1 pattern; 20-line cart = 20 serial awaits.** `packages/server/src/routes/pos.routes.ts` transaction handler for-loop. Fix: batch with `SELECT … WHERE id IN (?)` using the collected line IDs before the loop.
+
+- [ ] WEB-S7-017. **Calendar fetch in TicketListPage hardcodes `pagesize: 500` — large shops with many due tickets fetch all at once, no server-side cap enforced for this path.** `packages/web/src/pages/tickets/TicketListPage.tsx` calendar query block. Fix: apply server-side cap (parsePage/parsePageSize) to calendar endpoint or implement paginated calendar loading.
+
+- [ ] WEB-S7-018. **SMS send error in TicketListPage swallows server message — `catch { toast.error('Failed to send SMS') }` drops the actual error detail.** `packages/web/src/pages/tickets/TicketListPage.tsx` line ~1043 `handleSendSms`. Fix: `catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to send SMS'); }`.
+
+- [ ] WEB-S7-019. **Bulk price adjustment in InventoryListPage has no client-side validation for negative `priceAdjustPct` — negative percentages silently set prices to zero or negative values.** `packages/web/src/pages/inventory/InventoryListPage.tsx` bulk adjust handler. Fix: validate `priceAdjustPct >= -99` before submitting; show validation error.
+
+- [ ] WEB-S7-020. **`importPreview: any[]` escape-hatch type in InventoryListPage bypasses TypeScript for import preview rows — runtime field mismatches silently render undefined values.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Fix: define `InventoryImportRow` interface matching server CSV column names; use it for preview state.
+
+- [ ] WEB-S7-021. **InvoiceListPage stats cache key includes `{ status, dateRange }` but `invoiceApi.stats()` ignores filter params — chart always shows unfiltered aggregate regardless of active filter.** `packages/web/src/pages/invoices/InvoiceListPage.tsx` stats useQuery. Fix: either pass filter params to the stats endpoint and have the server respect them, or use a fixed queryKey `['invoices', 'stats']` so it's not misleadingly keyed per-filter.
+
+- [ ] WEB-S7-022. **Global search ticket query uses correlated EXISTS subqueries on `ticket_notes` and `ticket_history` — full table scan on large datasets; no FTS or index covering these subqueries.** `packages/server/src/routes/search.routes.ts` tickets branch. Fix: add `CREATE INDEX IF NOT EXISTS idx_ticket_notes_content ON ticket_notes(ticket_id)` and consider a notes FTS5 virtual table; or at minimum add a `q.length < 3` fast-exit guard before the subquery path.
+
+- [ ] WEB-S7-023. **Global search returns only `ticket.order_id` as display — no customer name or device name in result — cashier can't distinguish which ticket among many T-0001 style IDs.** `packages/server/src/routes/search.routes.ts` tickets SELECT. Fix: add `c.first_name || ' ' || c.last_name AS customer_name`, `(SELECT device_name FROM ticket_devices WHERE ticket_id = t.id LIMIT 1) AS device` to the SELECT and include in SearchResult type.
+
+- [ ] WEB-S7-024. **Portal ticket detail exposes `invoice.customer_id` in API response — ticket-scoped portal sessions can read another customer's internal ID from their own ticket's invoice join.** `packages/server/src/routes/portal.routes.ts` `getTicketDetail` invoice SELECT (line ~333). Fix: strip `customer_id` from the portal invoice projection; it's never needed on the portal.
+
+- [ ] WEB-S7-025. **Portal timeline sort uses `new Date(string).getTime()` without UTC-Z normalisation — SQLite returns "YYYY-MM-DD HH:MM:SS" without Z; JS interprets as local time → events sort incorrectly near DST transitions.** `packages/server/src/routes/portal.routes.ts` timeline.sort comparator line ~327. Fix: append 'Z' if string lacks timezone suffix before calling `new Date()`, matching the `parseLastUsed` helper already in the same file.
+
+- [ ] WEB-S7-026. **Import CSV rows that fail insert are not individually surfaced to the user — import success toast shows total count only; failed rows silently dropped.** `packages/web/src/pages/customers/CustomerListPage.tsx` import success handler + `packages/server/src/routes/import.routes.ts` import run. Fix: expose `error_log` from import_runs in status response; show failed-row count + downloadable error log on completion.
+
+- [ ] WEB-S7-027. **ReportsPage date presets for 'yesterday' and 'last_7' use `Date.now() - N * 86400_000` — off by one during DST transitions (e.g. spring-forward day has only 23 hours).** `packages/web/src/pages/reports/ReportsPage.tsx` lines ~93-99, `resolveDateRange`. Fix: use calendar-date arithmetic (`new Date(y, m, d - N)`) instead of millisecond subtraction.
+
+- [ ] WEB-S7-028. **`GET /search/notes` count query uses `COUNT(DISTINCT tn.id)` but data query uses `GROUP BY tn.id` — if a ticket has multiple devices the LEFT JOIN on `ticket_devices` still multiplies rows before GROUP BY, making LIMIT skip valid results.** `packages/server/src/routes/search.routes.ts` /notes handler line ~185-207. Fix: move the `MIN(td.device_name)` subquery inline `(SELECT MIN(device_name) FROM ticket_devices WHERE ticket_id = t.id)` to avoid the JOIN fan-out entirely.
+
+- [ ] WEB-S7-029. **`TicketListPage` status count sidebar reflects all tickets regardless of active date/assignee/keyword filters — counts are misleading when filters are applied.** `packages/server/src/routes/tickets.routes.ts` status count LEFT JOIN added unconditionally in GET `/`. Fix: thread the same WHERE conditions into the count subquery, or add a `filtered_counts` key to the response alongside `all_counts`.
+
+- [ ] WEB-S7-030. **Report CSV download function leaks `URL.createObjectURL` blob — `URL.revokeObjectURL` called synchronously before `<a>.click()` can complete on Firefox.** `packages/web/src/pages/reports/ReportsPage.tsx` `downloadCsv` helper line ~127-131. Fix: `setTimeout(() => URL.revokeObjectURL(url), 100)` after click.
+
+### P2 — edge case / cosmetic / minor data inconsistency
+
+- [ ] WEB-S7-031. **ReportsPage `todayStr()` uses `new Date().toISOString().slice(0,10)` — returns UTC date not local date; shop in UTC-5 after 7 PM gets tomorrow's date in reports.** `packages/web/src/pages/reports/ReportsPage.tsx` line ~73. Fix: use `localYmd()` helper already defined in DashboardPage; lift to shared `packages/web/src/utils/date.ts`.
+
+- [ ] WEB-S7-032. **`ftsMatchExpr` in search.routes.ts strips all non-ASCII characters (regex `[^a-zA-Z0-9\s\-@.]`) — searches for names with accents (café, Müller, Ñoño) produce zero FTS tokens and silently fall through to LIKE.** `packages/server/src/routes/search.routes.ts` line 17. Fix: expand character class to include `À-ſ` (Latin Extended) or use Unicode property escape `\p{L}` with the `u` flag.
+
+- [ ] WEB-S7-033. **Inventory bulk price adjustment allows `priceAdjustPct` of 0 — submits a no-op request that touches all selected rows unnecessarily, triggering audit log entries.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Fix: guard `if (pct === 0) { toast.error('Enter a non-zero adjustment'); return; }`.
+
+- [ ] WEB-S7-034. **`GET /search` global search: `isAdmin` check for invoice visibility uses `userRole === 'admin' || userRole === 'manager'` inline — no reuse of `requireAdminOrManager` middleware; if role names ever change (e.g. 'supervisor') search stays blind.** `packages/server/src/routes/search.routes.ts` line 54. Fix: extract `const isAdminOrManager = (role: string) => ['admin','manager'].includes(role)` to shared util and import consistently across routes.
+
+- [ ] WEB-S7-035. **`TicketListPage` skeleton rows shown only after 150ms debounce (`showSkeleton`) — fast responses cause a FOUT-like flicker where blank area appears then disappears; slow responses delay feedback.** `packages/web/src/pages/tickets/TicketListPage.tsx`. Fix: show skeleton immediately on `isLoading && !placeholderData`; remove the 150ms debounce or reduce to 0ms.
+
+- [ ] WEB-S7-036. **`ReportsPage` SalesTab chart renders with zero-width bars when `rows` is empty — no EmptyState branch; user sees blank chart area with no message.** `packages/web/src/pages/reports/ReportsPage.tsx` SalesTab render. Fix: add `if (rows.length === 0) return <EmptyState message="No sales in this period" />` before the BarChart.
+
+- [ ] WEB-S7-037. **Portal timeline `new Date(created_at).getTime()` sort — SQLite timestamps without 'Z' sort incorrectly in local-time browsers that interpret naive strings as local time (same bug as S7-025 but in the client-side sort).** Fix: normalise all `created_at` values to ISO-8601 with 'Z' in the portal response serialiser, or sort in SQL (`ORDER BY created_at ASC`) and skip the JS sort.
+
+- [ ] WEB-S7-038. **`parsePage` returns 1 for page=0 or page=-1 (good) but also for page=99999 — very large page numbers allowed server-side; sparse result sets return empty arrays silently with no "beyond last page" indicator.** `packages/server/src/utils/pagination.ts`. Fix: cap page at `Math.ceil(total / pageSize)` in route handlers and return `{ data: [], pagination: { … , out_of_bounds: true } }` so clients can redirect to last valid page.
+
+- [ ] WEB-S7-039. **Search global endpoint: `customers_fts` FTS exception is silently swallowed (`catch { }`) — if FTS index is corrupt or missing, the catch block falls through to LIKE with no log entry, making the failure invisible.** `packages/server/src/routes/search.routes.ts` line 75 catch block. Fix: `catch (err) { logger.warn('FTS search failed, falling back to LIKE', { error: … }); }`.
+
+- [x] WEB-S7-040. **`InvoiceListPage` uses `window.confirm()` for bulk action confirmation.** CLOSED 2026-04-24 — 0392b06d (covered by WEB-S5-001 fix)
+
+- [ ] WEB-S7-041. **Dashboard "all" time preset lower-bounds at 2020-01-01 hardcoded; if someone imported historical RepairDesk data from 2018-2019 it is silently excluded from all KPIs and charts.** `packages/web/src/pages/dashboard/DashboardPage.tsx` case `'all'`. Fix: server endpoint `GET /api/v1/reports/earliest-date` returning `MIN(created_at)` from tickets; use that as `from`.
+
+- [ ] WEB-S7-042. **`GET /search/notes` minimum query length is 2 chars — single-letter technician codes (e.g. "Z", "K" as author initials or part codes) return nothing; no user feedback on why.** `packages/server/src/routes/search.routes.ts` line 156. Fix: change guard to `q.length < 1` or surface "Search requires at least 2 characters" in the client UI.
+
+- [ ] WEB-S7-043. **`portal_sessions` idle timeout evicts the session but does not clear the session cookie — stale `portalToken` cookie keeps being sent on subsequent requests (always hitting 401) until browser expiry.** `packages/server/src/routes/portal.routes.ts` idle timeout DELETE (line ~144). Fix: set `res.clearCookie('portalToken')` in the 401 idle-timeout response.
+
+- [ ] WEB-S7-044. **`enforceImportRateLimit` prunes the rate_limits table on every import-start call — synchronous write inside an already-rate-limited path; under concurrent import starts, two calls can both see count=0, both pass, both insert.** `packages/server/src/routes/import.routes.ts` lines ~158-191 (non-atomic prune+count). The import lock prevents double-import but rate_limit rows can double-count. Fix: run prune+count+insert atomically inside a `db.transaction()` or use the existing `consumeWindowRate` helper which is already atomic.
+
+- [ ] WEB-S7-045. **`ReportsPage` downloads CSV via `document.createElement('a').click()` without appending to DOM — on some browsers (Safari iOS, Firefox) the click on a detached element is silently ignored.** `packages/web/src/pages/reports/ReportsPage.tsx` `downloadCsv` lines ~126-130. Fix: `document.body.appendChild(a); a.click(); document.body.removeChild(a);`.
+
+---
+
+### Severity summary (Wave S7, 45 findings)
+
+P0 (critical — data loss / silent failure / security): 8 findings (WEB-S7-001 through 008)
+P1 (wrong data / significant UX failure / N+1 under load): 22 findings (WEB-S7-009 through 030)
+P2 (edge case / minor inconsistency / cosmetic under specific conditions): 15 findings (WEB-S7-031 through 045)
+
+Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — silent blank screens on any API failure. (2) Hardcoded `$` + `.toFixed(2)` bypassing `formatCurrency()` in 3 pages. (3) No server-side date-format validation on filter inputs (SQLite silently returns NULL). (4) Naive date arithmetic ignores DST in reports and portal timeline sort. (5) `GET /inventory` missing `asyncHandler` — process-crashing unhandled rejection.
+### Dashboard Electron audit loop (2026-04-24+)
+
+- [ ] DASH-ELEC-001. **[HIGH][SEC] Token stored in process memory without expiry or clear cleanup path** — packages/management/src/main/services/api-client.ts:204 — `let superAdminToken: string | null = null` is module-level, persists until setSuperAdminToken(null) is called; on logout the token should be cleared AND revoked on the server before clearing locally; currently logout calls setSuperAdminToken(null) but no server revocation call observed; fix: add explicit token revocation POST before nullifying.
+
+- [ ] DASH-ELEC-002. **[HIGH][SEC] IPC handlers wrap exceptions with wrapHandler but don't guarantee main process doesn't crash on unhandled promise rejections** — packages/management/src/main/ipc/management-api.ts:861 — wrapHandler catches synchronous errors but an unhandled promise rejection inside apiRequest or concurrent async call will crash the main process; fix: add top-level process.on('unhandledRejection') handler in index.ts (one exists for uncaughtException but not unhandledRejection until line 124-126 which does handle it, but verify it returns gracefully and doesn't exit).
+
+- [x] DASH-ELEC-003. **[MED][SEC] PowerShell script injection risk in spawnElevated via psQuote escaping** — packages/management/src/main/index.ts:171 — psQuote doubles single quotes but doesn't validate that `command` itself is a trusted literal; if a future maintainer adds variable input to `command` parameter (not just args) it will execute arbitrary code; fix: hardcode allowed commands in a Set at module top-level and reject any command not in the whitelist before spawning.
+
+- [ ] DASH-ELEC-004. **[MED][SEC] execSync in system-info.ts without timeout on PowerShell script inline string** — packages/management/src/main/ipc/system-info.ts:158 — the PowerShell script is hardcoded (safe) but passed as a string inside backticks; any future use of execSync with caller-supplied input will be vulnerable; fix: migrate all execSync calls to spawnSync with explicit argv array, or document the pattern so maintainers avoid inline shell strings.
+
+- [x] DASH-ELEC-005. **[MED][WIRING] Service control IPC handlers don't validate that `state.root` in direct-server.json matches the trusted project root before using it** — packages/management/src/main/ipc/service-control.ts:303-320 — readDirectState() calls isProjectRoot(parsed.root) but isProjectRoot only checks for package.json markers, not that the path matches resolveTrustedProjectRoot(); AUDIT-MGT-030 comment acknowledges this but the cross-check should happen BEFORE the function returns; currently a typo in the PID file's `root` field that still has package.json would be accepted; fix: move the trustedRoot check inside readDirectState before returning.
+
+- [ ] DASH-ELEC-006. **[LOW][WIRING] IPC handlers for env-settings (admin:get-env-settings, admin:set-env-settings) don't appear to validate against SERVER_ENV_ALLOWLIST at handler boundary** — packages/management/src/main/ipc/management-api.ts — grep shows handlers exist but detailed validation not found in the audit scope; fix: verify both GET and SET envelope the .env keys through the allowlist at IPC layer, not just inside the server's env-startup code.
+
+- [ ] DASH-ELEC-007. **[LOW][SEC] No rate-limit or request-deduplication on IPC invoke calls from renderer** — packages/management/src/preload/index.ts:117-125 — safeInvoke passes through to ipcRenderer.invoke() with no dedup or throttling; a rapid-fire loop calling `management.getStats()` 1000 times will spawn 1000 API requests; fix: add optional debounce/throttle wrapper on hot-path invokes (stats, disk-space polling).
+
+- [x] DASH-ELEC-008. **[LOW][WIRING] vite.config.ts has sourcemap disabled for prod but no explicit mention of dev-sourcemaps handling** — packages/management/src/main/vite.config.ts:17 — `sourcemap: false` is set but dev mode sourcemaps aren't explicitly configured; if dev build is packaged accidentally with sourcemap enabled, renderer code is exposed; fix: add explicit `sourcemap: false` comment or conditional logic to ensure dev builds are never packaged with sourcemaps.
+
+- [ ] DASH-ELEC-009. **[LOW][SEC] updateBrowserWindow error paths in management-api.ts don't surface error detail on failure** — packages/management/src/main/ipc/management-api.ts (lines ~1400+) — git fetch/checkout/verify failures are swallowed in the error case and return a generic "update check failed" message; attacker who poisons git binary or redirects origin sees no diagnostics; fix: log full spawnSync result (stderr) to main process logs so operators can diagnose update failures without user visibility to the command itself.
+
+- [ ] DASH-ELEC-010. **[LOW][WIRING] No explicit audit log of IPC calls that modify system state (restart, stop, create-tenant, delete-tenant)** — all of packages/management/src/main/ipc/*.ts — sensitive operations like `service:restart`, `super-admin:delete-tenant` succeed silently without recording in a main-process audit log who (which renderer origin) initiated them; fix: add a per-file audit logger that records timestamp, origin, operation, and result to a rotating audit.log alongside dashboard.log for compliance/forensics.
+
+
+- [ ] DASH-ELEC-011. **[MED][WIRING] RecentActivityWidget and DiagnosticsPage use manual `cancelled` flag instead of AbortController for fetch cleanup** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:39-59, packages/management/src/renderer/src/pages/DiagnosticsPage.tsx:40-53 — Promise.all() responses are checked against a cancelled boolean on unmount, but if a response arrives AFTER unmount but BEFORE the flag is checked, the state-setter will still fire and cause a memory leak warning; fix: replace with AbortController so the actual fetch is terminated, not just the state update.
+
+- [ ] DASH-ELEC-012. **[MED][WIRING] useServerHealth hook lacks AbortSignal for concurrent getStats + service.getStatus calls** — packages/management/src/renderer/src/hooks/useServerHealth.ts:46-51 — Promise.all([api.management.getStats(), api.service.getStatus()]) has no abort signal, so if the user logs out mid-poll the pending requests continue and may trigger an update to a dead store; fix: add AbortController at hook level and pass signal to both IPC calls (if the IPC bridge supports it).
+
+- [ ] DASH-ELEC-013. **[MED][WIRING] QueryClient staleTime=10s but no explicit refetchInterval or polling strategy in management pages** — packages/management/src/renderer/src/main.tsx:60-68 — TanStack Query is configured but pages use manual setInterval (useInterval hook, useServerHealth setTimeout) instead of useQuery; mixed polling strategies may cause redundant fetches; fix: migrate high-frequency polls (stats, crashes, audit log) to useQuery with refetchInterval so react-query deduplicates and batches requests.
+
+- [ ] DASH-ELEC-014. **[LOW][WIRING] CrashMonitorPage refreshes on interval (30s) but polls are not cancelled on page unmount** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:45-49 — setInterval(refresh, 30_000) is cleaned up correctly, but refresh() calls do not use AbortController; fix: add AbortController to CrashMonitorPage's refresh so pending Promise.all responses don't setState after unmount.
+
+- [ ] DASH-ELEC-015. **[MED][WIRING] No error boundary wrapping individual page content, only top-level and PageErrorBoundary** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30-32 — PageErrorBoundary wraps Outlet but a render error in Header, Sidebar, StatusFooter, or Banner components will crash the entire shell; fix: split PageErrorBoundary into smaller boundaries per major layout section (header, sidebar, main, footer).
+
+- [x] DASH-ELEC-016. **[LOW][WIRING] CSV export in AuditLogPage and CrashMonitorPage doesn't check for toCsv injection risk with special leading characters** — packages/management/src/renderer/src/utils/csv.ts:13-20 — escapeCsvField wraps fields with quotes if they contain comma/quote/newline, but RFC-4180 sec.2 note 2 recommends quoting fields starting with =, +, @, - to prevent spreadsheet formula injection; fix: add check in escapeCsvField to prepend single quote if s[0] matches /[=+@-]/.
+
+- [x] DASH-ELEC-017. **[LOW][WIRING] formatNumber uses toLocaleString() without explicit locale, may break sorting/parsing in downstream systems** — packages/management/src/renderer/src/utils/format.ts:43-45 — toLocaleString() uses browser locale which may insert non-ASCII separators (e.g., space or comma depending on locale); exported CSV may not re-import correctly; fix: explicitly pass 'en-US' locale to toLocaleString, or provide a separate non-localized export version.
+
+- [x] DASH-ELEC-018. **[MED][WIRING] uiStore density setting persists to localStorage without schema validation on read** — packages/management/src/renderer/src/stores/uiStore.ts:24-28 — initialDensity() reads raw localStorage value and coerces to 'default' if not 'compact', but malicious script or storage corruption could inject arbitrary string; fix: explicitly validate against a Set<string> of allowed values and return 'default' on any mismatch.
+
+- [ ] DASH-ELEC-019. **[MED][WIRING] authStore logout event listener is added once at module load but not scoped to window type check** — packages/management/src/renderer/src/stores/authStore.ts:47-64 — event listener is registered in module scope with typeof window check, but if the module is hot-reloaded during dev the duplicate listener accumulates (though MGT-025 addresses this with import.meta.hot.dispose, verify the cleanup actually fires); fix: ensure HMR dispose callback runs and prevents listener duplication in production bundles.
+
+- [x] DASH-ELEC-020. **[LOW][WIRING] SecurityAlertsPage doesn't re-poll when acknowledgement succeeds, showing stale alert count in sidebar badge** — packages/management/src/renderer/src/pages/SecurityAlertsPage.tsx (if it exists) — after acknowledging an alert, useServerHealth's next poll will refresh stats, but that may be 5-60s away depending on backoff state; fix: call refresh() immediately after a successful acknowledgeAlert() so the badge updates instantly.
+
+- [x] DASH-ELEC-021. **[HIGH][UI] LoginPage form inputs lack `<label>` association** — packages/management/src/renderer/src/pages/LoginPage.tsx:314-325 — username/password/confirm/2FA inputs have placeholder only, no `<label htmlFor>`. Screen readers can't announce field purpose. Fix: wrap each input in `<label>` or add `aria-label`.
+
+- [x] DASH-ELEC-022. **[HIGH][UI] CommandPalette search input has `focus:outline-none` with no ring fallback** — packages/management/src/renderer/src/components/CommandPalette.tsx:209 — keyboard users can't see focus. Fix: add `focus:ring-2 focus:ring-accent-500` or `focus:border-accent-500`.
+
+- [x] DASH-ELEC-023. **[MED][UI] ActivityPage tabs missing `aria-selected` and `role="tab"`** — packages/management/src/renderer/src/pages/ActivityPage.tsx:67-74 — tabs are plain buttons; screen readers can't announce active tab. Fix: add `role="tablist"` to container, `role="tab"` to buttons, `aria-selected={isActive}`.
+
+- [ ] DASH-ELEC-024. **[MED][UI] tailwind.config.ts uses "Inter" font family — brand requires Saved By Zero (logo) + Bebas Neue (display) + Futura Medium (body)** — packages/management/tailwind.config.ts:58 — currently falls back to system UI sans-serif. Fix: load brand fonts (Bebas Neue + Futura Medium + Jost fallback per CLAUDE memory) and update `fontFamily.sans/display/heading`.
+
+- [x] DASH-ELEC-025. **[MED][UI] SettingsPage Eye/EyeOff reveal buttons lack `aria-label`** — packages/management/src/renderer/src/pages/SettingsPage.tsx — icon-only buttons; SR users hear "button". Fix: `aria-label="Show password"` / `"Hide password"`.
+
+- [x] DASH-ELEC-026. **[MED][UI] Sidebar collapse toggle has only `title`, no `aria-label`** — packages/management/src/renderer/src/components/layout/Sidebar.tsx:113-122 — `title` is visual tooltip; screen readers see generic "button". Fix: add `aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}`.
+
+- [ ] DASH-ELEC-027. **[MED][UI] LogsPage long list not virtualized** — packages/management/src/renderer/src/pages/LogsPage.tsx — up to 2000 lines render as full DOM nodes; scroll jank on slow machines. Fix: react-window or custom virtualization for log rows.
+
+- [x] DASH-ELEC-028. **[MED][UI] RecentActivityWidget empty state too terse** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:94-95 — shows "No entries yet." with no context. Fix: expand to "No audit log entries. System will record admin actions here when they occur."
+
+- [x] DASH-ELEC-029. **[MED][UI] Activity loading state lacks `aria-busy` / `aria-live`** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:79-80 — static "Loading…" text not announced. Fix: add `aria-busy="true"` or wrap in `aria-live="polite"` region.
+
+- [x] DASH-ELEC-030. **[MED][UI] StatusBadge pulsing dot has no semantic label** — packages/management/src/renderer/src/components/shared/StatusBadge.tsx:35-46 — animated circle conveys state visually only. Fix: ensure parent has clear text label, or add `aria-label` to the dot span.
+
+- [ ] DASH-ELEC-031. **[LOW][UI] CommandPalette group labels are plain divs, not headings** — packages/management/src/renderer/src/components/CommandPalette.tsx:221-237 — "Pages" / "Actions" dividers should be `<h3>` or `role="heading" aria-level="3"` so SR users can skim groups.
+
+- [ ] DASH-ELEC-032. **[LOW][UI] CopyText button uses only `title` tooltip — invisible on keyboard focus** — packages/management/src/renderer/src/components/CopyText.tsx:47-58 — Fix: replace/supplement `title` with visible text label or visible-on-focus tooltip.
+
+- [ ] DASH-ELEC-033. **[LOW][UI] ServerControlPage + AdminToolsPage destructive actions use `window.confirm()` instead of ConfirmDialog** — packages/management/src/renderer/src/pages/ServerControlPage.tsx:74 + AdminToolsPage.tsx — inconsistent with TenantsPage/SessionsPage which use ConfirmDialog. Fix: migrate to ConfirmDialog.
+
+- [x] DASH-ELEC-034. **[LOW][UI] UpdatesPage + DiagnosticsPage may render nothing on empty/error** — packages/management/src/renderer/src/pages/{UpdatesPage,DiagnosticsPage}.tsx — audit both for explicit empty-state and error-state UI.
+
+- [x] DASH-ELEC-035. **[HIGH][PERF] Main-process source maps shipped in production ASAR** — packages/management/tsconfig.node.json:15 emits `dist/main/*.js.map`; electron-builder.yml `files:` glob excludes only `node_modules/**/*.map`, so every main `.map` ships, leaking full TS source. Fix: add `"!dist/**/*.map"` to `files:`, or set `sourceMap: false` in tsconfig.node.json for prod CI.
+
+- [x] DASH-ELEC-036. **[MED][PERF] No explicit `asar:` key in electron-builder.yml** — relies on implicit default; future upgrade could silently flip to unarchived directory install (slower I/O, larger disk footprint, no tamper protection). Fix: add `asar: true` (and `asarUnpack` for native modules) explicitly.
+
+- [x] DASH-ELEC-037. **[MED][PERF] `package` script skips typecheck** — packages/management/package.json:20 `"package": "electron-builder --win"` does not call build/tsc; type errors silently package. Fix: `"package": "npm run build && electron-builder --win"`.
+
+- [x] DASH-ELEC-038. **[HIGH][PERF] LogsPage splits content string 3× per 2s poll** — packages/management/src/renderer/src/pages/LogsPage.tsx:17,124,126,137 — REFRESH_INTERVAL_MS=2000 + content.split('\n') in filteredLines (124/126) + errorCodeCounts regex (137). 3×O(N) per tick at 2000-line tail. Fix: derive `lines` once via `useMemo([content])`, consume in both.
+
+- [x] DASH-ELEC-039. **[MED][PERF] LogsPage list uses array-index key** — packages/management/src/renderer/src/pages/LogsPage.tsx:294 `key={i}` — every 2s tail refresh forces full DOM diff. Fix: content-derived key `key={i + '-' + line.slice(0, 20)}` or virtualise (react-window).
+
+- [x] DASH-ELEC-040. **[MED][PERF] OverviewPage fan-out 6 setState calls per stats poll** — packages/management/src/renderer/src/pages/OverviewPage.tsx:602-607 — currently safe under React 18 auto-batching but breaks if any `await` is introduced before the setState chain. Fix: consolidate into single `useState<SeriesMap>` or reducer.
+
+- [x] DASH-ELEC-041. **[MED][PERF] `backgroundThrottling` unset in webPreferences — pollers freeze when window hidden** — packages/management/src/main/window.ts:91-111 — defaults to true; LogsPage (2s), CrashMonitorPage (30s), useServerHealth all stall up to 1 minute on restore. Fix: add `backgroundThrottling: false` to webPreferences (this is a local management tool, not battery-bound).
+
+- [x] DASH-ELEC-042. **[HIGH][PERF] `extraResources` ships full TS source for web/server/shared** — packages/management/electron-builder.yml:115 — `packages/web/src/**`, `packages/server/src/**`, `packages/shared/**` inflate installer with raw TSX. Server only needs `dist/**`. Fix: remove `src/**` entries; keep only `dist/**`, config files, scripts/.
+
+- [x] DASH-ELEC-043. **[MED][UI] KeyboardShortcutsHelp overlay missing role="dialog", aria-modal, focus-trap** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:57-103 — visually-modal panel without `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap. ConfirmDialog has all four. Fix: mirror ConfirmDialog's pattern (role/aria + Tab-trap onKeyDown).
+
+- [x] DASH-ELEC-044. **[MED][UI] KeyboardShortcutsHelp shows "Ctrl+K" on macOS instead of ⌘K** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:11 — SHORTCUTS hardcoded `['Ctrl', 'K']` but CommandPalette accepts both metaKey+ctrlKey. Fix: detect platform and render `['⌘', 'K']` on macOS.
+
+- [ ] DASH-ELEC-045. **[MED][WIRE] CommandPalette uses `window.confirm()` for Restart/Stop** — packages/management/src/renderer/src/components/CommandPalette.tsx:77,95 — inconsistent with ConfirmDialog used in TenantsPage/SessionsPage/UpdatesPage; `window.confirm` may silently return false in Electron under nodeIntegration off. Fix: replace with portal-rendered ConfirmDialog state.
+
+- [x] DASH-ELEC-046. **[MED][WIRE] CopyText `setTimeout(() => setJust(false), 1400)` not cleared on unmount** — packages/management/src/renderer/src/components/CopyText.tsx:38 — state-update-on-unmounted warning if user navigates within 1400ms of copy. Fix: store timer ref, clearTimeout in useEffect cleanup.
+
+- [x] DASH-ELEC-047. **[MED][WIRE] useServerHealth fragile under React 18 StrictMode double-mount** — packages/management/src/renderer/src/hooks/useServerHealth.ts:40-91 — dev mode can fire two concurrent Promise.all polls before pollingRef guard kicks in. Fix: add `isMounted` ref set false in cleanup, gate setState on it.
+
+- [x] DASH-ELEC-048. **[MED][WIRE] SetupChecklist + BannerCertWarning + BannerTagVerifyWarning skip handleApiResponse** — packages/management/src/renderer/src/components/{SetupChecklist,BannerCertWarning,BannerTagVerifyWarning}.tsx — 401 responses to getCertPinningStatus/getTagVerifyStatus/getEnvSettings/listBackups silently swallowed; auth expiry undetected up to 60s until next health poll. Fix: `if (handleApiResponse(res)) return;` before processing.
+
+- [x] DASH-ELEC-049. **[LOW][WIRE] StatusFooter displays stale stats.uptime — never increments between polls** — packages/management/src/renderer/src/components/layout/StatusFooter.tsx:34-36 — value frozen at last poll time (up to 60s old at max backoff). Fix: compute `stats.uptime + Math.floor((Date.now() - lastUpdated) / 1000)` using existing serverStore.lastUpdated.
+
+- [ ] DASH-ELEC-050. **[LOW][SEC] CSP `style-src 'unsafe-inline'` is broader than needed** — packages/management/src/renderer/index.html:23 — Tailwind compiles to static bundle; only Lucide SVG stroke/fill needs inline styles. unsafe-inline allows any injected `<style>` or `style=`, enabling CSS-injection attribute-selector exfil. Fix: nonce-based style-src for prod build.
+
+- [ ] DASH-ELEC-051. **[LOW][WIRE] CommandPalette missing "Activity → Sessions" deep-link** — packages/management/src/renderer/src/components/CommandPalette.tsx:56-57 — has alerts + audit deep-links but not sessions even though ActivityPage line 24 defines sessions tab. Fix: add `{ id: 'nav-activity-sessions', group: 'Pages', label: 'Activity → Sessions', onRun: () => navigate('/activity?tab=sessions') }` guarded by isMultiTenant.
+
+- [x] DASH-ELEC-052. **[LOW][UI] formatDateTime calls toLocaleString() without locale args — output varies by OS locale** — packages/management/src/renderer/src/utils/format.ts:67 — formatNumber was fixed but formatDateTime not. On non-en systems renders "24.4.2026, 14:23:05" or "2026/4/24". Fix: pass `'en-US', { dateStyle: 'medium', timeStyle: 'short' }`.
+
+- [ ] DASH-ELEC-053. **[HIGH][SEC] Logout does not invalidate server-side JWT** — packages/management/src/main/ipc/management-api.ts:964-971 — handler only calls `setSuperAdminToken(null)` locally; comment says "Server-side invalidation is a TODO". Stolen token remains valid until natural expiry. Fix: add `POST /super-admin/api/logout` server endpoint that revokes JWT, call it before clearing local token.
+
+- [ ] DASH-ELEC-054. **[MED][SEC] Logout leaves serverStore populated with stale tenant/stats data** — packages/management/src/renderer/src/components/CommandPalette.tsx:103-108 — logout calls authStore.logout() + navigate but never resets useServerStore; stats, tenant counts, multiTenant flag readable post-logout. Fix: add reset() action to serverStore + call `useServerStore.getState().setOffline('logged out')` before navigation.
+
+- [ ] DASH-ELEC-055. **[HIGH][SEC] Setup-step password min=8 vs set-password min=10 — inconsistent policy + IPC schema accepts min(1)** — packages/management/src/renderer/src/pages/LoginPage.tsx:77 vs :157 + packages/management/src/main/ipc/management-api.ts:43 — first-run accepts 8 chars, forced-change requires 10, IPC schema only requires 1. Fix: align UI + IPC schemas to min(10) shared `PASSWORD_MIN_LENGTH` constant.
+
+- [ ] DASH-ELEC-056. **[MED][SEC] No forgot-password / lost-2FA recovery path** — packages/management/src/renderer/src/pages/LoginPage.tsx (entire) — no recovery flow; no recovery codes shown during 2fa-setup; no "forgot 2FA" IPC handler. Operator who loses TOTP device fully locked out. Fix: show recovery codes during 2fa-setup; document CLI-assisted reset path in dashboard.
+
+- [ ] DASH-ELEC-057. **[MED][UI] Admin Tools "step-up TOTP" claim is description-only — no challenge UI** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:196 — text claims TOTP gating but page only uses `window.confirm()` (lines 74, 124, 153) before destructive actions. Fix: add TOTP input modal before dispatch; verify server enforces independently.
+
+- [x] DASH-ELEC-058. **[LOW][UI] Tenant suspend/activate fires with zero confirmation** — packages/management/src/renderer/src/pages/TenantsPage.tsx:160-170 — handleSuspend / handleActivate dispatch immediately on click; mis-click cuts off all tenant users instantly. Delete uses ConfirmDialog with requireTyping but suspend bypasses entirely. Fix: wrap suspend in ConfirmDialog (no typing required).
+
+- [ ] DASH-ELEC-059. **[MED][SEC] Session revoke has no audit-log write at dashboard layer** — packages/management/src/renderer/src/pages/SessionsPage.tsx:89-99 — handleRevoke calls superAdmin.revokeSession(id) but no client/IPC audit record. If server DELETE endpoint doesn't write audit_log, action is invisible. Fix: confirm server records revoker identity; else add explicit audit-log IPC call.
+
+- [x] DASH-ELEC-060. **[MED][WIRE] handleApiResponse 401 detection is string-match only** — packages/management/src/renderer/src/utils/handleApiResponse.ts:24-35 — checks message for 5 hardcoded substrings; non-standard server message → silent failure with stale auth. Fix: propagate HTTP status through IPC envelope, check `status === 401` primary, fallback string list.
+
+- [ ] DASH-ELEC-061. **[LOW][SEC] QR code rendered from server-supplied data URI without validation** — packages/management/src/renderer/src/pages/LoginPage.tsx:397-399 — `qrCode` set from setupRes.data.qr and rendered as `<img src={qrCode}>`; compromised server could return `javascript:` or `data:text/html`. Fix: validate value starts with `data:image/` before rendering.
+
+- [x] DASH-ELEC-062. **[MED][WIRE] SchemaSetPassword IPC accepts password of length 1** — packages/management/src/main/ipc/management-api.ts:37-39 — `z.string().min(1).max(1024)` — UI enforces 10 but renderer-side dev-tools `ipcRenderer.invoke` can set 1-char. Fix: change schema to `min(10).max(1024)`; align with SchemaSetup once 055 is fixed.
+
+- [ ] DASH-ELEC-063. **[MED][UI] AuditLogPage + SecurityAlertsPage filter state ephemeral — back-button loses filters** — packages/management/src/renderer/src/pages/AuditLogPage.tsx:22-23, SecurityAlertsPage.tsx:41-42 — actionFilter/textFilter/ackFilter/severityFilter in useState only. DiagnosticsPage uses useSearchParams. Fix: migrate filters to useSearchParams (e.g. `?action=login_failed&q=192.168`).
+
+- [ ] DASH-ELEC-064. **[MED][UI] AuditLogPage + SecurityAlertsPage hard-cap fetch at 200 entries with no pagination UI** — AuditLogPage.tsx:30 `limit: 200`, SecurityAlertsPage.tsx:53 same — installations with 50k entries silently truncate. Fix: add offset state + "Load next 200" button (or infinite-scroll); user-selectable limit (50/200/all).
+
+- [x] DASH-ELEC-065. **[HIGH][UI] CrashMonitorPage expandable `<tr>` and SecurityAlertsPage expand `<div>` keyboard-inaccessible** — CrashMonitorPage.tsx:268-271 + SecurityAlertsPage.tsx:211-214 — onClick on tr/div with no tabIndex/role/onKeyDown. Fix: `tabIndex={0} role="button" aria-expanded={isOpen} onKeyDown` (Enter/Space → toggle).
+
+- [x] DASH-ELEC-066. **[MED][UI] DiagnosticsPage tabs missing role="tab"/aria-selected/role="tablist"** — DiagnosticsPage.tsx:86-103. Fix: `role="tablist"` container, `role="tab" aria-selected aria-controls` per button, `role="tabpanel"` wrapper.
+
+- [x] DASH-ELEC-067. **[MED][UI] BackupPage stat grids use fixed `grid-cols-3` with no responsive fallback** — BackupPage.tsx:192, 211 — at <480px window each card shrinks to <100px. Fix: `grid-cols-2 sm:grid-cols-3` (matches OverviewPage).
+
+- [ ] DASH-ELEC-068. **[LOW][UI] BackupPage missing download-to-file + upload-from-file** — BackupPage.tsx — no off-box backup path. Fix: `admin:download-backup` IPC (`dialog.showSaveDialog` + `fs.copyFile`); upload via `<input type="file">` + `admin:upload-backup`.
+
+- [ ] DASH-ELEC-069. **[MED][UI] UpdatesPage shows "Unknown" before first fetch — no loading + no handleApiResponse** — UpdatesPage.tsx:22, 215 — status starts null, renders "Up to date" while in-flight + silently ignores 401. Fix: add loading state, handleApiResponse, spinner/skeleton.
+
+- [x] DASH-ELEC-070. **[MED][UI] SecurityAlertsPage "Acknowledge all" uses `window.confirm()`** — SecurityAlertsPage.tsx:97-101 — inconsistent with ConfirmDialog elsewhere. Fix: replace with ConfirmDialog state.
+
+- [x] DASH-ELEC-071. **[LOW][UI] CrashMonitorPage caps display at 50 silently** — CrashMonitorPage.tsx:92 `slice(0, 50)` but Export CSV uses full set; no "showing 50 of N" label. Fix: add count label + "Show all" toggle.
+
+- [x] DASH-ELEC-072. **[LOW][UI] CrashMonitorPage relative time has no absolute-time tooltip** — CrashMonitorPage.tsx:219 — `formatRelativeTime(r.disabledAt)` no `title`. Fix: wrap in `<span title={formatDateTime(r.disabledAt)}>`.
+
+- [ ] DASH-ELEC-073. **[LOW][UI] OverviewPage canvas graph uses hardcoded hex colours not theme-tokenised** — OverviewPage.tsx:142-283 — drawGraphFn raw `#3b82f6`, `#1e1e22`, `#71717a`. Light-mode/custom theme cannot update. Fix: `getComputedStyle(canvas).getPropertyValue('--color-accent-500')` cached per draw.
+
+- [ ] DASH-ELEC-074. **[LOW][WIRE] DiagnosticsPage tab switch unmounts panel → flash of empty state** — DiagnosticsPage.tsx:113-117 — conditional render forces unmount/remount. Fix: CSS `display:none` toggle, or parent-level cache.
+
+- [x] DASH-ELEC-075. **[LOW][UI] PlaceholderPage orphaned — no route registers it** — PlaceholderPage.tsx:11-18 — App.tsx:48-80 no longer references it. Fix: delete the file.
+
+- [ ] DASH-ELEC-076. **[HIGH][SEC] All `service:*` IPC handlers skip `assertRendererOrigin`** — packages/management/src/main/ipc/service-control.ts:596-743 — service:get-status/start/stop/restart/emergency-stop/kill-all/disable/set-auto-start take no event arg or pass `_event` without origin check. Compromised renderer can call kill-all (`taskkill /F /IM node.exe` + `app.exit(0)`). Fix: add `assertRendererOrigin(event)` first line of each handler, matching management-api.ts pattern.
+
+- [x] DASH-ELEC-077. **[HIGH][SEC] `service:set-auto-start` accepts unvalidated boolean — type erasure bypass** — packages/management/src/main/ipc/service-control.ts:697 — `enabled: boolean` is TS-only; runtime accepts any unknown. String "true" truthy. Fix: `z.boolean().parse(enabled)` before use.
+
+- [ ] DASH-ELEC-078. **[HIGH][SEC] `SchemaSlug` more permissive than `SchemaCreateTenant.slug`** — packages/management/src/main/ipc/management-api.ts:51-53 vs :109 — SchemaSlug allows `[A-Z]`, `_`, up to 256 chars; create-tenant restricts `[a-z0-9-]{3,64}`. Renderer can pass `ADMIN_TENANT` for delete/suspend that could never have been created via UI. Fix: shared regex `z.string().regex(/^[a-z0-9-]{3,64}$/)`.
+
+- [ ] DASH-ELEC-079. **[MED][SEC] EXPECTED_FINGERPRINT frozen at module load — cert rotation falls back to unauthenticated** — packages/management/src/main/services/api-client.ts:121-140 — fingerprint computed once via IIFE; after `setup.bat --reset-certs` mismatch returns Error from checkCertFingerprint but `rejectUnauthorized: false` ignores it. Fix: reload fingerprint per-request, or expose `refreshCertPin()` after server restart, or set `rejectUnauthorized: true` with pinned cert as CA.
+
+- [ ] DASH-ELEC-080. **[MED][SEC] `tryPowershellDiskSpace` embeds `"` inside `-Command "..."` — breaks on Windows, OverviewPage disk chart silently empty on 24H2+** — packages/management/src/main/ipc/system-info.ts:157-158 — script literal contains `"` chars; outer execSync uses shell, inner quotes terminate -Command early. Caller catches → returns []. Fix: `spawnSync(psExe, ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command', script], { encoding: 'utf-8' })` — explicit args array, no shell.
+
+- [x] DASH-ELEC-081. **[MED][SEC] stopDirectServer TOCTOU between `isProcessAlive` and `taskkill /PID`** — packages/management/src/main/ipc/service-control.ts:583-593 — between signal-0 check and taskkill, target PID can exit and OS can reassign. Fix: remove early-exit `isProcessAlive` guard; always taskkill; treat exit 128 (no PID) as success.
+
+- [x] DASH-ELEC-082. **[MED][SEC] `.env.bak-*` backup inherits source ACL — secrets may be world-readable** — packages/management/src/main/ipc/management-api.ts:729-730 — `copyFileSync(envPath, bakPath)` inherits ACL; .tmp at line 747 uses mode 0o600 but backup does not. Multi-user Windows leaks Stripe keys + JWT secrets. Fix: `chmodSync(bakPath, 0o600)` after copy, or `writeFileSync(bakPath, readFileSync(envPath), { mode: 0o600 })`.
+
+- [ ] DASH-ELEC-083. **[MED][WIRE] No concurrency guard on service:start / stop / restart — parallel IPC calls race** — packages/management/src/main/ipc/service-control.ts:595-681 — rapid Restart click or CommandPalette + ServerControlPage simultaneously fires conflicting pm2 commands; readDirectState/writeDirectState non-atomic. Fix: module-level `serviceActionInFlight` Promise gate; new calls queue or return `{ success: false, output: 'Another action in progress' }`.
+
+- [ ] DASH-ELEC-084. **[MED][WIRE] `management:restart-server` and `service:restart` are two uncoordinated paths** — management-api.ts:1676-1680 (REST) + service-control.ts:663-681 (sc.exe/PM2/kill). Both exposed: `getAPI().management.restartServer()` (UpdatesPage) and `getAPI().service.restart()` (ServerControlPage). Fix: pick canonical path; remove or feature-flag the other; ensure mutual exclusion.
+
+- [ ] DASH-ELEC-085. **[MED][WIRE] api-client.ts single 30s timeout covers connect + body — slow-handshake hides connection failure** — packages/management/src/main/services/api-client.ts:26,294 — `req.setTimeout(30_000)` is idle-time, not connect-phase. Port-squatter holds dashboard 30s. Fix: `req.on('socket', s => s.setTimeout(5_000, () => req.destroy(new Error('Connect timeout'))))` for handshake; keep 30s for body.
+
+- [x] DASH-ELEC-086. **[LOW][SEC] `admin:list-logs` leaks absolute filesystem paths to renderer** — packages/management/src/main/ipc/management-api.ts:1851-1864 — response includes `path: resolved.path` (e.g. `C:\Users\admin\AppData\Roaming\BizarreCRM\logs\...`). Leaks install path, username, layout. Fix: omit `path` or sanitize to relative; renderer only needs name/size/mtime/exists.
+
+- [x] DASH-ELEC-087. **[LOW][WIRE] `service:kill-all` runs `taskkill /F /IM node.exe` — kills ALL user node.exe processes** — packages/management/src/main/ipc/service-control.ts:735 — terminates VS Code helpers, dev servers, unrelated Electron apps. Fix: constrain to known PID from `readDirectState().pid`, or `/FI "COMMANDLINE eq *bizarre-crm*"`.
+
+- [x] DASH-ELEC-088. **[LOW][WIRE] `system:open-browser` hardcodes `https://localhost`, ignores serverPort** — packages/management/src/main/ipc/management-api.ts:1900 — non-default port (e.g. 8443) opens wrong URL. Fix: export `getServerBase()` from api-client.ts; `shell.openExternal(getServerBase())`.
+
+- [x] DASH-ELEC-089. **[MED][UI] PageErrorBoundary never resets on route change — sticky crash state** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30 + components/shared/ErrorBoundary.tsx:19 — boundary wraps `<Outlet>` with no key tied to location; once `hasError=true` it stays sticky on every page until manual Retry. Fix: `const { pathname } = useLocation()` in DashboardShell, pass `key={pathname}` to `<PageErrorBoundary>`.
+
+- [ ] DASH-ELEC-090. **[MED][UI] All 16 pages statically imported — no code splitting** — packages/management/src/renderer/src/App.tsx:5-18 + vite.config.ts (no manualChunks) — entire SPA in one chunk; main-thread parse blocks open. Fix: `React.lazy(() => import('./pages/FooPage'))` + shared `<Suspense fallback>` around `<Outlet>` in DashboardShell. Lazy at minimum: DiagnosticsPage, AdminToolsPage, AuditLogPage, CrashMonitorPage, UpdatesPage.
+
+- [ ] DASH-ELEC-091. **[LOW][UI] `multiTenantOnly` routes have no page-level guard — accessible by typing URL in single-tenant installs** — App.tsx:59,64,69,70,71 — Sidebar filters them but routes themselves un-guarded; direct `/#/tenants` reaches full page in single-tenant mode. Fix: `<MultiTenantRoute>` guard wrapping each multi-tenant route element, redirecting to `/` with toast when isMultiTenant=false.
+
+- [x] DASH-ELEC-092. **[LOW][UI] `<main>` has no id/aria-label/tabIndex=-1 — focus not moved on route change** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:29 — keyboard/SR focus stays on sidebar link after nav. Fix: `id="main-content" tabIndex={-1}` on `<main>`; in App.tsx watch `useLocation().pathname` and call `document.getElementById('main-content')?.focus()`. Add visually-hidden skip-nav link before header.
+
+- [x] DASH-ELEC-093. **[LOW][UI] Header window-control buttons have only `title` attr, no `aria-label`** — packages/management/src/renderer/src/components/layout/Header.tsx:86-99 — Narrator on Windows often ignores title on `<button>`. Fix: add `aria-label="Minimize window"` / `aria-label="Maximize window"` alongside title.
+
+- [x] DASH-ELEC-094. **[LOW][UI] `bg-white` hardcoded on QR code container — dark-mode parity break** — packages/management/src/renderer/src/pages/LoginPage.tsx:398 — full card extends beyond QR image, jarring bright rectangle on dark login screen. Fix: scope `bg-white` only to the `<img>` element (`className="w-48 h-48 bg-white p-1 rounded"`); use surface token for card.
+
+- [x] DASH-ELEC-095. **[LOW][WIRE] Theme state in-memory only — does not persist to localStorage, resets to dark every reload** — packages/management/src/renderer/src/stores/uiStore.ts:57,63-71 — setTheme never writes localStorage; initialTheme hardcoded 'dark'. Density persists correctly but theme doesn't. Fix: THEME_KEY constant, `localStorage.setItem(THEME_KEY, theme)` in setTheme, validated read in initialTheme matching density pattern.
+
+- [ ] DASH-ELEC-096. **[LOW][WIRE] `bridge.ts` `service.getStatus()` return type diverges from safeInvoke `unknown` — silent cast** — packages/management/src/renderer/src/api/bridge.ts:369 vs preload/index.ts:117-125 — typed `Promise<ServiceStatus>` but contextBridge strips types; useServerHealth.ts:50 ingests directly. If main handler shape changes (e.g. wraps in ApiResponse), renderer silently consumes malformed data. Fix: runtime narrowing guard in useServerHealth or Zod schema validating raw IPC result before storing.
+
+- [ ] DASH-ELEC-097. **[HIGH][BUILD] `dev` script never launches Electron + skips preload build** — packages/management/package.json:13 — runs `build:main --watch` and `vite` only; no electron `.`, no preload watch, no main-process auto-restart. Devs must additionally run `dev:electron` (one-shot). Fix: replace `dev` with concurrently launching: `build:main --watch`, `build:preload --watch`, `vite --port 5174`, and `wait-on dist/main/index.js && nodemon --watch dist/main --exec electron .`.
+
+- [ ] DASH-ELEC-098. **[HIGH][BUILD] Zero test infrastructure — no framework, no test files, no CI test step** — packages/management/package.json (no vitest/jest), src/ (0 *.test.*), .github/workflows/ci.yml (no test job). CI only type-checks. Fix: add vitest + @vitest/ui + @testing-library/react + user-event; scripts `"test": "vitest run"` + `"test:watch"`; CI `test` job.
+
+- [ ] DASH-ELEC-099. **[MED][BUILD] No ESLint config — package fully un-linted** — packages/management/ (no .eslintrc*/eslint.config*); no eslint deps; no `lint` script; no CI lint step. Fix: eslint.config.js with @typescript-eslint, eslint-plugin-react, react-hooks, jsx-a11y; `"lint": "eslint src"`; CI lint step.
+
+- [x] DASH-ELEC-100. **[MED][BUILD] `@types/node` missing — main-process Node APIs typed `any`** — packages/management/package.json (no @types/node) — `fs`, `path`, `child_process` etc. defeat strict-mode; `skipLibCheck: true` hides symptom. Fix: add `"@types/node": "^22.0.0"` matching node engine.
+
+- [ ] DASH-ELEC-101. **[MED][DEPS] electron pinned to non-LTS 39.8.7** — packages/management/package.json:37 — even-numbered Electron releases are LTS (32, 34, 36); 39 is odd dev/latest with no LTS security backports. As of 2026-04, Electron 36.x is current LTS. Fix: downgrade to `"electron": "^36.0.0"`.
+
+- [ ] DASH-ELEC-102. **[MED][DEPS] `app-builder-bin` pinned to alpha `5.0.0-alpha.10`** — packages/management/package.json:28 — electron-builder internal binary as pre-release; production installers built with unfinished tool. Fix: remove explicit override (let electron-builder pull vetted bin), or pin to latest stable.
+
+- [ ] DASH-ELEC-103. **[MED][BUILD] electron-builder.yml has no `publish` section — auto-update structurally broken** — no publish key + no electron-updater dep. Future auto-update silently produces un-updateable installers. Fix: add `publish: { provider: 'github', owner, repo }`; add `"electron-updater": "^6.0.0"` to deps.
+
+- [x] DASH-ELEC-104. **[LOW][BUILD] noUnusedLocals + noUnusedParameters absent from all 3 tsconfigs** — tsconfig.json:8 + tsconfig.node.json:7 + tsconfig.preload.json:7 — strict alone doesn't enable them; dead code accumulates silently. Fix: add to all 3 compilerOptions (or a shared tsconfig.base.json).
+
+- [x] DASH-ELEC-105. **[LOW][BUILD] engines.node too permissive vs root** — packages/management/package.json:10 `>=22.0.0` vs root `>=22.11.0 <25` — admits CVE-vulnerable 22.0-22.10, no upper bound (admits 23/24 monorepo excludes). Fix: align to `">=22.11.0 <25"`.
+
+- [ ] DASH-ELEC-106. **[LOW][BUILD] Root `build` excludes management — Electron dashboard never built by CI** — package.json:19 root build does shared/web/server only; CI Build & Type-check runs `tsc --noEmit` for management but not `build`. Broken renderer/preload build undetected until manual package. Fix: append `&& npm run build --workspace=packages/management` to root; add CI step.
+
+- [x] DASH-ELEC-107. **[LOW][BUILD] license + repository fields absent from package.json** — packages/management/package.json — SBOM/compliance scanners report unlicensed/unlocated. Fix: add `"license": "UNLICENSED"` + `"repository": { "type": "git", "url": "https://github.com/bizarre-electronics/bizarrecrm", "directory": "packages/management" }`.
+
+- [ ] DASH-ELEC-108. **[LOW][BUILD] No README.md in packages/management/ — build/dev workflow undocumented** — no doc explaining 3 tsconfigs, 2-step dev/dev:electron pattern, or code-signing env vars. Fix: README covering local dev, 3 build targets, code-signing variables, CI jobs.
+
+- [x] DASH-ELEC-109. **[MED][I18N] OverviewPage 9 toLocaleTimeString/Date calls pass empty locale array** — packages/management/src/renderer/src/pages/OverviewPage.tsx:307-327, 515, 750 — inherits Windows locale; FR/DE operator sees inconsistent axis labels. DASH-ELEC-052 only covered format.ts:67. Fix: add `'en-US'` first arg uniformly, or `formatGraphDate`/`formatGraphTime` helpers in format.ts.
+
+- [x] DASH-ELEC-110. **[MED][SEC] `unhandledRejection` handler logs raw `reason` object — JWT/password may land in dashboard.log** — packages/management/src/main/index.ts:124-126 `console.error('[Dashboard] Unhandled rejection:', reason)`. If rejection from apiRequest carries Authorization header, token persists to disk. Zod parse rejection could carry cleartext password. Fix: `reason instanceof Error ? reason.message : String(reason)` — never raw object.
+
+- [ ] DASH-ELEC-111. **[MED][SEC] UpdatesPage logs raw git subprocess output to renderer console** — packages/management/src/renderer/src/pages/UpdatesPage.tsx:113-116 `console.log('[Update output]\n' + result.output)` — can contain absolute filesystem paths, repo root, env-var printouts from misconfigured hooks. Fix: route through main IPC log channel with `redactRoot` helper from management-api.ts.
+
+- [ ] DASH-ELEC-112. **[LOW][TELEM] No structured logging library in main process — plain console.log only** — packages/management/src/main/index.ts:102-104 + management-api.ts + service-control.ts — no levels, no JSON, no correlation IDs; no electron-log/winston/pino. Fix: introduce electron-log (zero-dep) for structured JSON lines `{ level, time, msg }`; serialize objects properly.
+
+- [x] DASH-ELEC-113. **[LOW][TELEM] dashboard.log rotation keeps 1 backup max 20MB — no documented retention** — packages/management/src/main/index.ts:44-53 `rotateLogIfLarge` rotates at 10MB, 1 backup. <1 day for busy install. No comment/operator doc. Fix: document policy, consider configurable retention via settings.json.
+
+- [ ] DASH-ELEC-114. **[MED][SEC] Electron Crashpad enabled by default — minidumps accumulate with in-memory JWT/passwords** — packages/management/src/main/index.ts (no `crashReporter.start({uploadToServer: false})`) — `%APPDATA%\BizarreCRM Management\CrashDumps` may contain superAdminToken, pending Zod password, tenant PII. No cleanup policy. Fix: `crashReporter.start({ uploadToServer: false, compress: true })` before whenReady; log path on startup; 30-day cleanup or expose in Settings.
+
+- [x] DASH-ELEC-115. **[MED][SEC] PageErrorBoundary renders `error.message` directly in production** — packages/management/src/renderer/src/components/shared/ErrorBoundary.tsx:44-48 + main.tsx:40-44 — TLS fingerprint mismatch messages or Zod parse errors leak internals. Fix: render error.message only when `import.meta.env.DEV`; production shows generic "internal error" + ref code.
+
+- [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls.
+
+- [ ] DASH-ELEC-117. **[LOW][TELEM] No telemetry opt-out mechanism** — packages/management/ has no telemetry now but no opt-out infrastructure either; any future SDK would be on-by-default. Self-hosted GDPR concern. Fix: add `telemetry_opt_in: false` to platform_config; Settings toggle "Crash reporting & diagnostics"; gate future analytics behind it.
+
+- [x] DASH-ELEC-118. **[LOW][SEC] CrashMonitorPage CSV exports `errorStack` verbatim** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:128-132 — stacks may contain absolute paths, SQL with customer names/emails, request context. CSV unencrypted. Fix: exclude errorStack by default, or truncate to first 3 frames stripping path lines.
+
+- [x] DASH-ELEC-119. **[LOW][I18N] formatRelativeTime hardcodes English suffixes "m ago"/"h ago"/"just now"** — packages/management/src/renderer/src/utils/format.ts:76-85 — used on CrashMonitor disabled-route chip, AuditLogPage, RecentActivityWidget. date-fns already installed (devDeps:36) ships locale-aware `formatDistanceToNow`. Fix: replace hand-rolled with `formatDistanceToNow`; expose locale selector once i18n bootstrapped.
+
+- [ ] DASH-ELEC-120. **[MED][UI] TenantsPage Create Tenant modal missing role="dialog"/aria-modal/Escape/focus-trap** — packages/management/src/renderer/src/pages/TenantsPage.tsx:483-510 — `showCreate` overlay div has none of the four; ConfirmDialog + KeyboardShortcutsHelp have all four. Fix: mirror ConfirmDialog pattern (role + aria + tabIndex + onKeyDown Escape/Tab-trap).
+
+- [x] DASH-ELEC-121. **[LOW][UI] DashboardShell `<main>` scroll position not reset on route change** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30 — main is overflow-y-auto container; pathname already read at line 15 for boundary key but no scroll reset. Long page → short page leaves scroll mid-page. Fix: `mainRef = useRef`; `useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [pathname])`.
+
+- [ ] DASH-ELEC-122. **[MED][UI] No webContents `context-menu` handler — right-click exposes Chromium debug menu in dev** — packages/management/src/main/window.ts (no handler) — `Menu.setApplicationMenu(null)` removes menu bar but not right-click. Dev shows full Inspect/Reload; prod shows minimal Chromium menu. Fix: `mainWindow.webContents.on('context-menu', e => e.preventDefault())`, or build app-appropriate Copy/Select-All menu.
+
+- [ ] DASH-ELEC-123. **[LOW][UI] KeyboardShortcutsHelp lists mouse-only actions as keyboard shortcuts** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:24-25 — `keys: ['Click']` and `['Hover + Click']` mislead keyboard-only operators. Fix: separate "Mouse Shortcuts" section, or add real keyboard equivalent (Tab to CopyText → Enter).
+
+- [ ] DASH-ELEC-124. **[LOW][UI] CommandPalette missing role="combobox"/role="listbox"/role="option" semantics** — packages/management/src/renderer/src/components/CommandPalette.tsx:202-288 — input has aria-label but no combobox role; result `<button>` items have no role="option"/aria-selected. SR reads as plain input + buttons, not controlled widget. Fix: `role="combobox" aria-expanded aria-autocomplete="list" aria-controls` on input; `role="listbox" id` on results; `role="option" aria-selected={isActive}` on each button.
+
+- [ ] DASH-ELEC-125. **[LOW][UI] navigator.platform (deprecated) used for macOS detection in KeyboardShortcutsHelp** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:13 — deprecated since Chrome 100+; future Chromium returns "". Fix: prefer `navigator.userAgentData?.platform === 'macOS'` with userAgent Macintosh fallback, or expose process.platform via preload constant.
+
+- [ ] DASH-ELEC-126. **[LOW][UI] Header `⌘K` badge is non-focusable `<span>` with only `title` — keyboard users get no shortcut hint** — packages/management/src/renderer/src/components/layout/Header.tsx:77-82 — span with `title="Ctrl/Cmd + K..."` skipped by SR; keyboard Tab never reaches it. No clickable target in header to bind aria-keyshortcuts. Fix: use `<kbd>` element + add `aria-keyshortcuts="Control+k Meta+k"` to `<main>` so AT announces on focus.
+
+- [ ] DASH-ELEC-127. **[MED][UI] LogsPage auto-scroll clobbers user's manual scroll position every 2s** — packages/management/src/renderer/src/pages/LogsPage.tsx:117-121 — `useEffect([content, autoRefresh])` sets scrollTop=scrollHeight unconditionally when autoRefresh; user investigating an earlier error gets dragged to bottom every poll. Fix: track `userScrolled` boolean (true when `scrollTop < scrollHeight - clientHeight - 50` in onScroll); skip auto-scroll while true; reset on "scroll to bottom" click.
+
+- [x] DASH-ELEC-128. **[LOW][UI] TenantsPage Suspend/Activate/Delete icon buttons have `title` but no `aria-label`** — packages/management/src/renderer/src/pages/TenantsPage.tsx:433,437,450 — Narrator/NVDA usually ignores title on focusable elements. Fix: ``aria-label={`Suspend ${t.name}`}`` per button so each has unique accessible name.
+
+- [ ] DASH-ELEC-129. **[MED][UI] AutoStart toggle optimistic update never rolls back on IPC failure** — packages/management/src/renderer/src/pages/ServerControlPage.tsx:169-173 — `setAutoStart(newState)` fires before doAction resolves; failure toast shown but toggle stays flipped wrong until next 10s poll. rateLimitBypass at line 259 rolls back correctly. Fix: capture `prev = autoStart`; call `setAutoStart(prev)` in doAction error branch.
+
+- [ ] DASH-ELEC-130. **[MED][UI] Restore dialog dismissable while restore in flight — race window** — packages/management/src/renderer/src/pages/BackupPage.tsx:281-296 — `restoring` state tracked but never passed to ConfirmDialog; Cancel + Escape stay active during entire async, operator can close + retrigger another DB swap concurrently. Fix: pass `disabled`/`loading` to ConfirmDialog; suppress onCancel while restoring.
+
+- [ ] DASH-ELEC-131. **[MED][WIRE] No "Revoke All Sessions" action — only per-session revoke** — packages/management/src/renderer/src/pages/SessionsPage.tsx (entire) — `super-admin:revoke-all` IPC handler does not exist. Credential-compromise incident requires one-by-one revoke; with 100s of sessions impractical. Fix: add `ipcMain.handle('super-admin:revoke-all-sessions', ...)` → POST /super-admin/api/sessions/revoke-all; "Revoke All" danger button in SessionsPage with ConfirmDialog.
+
+- [ ] DASH-ELEC-132. **[LOW][UI] Empty SessionsPage state has no recovery cue after bulk revoke** — packages/management/src/renderer/src/pages/SessionsPage.tsx:135 — `"No active sessions"` plain dim string; if operator revoked self (no IPC self-revoke guard) no "Back to Login" link. Fix: when `sessions.length === 0` render empty-state with `<Link to="/login">`.
+
+- [ ] DASH-ELEC-133. **[MED][UI] Tenant Repair button fires with no confirmation** — packages/management/src/renderer/src/pages/TenantsPage.tsx:442-449 — handleRepair(t.slug) dispatches with zero interstitial; tooltip 11px partially explains. Fix: ConfirmDialog explaining what repair does (creates missing DB tables, re-generates setup token); inline result detail like DNS-backfill ResultPanel.
+
+- [ ] DASH-ELEC-134. **[LOW][UI] Repair button visible only for non-active tenants — server handler accepts any** — packages/management/src/renderer/src/pages/TenantsPage.tsx:441 `t.status !== 'active'` — server `repairTenant` (management-api.ts:1054) carries no such restriction; active tenant with missing DB table cannot be repaired from UI. Fix: show Repair for all tenants, or expose via expanded detail row.
+
+- [ ] DASH-ELEC-135. **[LOW][UI] Create Tenant modal: slug not auto-derived from shop name** — packages/management/src/renderer/src/pages/TenantsPage.tsx:487-489 — newSlug + newName independent. Operators forget hyphens-only rule, type uppercase, etc. Fix: onChange of newName populate newSlug if empty: `newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)`.
+
+- [ ] DASH-ELEC-136. **[LOW][UI] No bulk-select checkbox on TenantsPage table** — packages/management/src/renderer/src/pages/TenantsPage.tsx:357-479 — bulk suspend/activate/delete requires per-row clicks; 50+ tenants is friction-heavy. Fix: `<th>` checkbox column; `selectedSlugs: Set<string>`; contextual bulk-action bar with ConfirmDialog routing.
+
+- [ ] DASH-ELEC-137. **[LOW][SEC] AdminTools rate-limit inspector hard-caps 200 rows; silently truncates** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:53 `listRateLimits({ limit: 200 })` — summary badge shows total/locked but table silently shows ≤200; if 350 keys locked operator sees 200 only. Fix: render `Showing {rlRows.length} of {rlSummary.total}` when truncated, or paginate.
+
+- [ ] DASH-ELEC-138. **[LOW][WIRE] BackupPage refresh after restore fires immediately — stale list likely** — packages/management/src/renderer/src/pages/BackupPage.tsx:105-123 — `refresh()` called right after `restoreBackup` resolves; restore involves DB file swap taking seconds. Fix: `setTimeout(refresh, 2000)` or show "Server restarting — refresh shortly" state.
+
+- [x] DASH-ELEC-139. **[MED][UI] StatCard sublabel `text-[9px] text-surface-600` fails WCAG AA** — packages/management/src/renderer/src/pages/OverviewPage.tsx:44 — surface-600 on surface-900 ~3.2:1; fails 4.5:1. Fix: text-surface-400 (~6.1:1).
+
+- [ ] DASH-ELEC-140. **[MED][UI] Canvas axis labels hardcoded #71717a / #52525b — Y ~3.1:1, X ~2.2:1** — OverviewPage.tsx:145,152 — fails AA. Fix: raise Y to #a1a1aa, X to #71717a; via CSS var (links 073).
+
+- [x] DASH-ELEC-141. **[MED][UI] SecurityAlertsPage timestamp `text-[11px] text-surface-600` ~2.2:1** — SecurityAlertsPage.tsx:238. Fix: text-surface-400.
+
+- [x] DASH-ELEC-142. **[MED][UI] LogsPage DEBUG/TRACE `text-surface-500` on surface-950 ~3.4:1** — LogsPage.tsx:24. Fix: text-surface-400 + opacity-70.
+
+- [x] DASH-ELEC-143. **[LOW][UI] ConfirmDialog `disabled:opacity-40` drops danger button below 3:1** — ConfirmDialog.tsx:223. Fix: disabled:opacity-50 + bg-red-800 + text-red-200.
+
+- [x] DASH-ELEC-144. **[LOW][UI] `placeholder:text-surface-600` on all inputs ~2.2:1** — LoginPage.tsx:319,326,349,355,376,382,409,430 + ConfirmDialog.tsx:205 + SettingsPage.tsx:382. Fix: placeholder:text-surface-400.
+
+- [x] DASH-ELEC-145. **[LOW][UI] Alpha-reduced semantic body text fails AA** — OverviewPage.tsx:650 + BannerCertWarning.tsx:46 + BannerTagVerifyWarning.tsx:47 — red-400 at 80% on red-950/40 ~4.1:1. Fix: drop /70 + /80 from semantic body.
+
+- [ ] DASH-ELEC-146. **[MED][UI] Light-mode parity absent — zero `dark:` utilities** — uiStore VALID_THEMES still includes 'light' but components hardcoded to dark surface tokens. setTheme('light') makes UI unreadable. Fix: drop 'light' from VALID_THEMES OR add `dark:` variants across components.
+
+- [x] DASH-ELEC-147. **[LOW][UI] globals.css scrollbar uses hardcoded hex** — globals.css:37,41. Fix: theme('colors.surface.700') via @apply.
+
+- [x] DASH-ELEC-148. **[LOW][UI] `*:focus-visible` global rule uses hardcoded #3b82f6** — globals.css:56. Fix: outline solid theme('colors.accent.500').
+
+- [x] DASH-ELEC-149. **[LOW][UI] No `prefers-reduced-motion` guard on animations** — globals.css:92 + tailwind.config.ts:61-64 + Sidebar.tsx:41. Fix: globals.css `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }`.
+
+- [ ] DASH-ELEC-150. **[LOW][UI] `@apply` in globals.css component layer drifts from Tailwind tokens** — globals.css:70-97. Fix: remove `.stat-card`; inline as per-component constant.
+
+- [ ] DASH-ELEC-151. **[LOW][UI] Dynamic className template literals risk Tailwind purge** — SetupChecklist.tsx:229,253 + RecentActivityWidget.tsx:129 + StatusFooter.tsx:75 + SettingsPage.tsx:321. Fix: cn() with explicit object map.
+
+- [ ] DASH-ELEC-152. **[HIGH][SEC] @xmldom/xmldom ≤0.8.12 — 4 active CVEs in electron-builder transitive** — package-lock.json:3932 — DoS + 3 XML-injection. Dev-only but runs in CI. Fix: `npm audit fix` or root override `{ "@xmldom/xmldom": "^0.9.0" }`.
+
+- [ ] DASH-ELEC-153. **[MED][SEC] postcss <8.5.10 CVE — XSS via unescaped `</style>`** — package-lock.json:4726. Fix: bump `"postcss": "^8.5.10"`.
+
+- [ ] DASH-ELEC-154. **[HIGH][DEPS] `app-builder-bin` 3-way alpha split** — packages/management/package.json:28 declares alpha.10; lockfile resolves alpha.13 + nested alpha.12. Fix: remove explicit override.
+
+- [ ] DASH-ELEC-155. **[MED][DEPS] Renderer runtime deps misclassified as devDependencies** — packages/management/package.json:29-50 — react/react-dom/zustand/react-query/react-router-dom/clsx/date-fns/lucide-react/tailwind-merge/react-hot-toast in devDeps. Fix: move all renderer runtime to `dependencies`.
+
+- [ ] DASH-ELEC-156. **[MED][DEPS] `app-builder-bin` erroneously listed in `dependencies` (prod) in lockfile** — package-lock.json:12535. Fix: remove from `dependencies`.
+
+- [ ] DASH-ELEC-157. **[MED][DEPS] `inflight` + `glob@7` deprecated transitives** — package-lock.json:7620-7624 + 415-419. Fix: track electron-builder release that drops them.
+
+- [ ] DASH-ELEC-158. **[MED][DEPS] `prebuild-install@7.1.3` deprecated — native-addon install vector** — package-lock.json:9368 — pulled by better-sqlite3 + canvas. Fix: update better-sqlite3 to version migrating away.
+
+- [ ] DASH-ELEC-159. **[LOW][DEPS] `boolean@3.2.0` "no longer supported"** — package-lock.json:4570-4577. Fix: monitor electron-builder for removal.
+
+- [ ] DASH-ELEC-160. **[LOW][DEPS] CSP `'unsafe-inline'` for style-src — prod build not verified to strip** — packages/management/src/renderer/index.html:23. Fix: evaluate `vite-plugin-csp` for nonce-based CSP.
+
+- [x] DASH-ELEC-161. **[LOW][DEPS] `@bizarre-crm/shared: "*"` wildcard — no minimum version bound** — packages/management/package.json:23. Fix: `"workspace:*"` or `"^2.0.0"`.
+
+- [x] DASH-ELEC-162. **[MED][UI] LoginPage username inputs use autoComplete="off" — blocks credential managers** — packages/management/src/renderer/src/pages/LoginPage.tsx:316,345 — both setup-step + login-step username fields off; password fields no autoComplete attr at all. Fix: setup username `"username"` + password `"new-password"`; login username `"username"` + password `"current-password"`; set-password fields `"new-password"`.
+
+- [x] DASH-ELEC-163. **[MED][UI] 2FA inputs lack autoComplete="one-time-code"** — packages/management/src/renderer/src/pages/LoginPage.tsx:406,428 — iOS/Android SMS autofill blocked. Fix: add `autoComplete="one-time-code"` to both TOTP inputs.
+
+- [ ] DASH-ELEC-164. **[LOW][UI] LoginPage set-password step has no show-password toggle** — packages/management/src/renderer/src/pages/LoginPage.tsx:372-383 — newPassword/confirmPassword type="password" no Eye/EyeOff. SettingsPage has it. Fix: showNew/showConfirm state + Eye buttons.
+
+- [x] DASH-ELEC-165. **[LOW][UI] SettingsPage show-password toggle lacks aria-pressed** — packages/management/src/renderer/src/pages/SettingsPage.tsx:276-284 — DASH-ELEC-025 fixed aria-label but state not announced. Fix: `aria-pressed={isRevealed}`.
+
+- [ ] DASH-ELEC-166. **[MED][UI] Create Tenant modal has no `<form>` wrapper — Enter doesn't submit** — packages/management/src/renderer/src/pages/TenantsPage.tsx:502-529 — div + button onClick only. ConfirmDialog + LoginPage all use form onSubmit. Fix: wrap modal in `<form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>`.
+
+- [ ] DASH-ELEC-167. **[LOW][UI] Create Tenant modal inputs placeholder-only — no label/aria-label** — packages/management/src/renderer/src/pages/TenantsPage.tsx:507-514 — slug/name/email/plan select have only placeholder. SR announces placeholder once. Fix: add `<label htmlFor>` with id pairs, or aria-label per input.
+
+- [x] DASH-ELEC-168. **[LOW][UI] Create Tenant modal does not reset state on Cancel** — packages/management/src/renderer/src/pages/TenantsPage.tsx:521 — Cancel calls setShowCreate(false) only; reopening shows leftover newSlug/newName/newEmail/newPlan. Fix: reset all 4 in onCancel.
+
+- [ ] DASH-ELEC-169. **[LOW][UI] ConfirmDialog type-to-confirm input has no aria-label / aria-describedby** — packages/management/src/renderer/src/components/shared/ConfirmDialog.tsx:200-207 — anonymous text field with placeholder matching expected value. Fix: add id="confirm-typing-input" + aria-label or aria-describedby pointing to instruction `<p>`.
+
+- [ ] DASH-ELEC-170. **[MED][UI] AdminToolsPage tenant-slug input strips spaces on every keystroke — cursor jumps** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:383 — onChange `.toLowerCase().trim()` per char; leading-space typing jumps cursor; pasted trailing space silently discarded mid-edit. Fix: move `.trim()` to validation (handleReset only); for normalisation use `replace(/\s/g, '')`.
+
+- [ ] DASH-ELEC-171. **[LOW][UI] SettingsPage platform-config inputs save silently on blur — no undo** — packages/management/src/renderer/src/pages/SettingsPage.tsx:508-511 — onBlur fires handlePlatformConfigToggle immediately; Tab to next field permanent-writes. Env-settings on same page uses pending/discard pattern. Fix: dirty indicator + explicit Save button per field, OR "Tab to save / Esc to undo" hint.
+
+- [ ] DASH-ELEC-172. **[LOW][UI] SettingsPage env-text inputs no maxLength — accepts MB-large pastes** — packages/management/src/renderer/src/pages/SettingsPage.tsx:266-273 — Stripe keys / Cloudflare tokens / CORS origins unbounded; IPC fails server-side with generic error. Fix: secrets `maxLength={512}`, plain-text `maxLength={2048}`; remaining-chars counter near limit.
+
+- [ ] DASH-ELEC-173. **[LOW][UI] AdminToolsPage handleReset + handleRotateJwt still use window.confirm** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:74-83, 124 — DASH-ELEC-033 sketch targeted ServerControlPage; AdminToolsPage rate-limit reset + JWT rotation (also destructive: invalidates all sessions) still on window.confirm. Fix: ConfirmDialog state per action.
+
+- [ ] DASH-ELEC-174. **[MED][UI] BackupPage Restore ConfirmDialog button stays enabled during in-flight restore** — packages/management/src/renderer/src/pages/BackupPage.tsx:293 — confirmLabel changes to "Restoring…" but button only disabled when typing-mismatch; mid-restore re-click triggers second restore. Sibling of DASH-ELEC-130. Fix: add `disabled` prop to ConfirmDialog + pass `disabled={restoring}`.
+
+- [ ] DASH-ELEC-175. **[MED][UI] Create-tenant modal has hard `w-[420px]` no viewport clamp** — packages/management/src/renderer/src/pages/TenantsPage.tsx:504 — ConfirmDialog uses `w-[min(420px,calc(100vw-2rem))]`. Fix: same pattern.
+
+- [ ] DASH-ELEC-176. **[MED][UI] CommandPalette + KeyboardShortcutsHelp use fixed `pt-24` — clips on short windows** — CommandPalette.tsx:193 + KeyboardShortcutsHelp.tsx:106 — at 600px height with cert+tag banners visible (96px extra), palette body squeezed near zero. Fix: `pt-[max(1rem,min(6rem,10vh))]`.
+
+- [ ] DASH-ELEC-177. **[LOW][UI] StatusFooter uses `hidden sm:flex` — sm (640px) always satisfied at minWidth 900** — packages/management/src/renderer/src/components/layout/StatusFooter.tsx:71 — misleading dead breakpoint. Fix: document intent or use higher breakpoint matching actual minimum.
+
+- [ ] DASH-ELEC-178. **[LOW][UI] Header tick chip uses `hidden sm:inline-flex` — same dead breakpoint** — packages/management/src/renderer/src/components/layout/Header.tsx:61. Fix: remove guard or use `md:inline-flex`.
+
+- [ ] DASH-ELEC-179. **[MED][UI] SettingsPage system-info grid `grid-cols-2` no responsive fallback** — packages/management/src/renderer/src/pages/SettingsPage.tsx:529 — at minWidth content area each col ~280px; long values like hostnames overflow with no truncate/break-all. Fix: `grid-cols-1 sm:grid-cols-2 gap-x-4` + truncate/break-words on values.
+
+- [ ] DASH-ELEC-180. **[MED][UI] window.confirm in AdminToolsPage (3 calls) + SettingsPage (1 call) blocked in sandboxed renderer** — AdminToolsPage.tsx:74,124,153 + SettingsPage.tsx:183 — DASH-ELEC-070 fixed SecurityAlertsPage; these 4 not migrated. Fix: ConfirmDialog state per call-site.
+
+- [x] DASH-ELEC-181. **[LOW][UI] Toast `top-right` overlaps window controls at narrow widths** — packages/management/src/renderer/src/main.tsx:96 — react-hot-toast default top ~8px places first toast over 44px frameless header buttons. Fix: `containerStyle={{ top: 52 }}`.
+
+- [x] DASH-ELEC-182. **[LOW][UI] CrashMonitor "top offending routes" bar uses fixed `w-48` — silently truncates long API routes** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:195 — `/api/v1/tenants/:slug/automation/runs/:runId/retry` cut to unreadable. Fix: `max-w-[12rem]` wider, or flex-1 and let bar take remaining.
+
+- [ ] DASH-ELEC-183. **[LOW][UI] SettingsPage system-info grid no single-column fallback for compact density** — packages/management/src/renderer/src/pages/SettingsPage.tsx:529 — long values + 32px gap-x-8 → no wrap room. Fix: `grid-cols-1 sm:grid-cols-2`.
+
+- [ ] DASH-ELEC-184. **[MED][DEBT] `wrapHandler` typed `(...args: any[]) => Promise<any>` — IPC boundary untyped across ~60 handlers** — packages/management/src/main/ipc/management-api.ts:867-870 — silenced by 2 eslint-disables. Fix: typed generic `<T extends unknown[], R>(fn: (event: IpcMainInvokeEvent, ...args: T) => Promise<R>)`.
+
+- [x] DASH-ELEC-185. **[LOW][DEBT] `@ts-expect-error Vite HMR` (×2) — missing `vite/client` types** — packages/management/src/renderer/src/stores/authStore.ts:57,59. Fix: add `"types": ["vite/client"]` to renderer tsconfig compilerOptions.
+
+- [x] DASH-ELEC-186. **[MED][DEBT] Sparkline useEffect captures stale `series` via eslint-disable — silent data drop on rapid polling** — packages/management/src/renderer/src/pages/OverviewPage.tsx:612-622 — effect reads series.* with `[stats]` deps; pushSpark appends to stale snapshot. Fix: functional dispatch `dispatchSeries(prev => ({ mem: pushSpark(prev.mem, ...), ... }))`.
+
+- [x] DASH-ELEC-187. **[LOW][DEBT] toCsv called with `as unknown as Record<string,unknown>[]` in 5 sites** — AuditLogPage.tsx:88 + CrashMonitorPage.tsx:134 + AutomationRunsPanel.tsx:103 + NotificationsPanel.tsx:110 + WebhookFailuresPanel.tsx:122. Fix: make toCsv generic `<T extends Record<string,unknown>>`.
+
+- [x] DASH-ELEC-188. **[LOW][DEBT] `z.enum(LOG_FILE_WHITELIST as unknown as [...])` double cast** — packages/management/src/main/ipc/management-api.ts:272. Fix: `z.enum([...LOG_FILE_WHITELIST] as const)`.
+
+- [ ] DASH-ELEC-189. **[LOW][DEBT] `getTenant` response double-cast `res.data as unknown as TenantDetail`** — packages/management/src/renderer/src/pages/TenantsPage.tsx:81 — bridge types superAdmin.getTenant as `Promise<unknown>`. Fix: extend bridge return type to `Promise<{ success: boolean; data: TenantDetail }>`.
+
+- [ ] DASH-ELEC-190. **[LOW][WIRE] `handleProtocolUrl` is permanent no-op stub but `bizarrecrm-dashboard:` scheme registered OS-wide** — packages/management/src/main/index.ts:246-269 — macOS `open-url` + Windows `second-instance` invoke dead handler. Fix: complete renderer routing OR remove OS registration until ready.
+
+- [x] DASH-ELEC-191. **[LOW][DEBT] Two `eslint-disable react-hooks/exhaustive-deps` mount effects undocumented** — ConfirmDialog.tsx:127 + OverviewPage.tsx:400 — ConfirmDialog has no inline rationale. Fix: add `// intentional: refs are stable, effect is mount-only` on ConfirmDialog line 127.
+
+- [x] DASH-ELEC-192. **[LOW][SEC] Startup `console.log` prints absolute app path + isPackaged unconditionally to dashboard.log** — packages/management/src/main/index.ts:315-316 — leaks local username + install layout. Fix: gate behind `!app.isPackaged` or DEBUG-prefix stripped in prod.
+
+- [ ] DASH-ELEC-193. **[MED][WIRE] No Test Connection for Stripe/Cloudflare/hCaptcha** — packages/management/src/renderer/src/pages/SettingsPage.tsx:40-55. Fix: IPC probes; per-section Test button.
+- [ ] DASH-ELEC-194. **[MED][UI] "Close Dashboard" no confirmation** — SettingsPage.tsx:359-360. Fix: ConfirmDialog state.
+- [x] DASH-ELEC-195. **[LOW][UI] Density buttons missing role="radiogroup"/role="radio"/aria-checked** — SettingsPage.tsx:610-626.
+- [x] DASH-ELEC-196. **[LOW][UI] Filter search input no aria-label** — SettingsPage.tsx:377-383.
+- [x] DASH-ELEC-197. **[LOW][UI] Reload-from-.env button only `title`** — SettingsPage.tsx:385-392. Fix: aria-label.
+- [x] DASH-ELEC-198. **[LOW][UI] flag env checkboxes no `id`; SR name includes raw `<code>{f.key}</code>`** — SettingsPage.tsx:231-249. Fix: explicit id+htmlFor or aria-hidden on code key.
+- [ ] DASH-ELEC-199. **[MED][WIRE] CORS origins single-line `<input>`** — SettingsPage.tsx:266-274. Fix: textarea when category=='cors'.
+- [ ] DASH-ELEC-200. **[MED][WIRE] Platform-config flag checkbox no loading + checked-state out-of-sync** — SettingsPage.tsx:133-148. Fix: optimistic+revert or aria-busy.
+- [ ] DASH-ELEC-201. **[LOW][WIRE] No settingsDeadToggles equivalent — dead platform-config keys live** — SettingsPage.tsx. Fix: server expose `status?: 'coming_soon'`; render badge.
+- [ ] DASH-ELEC-202. **[LOW][UI] Sticky save bar `z-10` insufficient + non-scroll-container** — SettingsPage.tsx:407-453. Fix: z-30.
+- [ ] DASH-ELEC-203. **[LOW][WIRE] `restartPending` never cleared on OS-level restart** — SettingsPage.tsx:72,193,407. Fix: Dismiss button or auto-clear via service.status() poll.
+- [ ] DASH-ELEC-204. **[MED][UI] Settings sections lack aria-labelledby landmarks** — SettingsPage.tsx:340,357,370,457,524.
+- [ ] DASH-ELEC-205. **[HIGH][SEC] `assertRendererOrigin` throw swallowed by `wrapHandler` — origin rejection becomes silent `{success:false}`** — management-api.ts:879-901. Fix: re-throw `IPC_ORIGIN_REJECTED` unconditionally before generic catch.
+- [x] DASH-ELEC-206. **[HIGH][SEC] `system:open-log-file` no `event` parameter — origin check structurally impossible** — system-info.ts:237. Fix: change to `async (event)` + assertRendererOrigin first.
+- [x] DASH-ELEC-207. **[HIGH][SEC] All 8 `service:*` handlers still no assertRendererOrigin (DASH-ELEC-076 unfixed)** — service-control.ts:606,639,662,673,693,707,724,736. Fix: import + add as first statement; convert signatures to accept `event`.
+- [ ] DASH-ELEC-208. **[MED][SEC] `management:get-rollback-info` + `rollback-update` + `clear-rollback` not wrapped with `wrapHandler`** — management-api.ts:1577,1586,1661 — bypass produces unstructured Electron rejection.
+- [x] DASH-ELEC-209. **[MED][SEC] SchemaUpdateConfig key field accepts arbitrary Unicode** — management-api.ts:125-130. Fix: add `.regex(/^[a-zA-Z0-9_-]+$/)`.
+- [x] DASH-ELEC-210. **[MED][WIRE] LOG_FILE_WHITELIST covers PM2 names only — direct-mode logs inaccessible** — management-api.ts:268-274. Fix: extend whitelist or runtime-detect mode.
+- [x] DASH-ELEC-211. **[MED][SEC] SchemaRoute lacks pattern restriction** — management-api.ts:61-63. Fix: `z.string().regex(/^\/[a-zA-Z0-9\/_:*-]{0,511}$/)`.
+- [ ] DASH-ELEC-212. **[LOW][SEC] Dev-mode origin fallback accepts any `file://` when VITE_DEV_SERVER_URL unset** — management-api.ts:336-343. Fix: validate path under `pathToFileURL(app.getAppPath())`.
+- [x] DASH-ELEC-213. **[LOW][WIRE] `.env` injection guard regex omits `\t`** — management-api.ts:1844 `/[\r\n ]/`. Fix: `/[\r\n\t ]/`.
+- [ ] DASH-ELEC-214. **[LOW][WIRE] `management:logout` server-side endpoint missing — JWT remains valid until expiry** — management-api.ts:982-989. Fix: implement `POST /super-admin/api/logout`; call before setSuperAdminToken(null).
+- [x] DASH-ELEC-215. **[MED][UI] LogsPage renders ANSI escape sequences as literal `^[[32m...` garbage** — LogsPage.tsx:302 + management-api.ts:855. Fix: `tailFile()` apply `/\x1b\[[0-9;]*m/g` strip.
+- [ ] DASH-ELEC-216. **[LOW][UI] LogsPage filter substring-only — no regex / invert** — LogsPage.tsx:130-132. Fix: regex toggle button + try/catch fallback.
+- [x] DASH-ELEC-217. **[LOW][UI] LogsPage no persistent LIVE indicator** — LogsPage.tsx:162-172. Fix: `{autoRefresh && <span animate-pulse>LIVE</span>}`.
+- [x] DASH-ELEC-218. **[LOW][UI] LogsPage mtime in local timezone with no UTC tooltip** — LogsPage.tsx:245-249. Fix: `title={new Date(mtime).toISOString()}`.
+- [ ] DASH-ELEC-219. **[MED][UI] AuditLogPage `details` truncated max-w-xs with no expand/diff + no human-description map** — AuditLogPage.tsx:172. Fix: click-to-expand `<pre>`; ACTION_DESCRIPTIONS lookup.
+- [ ] DASH-ELEC-220. **[LOW][UI] AuditLogPage filter-by-user is client-side free-text only — server-truncates >200** — AuditLogPage.tsx:29-31, 58-65. Fix: add `username` server-side query param.
+- [ ] DASH-ELEC-221. **[LOW][SEC] AuditLogPage CSV export unsigned — no integrity hash** — AuditLogPage.tsx:86-92. Fix: append SHA-256 hex hash as comment row.
+- [ ] DASH-ELEC-222. **[MED][UI] CrashMonitorPage no grouping — repeated identical errors shown N rows** — CrashMonitorPage.tsx:94-95, 112-121. Fix: `Map<string, {count,...}>` keyed `route+errorMessage.slice(0,120)`; expandable group rows.
+- [ ] DASH-ELEC-223. **[LOW][UI] CrashMonitorPage drill-in lacks OS/Node/Electron/build context** — CrashMonitorPage.tsx:331-336 + bridge.ts:58-66. Fix: extend CrashEntry; capture `process.versions` + `app.getVersion()` at crash time.
+- [ ] DASH-ELEC-224. **[LOW][UI] WebhookFailuresPanel expand shows `last_error` only — no sent payload** — WebhookFailuresPanel.tsx:213-217 + Row L10-18. Fix: `sent_payload: string | null` truncated 4KB server-side; Payload/Error tab switcher.
+- [x] DASH-ELEC-225. **[LOW][UI] AutomationRunsPanel + NotificationsPanel summary chips non-interactive** — AutomationRunsPanel.tsx:127-133 + NotificationsPanel.tsx:134-139. Fix: SummaryChip optional onClick → setStatusFilter(label) for non-"total" chips.
+
+- [x] DASH-ELEC-226. **[LOW][WIRE] Exponential backoff has no jitter** — useServerHealth.ts:70,91. Fix: `* (0.8 + Math.random() * 0.4)`.
+- [x] DASH-ELEC-227. **[MED][WIRE] wrapHandler doesn't classify "Request timeout" as offline** — management-api.ts:885-898 + api-client.ts:294-297. Fix: check message string or attach `err.code = 'ETIMEDOUT'`.
+- [x] DASH-ELEC-228. **[MED][WIRE] ECONNRESET + EPIPE not in wrapHandler isNetwork set** — management-api.ts:885-898. Fix: add both.
+- [ ] DASH-ELEC-229. **[MED][WIRE] HTTP 502/504/500 indistinguishable for operator** — api-client.ts:263-290 + handleApiResponse.ts. Fix: per-status mapping in formatApiError.
+- [ ] DASH-ELEC-230. **[MED][WIRE] No idempotency keys on POST mutations** — management-api.ts:1036,1134,1154,1160,1170,1246,1328,1334,1695,1699,1743,1745,1768,1774. Fix: UUID per non-GET as `X-Idempotency-Key`.
+- [ ] DASH-ELEC-231. **[LOW][PERF] No HTTPS keep-alive agent** — api-client.ts:239-261 — 720+ TLS handshakes/hour. Fix: module-level `https.Agent({ keepAlive: true })`.
+- [ ] DASH-ELEC-232. **[MED][WIRE] In-flight poll request not cancelled on logout** — management-api.ts:984-988 + useServerHealth.ts:47-48. Fix: logoutEpoch counter checked after await.
+- [ ] DASH-ELEC-233. **[MED][UI] Offline banner only on OverviewPage** — OverviewPage.tsx:630-638 vs DashboardShell.tsx. Fix: move offline banner into DashboardShell above `<main>`.
+- [ ] DASH-ELEC-234. **[LOW][UI] TenantsPage heading shows unfiltered total when filtering** — TenantsPage.tsx:218.
+- [x] DASH-ELEC-235. **[LOW][WIRE] TenantsPage `detailCache` never invalidated after suspend/activate/repair** — TenantsPage.tsx:165,172,187.
+- [ ] DASH-ELEC-236. **[LOW][UI] Slug max-length mismatch: renderer 30 vs IPC schema 64** — TenantsPage.tsx:121 vs management-api.ts:112.
+- [ ] DASH-ELEC-237. **[MED][WIRE] No tenant plan-change UI — plan locked after creation** — TenantsPage + management-api.ts:1028-1074. Fix: inline plan select + super-admin:update-tenant IPC + server endpoint.
+- [ ] DASH-ELEC-238. **[MED][WIRE] No tenant shop-name rename UI — name frozen post-create** — TenantsPage.tsx:385.
+- [ ] DASH-ELEC-239. **[LOW][UI] Status badge `<td>` cells lack scope/aria-label** — TenantsPage.tsx:387-392.
+- [x] DASH-ELEC-240. **[LOW][WIRE] SchemaAuditLogParams has no `tenant_slug`** — management-api.ts:80-86.
+- [ ] DASH-ELEC-241. **[MED][WIRE] Tenant detail `'loading'` sentinel can permanently stick** — TenantsPage.tsx:75. Fix: separate Set<string> of in-flight slugs.
+- [ ] DASH-ELEC-242. **[LOW][UI] TenantsPage search no debounce** — TenantsPage.tsx:279,99-110.
+- [ ] DASH-ELEC-243. **[LOW][WIRE] Suspend/activate IPC has no `reason` field** — management-api.ts:1047-1058. Fix: schema + reason textarea in ConfirmDialog.
+- [ ] DASH-ELEC-244. **[LOW][UI] Plan filter dropdown hidden when single plan** — TenantsPage.tsx:299.
+- [ ] DASH-ELEC-245. **[LOW][WIRE] No last_active / suspended_at timestamps in Tenant** — bridge.ts:92-100 + TenantsPage.tsx:23-28.
+- [x] DASH-ELEC-246. **[HIGH][SEC] `SchemaSetup.password` still min(1) — IPC bypasses 8-char UI guard for first-run setup** — packages/management/src/main/ipc/management-api.ts:46. Fix: `z.string().min(8).max(1024)`.
+- [ ] DASH-ELEC-247. **[HIGH][UI] 2FA first-run setup shows no TOTP recovery/backup codes** — packages/management/src/renderer/src/pages/LoginPage.tsx:395-420 — lost TOTP device permanently locks out sole super-admin. Fix: extend super-admin:2fa-setup response with one-time recovery codes; collapsible "Store these somewhere safe" UI before verify.
+- [ ] DASH-ELEC-248. **[MED][UI] Banner dismissal in-memory-only — re-appears on every page load/navigation** — packages/management/src/renderer/src/components/BannerCertWarning.tsx:19,37 + BannerTagVerifyWarning.tsx:19,36 — local useState(false). Fix: persist dismissal timestamp to localStorage; re-show after 24h or cold-start.
+- [ ] DASH-ELEC-249. **[MED][UI] SetupChecklist invisible in single-tenant mode + can return null entirely** — packages/management/src/renderer/src/components/SetupChecklist.tsx:76,99,212,225. Fix: always render backup + kill-switch items; only skip multi-tenant-specific items.
+- [ ] DASH-ELEC-250. **[MED][UI] SetupChecklist items not sorted by severity** — packages/management/src/renderer/src/components/SetupChecklist.tsx:252-273. Fix: sort by SEVERITY_ORDER (fail=0, warn=1, pass=2) before render.
+- [ ] DASH-ELEC-251. **[MED][UI] No Required vs Recommended distinction in SetupChecklist** — packages/management/src/renderer/src/components/SetupChecklist.tsx:11-20. Fix: `tier: 'required' | 'recommended'` field; inline badge.
+- [ ] DASH-ELEC-252. **[MED][WIRE] No cert expiry countdown — BannerCertWarning checks presence not validity** — packages/management/src/main/services/api-client.ts:312-322 + BannerCertWarning.tsx:17-37. Fix: parse via `crypto.X509Certificate(pem).validTo`; include `daysUntilExpiry`; banner amber ≤30d, red ≤7d.
+- [ ] DASH-ELEC-253. **[LOW][UI] SetupChecklist has no Help/Documentation link per item** — packages/management/src/renderer/src/components/SetupChecklist.tsx:263-270. Fix: optional `docsUrl?: string`; secondary `?` icon-button via `shell.openExternal`.
+- [x] DASH-ELEC-254. **[LOW][SEC] First-run setup `SchemaSetup.username` no min(3) — IPC bypasses UI guard** — packages/management/src/main/ipc/management-api.ts:45. Fix: `z.string().min(3).max(256)`.
+
+- [ ] DASH-ELEC-255. **[MED][WIRE] Backup/restore IPC uses global 30s timeout** — api-client.ts:26,294 + management-api.ts:1764-1795. Fix: per-call timeout overrides ≥5min.
+- [ ] DASH-ELEC-256. **[MED][UI] Logout while backup/restore in-flight — setState on unmounted** — BackupPage.tsx:73-121. Fix: isMountedRef pattern.
+- [ ] DASH-ELEC-257. **[MED][WIRE] Server restart mid-restore: failure shown but restore may be half-applied** — api-client.ts:294-296. Fix: on offline, immediate poll + "Server may be restarting" banner.
+- [ ] DASH-ELEC-258. **[LOW][WIRE] EXPECTED_FINGERPRINT pinned once at module load — cert rotation needs app restart** — api-client.ts:121-140. Fix: reloadCertFingerprint() + warning banner on detected mismatch.
+- [x] DASH-ELEC-259. **[LOW][UI] System-clock backward jump → backup health flips to overdue** — BackupPage.tsx:134-139. Fix: `Math.max(0, ageMs)` clamp.
+- [x] DASH-ELEC-260. **[LOW][UI] Tenant deleted while detail panel open — expandedSlug + detailCache not cleared** — TenantsPage.tsx:193-197. Fix: setExpandedSlug(null) + remove from detailCache on delete success.
+- [x] DASH-ELEC-261. **[LOW][UI] AdminTools rate-limit `rlServerNow` stale — countdown wrong after page sits open** — AdminToolsPage.tsx:46,320. Fix: 1Hz setInterval to advance local nowMs ref.
+- [x] DASH-ELEC-262. **[LOW][SEC] No `before-quit` handler — superAdminToken survives in main-process memory** — main/index.ts. Fix: `app.on('before-quit', () => setSuperAdminToken(null))`.
+- [ ] DASH-ELEC-263. **[LOW][WIRE] No powerMonitor integration — useServerHealth backoff doesn't reset after sleep/wake** — main/index.ts + useServerHealth.ts:37,70,91. Fix: emit IPC on `powerMonitor.on('resume')` → renderer poll() + reset to BASE_INTERVAL.
+- [x] DASH-ELEC-264. **[MED][DEBT] StatusBadge precedence bug `as string` no-op** — StatusBadge.tsx:31. Fix: extract `const isOnline`.
+- [x] DASH-ELEC-265. **[MED][DEBT] toCsv generic still `Record<string, any>`** — csv.ts:28-29. Fix: `<T extends Record<string, unknown>>`; remove eslint-disable.
+- [ ] DASH-ELEC-266. **[MED][DEBT] getAuditLog + getSessions return unparameterised `Promise<ApiResponse>`** — bridge.ts:263-264 + AuditLogPage.tsx:36-37 + SessionsPage.tsx:77-78.
+- [ ] DASH-ELEC-267. **[LOW][DEBT] superAdmin.setup2fa + login return unparameterised — 4 cast sites** — bridge.ts:251,253 + LoginPage.tsx:118,134,168,173.
+- [ ] DASH-ELEC-268. **[LOW][DEBT] createTenant + updateBackupSettings bridge params typed `unknown`** — bridge.ts:257,362.
+- [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203.
+- [ ] DASH-ELEC-270. **[LOW][DEBT] tsconfigs missing noFallthroughCasesInSwitch + useUnknownInCatchVariables + exactOptionalPropertyTypes + noImplicitOverride**.
+- [x] DASH-ELEC-271. **[LOW][DEBT] `wrapHandler` `catch (err: any)`** — management-api.ts:890.
+- [ ] DASH-ELEC-272. **[LOW][DEBT] AdminToolsPage redundant ternary `as` casts** — AdminToolsPage.tsx:95,167.
+- [ ] DASH-ELEC-273. **[MED][DEBT] safeInvoke returns `Promise<unknown>` — entire ElectronAPI surface erases return types** — preload/index.ts:117. Fix: typed IPC channel map or `safeInvoke<T>` overload.
+
+- [ ] DASH-ELEC-274. **[MED][A11Y] Global ErrorBoundary + PageErrorBoundary fallback no `role="alert"` / `aria-live`** — packages/management/src/renderer/src/main.tsx:41-44 + components/shared/ErrorBoundary.tsx:36-63. Fix: `role="alert"` on outermost fallback container.
+- [ ] DASH-ELEC-275. **[MED][A11Y] Toaster default ariaProps polite — error toasts not assertive** — packages/management/src/renderer/src/main.tsx:95-101 — react-hot-toast default `role="status"`. Fix: add `toastOptions.ariaProps: { role: 'alert', 'aria-live': 'assertive' }` for `.error()` type, or use type-aware override.
+- [ ] DASH-ELEC-276. **[MED][UI] 401 auto-logout redirects to /login with no explanatory toast** — packages/management/src/renderer/src/stores/authStore.ts:47-49 + App.tsx:36 — operator dropped on login screen with no reason. Fix: `toast.error('Session expired — please log in again', { duration: 6000 })` in authExpiredHandler before navigate, or `?reason=expired` query param + LoginPage notice.
+- [ ] DASH-ELEC-277. **[MED][UI] formatApiError omits HTTP status — 4xx vs 5xx invisible to operator** — packages/management/src/renderer/src/utils/apiError.ts:43-50 — DASH-ELEC-060 added `status` to envelope but formatApiError never includes it. Fix: expose status in ApiErrorFields; format as `Request failed [503] (ERR_INTERNAL · ref ...)`.
+- [ ] DASH-ELEC-278. **[LOW][UI] Tenant detail inline error has no Retry button** — packages/management/src/renderer/src/pages/TenantsPage.tsx:495-496 — when detailCache[slug]==='error', static `<p>Failed to load tenant metrics.</p>`; toggleExpand line 75 guards `!== 'error'` so re-expand never retries. Fix: Retry icon-button → `setDetailCache(c => ({ ...c, [slug]: undefined }))` then loadDetail(slug).
+- [ ] DASH-ELEC-279. **[LOW][WIRE] SettingsPage skips handleApiResponse on getEnvSettings/getConfigSchema/getConfig** — packages/management/src/renderer/src/pages/SettingsPage.tsx:91-127 — refreshEnv + refreshPlatformConfig; 401 silently leaves envFields empty. Fix: `if (handleApiResponse(res)) return;` after each await.
+- [ ] DASH-ELEC-280. **[LOW][WIRE] UpdatesPage skips handleApiResponse on getUpdateStatus + getRollbackInfo** — packages/management/src/renderer/src/pages/UpdatesPage.tsx:32-79 — both `.then` chains check res.success but no auth-expired detect. Fix: handleApiResponse pattern (matches OverviewPage.tsx:383).
+- [ ] DASH-ELEC-281. **[LOW][WIRE] LogsPage refreshFileList skips handleApiResponse on listLogs** — packages/management/src/renderer/src/pages/LogsPage.tsx:74-84 — tailLog (line 91) uses it but listLogs only checks res.message string + console.warn. 401 leaves dropdown silently empty. Fix: add handleApiResponse guard.
+- [ ] DASH-ELEC-282. **[LOW][UI] Error toasts use 4s default — too short for technical ERR_ + ref strings** — packages/management/src/renderer/src/main.tsx:99 — global duration: 4000; formatApiError produces ~65-char strings. BackupPage:111 already 8s. Fix: global 6000 + per-type override `error: { duration: 8000 }` in toastOptions.
+- [ ] DASH-ELEC-283. **[LOW][UI] NotificationsPanel + AutomationRunsPanel error cell `truncate` with title-only tooltip** — NotificationsPanel.tsx:177-179 + AutomationRunsPanel.tsx:185 — keyboard inaccessible; SMTP errors >100 chars. Fix: wrap in CopyText component for keyboard-accessible + copyable.
+- [ ] DASH-ELEC-284. **[LOW][A11Y] LoginPage inline error block has no role="alert"** — packages/management/src/renderer/src/pages/LoginPage.tsx:281-285 — `{error && <div>...}` mounts/updates without ARIA live region. Fix: `role="alert"` on error wrapper div.
+
+- [ ] DASH-ELEC-285. **[MED][UI] Canvas ResizeObserver `ctx.scale(dpr,dpr)` accumulates — blurry after second resize on Retina** — packages/management/src/renderer/src/pages/OverviewPage.tsx:454-455 — bitmap reset clears transform, but ResizeObserver should call `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` (idempotent) matching drawGraphFn pattern. Fix: replace `ctx.scale` with `ctx.setTransform`.
+- [ ] DASH-ELEC-286. **[MED][UI] devicePixelRatio change (monitor swap, undock) never triggers canvas rescale** — packages/management/src/renderer/src/pages/OverviewPage.tsx:448 — moving to HiDPI without resizing window leaves wrong dpr until manual resize. Fix: `window.matchMedia('(resolution: 1dppx)').addEventListener('change', ...)` listener triggers redraw.
+- [ ] DASH-ELEC-287. **[LOW][UI] Canvas has no role/aria-label/aria-hidden — graph content invisible to AT** — packages/management/src/renderer/src/pages/OverviewPage.tsx:559-564. Fix: `role="img" aria-label="Request rate over time"` + visually-hidden `<p>` summary live-updated with current/avg values; consider keyboard-accessible tooltip via onFocus/onKeyDown.
+- [ ] DASH-ELEC-288. **[LOW][UI] Sparkline normalises to local min — flat-line series exaggerated** — packages/management/src/renderer/src/components/Sparkline.tsx:32-37 — `min = Math.min(...data)` makes constant-0.5 series fill full height. Fix: add `baseline?: number` prop default 0; `Math.max(0, min)` floor.
+- [ ] DASH-ELEC-289. **[LOW][UI] Live dot uses red/blue only — colorblind users lose spike signal** — packages/management/src/renderer/src/pages/OverviewPage.tsx:271 — `current > avg * 2 ? '#ef4444' : '#3b82f6'` no shape change/aria. Fix: pair color with shape (triangle vs circle) + aria-label on status area reporting spike condition.
+- [ ] DASH-ELEC-290. **[LOW][WIRE] Tooltip top-clamp uses fixed 60px offset — overflows top + clips off-screen** — packages/management/src/renderer/src/pages/OverviewPage.tsx:570 — `top: Math.max(tooltipPos.y - 60, 0)` doesn't account for actual rendered height. Fix: measure tooltip element offsetHeight via ref + clamp both axes.
+- [ ] DASH-ELEC-291. **[LOW][PERF] ResizeObserver gets second `getContext('2d')` ref redundantly** — packages/management/src/renderer/src/pages/OverviewPage.tsx:454 + 105 — drawGraphFn owns its own setTransform; ResizeObserver call is duplicate. Fix: remove redundant getContext + ctx.scale; let drawGraphFn own all context state.
+- [ ] DASH-ELEC-292. **[LOW][UI] Sparkline `aria-hidden` written without explicit value + empty-state SVG has no SR alternative** — packages/management/src/renderer/src/components/Sparkline.tsx:27,41 — bare prop relies on JSX default; empty-state dashed line has no "trend loading" SR text. Fix: `aria-hidden={true}` explicit; visually-hidden span `"trend data loading"` until series ≥2 points then `"trend available"`.
+
+- [ ] DASH-ELEC-293. **[LOW][UI] "shop" leaks into tenant empty-state copy** — packages/management/src/renderer/src/pages/TenantsPage.tsx:331,353 — "Send this setup link to the shop admin" / "Every shop that uses this server is a tenant". Rest of product says "tenant". Fix: replace "shop" → "tenant".
+- [ ] DASH-ELEC-294. **[LOW][UI] Loading ellipsis: ASCII `...` vs Unicode `…` mixed** — OverviewPage.tsx:198 (ASCII) vs RecentActivityWidget.tsx:80 + AdminToolsPage.tsx:304 + TenantAuthEventsPanel.tsx:106 + WebhookFailuresPanel.tsx:167 + AutomationRunsPanel.tsx:144 + NotificationsPanel.tsx:144 (Unicode). Fix: standardise on Unicode `…`.
+- [ ] DASH-ELEC-295. **[LOW][UI] Empty-state trailing punctuation inconsistent** — TenantsPage.tsx:351 + BackupPage.tsx:240 (no period) vs DiagnosticsPage.tsx:117 + SecurityAlertsPage.tsx:197 (period). Fix: pick one style (no period for short empty-state labels) and apply consistently.
+- [ ] DASH-ELEC-296. **[LOW][UI] "Server restart requested" toast has two different lengths** — CommandPalette.tsx:81 (`'Server restart requested'`) vs SettingsPage.tsx:212 (`'Server restart requested. May take up to a minute to come back online.'`). Fix: use longer variant everywhere.
+- [ ] DASH-ELEC-297. **[LOW][UI] Clipboard-copy fallback error has 3 forms** — CopyText.tsx:49 + LogsPage.tsx:195 (`'Clipboard write failed'`) vs TenantsPage.tsx:220 (`'Copy failed'`). Fix: standardise to `'Copy failed'`.
+- [ ] DASH-ELEC-298. **[LOW][UI] Icon-button dismiss `aria-label` inconsistent** — BannerCertWarning.tsx:57 + BannerTagVerifyWarning.tsx:58 (`"Dismiss warning"`), KeyboardShortcutsHelp.tsx:126 (`"Close keyboard shortcuts"`), ConfirmDialog.tsx:186 (`"Cancel"`). Fix: `"Close"` for modals (ConfirmDialog, KeyboardShortcutsHelp); `"Dismiss"` for non-modal banners.
+- [ ] DASH-ELEC-299. **[LOW][UI] Destructive icon-button titles mixed case** — BackupPage.tsx:262 (`"Delete backup"` sentence case) vs :275 (`"Delete Backup"` Title Case) + TenantsPage.tsx:549 (`"Delete Tenant"`). Fix: Title Case to match `confirmLabel` style.
+- [ ] DASH-ELEC-300. **[LOW][UI] Error toast voice inconsistent: "Failed to ..." vs "[Noun] failed"** — UpdatesPage.tsx:97 + SessionsPage.tsx:81 (active "Failed to ...") vs SettingsPage.tsx:144 + SecurityAlertsPage.tsx:91,116 (passive "[Noun] failed"). Fix: adopt `"[Noun] failed"` throughout; reserve detail for chained err.message.
+

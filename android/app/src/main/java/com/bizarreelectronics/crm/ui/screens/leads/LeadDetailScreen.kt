@@ -90,6 +90,8 @@ data class LeadDetailUiState(
     val convertedCustomerId: Long? = null,
     /** Non-null when convertToEstimate succeeds; screen navigates to the estimate. */
     val convertedEstimateId: Long? = null,
+    /** True when server returned 404 for convert-to-estimate; UI should navigate to EstimateCreate with leadId prefill. */
+    val navigateToEstimateCreate: Boolean = false,
 )
 
 /**
@@ -608,9 +610,18 @@ class LeadDetailViewModel @Inject constructor(
                     )
                 }
             } catch (e: retrofit2.HttpException) {
-                val msg = if (e.code() == 404) "Convert to estimate not yet available on this server"
-                          else "Failed to convert: ${e.message}"
-                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+                if (e.code() == 404) {
+                    // Server endpoint not deployed — fall through to client-side create flow
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        navigateToEstimateCreate = true,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to convert: ${e.message}",
+                    )
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -642,6 +653,10 @@ class LeadDetailViewModel @Inject constructor(
         _state.value = _state.value.copy(convertedEstimateId = null)
     }
 
+    fun clearNavigateToEstimateCreate() {
+        _state.value = _state.value.copy(navigateToEstimateCreate = false)
+    }
+
     /**
      * Build a minimal [UpdateLeadRequest] carrying only [fieldName] = [value].
      * All other fields are null so the server performs a partial update without
@@ -671,6 +686,7 @@ fun LeadDetailScreen(
     onConverted: (ticketId: Long) -> Unit,
     onConvertedToCustomer: (customerId: Long) -> Unit = {},
     onConvertedToEstimate: (estimateId: Long) -> Unit = {},
+    onNavigateToEstimateCreate: (leadId: Long) -> Unit = {},
     onScheduleAppointment: (leadId: Long) -> Unit = {},
     viewModel: LeadDetailViewModel = hiltViewModel(),
 ) {
@@ -706,6 +722,14 @@ fun LeadDetailScreen(
         if (estimateId != null) {
             viewModel.clearConvertedEstimateId()
             onConvertedToEstimate(estimateId)
+        }
+    }
+
+    // 8.3 — server returned 404 for convert-to-estimate: fall back to EstimateCreate with prefill
+    LaunchedEffect(state.navigateToEstimateCreate) {
+        if (state.navigateToEstimateCreate) {
+            viewModel.clearNavigateToEstimateCreate()
+            onNavigateToEstimateCreate(leadId)
         }
     }
 

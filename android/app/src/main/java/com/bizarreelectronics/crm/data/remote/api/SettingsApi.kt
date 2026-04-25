@@ -67,4 +67,12 @@ interface SettingsApi {
     suspend fun uploadAvatar(
         @Part avatar: MultipartBody.Part,
     ): ApiResponse<com.bizarreelectronics.crm.data.remote.dto.UserDto>
+
+    /**
+     * TAG-PALETTE-001: tenant tag color palette.
+     * Returns a map of tag → hex color string defined by shop staff.
+     * 404 is tolerated — callers fall back to the 8-hue default cycle.
+     */
+    @GET("settings/tag-palette")
+    suspend fun getTagPalette(): ApiResponse<Map<String, String>>
 }

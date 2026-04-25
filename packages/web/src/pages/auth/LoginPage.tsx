@@ -180,9 +180,16 @@ export function LoginPage() {
       const res = await authApi.login(username, password);
       const data = res.data.data;
 
-      // Trusted device — server skipped 2FA and issued tokens directly
+      // Trusted device — server skipped 2FA and issued tokens directly.
+      // Defensive null-check: a malformed/partial 2FA-skip response without
+      // refreshToken or user must NOT be treated as a successful login.
       if (data.trustedDevice && data.accessToken) {
-        completeLogin(data.accessToken, data.refreshToken!, data.user!);
+        if (!data.refreshToken || !data.user) {
+          setErrorKind('server');
+          setError('Login response was incomplete. Please try again.');
+          return;
+        }
+        completeLogin(data.accessToken, data.refreshToken, data.user);
         return;
       }
 

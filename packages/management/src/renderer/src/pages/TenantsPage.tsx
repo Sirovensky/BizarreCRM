@@ -33,6 +33,8 @@ export function TenantsPage() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Tenant | null>(null);
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
@@ -157,16 +159,31 @@ export function TenantsPage() {
     }
   };
 
-  const handleSuspend = async (slug: string) => {
+  const handleSuspend = async () => {
+    if (!suspendTarget) return;
+    const slug = suspendTarget.slug;
     const res = await getAPI().superAdmin.suspendTenant(slug);
-    if (res.success) { toast.success('Tenant suspended'); refresh(); }
-    else toast.error(formatApiError(res));
+    if (res.success) {
+      toast.success('Tenant suspended');
+      setSuspendTarget(null);
+      // DASH-ELEC-235: evict cached detail so the next expand-row re-fetches
+      // updated counts rather than showing stale pre-suspend data.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else toast.error(formatApiError(res));
   };
 
-  const handleActivate = async (slug: string) => {
+  const handleActivate = async () => {
+    if (!activateTarget) return;
+    const slug = activateTarget.slug;
     const res = await getAPI().superAdmin.activateTenant(slug);
-    if (res.success) { toast.success('Tenant activated'); refresh(); }
-    else toast.error(formatApiError(res));
+    if (res.success) {
+      toast.success('Tenant activated');
+      setActivateTarget(null);
+      // DASH-ELEC-235: same eviction for activate.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else toast.error(formatApiError(res));
   };
 
   // TPH6: additive repair. Never deletes — only creates missing pieces.
@@ -180,6 +197,8 @@ export function TenantsPage() {
       if (payload?.setup_url) {
         setLastCreated({ slug, setup_url: payload.setup_url });
       }
+      // DASH-ELEC-235: repair may recreate DB tables/rows — evict cached detail.
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
       refresh();
     } else {
       toast.error(formatApiError(res));
@@ -188,9 +207,19 @@ export function TenantsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const res = await getAPI().superAdmin.deleteTenant(deleteTarget.slug);
-    if (res.success) { toast.success('Tenant deleted'); setDeleteTarget(null); refresh(); }
-    else toast.error(formatApiError(res));
+    const slug = deleteTarget.slug;
+    const res = await getAPI().superAdmin.deleteTenant(slug);
+    if (res.success) {
+      toast.success('Tenant deleted');
+      setDeleteTarget(null);
+      // DASH-ELEC-260: clear detail panel + cache so a stale entry isn't shown if
+      // a new tenant with the same slug is created later in this session.
+      setExpandedSlug((s) => (s === slug ? null : s));
+      setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
+      refresh();
+    } else {
+      toast.error(formatApiError(res));
+    }
   };
 
   const copySetupLink = async (url: string) => {
@@ -421,17 +450,30 @@ export function TenantsPage() {
                             toast.error(err instanceof Error ? err.message : 'Failed to open tenant URL');
                           }
                         }}
-                        className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700" title="Open"
+                        className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700"
+                        title="Open"
+                        aria-label={`Open ${t.slug}`}
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
+                      {/* DASH-ELEC-128: aria-label per tenant so SR gets unique accessible names */}
                       {t.status === 'active' ? (
-                        <button onClick={() => handleSuspend(t.slug)} className="p-1.5 rounded text-amber-500 hover:text-amber-300 hover:bg-surface-700" title="Suspend">
-                          <Pause className="w-3.5 h-3.5" />
+                        <button
+                          onClick={() => setSuspendTarget(t)}
+                          className="p-1.5 rounded text-amber-500 hover:text-amber-300 hover:bg-surface-700"
+                          title="Suspend"
+                          aria-label={`Suspend ${t.name}`}
+                        >
+                          <Pause className="w-3.5 h-3.5" aria-hidden="true" />
                         </button>
                       ) : (
-                        <button onClick={() => handleActivate(t.slug)} className="p-1.5 rounded text-green-500 hover:text-green-300 hover:bg-surface-700" title="Activate">
-                          <Play className="w-3.5 h-3.5" />
+                        <button
+                          onClick={() => setActivateTarget(t)}
+                          className="p-1.5 rounded text-green-500 hover:text-green-300 hover:bg-surface-700"
+                          title="Activate"
+                          aria-label={`Activate ${t.name}`}
+                        >
+                          <Play className="w-3.5 h-3.5" aria-hidden="true" />
                         </button>
                       )}
                       {t.status !== 'active' && (
@@ -439,12 +481,18 @@ export function TenantsPage() {
                           onClick={() => handleRepair(t.slug)}
                           className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
                           title="Repair (additive — creates missing pieces, never deletes)"
+                          aria-label={`Repair ${t.name}`}
                         >
-                          <Wrench className="w-3.5 h-3.5" />
+                          <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
                         </button>
                       )}
-                      <button onClick={() => setDeleteTarget(t)} className="p-1.5 rounded text-red-500 hover:text-red-300 hover:bg-surface-700" title="Delete">
-                        <Trash2 className="w-3.5 h-3.5" />
+                      <button
+                        onClick={() => setDeleteTarget(t)}
+                        className="p-1.5 rounded text-red-500 hover:text-red-300 hover:bg-surface-700"
+                        title="Delete"
+                        aria-label={`Delete ${t.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                     </div>
                   </td>
@@ -495,7 +543,7 @@ export function TenantsPage() {
               </select>
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
+              <button onClick={() => { setShowCreate(false); setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free'); }} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
               <button onClick={handleCreate} disabled={creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()}
                 className="px-4 py-2 text-sm font-semibold bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-40">
                 {creating ? 'Creating...' : 'Create'}
@@ -514,6 +562,27 @@ export function TenantsPage() {
         confirmLabel="Delete Tenant"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Suspend confirm */}
+      <ConfirmDialog
+        open={suspendTarget !== null}
+        title="Suspend Tenant"
+        message={`Suspending "${suspendTarget?.name}" will immediately block all users from signing in. You can re-activate at any time.`}
+        danger
+        confirmLabel="Suspend Tenant"
+        onConfirm={handleSuspend}
+        onCancel={() => setSuspendTarget(null)}
+      />
+
+      {/* Activate confirm */}
+      <ConfirmDialog
+        open={activateTarget !== null}
+        title="Activate Tenant"
+        message={`Re-activate "${activateTarget?.name}"? Users will be able to sign in again immediately.`}
+        confirmLabel="Activate Tenant"
+        onConfirm={handleActivate}
+        onCancel={() => setActivateTarget(null)}
       />
     </div>
   );

@@ -227,9 +227,11 @@ export function SettingsPage() {
 
     if (f.kind === 'flag') {
       const checked = value === 'true';
+      const checkboxId = `env-flag-${f.key}`;
       return (
-        <label key={f.key} className="flex items-start gap-3 cursor-pointer select-none">
+        <div key={f.key} className="flex items-start gap-3">
           <input
+            id={checkboxId}
             type="checkbox"
             checked={checked}
             onChange={(e) => setPendingValue(f.key, e.target.checked ? 'true' : 'false')}
@@ -237,15 +239,15 @@ export function SettingsPage() {
           />
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-surface-200">{f.label}</span>
-              <code className="text-[10px] font-mono text-surface-600">{f.key}</code>
+              <label htmlFor={checkboxId} className="text-sm text-surface-200 cursor-pointer select-none">{f.label}</label>
+              <code className="text-[10px] font-mono text-surface-600" aria-hidden="true">{f.key}</code>
               {dirty && <span className="text-[10px] text-amber-400">(modified)</span>}
             </div>
             {f.description && (
               <p className="text-xs text-surface-500 mt-1 leading-relaxed">{f.description}</p>
             )}
           </div>
-        </label>
+        </div>
       );
     }
 
@@ -270,16 +272,18 @@ export function SettingsPage() {
             value={value}
             placeholder={f.placeholder ?? (f.kind === 'secret' && f.hasValue ? '(leave blank to keep current)' : '')}
             onChange={(e) => setPendingValue(f.key, e.target.value)}
-            className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600 focus:border-accent-600 focus:outline-none font-mono"
+            className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400 focus:border-accent-600 focus:outline-none font-mono"
           />
           {f.kind === 'secret' && (
             <button
               type="button"
               onClick={() => setRevealed((r) => ({ ...r, [f.key]: !r[f.key] }))}
               className="p-1.5 text-surface-500 hover:text-surface-300"
-              title={isRevealed ? 'Hide' : 'Reveal'}
+              title={isRevealed ? 'Hide password' : 'Show password'}
+              aria-label={isRevealed ? 'Hide password' : 'Show password'}
+              aria-pressed={isRevealed}
             >
-              {isRevealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {isRevealed ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
             </button>
           )}
           {dirty && (
@@ -345,9 +349,11 @@ export function SettingsPage() {
           </div>
           <span className="text-xs text-surface-600">Dark mode only</span>
           <div className="ml-auto flex items-center gap-1 text-xs">
-            <span className="text-surface-500 mr-1">Density:</span>
-            <DensityOption value="default" label="Default" />
-            <DensityOption value="compact" label="Compact" />
+            <span id="density-label" className="text-surface-500 mr-1">Density:</span>
+            <div role="radiogroup" aria-labelledby="density-label" className="flex items-center gap-1">
+              <DensityOption value="default" label="Default" />
+              <DensityOption value="compact" label="Compact" />
+            </div>
           </div>
         </div>
       </section>
@@ -378,7 +384,8 @@ export function SettingsPage() {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter settings (key, label, description)"
-                className="w-full pl-7 pr-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
+                aria-label="Filter server configuration settings"
+                className="w-full pl-7 pr-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400"
               />
             </div>
             <button
@@ -386,8 +393,9 @@ export function SettingsPage() {
               disabled={envLoading || saving}
               className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-800 disabled:opacity-50"
               title="Reload from .env"
+              aria-label="Reload server configuration from .env file"
             >
-              <RefreshCw className={`w-4 h-4 ${envLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${envLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -612,6 +620,8 @@ function DensityOption({ value, label }: { value: 'default' | 'compact'; label: 
   const active = density === value;
   return (
     <button
+      role="radio"
+      aria-checked={active}
       onClick={() => setDensity(value)}
       className={`px-2 py-1 rounded border transition-colors ${
         active

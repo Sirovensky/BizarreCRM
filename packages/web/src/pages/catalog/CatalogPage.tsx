@@ -185,14 +185,73 @@ export function CatalogPage() {
     reader.readAsText(f);
   };
 
+  // @audit-fixed WEB-FB-004: RFC-4180-ish tokenizer that handles quoted fields
+  // containing commas, embedded quotes (escaped as ""), CRLF/LF/CR row separators,
+  // and quoted newlines. Replaces the previous naive split(',') / split('\n').
+  const parseCsvRows = (csv: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < csv.length; i++) {
+      const ch = csv[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (csv[i + 1] === '"') {
+            // Escaped quote inside a quoted field.
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inQuotes = true;
+        continue;
+      }
+      if (ch === ',') {
+        row.push(field);
+        field = '';
+        continue;
+      }
+      if (ch === '\r') {
+        // Treat CR / CRLF as row terminator.
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        if (csv[i + 1] === '\n') i++;
+        continue;
+      }
+      if (ch === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        continue;
+      }
+      field += ch;
+    }
+    // Flush the trailing field/row if the file didn't end with a newline.
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    // Drop fully-blank rows (e.g. trailing newline produces one).
+    return rows.filter((r) => r.some((c) => c.trim() !== ''));
+  };
+
   const parseCsvToItems = (csv: string) => {
-    const lines = csv.trim().split('\n');
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, '').toLowerCase());
-    return lines.slice(1).map((line) => {
-      const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+    const rows = parseCsvRows(csv);
+    if (rows.length < 2) return [];
+    const headers = rows[0].map((h) => h.trim().toLowerCase());
+    return rows.slice(1).map((vals) => {
       const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').trim(); });
       return {
         sku: obj.sku || obj['part number'] || obj['part_number'] || '',
         name: obj.name || obj.title || obj['product name'] || obj['product_name'] || '',

@@ -17,6 +17,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.bizarreelectronics.crm.service.WebSocketEventHandler
 import com.bizarreelectronics.crm.service.WebSocketService
+import com.bizarreelectronics.crm.util.DeviceTokenManager
 import com.bizarreelectronics.crm.util.FcmTokenRefresher
 import com.bizarreelectronics.crm.util.RedactorTree
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -58,6 +59,9 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
 
     @Inject
     lateinit var fcmTokenRefresher: FcmTokenRefresher
+
+    @Inject
+    lateinit var deviceTokenManager: DeviceTokenManager
 
     @Inject
     lateinit var draftStore: DraftStore
@@ -109,6 +113,20 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
         // background so role/permission UI doesn't render stale until the
         // next time the user pulls a list.
         sessionRepository.bootstrap()
+        // §13.2 — register FCM token on login-state transition. Observes the
+        // isLoggedInFlow StateFlow so it fires immediately on the true-transition
+        // that happens when AuthPreferences.saveUser() is called at login success.
+        // This covers the gap where a token rotation fired while the user was
+        // logged out (fcmTokenRegistered = false) and onNewToken couldn't POST.
+        // Uses skipFirst = false so the initial true emission (app cold-start
+        // while already logged in but !fcmTokenRegistered) is also handled.
+        appScope.launch {
+            authPreferences.isLoggedInFlow.collect { loggedIn ->
+                if (loggedIn) {
+                    deviceTokenManager.registerIfNeeded()
+                }
+            }
+        }
         // §1.6 — process foreground/background hooks. ON_START fires whenever
         // the user comes back to the app from another task; we use it to
         // re-validate the session + kick a delta sync so screens never linger

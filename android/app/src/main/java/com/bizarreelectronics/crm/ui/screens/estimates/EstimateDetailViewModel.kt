@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.remote.api.EstimateApi
 import com.bizarreelectronics.crm.data.remote.api.EstimateVersion
+import com.bizarreelectronics.crm.data.remote.dto.EstimateLineItem
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -29,6 +30,10 @@ data class EstimateDetailUiState(
     // navigation side effects and mirrors how InvoiceDetail uses a counter
     // to close its payment dialog.
     val deletedCounter: Int = 0,
+    // 8.2 — line items from API response (not stored in Room entity)
+    val lineItems: List<EstimateLineItem> = emptyList(),
+    /** Version number from the API EstimateDetail response; defaults to 1. */
+    val versionNumber: Int = 1,
     // L1335 — versioning
     val versions: List<EstimateVersion> = emptyList(),
     val selectedVersionIndex: Int = 0,
@@ -38,6 +43,8 @@ data class EstimateDetailUiState(
     val rejectReason: String = "",
     // L1334 — convert-to-invoice converted id
     val convertedInvoiceId: Long? = null,
+    // 8.4 — "Mark as expired" confirm dialog
+    val showExpireConfirm: Boolean = false,
 )
 
 @HiltViewModel
@@ -57,6 +64,7 @@ class EstimateDetailViewModel @Inject constructor(
     init {
         loadEstimate()
         loadVersions()
+        loadApiDetail()
     }
 
     fun loadEstimate() {
@@ -76,6 +84,22 @@ class EstimateDetailViewModel @Inject constructor(
                         isLoading = false,
                     )
                 }
+        }
+    }
+
+    // ── 8.2 API detail (line items + versionNumber) ──────────────────────────
+
+    fun loadApiDetail() {
+        viewModelScope.launch {
+            runCatching { estimateApi.getEstimate(estimateId) }
+                .onSuccess { response ->
+                    val detail = response.data ?: return@onSuccess
+                    _state.value = _state.value.copy(
+                        lineItems = detail.lineItems ?: emptyList(),
+                        versionNumber = detail.versionNumber ?: 1,
+                    )
+                }
+                .onFailure { /* non-critical; Room entity covers the rest */ }
         }
     }
 
@@ -267,6 +291,57 @@ class EstimateDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = e.message ?: "Failed to delete estimate",
+                )
+            }
+        }
+    }
+
+    // ── 8.4 Mark as expired ──────────────────────────────────────────────────
+
+    fun onMarkExpiredRequested() {
+        _state.value = _state.value.copy(showExpireConfirm = true)
+    }
+
+    fun onMarkExpiredDismissed() {
+        _state.value = _state.value.copy(showExpireConfirm = false)
+    }
+
+    fun markAsExpired() {
+        _state.value = _state.value.copy(showExpireConfirm = false, isActionInProgress = true)
+        viewModelScope.launch {
+            // Try PATCH first; fall back to POST .../expire on 404.
+            val patchResult = runCatching {
+                estimateApi.patchEstimate(estimateId, mapOf("status" to "expired"))
+            }
+            if (patchResult.isSuccess) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Estimate marked as expired",
+                )
+                loadEstimate()
+                return@launch
+            }
+            val patchError = patchResult.exceptionOrNull()
+            if (patchError is HttpException && patchError.code() == 404) {
+                // Fallback to dedicated expire endpoint
+                runCatching { estimateApi.expireEstimate(estimateId) }
+                    .onSuccess {
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Estimate marked as expired",
+                        )
+                        loadEstimate()
+                    }
+                    .onFailure { e ->
+                        _state.value = _state.value.copy(
+                            isActionInProgress = false,
+                            actionMessage = e.message ?: "Failed to expire estimate",
+                        )
+                    }
+            } else {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = patchError?.message ?: "Failed to expire estimate",
                 )
             }
         }

@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.data.remote.dto.BulkDeleteRequest
+import com.bizarreelectronics.crm.data.remote.dto.BulkRestoreRequest
+import com.bizarreelectronics.crm.data.remote.dto.BulkTagRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerStats
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
@@ -44,6 +47,10 @@ data class CustomerListUiState(
     val exportCsvContent: String? = null,
     // Snackbar (plan:L882 delete undo)
     val snackbarMessage: String? = null,
+    // 5.6.2: ids awaiting undo window after bulk-delete
+    val pendingUndoDeleteIds: List<Long> = emptyList(),
+    // 5.8.2: active tag filter applied from a TagChip click
+    val activeTagFilter: String = "",
 )
 
 /** Sort + filter key used to fan-out the Paging3 flow. */
@@ -51,6 +58,7 @@ private data class PageKey(
     val sort: CustomerSort,
     val filterKey: String,
     val searchQuery: String,
+    val tagFilter: String = "",
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -74,9 +82,14 @@ class CustomerListViewModel @Inject constructor(
      */
     val customersPaged: Flow<PagingData<CustomerEntity>> = _pageKey
         .flatMapLatest { key ->
+            // Combine structured filter key with tag filter for the mediator.
+            val combinedFilter = buildList {
+                if (key.filterKey.isNotBlank()) add(key.filterKey)
+                if (key.tagFilter.isNotBlank()) add("tag:${key.tagFilter}")
+            }.joinToString("|")
             customerRepository.customersPaged(
                 sort = key.sort.sortKey,
-                filterKey = key.filterKey,
+                filterKey = combinedFilter,
             )
         }
         .cachedIn(viewModelScope)
@@ -231,37 +244,96 @@ class CustomerListViewModel @Inject constructor(
 
     fun onBulkDelete() {
         val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
         clearBulkSelection()
         viewModelScope.launch {
-            ids.forEach { id ->
-                try { customerApi.deleteCustomer(id) } catch (_: Exception) {}
+            try {
+                customerApi.bulkDelete(BulkDeleteRequest(ids))
+            } catch (_: Exception) {
+                // bulk-delete endpoint may not exist — fall back to serial deletes
+                ids.forEach { id ->
+                    try { customerApi.deleteCustomer(id) } catch (_: Exception) {}
+                }
             }
-            _state.value = _state.value.copy(
-                snackbarMessage = "Deleted ${ids.size} customer(s)",
-            )
+            // Signal undo window to the screen via pendingUndoDeleteIds
+            _state.value = _state.value.copy(pendingUndoDeleteIds = ids)
             loadCustomers()
         }
     }
 
+    /**
+     * 5.6.2: called from snackbar "Undo" action within the 5-second window.
+     * Attempts bulk-restore; falls back to silent no-op (data may already be gone).
+     */
+    fun onUndoBulkDelete(ids: List<Long>) {
+        viewModelScope.launch {
+            try {
+                customerApi.bulkRestore(BulkRestoreRequest(ids))
+            } catch (_: Exception) { /* bulk-restore endpoint not yet on server — no-op */ }
+            clearPendingUndoDelete()
+            loadCustomers()
+        }
+    }
+
+    fun clearPendingUndoDelete() {
+        _state.value = _state.value.copy(pendingUndoDeleteIds = emptyList())
+    }
+
     fun onBulkTag(tag: String) {
         val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty() || tag.isBlank()) return
         clearBulkSelection()
         viewModelScope.launch {
-            ids.forEach { id ->
-                try {
-                    customerApi.updateCustomer(
-                        id,
-                        com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest(customerTags = tag),
-                    )
-                } catch (_: Exception) {}
+            try {
+                customerApi.bulkTag(BulkTagRequest(ids = ids, tag = tag))
+            } catch (_: Exception) {
+                // fall back to serial updates if bulk endpoint not available
+                ids.forEach { id ->
+                    try {
+                        customerApi.updateCustomer(
+                            id,
+                            com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest(customerTags = tag),
+                        )
+                    } catch (_: Exception) {}
+                }
             }
             _state.value = _state.value.copy(snackbarMessage = "Tagged ${ids.size} customer(s) as $tag")
             loadCustomers()
         }
     }
 
+    /** 5.6.3: build CSV from currently-selected customers (selected ids). */
+    fun buildSelectedCsvContent(): String {
+        val selectedIds = _state.value.selectedIds
+        val customers = _state.value.customers.filter { it.id in selectedIds }
+        val header = "ID,First Name,Last Name,Email,Phone,Organization,City,State,Created At"
+        val rows = customers.map { c ->
+            listOf(
+                c.id.toString(),
+                c.firstName.csv(),
+                c.lastName.csv(),
+                c.email.csv(),
+                (c.mobile ?: c.phone).csv(),
+                c.organization.csv(),
+                c.city.csv(),
+                c.state.csv(),
+                c.createdAt,
+            ).joinToString(",")
+        }
+        return (listOf(header) + rows).joinToString("\n")
+    }
+
     fun clearSnackbar() {
         _state.value = _state.value.copy(snackbarMessage = null)
+    }
+
+    // -----------------------------------------------------------------------
+    // 5.8.2: tag filter from TagChip click
+    // -----------------------------------------------------------------------
+
+    fun onTagFilterApplied(tag: String) {
+        _state.value = _state.value.copy(activeTagFilter = tag)
+        _pageKey.value = buildPageKey()
     }
 
     // -----------------------------------------------------------------------
@@ -325,6 +397,7 @@ class CustomerListViewModel @Inject constructor(
         sort = _state.value.currentSort,
         filterKey = _state.value.currentFilter.filterKey,
         searchQuery = _state.value.searchQuery.trim(),
+        tagFilter = _state.value.activeTagFilter,
     )
 }
 

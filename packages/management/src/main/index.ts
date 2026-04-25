@@ -31,6 +31,7 @@ import { createWindow, getMainWindow } from './window.js';
 import { registerManagementIpc } from './ipc/management-api.js';
 import { registerServiceControlIpc } from './ipc/service-control.js';
 import { registerSystemInfoIpc } from './ipc/system-info.js';
+import { setSuperAdminToken } from './services/api-client.js';
 
 // ── Console redirect (packaged app only) ────────────────────────────
 // When launched from setup.bat via `start ""`, the EXE inherits the CMD's
@@ -41,6 +42,20 @@ import { registerSystemInfoIpc } from './ipc/system-info.js';
 // Rotate dashboard.log before opening it so a single run never grows
 // unboundedly. Keeps at most one backup (.log.1). Silently skips if the
 // file doesn't exist yet or can't be stat'd (first run, read-only fs).
+//
+// Retention policy (DASH-ELEC-113):
+//   - Active file: dashboard.log  — max 10 MB before rotation
+//   - Single backup: dashboard.log.1 — retained until the next rotation
+//   - Total on-disk budget: ~20 MB for log data
+//   - On a busy install (hundreds of IPC calls/min) the active file can fill
+//     in under a day; the backup holds the immediately preceding segment.
+//   - If more history is needed, configure a host-level log rotation tool
+//     (e.g. logrotate on Linux, pm2-logrotate on Node, Task Scheduler on
+//     Windows) pointing at the userData directory. The app itself does not
+//     purge older archives to avoid destroying operator evidence.
+//   - To increase the backup count or rotate threshold, pass different
+//     maxBytes to rotateLogIfLarge() in the call below (future: expose via
+//     platform_config / settings.json).
 function rotateLogIfLarge(logPath: string, maxBytes = 10 * 1024 * 1024): void {
   try {
     const s = fs.statSync(logPath);
@@ -122,7 +137,11 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Dashboard] Unhandled rejection:', reason);
+  // Log only the message string, never the raw object — it may carry
+  // Authorization headers, JWT payloads, or cleartext passwords from
+  // failed Zod parses (DASH-ELEC-110).
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error('[Dashboard] Unhandled rejection:', msg);
 });
 
 // ── Elevated spawn (UAC on-demand) ──────────────────────────────────
@@ -160,10 +179,36 @@ interface SpawnElevatedResult {
   readonly message: string;
 }
 
+// DASH-ELEC-003: Hard-coded whitelist of executables that may be launched via
+// spawnElevated. Only the service-management binaries this app actually uses
+// are listed. Any caller that passes a command not in this set is rejected
+// immediately, so a future maintainer cannot accidentally route variable/user
+// input through the elevated-spawn path.
+const ELEVATED_COMMAND_ALLOWLIST = new Set<string>([
+  'pm2',
+  'pm2.cmd',
+  'sc',          // Windows Service Control Manager
+  'sc.exe',
+  'net',         // `net start/stop <ServiceName>`
+  'net.exe',
+  'powershell',
+  'powershell.exe',
+]);
+
 export function spawnElevated(
   command: string,
   args: readonly string[],
 ): SpawnElevatedResult {
+  // Reject commands that are not in the allowlist before doing anything else.
+  // path.basename strips any directory prefix so callers using an absolute
+  // path to pm2.cmd still resolve correctly against the set.
+  const commandBasename = path.basename(command).toLowerCase();
+  if (!ELEVATED_COMMAND_ALLOWLIST.has(commandBasename)) {
+    const msg = `[Dashboard] spawnElevated rejected: '${command}' is not in the elevated-command allowlist.`;
+    console.error(msg);
+    return { started: false, message: msg };
+  }
+
   // Build the PowerShell -ArgumentList as a single quoted string. Each
   // argument is wrapped in single quotes and any embedded single quotes
   // are doubled up, matching PowerShell's literal-string escaping rules.
@@ -282,8 +327,12 @@ if (app.isPackaged) {
 }
 
 app.whenReady().then(() => {
-  console.log('[Dashboard] App path:', app.getAppPath());
-  console.log('[Dashboard] isPackaged:', app.isPackaged);
+  // SEC: Only log path/packaging details in development — avoids leaking the
+  // local username and install layout to disk in packaged (production) builds.
+  if (!app.isPackaged) {
+    console.log('[Dashboard] App path:', app.getAppPath());
+    console.log('[Dashboard] isPackaged:', app.isPackaged);
+  }
   createWindow();
 
   app.on('activate', () => {
@@ -295,4 +344,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+// DASH-ELEC-262: zero-out the in-memory super-admin token before the process
+// terminates so it cannot be read from a process snapshot / core dump taken
+// in the brief window between the last IPC call and process exit.
+app.on('before-quit', () => {
+  setSuperAdminToken(null);
 });

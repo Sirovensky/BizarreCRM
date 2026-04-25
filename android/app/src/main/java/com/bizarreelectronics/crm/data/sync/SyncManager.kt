@@ -290,6 +290,7 @@ class SyncManager @Inject constructor(
             "lead" -> dispatchLeadEntry(entry)
             "estimate" -> dispatchEstimateEntry(entry)
             "expense" -> dispatchExpenseEntry(entry)
+            "appointment" -> dispatchAppointmentEntry(entry)
             else -> Log.w(TAG, "Unknown entityType '${entry.entityType}' in sync queue (id=${entry.id})")
         }
     }
@@ -605,7 +606,8 @@ class SyncManager @Inject constructor(
         when (entry.operation) {
             "create" -> {
                 val request = gson.fromJson(entry.payload, CreateEstimateRequest::class.java)
-                val response = estimateApi.createEstimate(request)
+                val idempotencyKey = request.idempotencyKey ?: entry.id.toString()
+                val response = estimateApi.createEstimate(idempotencyKey, request)
                 val created = response.data
                 if (created != null && entry.entityId < 0) {
                     estimateRepository.reconcileTempId(entry.entityId, created)
@@ -640,6 +642,21 @@ class SyncManager @Inject constructor(
             }
             "delete" -> expenseApi.deleteExpense(entry.entityId)
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for expense #${entry.entityId}")
+        }
+    }
+
+    /**
+     * Dispatch a queued appointment create. Only "create" is supported offline (10.3 / item 4).
+     * The response id from the server replaces the negative temp id in memory;
+     * no local Room entity exists for appointments yet so no reconcile step needed.
+     */
+    private suspend fun dispatchAppointmentEntry(entry: SyncQueueEntity) {
+        when (entry.operation) {
+            "create" -> {
+                val request = gson.fromJson(entry.payload, com.bizarreelectronics.crm.data.remote.dto.CreateAppointmentRequest::class.java)
+                leadApi.createAppointment(request)
+            }
+            else -> Log.w(TAG, "Unknown operation '${entry.operation}' for appointment #${entry.entityId}")
         }
     }
 

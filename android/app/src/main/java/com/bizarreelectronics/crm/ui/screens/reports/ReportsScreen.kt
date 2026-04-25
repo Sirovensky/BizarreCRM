@@ -9,14 +9,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -28,18 +30,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.ReportApi
+import com.bizarreelectronics.crm.data.remote.api.ScheduleFrequency
+import com.bizarreelectronics.crm.data.remote.api.ScheduledReport
+import com.bizarreelectronics.crm.data.remote.api.ScheduledReportSpec
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.screens.reports.components.ChartDrillThrough
 import com.bizarreelectronics.crm.ui.screens.reports.components.ReportType
 import com.bizarreelectronics.crm.ui.screens.reports.components.ReportTypeSelector
+import com.bizarreelectronics.crm.ui.screens.reports.components.printReport
 import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
@@ -163,9 +171,13 @@ data class ReportsUiState(
     val categoryBreakdown: List<CategoryBreakdownSlice> = emptyList(),
     // §15 L1722 — SegmentedButton report type
     val selectedReportType: ReportType = ReportType.SALES,
-    // §15 L1726 — Scheduled reports stub
-    val scheduledReports: List<String> = emptyList(),
+    // §15 L1726 — Scheduled reports
+    val scheduledReports: List<ScheduledReport> = emptyList(),
     val isScheduledLoading: Boolean = false,
+    // Snackbar messages from schedule actions (null = none pending)
+    val scheduleSnackbar: String? = null,
+    // Serialized filter spec for drill-through back-stack restoration
+    val currentFilterSpec: String = "",
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -176,12 +188,17 @@ class ReportsViewModel @Inject constructor(
     private val reportApi: ReportApi,
     private val serverMonitor: ServerReachabilityMonitor,
     val appPreferences: AppPreferences,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReportsUiState())
     val state: StateFlow<ReportsUiState> = _state.asStateFlow()
 
     init {
+        // Restore filter context if returning from a drill-through back-pop
+        savedStateHandle.get<String>("filter_spec")?.let { spec ->
+            if (spec.isNotEmpty()) restoreFilter(spec)
+        }
         loadData()
         loadSalesReport()
         observeOnlineState()
@@ -275,17 +292,110 @@ class ReportsViewModel @Inject constructor(
             _state.update { it.copy(isScheduledLoading = true) }
             runCatching { reportApi.getScheduledReports() }
                 .onSuccess { resp ->
-                    _state.update {
-                        it.copy(
-                            isScheduledLoading = false,
-                            scheduledReports = resp.data?.filterIsInstance<String>() ?: emptyList(),
+                    val parsed = resp.data?.mapNotNull { item ->
+                        val map = item as? Map<*, *> ?: return@mapNotNull null
+                        ScheduledReport(
+                            id = (map["id"] as? String) ?: return@mapNotNull null,
+                            reportType = (map["reportType"] as? String) ?: "",
+                            frequency = (map["frequency"] as? String) ?: "DAILY",
+                            weekday = (map["weekday"] as? Number)?.toInt(),
+                            dayOfMonth = (map["dayOfMonth"] as? Number)?.toInt(),
+                            recipients = (map["recipients"] as? String) ?: "",
+                            emailEnabled = (map["emailEnabled"] as? Boolean) ?: false,
+                            inAppEnabled = (map["inAppEnabled"] as? Boolean) ?: true,
+                            fcmEnabled = (map["fcmEnabled"] as? Boolean) ?: false,
+                            paused = (map["paused"] as? Boolean) ?: false,
                         )
-                    }
+                    } ?: emptyList()
+                    _state.update { it.copy(isScheduledLoading = false, scheduledReports = parsed) }
                 }
                 .onFailure {
                     // 404 or any error → silently show empty list
                     _state.update { it.copy(isScheduledLoading = false, scheduledReports = emptyList()) }
                 }
+        }
+    }
+
+    /** Create a new scheduled report and reload the list on success. */
+    fun createSchedule(spec: ScheduledReportSpec) {
+        viewModelScope.launch {
+            runCatching { reportApi.createScheduledReport(spec) }
+                .onSuccess { loadScheduledReports() }
+                .onFailure { e ->
+                    _state.update { it.copy(scheduleSnackbar = "Failed to create schedule: ${e.message}") }
+                }
+        }
+    }
+
+    /** Pause an existing schedule. */
+    fun pauseSchedule(id: String) {
+        viewModelScope.launch {
+            runCatching { reportApi.patchScheduledReport(id, mapOf("paused" to true)) }
+                .onSuccess { loadScheduledReports() }
+                .onFailure { e ->
+                    _state.update { it.copy(scheduleSnackbar = "Failed to pause: ${e.message}") }
+                }
+        }
+    }
+
+    /** Resume a paused schedule. */
+    fun resumeSchedule(id: String) {
+        viewModelScope.launch {
+            runCatching { reportApi.patchScheduledReport(id, mapOf("paused" to false)) }
+                .onSuccess { loadScheduledReports() }
+                .onFailure { e ->
+                    _state.update { it.copy(scheduleSnackbar = "Failed to resume: ${e.message}") }
+                }
+        }
+    }
+
+    /** Delete a scheduled report by id. */
+    fun deleteSchedule(id: String) {
+        viewModelScope.launch {
+            runCatching { reportApi.deleteScheduledReport(id) }
+                .onSuccess { loadScheduledReports() }
+                .onFailure { e ->
+                    _state.update { it.copy(scheduleSnackbar = "Failed to delete: ${e.message}") }
+                }
+        }
+    }
+
+    /** Clears the snackbar message after it has been shown. */
+    fun clearScheduleSnackbar() {
+        _state.update { it.copy(scheduleSnackbar = null) }
+    }
+
+    // ── §15 L1730 — Filter-preservation for drill-through back-stack ──────────
+
+    /**
+     * Serializes the current date-range filter into [SavedStateHandle] before
+     * navigating into a drill-through destination. On back-pop the Compose
+     * NavHost restores this entry's ViewModel (same instance for the same
+     * back-stack entry); the [init] block will re-apply the filter so the
+     * user returns to the same filtered view.
+     *
+     * Format: "preset|fromMillis|toMillis" — intentionally simple, no JSON dep.
+     */
+    fun rememberFilterForDrill() {
+        val s = _state.value
+        val spec = "${s.selectedPreset.name}|${s.fromDate}|${s.toDate}"
+        savedStateHandle["filter_spec"] = spec
+        _state.update { it.copy(currentFilterSpec = spec) }
+    }
+
+    private fun restoreFilter(spec: String) {
+        val parts = spec.split("|")
+        if (parts.size != 3) return
+        val preset = runCatching { DateRangePreset.valueOf(parts[0]) }.getOrNull() ?: return
+        val from = parts[1].toLongOrNull() ?: return
+        val to = parts[2].toLongOrNull() ?: return
+        _state.update {
+            it.copy(
+                selectedPreset = preset,
+                fromDate = from,
+                toDate = to,
+                currentFilterSpec = spec,
+            )
         }
     }
 
@@ -424,9 +534,31 @@ fun ReportsScreen(
     // Existing indices shifted: Dashboard=0, Overview=1, Sales=2, Needs Attention=3.
     val tabs = listOf("Dashboard", "Overview", "Sales", "Needs Attention")
     var showScheduleSheet by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Scaffold(
-        topBar = { BrandTopAppBar(title = "Reports") },
+        topBar = {
+            BrandTopAppBar(
+                title = "Reports",
+                actions = {
+                    // Print button — only shown on the inline SALES type (inline tabs).
+                    // Sub-report screens (Tax, Inventory, etc.) have their own top-bar actions.
+                    if (state.selectedReportType == ReportType.SALES) {
+                        IconButton(
+                            onClick = {
+                                printReport(
+                                    context = context,
+                                    reportTitle = "Sales_Report",
+                                    html = buildInlineSalesHtml(state),
+                                )
+                            },
+                        ) {
+                            Icon(Icons.Outlined.Print, contentDescription = "Print report")
+                        }
+                    }
+                },
+            )
+        },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -492,6 +624,7 @@ fun ReportsScreen(
                         selectedTabIndex = selectedTabIndex,
                         viewModel = viewModel,
                         onDrillThroughDate = { date ->
+                            viewModel.rememberFilterForDrill()
                             navController.navigate("tickets?date=$date")
                         },
                     )
@@ -508,7 +641,20 @@ fun ReportsScreen(
 
     // §15 L1758 — Schedule bottom sheet
     if (showScheduleSheet) {
-        ScheduleReportSheet(onDismiss = { showScheduleSheet = false })
+        ScheduleReportSheet(
+            viewModel = viewModel,
+            onDismiss = { showScheduleSheet = false },
+        )
+    }
+
+    // Snackbar for schedule action errors
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scheduleSnackbar = state.scheduleSnackbar
+    LaunchedEffect(scheduleSnackbar) {
+        if (scheduleSnackbar != null) {
+            snackbarHostState.showSnackbar(scheduleSnackbar)
+            viewModel.clearScheduleSnackbar()
+        }
     }
 }
 
@@ -551,6 +697,7 @@ private fun SalesTabContent(
             1 -> OverviewChartsTab(
                 state = state,
                 appPreferences = viewModel.appPreferences,
+                onDrillThroughDate = onDrillThroughDate,
             )
             2 -> SalesReportScreenInline(
                 state = state,
@@ -640,54 +787,256 @@ private fun InsightsPlaceholder() {
 
 // ─── §15 L1758 — Schedule report bottom sheet ────────────────────────────────
 
+private val WEEKDAY_LABELS = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleReportSheet(onDismiss: () -> Unit) {
+fun ScheduleReportSheet(
+    viewModel: ReportsViewModel,
+    onDismiss: () -> Unit,
+) {
+    val state by viewModel.state.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selectedFrequency by rememberSaveable { mutableStateOf("Weekly") }
-    val frequencies = listOf("Daily", "Weekly", "Monthly")
+
+    var selectedFrequency by rememberSaveable { mutableStateOf(ScheduleFrequency.WEEKLY) }
+    var selectedWeekday by rememberSaveable { mutableIntStateOf(1) }
+    var selectedDayOfMonth by rememberSaveable { mutableIntStateOf(1) }
+    var emailEnabled by rememberSaveable { mutableStateOf(false) }
+    var inAppEnabled by rememberSaveable { mutableStateOf(true) }
+    var fcmEnabled by rememberSaveable { mutableStateOf(false) }
+    var recipients by rememberSaveable { mutableStateOf("") }
+    var showDeleteConfirm by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { viewModel.loadScheduledReports() }
+
+    showDeleteConfirm?.let { scheduleId ->
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = null },
+            title = { Text("Delete schedule?") },
+            text = { Text("This scheduled report will be permanently removed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteSchedule(scheduleId)
+                    showDeleteConfirm = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = null }) { Text("Cancel") }
+            },
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp),
         ) {
-            Text(
-                "Schedule Report",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            frequencies.forEach { freq ->
+            item {
+                Text(
+                    "Schedule Report",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            // Frequency
+            item {
+                Text("Frequency", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                ScheduleFrequency.values().forEach { freq ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(freq.name.lowercase().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyMedium)
+                        RadioButton(selected = selectedFrequency == freq, onClick = { selectedFrequency = freq })
+                    }
+                }
+            }
+
+            // Weekday picker
+            if (selectedFrequency == ScheduleFrequency.WEEKLY) {
+                item {
+                    Text("Day of week", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(WEEKDAY_LABELS.size) { i ->
+                            FilterChip(
+                                selected = selectedWeekday == i,
+                                onClick = { selectedWeekday = i },
+                                label = { Text(WEEKDAY_LABELS[i]) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Day-of-month picker
+            if (selectedFrequency == ScheduleFrequency.MONTHLY) {
+                item {
+                    Text("Day of month (1–28)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = if (selectedDayOfMonth > 0) selectedDayOfMonth.toString() else "",
+                        onValueChange = { v ->
+                            val n = v.filter { it.isDigit() }.toIntOrNull() ?: 1
+                            selectedDayOfMonth = n.coerceIn(1, 28)
+                        },
+                        singleLine = true,
+                        label = { Text("Day") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                        ),
+                    )
+                }
+            }
+
+            // Delivery channels
+            item {
+                Text("Delivery channels", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(freq, style = MaterialTheme.typography.bodyMedium)
-                    RadioButton(
-                        selected = selectedFrequency == freq,
-                        onClick = { selectedFrequency = freq },
+                    Text("Email recipients", style = MaterialTheme.typography.bodyMedium)
+                    Checkbox(checked = emailEnabled, onCheckedChange = { emailEnabled = it })
+                }
+                if (emailEnabled) {
+                    OutlinedTextField(
+                        value = recipients,
+                        onValueChange = { recipients = it },
+                        label = { Text("Emails (comma-separated)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
+                        ),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("In-app notification", style = MaterialTheme.typography.bodyMedium)
+                    Checkbox(checked = inAppEnabled, onCheckedChange = { inAppEnabled = it })
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("FCM push notification", style = MaterialTheme.typography.bodyMedium)
+                    Checkbox(checked = fcmEnabled, onCheckedChange = { fcmEnabled = it })
+                }
+            }
+
+            // Create button
+            item {
+                Button(
+                    onClick = {
+                        viewModel.createSchedule(
+                            ScheduledReportSpec(
+                                reportType = "sales",
+                                frequency = selectedFrequency,
+                                weekday = selectedWeekday,
+                                dayOfMonth = selectedDayOfMonth,
+                                recipients = recipients,
+                                emailEnabled = emailEnabled,
+                                inAppEnabled = inAppEnabled,
+                                fcmEnabled = fcmEnabled,
+                            )
+                        )
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = emailEnabled || inAppEnabled || fcmEnabled,
+                ) {
+                    Text("Add Schedule")
+                }
+            }
+
+            // Existing schedules list
+            if (state.isScheduledLoading) {
+                item {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            } else if (state.scheduledReports.isNotEmpty()) {
+                item {
+                    HorizontalDivider()
+                    Spacer(Modifier.height(4.dp))
+                    Text("Existing schedules", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(state.scheduledReports.size) { i ->
+                    val schedule = state.scheduledReports[i]
+                    ScheduleRow(
+                        schedule = schedule,
+                        onPause = { viewModel.pauseSchedule(schedule.id) },
+                        onResume = { viewModel.resumeSchedule(schedule.id) },
+                        onDelete = { showDeleteConfirm = schedule.id },
                     )
                 }
             }
-            Text(
-                "Scheduled delivery is a stub — the /reports/scheduled endpoint will power this in a future wave.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = false,
-            ) {
-                Text("Schedule (coming soon)")
+        }
+    }
+}
+
+@Composable
+private fun ScheduleRow(
+    schedule: ScheduledReport,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (schedule.paused) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    schedule.reportType.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    buildString {
+                        append(schedule.frequency.lowercase().replaceFirstChar { it.uppercase() })
+                        if (schedule.paused) append(" · Paused")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (schedule.paused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            if (schedule.paused) {
+                IconButton(onClick = onResume) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume schedule", tint = MaterialTheme.colorScheme.primary)
+                }
+            } else {
+                IconButton(onClick = onPause) {
+                    Icon(Icons.Default.Pause, contentDescription = "Pause schedule", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete schedule", tint = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
@@ -710,6 +1059,7 @@ fun ScheduleReportSheet(onDismiss: () -> Unit) {
 private fun OverviewChartsTab(
     state: ReportsUiState,
     appPreferences: AppPreferences,
+    onDrillThroughDate: (String) -> Unit = {},
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -742,19 +1092,29 @@ private fun OverviewChartsTab(
         item {
             // a11y: heading() on the section title column so TalkBack users can jump between chart sections.
             ChartSection(title = "Sales by Period") {
-                SalesByDayBarChart(
-                    points = state.salesByDay,
-                    appPreferences = appPreferences,
-                )
+                ChartDrillThrough(
+                    dateLabels = state.salesByDay.map { it.isoDate },
+                    onDrillThrough = onDrillThroughDate,
+                ) {
+                    SalesByDayBarChart(
+                        points = state.salesByDay,
+                        appPreferences = appPreferences,
+                    )
+                }
             }
         }
         item {
             // a11y: heading() on the section title column so TalkBack users can jump between chart sections.
             ChartSection(title = "Revenue Over Time") {
-                RevenueOverTimeLineChart(
-                    points = state.revenueOverTime,
-                    appPreferences = appPreferences,
-                )
+                ChartDrillThrough(
+                    dateLabels = state.revenueOverTime.map { it.isoDate },
+                    onDrillThrough = onDrillThroughDate,
+                ) {
+                    RevenueOverTimeLineChart(
+                        points = state.revenueOverTime,
+                        appPreferences = appPreferences,
+                    )
+                }
             }
         }
         item {
@@ -1416,4 +1776,40 @@ private fun SummaryCard(
             )
         }
     }
+}
+
+// ─── Print helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Builds a minimal print-friendly HTML snapshot of the inline Sales report.
+ * Used by the Print IconButton in [ReportsScreen]'s top bar.
+ */
+private fun buildInlineSalesHtml(state: ReportsUiState): String = buildString {
+    val report = state.salesReport
+    val from = formatDisplayDate(state.fromDate)
+    val to = formatDisplayDate(state.toDate)
+    append("""
+        <html><head><meta charset="utf-8">
+        <style>
+          body{font-family:sans-serif;margin:24px;color:#1a1a1a}
+          h1{font-size:20px;margin-bottom:4px}
+          p.period{font-size:13px;color:#666;margin:0 0 16px}
+          table{width:100%;border-collapse:collapse;font-size:14px}
+          th{background:#2c2c2c;color:#fff;text-align:left;padding:8px 12px}
+          td{padding:8px 12px;border-bottom:1px solid #e0e0e0}
+          td.num{text-align:right}
+        </style></head><body>
+        <h1>Sales Report — Bizarre Electronics</h1>
+        <p class="period">$from – $to</p>
+        <table>
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Total Revenue</td><td class="num">${com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.totalRevenue)}</td></tr>
+            <tr><td>Transactions</td><td class="num">${report.transactionCount}</td></tr>
+            <tr><td>Avg Transaction</td><td class="num">${com.bizarreelectronics.crm.util.CurrencyFormatter.format(report.averageTransaction)}</td></tr>
+            <tr><td>Unique Customers</td><td class="num">${report.uniqueCustomers}</td></tr>
+          </tbody>
+        </table>
+        </body></html>
+    """.trimIndent())
 }

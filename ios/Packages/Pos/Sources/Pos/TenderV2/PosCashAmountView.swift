@@ -40,9 +40,16 @@ public struct PosCashAmountView: View {
     // MARK: - Computed
 
     /// Received amount in cents from the `digits` string.
+    /// Supports decimal entry (e.g. "300.00" → 30000 cents).
     private var receivedCents: Int {
-        guard !digits.isEmpty, let value = Int(digits) else { return 0 }
-        return value  // digits are stored as cents (no decimal UI)
+        guard !digits.isEmpty else { return 0 }
+        if digits.contains(".") {
+            guard let value = Double(digits) else { return 0 }
+            return Int((value * 100).rounded())
+        } else {
+            guard let value = Int(digits) else { return 0 }
+            return value * 100
+        }
     }
 
     private var changeCents: Int {
@@ -76,29 +83,16 @@ public struct PosCashAmountView: View {
 
     // MARK: - Glass panel
 
+    /// Two-column layout: Received (left) | Change (right), matching mockup 5b/4b.
     private var glassPanel: some View {
-        VStack(spacing: BrandSpacing.sm) {
-            // Due row
-            HStack {
-                Text("Cash due")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(theme.muted)
-                Spacer()
-                Text(CartMath.formatCents(dueCents))
-                    .font(.brandBodyLarge())
-                    .foregroundStyle(theme.on)
-                    .monospacedDigit()
-            }
-
-            Divider()
-                .background(theme.outline)
-
-            // Received row — hero amount
-            HStack(alignment: .firstTextBaseline) {
+        HStack(spacing: 0) {
+            // Received column
+            VStack(spacing: BrandSpacing.xxs) {
                 Text("Received")
-                    .font(.brandLabelLarge())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(theme.muted)
-                Spacer()
+                    .tracking(0.6)
+                    .textCase(.uppercase)
                 Text(receivedCents == 0 ? "—" : CartMath.formatCents(receivedCents))
                     .font(.brandDisplayMedium())
                     .foregroundStyle(receivedCents == 0 ? theme.muted : theme.on)
@@ -106,57 +100,87 @@ public struct PosCashAmountView: View {
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     .contentTransition(.numericText(countsDown: false))
                     .animation(reduceMotion ? .none : .spring(duration: 0.2), value: receivedCents)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Amount received: \(receivedCents == 0 ? "none" : CartMath.formatCents(receivedCents))")
 
-            // Change row (visible when received >= due)
-            if receivedCents >= dueCents {
-                Divider()
-                    .background(theme.outline)
-                HStack {
-                    Text("Change due")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(theme.muted)
-                    Spacer()
-                    Text(CartMath.formatCents(changeCents))
-                        .font(.brandHeadlineMedium())
-                        .foregroundStyle(changeCents > 0 ? theme.primary : theme.muted)
-                        .monospacedDigit()
-                        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                        .contentTransition(.numericText(countsDown: false))
-                        .animation(reduceMotion ? .none : .spring(duration: 0.2), value: changeCents)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Change due: \(CartMath.formatCents(changeCents))")
-                .accessibilityIdentifier("pos.cashAmountV2.change")
+            Divider()
+                .frame(height: 48)
+                .background(theme.outline)
+
+            // Change column
+            VStack(spacing: BrandSpacing.xxs) {
+                Text("Change")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(theme.muted)
+                    .tracking(0.6)
+                    .textCase(.uppercase)
+                Text(receivedCents >= dueCents ? CartMath.formatCents(changeCents) : "—")
+                    .font(.brandDisplayMedium())
+                    .foregroundStyle(
+                        receivedCents >= dueCents && changeCents > 0
+                            ? theme.primary
+                            : theme.muted
+                    )
+                    .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .contentTransition(.numericText(countsDown: false))
+                    .animation(reduceMotion ? .none : .spring(duration: 0.2), value: changeCents)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Change due: \(receivedCents >= dueCents ? CartMath.formatCents(changeCents) : "none")")
+            .accessibilityIdentifier("pos.cashAmountV2.change")
         }
-        .padding(BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.md)
+        .padding(.horizontal, BrandSpacing.base)
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 16))
         .accessibilityIdentifier("pos.cashAmountV2.glassPanel")
     }
 
     // MARK: - Quick chip strip
 
+    /// Round-up presets above the due amount.
+    /// Matches mockup 5b/4b: "Exact · $N · $N+5 · $N+10 · $N+20"
+    /// where N values are the next whole-dollar round-up thresholds.
+    private var quickAmountPresets: [(label: String, cents: Int)] {
+        let exact = dueCents
+        // Round up to the next dollar, then add $5 increments
+        let nextDollar = ((dueCents + 99) / 100) * 100  // ceiling to whole dollars
+        let presets: [Int] = [
+            nextDollar,
+            roundUpTo(dueCents, multiple: 500),   // next $5
+            roundUpTo(dueCents, multiple: 1000),  // next $10
+            roundUpTo(dueCents, multiple: 2000),  // next $20
+        ]
+        // Deduplicate & sort, skip values equal to exact
+        var seen = Set<Int>()
+        var result: [(String, Int)] = [("Exact", exact)]
+        for cents in presets.sorted() {
+            guard cents > exact, seen.insert(cents).inserted else { continue }
+            result.append(("$\(cents / 100)", cents))
+        }
+        return result
+    }
+
+    private func roundUpTo(_ value: Int, multiple: Int) -> Int {
+        let rem = value % multiple
+        return rem == 0 ? value + multiple : value + (multiple - rem)
+    }
+
     private var quickChipStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrandSpacing.sm) {
-                quickChip(label: "Exact") {
-                    digits = "\(dueCents)"
-                }
-                quickChip(label: "+$5") {
-                    digits = "\(dueCents + 500)"
-                }
-                quickChip(label: "+$10") {
-                    digits = "\(dueCents + 1000)"
-                }
-                quickChip(label: "+$20") {
-                    digits = "\(dueCents + 2000)"
-                }
-                // Custom: clear back to 0 so cashier types freely
-                quickChip(label: "Custom") {
-                    digits = ""
+                ForEach(quickAmountPresets, id: \.cents) { preset in
+                    quickChip(label: preset.label, selected: receivedCents == preset.cents) {
+                        // Store as dollars string (e.g. "300" → interpreted as $300.00)
+                        digits = "\(preset.cents / 100)"
+                    }
                 }
             }
             .padding(.horizontal, 1)
@@ -164,19 +188,28 @@ public struct PosCashAmountView: View {
         .accessibilityLabel("Quick amount presets")
     }
 
-    private func quickChip(label: String, action: @escaping () -> Void) -> some View {
+    private func quickChip(label: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
                 .font(.brandLabelLarge())
-                .foregroundStyle(theme.on)
+                .foregroundStyle(selected ? theme.onPrimary : theme.on)
                 .padding(.horizontal, BrandSpacing.md)
                 .padding(.vertical, BrandSpacing.sm)
-                .background(theme.surfaceElev, in: Capsule())
-                .overlay(Capsule().strokeBorder(theme.outline, lineWidth: 0.5))
+                .background(
+                    selected ? theme.primary : theme.surfaceElev,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        selected ? theme.primary : theme.outline,
+                        lineWidth: selected ? 0 : 0.5
+                    )
+                )
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityLabel("Quick amount: \(label)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("pos.cashAmountV2.chip.\(label)")
     }
 
@@ -202,7 +235,7 @@ public struct PosCashAmountView: View {
                 numpadKey("9", minHeight: minKeyHeight)
             }
             GridRow {
-                numpadKey("00", minHeight: minKeyHeight)
+                numpadDecimalKey(minHeight: minKeyHeight)
                 numpadKey("0", minHeight: minKeyHeight)
                 numpadDeleteKey(minHeight: minKeyHeight)
             }
@@ -232,6 +265,27 @@ public struct PosCashAmountView: View {
         .accessibilityIdentifier("pos.cashAmountV2.key.\(label)")
     }
 
+    private func numpadDecimalKey(minHeight: CGFloat) -> some View {
+        Button {
+            appendDecimal()
+        } label: {
+            Text(".")
+                .font(.custom("BarlowCondensed-SemiBold", size: 28, relativeTo: .title))
+                .foregroundStyle(theme.on)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: minHeight)
+                .background(theme.surfaceElev, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(theme.outline, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("Decimal point")
+        .accessibilityIdentifier("pos.cashAmountV2.key.decimal")
+    }
+
     private func numpadDeleteKey(minHeight: CGFloat) -> some View {
         Button {
             deleteDigit()
@@ -256,17 +310,36 @@ public struct PosCashAmountView: View {
     // MARK: - Digit management
 
     private func appendDigits(_ s: String) {
-        // Cap at 9 digits to prevent overflow ($9,999,999.99)
-        guard digits.count + s.count <= 9 else { return }
-        // Strip leading zeros
-        let combined = digits + s
-        digits = combined == "0" ? "0" : String(Int(combined) ?? 0)
-        if digits == "0" { digits = "" }
+        // Cap total length (e.g. "9999999.99" = 10 chars max)
+        let maxLen = 10
+        guard digits.count + s.count <= maxLen else { return }
+        // Don't allow multiple decimal points
+        if s == "." && digits.contains(".") { return }
+        // Don't allow more than 2 decimal places
+        if let dotIdx = digits.firstIndex(of: ".") {
+            let decimals = digits.distance(from: digits.index(after: dotIdx), to: digits.endIndex)
+            if decimals >= 2 { return }
+        }
+        if digits.isEmpty && s == "." {
+            digits = "0."
+        } else if digits == "0" && s != "." {
+            digits = s
+        } else {
+            digits = digits + s
+        }
+    }
+
+    private func appendDecimal() {
+        if !digits.contains(".") {
+            digits = digits.isEmpty ? "0." : digits + "."
+        }
     }
 
     private func deleteDigit() {
         guard !digits.isEmpty else { return }
         digits.removeLast()
+        // Clean up trailing "0." → ""
+        if digits == "0" { digits = "" }
     }
 }
 #endif

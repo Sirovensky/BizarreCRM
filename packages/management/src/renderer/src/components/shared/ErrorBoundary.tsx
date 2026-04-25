@@ -44,7 +44,12 @@ export class PageErrorBoundary extends Component<Props, State> {
           </p>
           {this.state.error && (
             <pre className="text-xs text-red-400 bg-surface-900 p-2 rounded max-w-md overflow-auto mb-4 text-left">
-              {this.state.error.message}
+              {/* Expose the message only in dev builds — production hides it
+                  to avoid leaking TLS fingerprint details, Zod parse internals,
+                  or other server-side state (DASH-ELEC-115). */}
+              {import.meta.env.DEV
+                ? this.state.error.message
+                : 'An internal error occurred. Please reload and try again.'}
             </pre>
           )}
           <button

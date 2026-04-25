@@ -16,6 +16,7 @@ import {
 import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 /**
  * CampaignsPage — marketing automation dashboard.
@@ -75,6 +76,10 @@ export function CampaignsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [previewData, setPreviewData] = useState<{ campaign: Campaign; total: number; sample: Array<{ rendered_body: string }> } | null>(null);
+  // Confirm dialogs for destructive actions — Run-now dispatches the segment
+  // immediately to potentially thousands of recipients, and Delete is final.
+  const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
 
   const { data: campaignsRes, isLoading } = useQuery<{ data?: Campaign[] }>({
     queryKey: ['campaigns'],
@@ -226,7 +231,19 @@ export function CampaignsPage() {
                       <Eye className="h-3 w-3" /> Preview
                     </button>
                     <button
-                      onClick={() => runNow.mutate(campaign.id)}
+                      onClick={async () => {
+                        // Open confirm dialog with a recipient-count preview so the
+                        // operator sees how many people will be messaged before firing.
+                        setRunConfirm({ campaign, total: null });
+                        try {
+                          const res = await campaignsApi.preview(campaign.id);
+                          const total = (res.data as any)?.data?.total_recipients ?? 0;
+                          // Only update if user hasn't already cancelled.
+                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
+                        } catch {
+                          setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
+                        }
+                      }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-40"
                     >
@@ -258,7 +275,7 @@ export function CampaignsPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => deleteCampaign.mutate(campaign.id)}
+                      onClick={() => setDeleteConfirm(campaign)}
                       disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
                     >
@@ -289,6 +306,44 @@ export function CampaignsPage() {
           onClose={() => setPreviewData(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!runConfirm}
+        title="Dispatch campaign now?"
+        message={
+          runConfirm
+            ? runConfirm.total === null
+              ? `Counting eligible recipients for "${runConfirm.campaign.name}"…`
+              : `This will immediately send "${runConfirm.campaign.name}" via ${runConfirm.campaign.channel.toUpperCase()} to ${runConfirm.total} eligible recipient${runConfirm.total === 1 ? '' : 's'} (after opt-in filtering). This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Dispatch now"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => {
+          if (runConfirm) runNow.mutate(runConfirm.campaign.id);
+          setRunConfirm(null);
+        }}
+        onCancel={() => setRunConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Delete campaign?"
+        message={
+          deleteConfirm
+            ? `Permanently delete "${deleteConfirm.name}"? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => {
+          if (deleteConfirm) deleteCampaign.mutate(deleteConfirm.id);
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }
