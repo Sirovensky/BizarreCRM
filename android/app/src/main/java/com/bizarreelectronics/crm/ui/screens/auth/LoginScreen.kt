@@ -36,9 +36,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -1874,19 +1883,22 @@ fun LoginScreen(
         ) {
             // Logo / App name — small top breathing room replaces the old 80dp pin.
             Spacer(Modifier.height(32.dp))
-            Text(
-                "Bizarre CRM",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 36.sp,
-                ),
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Electronics Repair Management",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
+            Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+                Text(
+                    "Bizarre CRM",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontSize = 36.sp,
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Electronics Repair Management",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             // Sanctioned WaveDivider placement — one branded moment under wordmark
             // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
             // LOGIN-MOCK-085: reduce WaveDivider height to 16dp (in WaveDivider.kt) and
@@ -2001,8 +2013,16 @@ fun LoginScreen(
             AnimatedContent(
                 targetState = state.step,
                 transitionSpec = {
-                    slideInHorizontally { it } + fadeIn() togetherWith
-                            slideOutHorizontally { -it } + fadeOut()
+                    // LOGIN-MOCK-058: slide direction reflects navigation direction.
+                    // Forward (higher ordinal) → slide in from right, slide out to left.
+                    // Back (lower ordinal)    → slide in from left, slide out to right.
+                    if (targetState.ordinal > initialState.ordinal) {
+                        slideInHorizontally { it } + fadeIn() togetherWith
+                                slideOutHorizontally { -it } + fadeOut()
+                    } else {
+                        slideInHorizontally { -it } + fadeIn() togetherWith
+                                slideOutHorizontally { it } + fadeOut()
+                    }
                 },
                 // AND-038: contentKey ensures AnimatedContent remeasures correctly
                 // when transitioning between enum values with the same ordinal index.
@@ -2011,6 +2031,11 @@ fun LoginScreen(
                 contentKey = { it.ordinal },
                 label = "step",
             ) { step ->
+                // LOGIN-MOCK-099: intercept predictive-back / hardware Back to navigate
+                // between steps instead of exiting the login screen entirely.
+                val isNotFirstStep = step != SetupStep.SERVER
+                BackHandler(enabled = isNotFirstStep) { viewModel.goBack() }
+
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -2082,9 +2107,17 @@ private fun LoginTabBar(currentStep: SetupStep) {
     ) {
         tabLabels.forEachIndexed { index, label ->
             val isSelected = index == selectedIndex
+            // LOGIN-MOCK-053: tabs are display-only progress indicators; marking them
+            // disabled() removes the "double-tap to activate" TalkBack hint while
+            // role=Tab + selected communicates the current step to screen readers.
             Tab(
                 selected = isSelected,
                 onClick = { /* tabs are display-only; step advances via ViewModel */ },
+                modifier = Modifier.semantics {
+                    role = Role.Tab
+                    selected = isSelected
+                    disabled()
+                },
                 text = {
                     Text(
                         text = label,
@@ -2103,7 +2136,14 @@ private fun LoginTabBar(currentStep: SetupStep) {
 private fun ErrorMessage(error: String?) {
     if (error != null) {
         Spacer(Modifier.height(12.dp))
-        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        // LOGIN-MOCK-091: liveRegion=Polite ensures TalkBack announces the error
+        // when it first appears without interrupting ongoing speech.
+        Text(
+            error,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
     }
 }
 
@@ -2170,21 +2210,24 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
 
     LaunchedEffect(state.useCustomServer) { focusRequester.requestFocus() }
 
-    Text(
-        "Connect to Your Shop",
-        style = MaterialTheme.typography.titleLarge.copy(
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    Spacer(Modifier.height(4.dp))
-    Text(
-        if (state.useCustomServer) "Enter your self-hosted server address"
-        else "Enter your shop name to connect",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    // LOGIN-MOCK-098/055: merge title + subtitle into one TalkBack heading stop.
+    Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+        Text(
+            "Connect to Your Shop",
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (state.useCustomServer) "Enter your self-hosted server address"
+            else "Enter your shop name to connect",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     Spacer(Modifier.height(16.dp))
 
     if (state.useCustomServer) {
@@ -2271,27 +2314,34 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
 private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
+    // LOGIN-MOCK-094: auto-focus Shop URL field on entry so TalkBack users don't
+    // have to swipe through heading nodes before reaching the first input.
+    val shopUrlFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { shopUrlFocusRequester.requestFocus() }
 
     // Header row: back arrow + title
+    // LOGIN-MOCK-098/055: title + subtitle merged into one heading stop; back arrow
+    // sits outside the merged Column so it remains independently focusable.
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(
-            text = "Register New Shop",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+            Text(
+                text = "Register New Shop",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Create your repair shop on BizarreCRM",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
-    Spacer(Modifier.height(4.dp))
-
-    Text(
-        text = "Create your repair shop on BizarreCRM",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
     Spacer(Modifier.height(16.dp))
 
     // Field 1: Shop URL
@@ -2300,7 +2350,8 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateShopSlug,
         label = { Text("Shop URL") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        // LOGIN-MOCK-094: shopUrlFocusRequester for auto-focus on card entry.
+        modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester),
         leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
         suffix = {
             Text(
@@ -2351,25 +2402,38 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
+            // LOGIN-MOCK-093: stateful contentDescription so TalkBack announces
+            // the resulting visibility state, not a generic static label.
             IconButton(onClick = { showPassword = !showPassword }) {
                 Icon(
                     if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = "Toggle password visibility",
+                    contentDescription = if (showPassword) "Hide password" else "Show password",
                 )
             }
         },
         supportingText = { Text("Minimum 8 characters") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        // LOGIN-MOCK-090(F): onDone was calling clearFocus() only — hardware-keyboard
+        // Enter did nothing. Now submits if the form is valid, else clears focus.
+        keyboardActions = KeyboardActions(onDone = {
+            val canSubmit = state.shopSlug.length >= 3
+                && state.registerShopName.isNotBlank()
+                && state.registerEmail.isNotBlank()
+                && state.registerPassword.length >= 8
+                && !state.isLoading
+            if (canSubmit) viewModel.registerShop(onAutoLogin = onLoginSuccess)
+            else focusManager.clearFocus()
+        }),
     )
 
     // Error shown between password helper and Create Shop button
+    // LOGIN-MOCK-091: liveRegion=Polite so TalkBack announces this error on appearance.
     if (state.error != null) {
         Text(
             text = state.error,
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
         )
     }
 
@@ -2600,12 +2664,14 @@ private fun CredentialsStep(
         }
     }
 
+    // LOGIN-MOCK-098/055: merge "Sign In" title + store-name subtitle into one heading stop.
+    // LOGIN-MOCK-070: removed redundant Spacer(width(8.dp)) — IconButton already has
+    // 12dp internal horizontal padding giving the correct optical gap to the title.
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.width(8.dp))
-        Column {
+        Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
             Text("Sign In", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
             if (state.storeName.isNotBlank()) {
                 Text(state.storeName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2680,8 +2746,12 @@ private fun CredentialsStep(
                 leadingIcon = { Icon(Icons.Default.Lock, null) },
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
+                    // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
                     IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Toggle password")
+                        Icon(
+                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (showPassword) "Hide password" else "Show password",
+                        )
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
@@ -3077,15 +3147,18 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     // D5-6: local focus manager so IME Next advances from the new password
     // field to the confirm password field.
     val focusManager = LocalFocusManager.current
+    // LOGIN-MOCK-098/055/101: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Text("Set Your Password", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+            Text("Set Your Password", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text("This is your first login. Please set a password.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
-    Spacer(Modifier.height(4.dp))
-    Text("This is your first login. Please set a password.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(16.dp))
 
     OutlinedTextField(
@@ -3119,19 +3192,16 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     Spacer(Modifier.height(16.dp))
 
     // §2.10/L294 — CTA disabled until strength is at least FAIR.
+    // LOGIN-MOCK-073: replaced raw Button (48dp, 12dp corner) with LoginPillButton
+    // (56dp, 28dp pill) to match spec used by Connect / Create Shop / Sign In.
     val newPassStrength = PasswordStrength.evaluate(state.newPassword).level
     val strengthAcceptable = newPassStrength >= PasswordStrength.Level.FAIR
-    Button(
+    LoginPillButton(
         onClick = viewModel::setPassword,
         enabled = strengthAcceptable && !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        } else {
-            Text("Set Password")
-        }
-    }
+        isLoading = state.isLoading,
+        label = "Set Password",
+    )
 
     // §2.13-L366: countdown shown while challenge token is live
     ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
@@ -3154,13 +3224,16 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
 private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
     val context = LocalContext.current
 
-    Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(4.dp))
-    Text(
-        "Scan this QR code with Google Authenticator or any TOTP app",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    // LOGIN-MOCK-098/055/101: merge title + subtitle into one heading stop.
+    Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+        Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Scan this QR code with Google Authenticator or any TOTP app",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     Spacer(Modifier.height(16.dp))
 
     // ── QR bitmap resolution ────────────────────────────────────────────────
@@ -3238,9 +3311,11 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
+            // LOGIN-MOCK-081: surfaceVariant resolves near-invisible on dark card;
+            // surfaceContainerHighest gives adequate contrast for the monospace key block.
             Surface(
                 shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 SelectionContainer {
@@ -3312,7 +3387,9 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
     }
 
     Spacer(Modifier.height(16.dp))
-    TotpCodeInputContent(state, viewModel, onSuccess)
+    // LOGIN-MOCK-092: pass autoFocusOnEntry = false so keyboard doesn't open
+    // immediately on Setup entry, which would scroll the QR code off-screen.
+    TotpCodeInputContent(state, viewModel, onSuccess, autoFocusOnEntry = false)
     // §2.13-L366: countdown shown while challenge token is live
     ChallengeTokenCountdown(state.challengeTokenExpiresAtMs)
 }
@@ -3352,15 +3429,18 @@ private fun TwoFaVerifyStep(
         }
     }
 
+    // LOGIN-MOCK-098/055: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Text("Two-Factor Authentication", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+            Text("Two-Factor Authentication", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text("Enter the 6-digit code from your authenticator app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
-    Spacer(Modifier.height(4.dp))
-    Text("Enter the 6-digit code from your authenticator app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(24.dp))
 
     TotpCodeInputContent(state, viewModel, onSuccess)
@@ -3384,12 +3464,25 @@ private fun TwoFaVerifyStep(
 
 // ─── Shared TOTP code input ─────────────────────────────────────────
 
+// LOGIN-MOCK-092: added autoFocusOnEntry param (default true) so TwoFaSetupStep
+// can pass false, preventing the keyboard from opening and scrolling the QR code
+// off-screen before the user has a chance to scan it (WCAG 3.2.2 On Input).
+// TwoFaVerifyStep keeps the default true — user must type immediately.
 @Composable
-private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel, onSuccess: () -> Unit) {
+private fun TotpCodeInputContent(
+    state: LoginUiState,
+    viewModel: LoginViewModel,
+    onSuccess: () -> Unit,
+    autoFocusOnEntry: Boolean = true,
+) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // LOGIN-MOCK-092: gate auto-focus behind the parameter so Setup step doesn't
+    // force keyboard open before the user has scanned the QR code.
+    if (autoFocusOnEntry) {
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    }
 
     OutlinedTextField(
         value = state.totpCode,
@@ -3411,7 +3504,9 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
         }),
     )
 
-    ErrorMessage(state.error)
+    // LOGIN-MOCK-076: ErrorMessage moved AFTER the Continue button so a wrong-code
+    // error doesn't push the CTA below the keyboard on small phones. The field-to-CTA
+    // rhythm is now constant; error appears beneath the button.
     Spacer(Modifier.height(16.dp))
 
     LoginPillButton(
@@ -3420,4 +3515,6 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
         isLoading = state.isLoading,
         label = "Continue",
     )
+
+    ErrorMessage(state.error)
 }
