@@ -94,7 +94,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                   <table className="w-full text-sm">
                     <tbody>
                       {est.line_items.map((item, i) => (
-                        <tr key={i} className={i > 0 ? 'border-t border-gray-50' : ''}>
+                        <tr key={i} className={i > 0 ? 'border-t border-gray-50 dark:border-gray-700' : ''}>
                           <td className="px-4 py-2 text-gray-700">{item.description}</td>
                           <td className="px-4 py-2 text-right text-gray-500">x{item.quantity}</td>
                           <td className="px-4 py-2 text-right text-gray-700">${item.total.toFixed(2)}</td>

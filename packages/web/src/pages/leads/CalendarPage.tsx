@@ -288,9 +288,11 @@ function CreateAppointmentModal({
               <div className="flex gap-1">
                 <select value={form.start_hour} onChange={(e) => setForm((f) => ({ ...f, start_hour: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
-                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
+                    const n = Number(h);
+                    const label = `${((n % 12) || 12)} ${n < 12 ? 'AM' : 'PM'}`;
+                    return <option key={h} value={h}>{label}</option>;
+                  })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
                 <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value }))}
@@ -306,9 +308,11 @@ function CreateAppointmentModal({
               <div className="flex gap-1">
                 <select value={form.end_hour} onChange={(e) => setForm((f) => ({ ...f, end_hour: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
-                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
+                    const n = Number(h);
+                    const label = `${((n % 12) || 12)} ${n < 12 ? 'AM' : 'PM'}`;
+                    return <option key={h} value={h}>{label}</option>;
+                  })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
                 <select value={form.end_min} onChange={(e) => setForm((f) => ({ ...f, end_min: e.target.value }))}
