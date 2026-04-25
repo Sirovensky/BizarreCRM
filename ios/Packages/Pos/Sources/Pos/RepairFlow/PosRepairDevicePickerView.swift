@@ -73,37 +73,181 @@ public struct PosRepairDevicePickerView: View {
     }
 
     // MARK: - iPad layout
+    //
+    // On iPad this view renders INSIDE the `.inspector` pane (PosRegisterLayout
+    // hosts the inspector slot). It should look like a compact panel sheet —
+    // NOT a full-screen NavigationStack step. No NavigationTitle here; the
+    // inspector header (step X / 4 label) is owned by the parent layout.
 
     private var ipadContent: some View {
         VStack(spacing: 0) {
             stepProgressBar
+                .padding(.top, BrandSpacing.xs)
 
-            List {
-                if coordinator.isLoading {
-                    Section {
+            ScrollView {
+                VStack(spacing: BrandSpacing.sm) {
+                    // Section header
+                    Text("SAVED DEVICES")
+                        .font(.brandLabelSmall())
+                        .tracking(1.4)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.top, BrandSpacing.md)
+
+                    if coordinator.isLoading {
                         ProgressView()
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 80)
                             .accessibilityLabel("Loading devices…")
-                    }
-                } else if let error = devicePickerVM.errorMessage {
-                    Section {
+                    } else if let error = devicePickerVM.errorMessage {
                         errorRow(message: error)
-                    }
-                } else {
-                    Section("Saved devices") {
-                        deviceList
+                            .padding(.horizontal, BrandSpacing.base)
+                    } else {
+                        deviceListIPad
                     }
                 }
+                .padding(.bottom, BrandSpacing.xl)
             }
-            .listStyle(.insetGrouped)
 
             confirmCTA
                 .padding(.horizontal, BrandSpacing.base)
                 .padding(.bottom, BrandSpacing.md)
         }
-        .navigationTitle(RepairStep.pickDevice.navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
+    }
+
+    /// iPad-specific device list: lighter card style with hover effects.
+    @ViewBuilder
+    private var deviceListIPad: some View {
+        VStack(spacing: BrandSpacing.xs) {
+            ForEach(devicePickerVM.options) { option in
+                if case .addNew = option {
+                    addNewDeviceRowIPad
+                } else {
+                    deviceRowIPad(option: option)
+                }
+            }
+        }
+        .padding(.horizontal, BrandSpacing.base)
+    }
+
+    private func deviceRowIPad(option: PosDeviceOption) -> some View {
+        Button {
+            devicePickerVM.select(option)
+            coordinator.setDevice(option)
+            BrandHaptics.tap()
+        } label: {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: option.systemImage)
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOrange)
+                    .frame(width: 28)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(option.displayLabel)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+
+                    if let subtitle = option.displaySubtitle {
+                        // IMEI/serial subtitles are text-selectable per CLAUDE.md
+                        Text(subtitle)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                if coordinator.draft.selectedDeviceOption == option {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(BrandSpacing.sm)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        coordinator.draft.selectedDeviceOption == option
+                            ? Color.bizarreOrange.opacity(0.6)
+                            : Color.bizarreOutline.opacity(0.35),
+                        lineWidth: coordinator.draft.selectedDeviceOption == option ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(option.displayLabel)
+        .accessibilityHint(option.displaySubtitle ?? "")
+        .accessibilityAddTraits(coordinator.draft.selectedDeviceOption == option ? .isSelected : [])
+        .accessibilityIdentifier("repairFlow.device.\(option.id)")
+    }
+
+    /// Merged "Add new device" row — iPad card style with hover.
+    private var addNewDeviceRowIPad: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Button {
+                devicePickerVM.select(.addNew)
+                coordinator.setDevice(.addNew)
+                BrandHaptics.tap()
+            } label: {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOrange)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                        Text("Add new device")
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOrange)
+                        Text("Scan IMEI or pick make / model")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if coordinator.draft.selectedDeviceOption == .addNew {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add new device")
+
+            Button {
+                AppLog.pos.info("RepairFlow: scan button tapped — awaiting camera integration")
+            } label: {
+                Label("Scan", systemImage: "camera.viewfinder")
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOrange)
+                    .padding(BrandSpacing.xs)
+                    .background(Color.bizarreOrange.opacity(0.12), in: Circle())
+            }
+            .accessibilityLabel("Scan device barcode")
+            .accessibilityIdentifier("repairFlow.devicePicker.scan")
+        }
+        .padding(BrandSpacing.sm)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                )
+                .foregroundStyle(Color.bizarreOrange.opacity(0.35))
+        )
+        .hoverEffect(.highlight)
+        .accessibilityIdentifier("repairFlow.device.add-new")
     }
 
     // MARK: - Shared sub-views
