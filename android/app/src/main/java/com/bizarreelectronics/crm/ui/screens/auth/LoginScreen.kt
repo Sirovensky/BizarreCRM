@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -1974,8 +1976,8 @@ fun LoginScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Step indicator
-            StepIndicator(state.step)
+            // Tab strip — Server | Sign In | 2FA
+            LoginTabBar(currentStep = state.step)
             Spacer(Modifier.height(24.dp))
 
             // Step content with animation
@@ -2018,51 +2020,55 @@ fun LoginScreen(
     } // end Scaffold
 }
 
+/**
+ * LoginTabBar — Material3 PrimaryTabRow replacing the old StepIndicator bar+text widget.
+ *
+ * Three tabs: Server | Sign In | 2FA.
+ * Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.
+ * Inactive tabs: muted onSurfaceVariant text + faint divider underline.
+ * Container is transparent so it blends with the screen background.
+ */
 @Composable
-private fun StepIndicator(currentStep: SetupStep) {
-    val steps = listOf(
-        "Server" to SetupStep.SERVER,
-        "Sign In" to SetupStep.CREDENTIALS,
-        "2FA" to SetupStep.TWO_FA_VERIFY,
-    )
-    val currentIndex = when (currentStep) {
+private fun LoginTabBar(currentStep: SetupStep) {
+    val tabLabels = listOf("Server", "Sign In", "2FA")
+    val selectedIndex = when (currentStep) {
         SetupStep.SERVER, SetupStep.REGISTER -> 0
         SetupStep.CREDENTIALS, SetupStep.SET_PASSWORD -> 1
         SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
     }
 
-    // Three thin 2px bar segments — inactive = outline, active = purple, completed = teal
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary   // teal
-    val outline = MaterialTheme.colorScheme.outline
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val activePurple = Color(0xFF8B5CF6)
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    Row(
+    // PrimaryTabRow manages the active indicator automatically (2dp underline);
+    // contentColor drives the purple indicator + active tab text.
+    PrimaryTabRow(
+        selectedTabIndex = selectedIndex,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        containerColor = Color.Transparent,
+        contentColor = activePurple,
+        divider = {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                thickness = 1.dp,
+            )
+        },
     ) {
-        steps.forEachIndexed { index, (label, _) ->
-            val barColor = when {
-                index < currentIndex -> secondary  // completed = teal
-                index == currentIndex -> primary   // active = purple
-                else -> outline                    // inactive = outline
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                HorizontalDivider(
-                    thickness = 2.dp,
-                    color = barColor,
-                )
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (index <= currentIndex) primary else onSurfaceVariant,
-                )
-            }
+        tabLabels.forEachIndexed { index, label ->
+            val isSelected = index == selectedIndex
+            Tab(
+                selected = isSelected,
+                onClick = { /* display-only; step driven by ViewModel */ },
+                text = {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSelected) activePurple else inactiveColor,
+                    )
+                },
+                selectedContentColor = activePurple,
+                unselectedContentColor = inactiveColor,
+            )
         }
     }
 }
@@ -2233,103 +2239,44 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
     }
 }
 
-// ─── Step 1b: Register (multi-step) ────────────────────────────────
-//
-// §2.7-L326 — four sub-steps tracked by RegisterSubStep enum.
-// Progress bar at top; AnimatedContent slides horizontally between sub-steps.
-// Validation fires on Next; Create Account on Confirm submits registerShop().
-
-private val REGISTER_SUB_STEPS = RegisterSubStep.values().toList()
+// ─── Step 1b: Register New Shop (single form) ───────────────────────
+// Mockup parity: one card, 4 fields visible at once — no sub-step wizard.
 
 @Composable
 private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
-    val subStepIndex = REGISTER_SUB_STEPS.indexOf(state.registerSubStep)
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val reduceMotion = remember {
-        android.provider.Settings.Global.getFloat(
-            context.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
-        ) == 0f
-    }
+    val focusManager = LocalFocusManager.current
+    var showPassword by remember { mutableStateOf(false) }
 
-    // §2.7-L326 — progress indicator: fraction = (index + 1) / total
-    LinearProgressIndicator(
-        progress = { (subStepIndex + 1).toFloat() / REGISTER_SUB_STEPS.size.toFloat() },
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Spacer(Modifier.height(12.dp))
-
-    // Header row with back arrow
+    // Header row: back arrow + title
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::registerPrevSubStep) {
-            Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+        IconButton(onClick = viewModel::goBack) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(4.dp))
-        Column {
-            Text(
-                text = when (state.registerSubStep) {
-                    RegisterSubStep.Company -> "Your Shop"
-                    RegisterSubStep.Owner -> "Account Owner"
-                    RegisterSubStep.ServerUrl -> "Server"
-                    RegisterSubStep.Confirm -> "Review & Create"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "Step ${subStepIndex + 1} of ${REGISTER_SUB_STEPS.size}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = "Register New Shop",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(4.dp))
 
-    // §2.7-L326 — animated horizontal slide; skip animation when ReduceMotion
-    AnimatedContent(
-        targetState = state.registerSubStep,
-        transitionSpec = {
-            if (reduceMotion) {
-                fadeIn() togetherWith fadeOut()
-            } else {
-                val forward = initialState.ordinal < targetState.ordinal
-                slideInHorizontally { if (forward) it else -it } + fadeIn() togetherWith
-                    slideOutHorizontally { if (forward) -it else it } + fadeOut()
-            }
-        },
-        contentKey = { it.ordinal },
-        label = "registerSubStep",
-    ) { subStep ->
-        Column(modifier = Modifier.fillMaxWidth()) {
-            when (subStep) {
-                RegisterSubStep.Company -> RegisterCompanySubStep(state, viewModel)
-                RegisterSubStep.Owner -> RegisterOwnerSubStep(state, viewModel)
-                RegisterSubStep.ServerUrl -> RegisterServerUrlSubStep(state, viewModel)
-                RegisterSubStep.Confirm -> RegisterConfirmSubStep(state, viewModel, onLoginSuccess)
-            }
-        }
-    }
-}
-
-// ── Sub-step: Company ──────────────────────────────
-
-@Composable
-private fun RegisterCompanySubStep(state: LoginUiState, viewModel: LoginViewModel) {
     Text(
-        "Tell us about your shop",
+        text = "Create your repair shop on BizarreCRM",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(16.dp))
 
+    // Field 1: Shop URL
     OutlinedTextField(
         value = state.shopSlug,
         onValueChange = viewModel::updateShopSlug,
         label = { Text("Shop URL") },
-        placeholder = { Text("myshop") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Link, null) },
+        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
         suffix = {
             Text(
                 ".$CLOUD_DOMAIN",
@@ -2338,385 +2285,99 @@ private fun RegisterCompanySubStep(state: LoginUiState, viewModel: LoginViewMode
             )
         },
         supportingText = { Text("3–30 characters: letters, numbers, hyphens") },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(8.dp))
 
+    // Field 2: Shop Display Name
     OutlinedTextField(
         value = state.registerShopName,
         onValueChange = viewModel::updateRegisterShopName,
         label = { Text("Shop Display Name") },
-        placeholder = { Text("My Repair Shop") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Store, null) },
+        leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(8.dp))
 
-    // §2.7-L328 — Timezone picker
-    TimezoneDropdown(
-        selected = state.registerTimezone,
-        onSelected = viewModel::updateRegisterTimezone,
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    // §2.7-L329 — Shop type selector
-    Spacer(Modifier.height(12.dp))
-    ShopTypeSelector(
-        selected = state.registerShopType,
-        onSelected = viewModel::updateRegisterShopType,
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    ErrorMessage(state.error)
-    Spacer(Modifier.height(16.dp))
-
-    Button(
-        onClick = viewModel::registerNextSubStep,
-        enabled = state.shopSlug.length >= 3 && state.registerShopName.isNotBlank() && !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        Text("Next")
-    }
-}
-
-// ── Sub-step: Owner ───────────────────────────────────
-
-@Composable
-private fun RegisterOwnerSubStep(state: LoginUiState, viewModel: LoginViewModel) {
-    val focusManager = LocalFocusManager.current
-    var showPassword by remember { mutableStateOf(false) }
-
-    Text(
-        "Create your admin account",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(12.dp))
-
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = state.registerFirstName,
-            onValueChange = viewModel::updateRegisterFirstName,
-            label = { Text("First Name") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
-        )
-        OutlinedTextField(
-            value = state.registerLastName,
-            onValueChange = viewModel::updateRegisterLastName,
-            label = { Text("Last Name") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
-        )
-    }
-    Spacer(Modifier.height(8.dp))
-
+    // Field 3: Admin Email
     OutlinedTextField(
         value = state.registerEmail,
         onValueChange = viewModel::updateRegisterEmail,
-        label = { Text("Email") },
+        label = { Text("Admin Email") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Email, null) },
+        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(8.dp))
 
+    // Field 4: Admin Password
     OutlinedTextField(
         value = state.registerPassword,
         onValueChange = viewModel::updateRegisterPassword,
-        label = { Text("Password") },
+        label = { Text("Admin Password") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-        leadingIcon = { Icon(Icons.Default.Lock, null) },
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             IconButton(onClick = { showPassword = !showPassword }) {
                 Icon(
                     if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    "Toggle password",
+                    contentDescription = "Toggle password visibility",
                 )
             }
         },
+        supportingText = { Text("Minimum 8 characters") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-        supportingText = { Text("Minimum 8 characters") },
     )
-    if (state.registerPassword.isNotEmpty()) {
+
+    // Error shown between password helper and Create Shop button
+    if (state.error != null) {
         Spacer(Modifier.height(8.dp))
-        PasswordStrengthMeter(password = state.registerPassword)
-    }
-
-    ErrorMessage(state.error)
-    Spacer(Modifier.height(16.dp))
-
-    val passStrength = PasswordStrength.evaluate(state.registerPassword).level
-    Button(
-        onClick = viewModel::registerNextSubStep,
-        enabled = state.registerFirstName.isNotBlank() && state.registerLastName.isNotBlank()
-                && state.registerEmail.isNotBlank()
-                && passStrength >= PasswordStrength.Level.FAIR
-                && !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        Text("Next")
-    }
-}
-
-// ── Sub-step: Server URL ───────────────────────────────
-
-@Composable
-private fun RegisterServerUrlSubStep(state: LoginUiState, viewModel: LoginViewModel) {
-    Text(
-        "Where will your CRM live?",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(12.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = !state.useCustomServer,
-            onClick = { if (state.useCustomServer) viewModel.toggleCustomServer() },
-            label = { Text("BizarreCRM Cloud", style = MaterialTheme.typography.labelMedium) },
-            leadingIcon = { Icon(Icons.Default.Language, null, modifier = Modifier.size(16.dp)) },
-            modifier = Modifier.weight(1f),
-        )
-        FilterChip(
-            selected = state.useCustomServer,
-            onClick = { if (!state.useCustomServer) viewModel.toggleCustomServer() },
-            label = { Text("Self-hosted", style = MaterialTheme.typography.labelMedium) },
-            leadingIcon = { Icon(Icons.Default.Dns, null, modifier = Modifier.size(16.dp)) },
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Spacer(Modifier.height(12.dp))
-
-    if (state.useCustomServer) {
-        OutlinedTextField(
-            value = state.serverUrl,
-            onValueChange = viewModel::updateServerUrl,
-            label = { Text("Server URL") },
-            placeholder = { Text("https://192.168.0.240:443") },
-            singleLine = true,
+        Text(
+            text = state.error,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.fillMaxWidth(),
-            leadingIcon = { Icon(Icons.Default.Dns, null) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
         )
-    } else {
-        Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = MaterialTheme.shapes.small,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Default.Language, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
-                val slugDisplay = if (state.shopSlug.isBlank()) "yourshop" else state.shopSlug
-                Text(
-                    "Your shop will be hosted at\nhttps://$slugDisplay.$CLOUD_DOMAIN",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            }
-        }
     }
 
-    ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
+    val isFormValid = state.shopSlug.length >= 3
+        && state.registerShopName.isNotBlank()
+        && state.registerEmail.isNotBlank()
+        && state.registerPassword.length >= 8
+        && !state.isLoading
+
+    // § 2.7-L327 -- onAutoLogin navigates to dashboard when server returns a token
     Button(
-        onClick = viewModel::registerNextSubStep,
-        enabled = !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        Text("Next")
-    }
-}
-
-// ── Sub-step: Confirm ─────────────────────────────────
-
-@Composable
-private fun RegisterConfirmSubStep(
-    state: LoginUiState,
-    viewModel: LoginViewModel,
-    onLoginSuccess: () -> Unit,
-) {
-    Text(
-        "Everything look right?",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(12.dp))
-
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.small,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            ConfirmRow("Shop URL", "${state.shopSlug}.$CLOUD_DOMAIN")
-            ConfirmRow("Shop Name", state.registerShopName)
-            ConfirmRow("Timezone", state.registerTimezone)
-            ConfirmRow("Shop Type", state.registerShopType.replaceFirstChar { it.uppercase() })
-            ConfirmRow("Owner", "${state.registerFirstName} ${state.registerLastName}".trim())
-            ConfirmRow("Email", state.registerEmail)
-            ConfirmRow("Server", if (state.useCustomServer && state.serverUrl.isNotBlank()) state.serverUrl else "BizarreCRM Cloud")
-        }
-    }
-
-    ErrorMessage(state.error)
-    Spacer(Modifier.height(16.dp))
-
-    // §2.7-L327 — onAutoLogin navigates to dashboard when server returns a token
-    BrandPrimaryButton(
         onClick = { viewModel.registerShop(onAutoLogin = onLoginSuccess) },
-        enabled = !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        enabled = isFormValid,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
     ) {
         if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
         } else {
-            Text("Create Account")
-        }
-    }
-}
-
-@Composable
-private fun ConfirmRow(label: String, value: String) {
-    if (value.isBlank()) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-    }
-}
-
-// ─── §2.7-L328 — Timezone dropdown ─────────────────────────────────
-
-private val CURATED_TIMEZONES = listOf(
-    "US/Pacific",
-    "US/Mountain",
-    "US/Central",
-    "US/Eastern",
-    "America/Anchorage",
-    "Pacific/Honolulu",
-    "UTC",
-    "Europe/London",
-    "Europe/Paris",
-    "Europe/Berlin",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Asia/Kolkata",
-    "Australia/Sydney",
-    "America/Toronto",
-    "America/Vancouver",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-    "America/New_York",
-    "America/Sao_Paulo",
-    "America/Mexico_City",
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TimezoneDropdown(
-    selected: String,
-    onSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // Ensure device default is in the list even if not in the curated set
-    val options = remember(selected) {
-        if (selected in CURATED_TIMEZONES) CURATED_TIMEZONES
-        else listOf(selected) + CURATED_TIMEZONES
-    }
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier,
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Timezone") },
-            leadingIcon = { Icon(Icons.Default.Schedule, null) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(),
-            singleLine = true,
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            options.forEach { tz ->
-                DropdownMenuItem(
-                    text = { Text(tz, style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onSelected(tz)
-                        expanded = false
-                    },
-                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
-                )
-            }
-        }
-    }
-}
-
-// ─── §2.7-L329 — Shop type selector ────────────────────────────────
-
-private val SHOP_TYPES = listOf("repair", "retail", "hybrid", "other")
-
-@Composable
-private fun ShopTypeSelector(
-    selected: String,
-    onSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier) {
-        Text(
-            "Shop Type",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SHOP_TYPES.forEach { type ->
-                val isSelected = type == selected
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onSelected(type) },
-                    label = {
-                        Text(
-                            type.replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            Text("Create Shop")
         }
     }
 }
