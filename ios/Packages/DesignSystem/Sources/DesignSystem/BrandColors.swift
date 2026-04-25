@@ -7,6 +7,11 @@ public extension Color {
     static let bizarreOutline            = Color("Outline",               bundle: .main)
     static let bizarreOnSurface          = Color("OnSurface",             bundle: .main)
     static let bizarreOnSurfaceMuted     = Color("OnSurfaceMuted",        bundle: .main)
+    /// Adaptive primary — cream `#fdeed0` in dark mode, deep-orange `#c2410c` in light.
+    /// Use this instead of `bizarreOrange` for all brand-primary interactive elements.
+    static let bizarrePrimary            = Color("BrandPrimary",          bundle: .main)
+    /// On-primary text — dark brown `#2b1400` (AAA on cream; white on deep-orange).
+    static let bizarreOnPrimary          = Color("OnBrandOrange",         bundle: .main)
     static let bizarreOrange             = Color("BrandOrange",           bundle: .main)
     static let bizarreOrangeContainer    = Color("BrandOrangeContainer",  bundle: .main)
     static let bizarreOnOrange           = Color("OnBrandOrange",         bundle: .main)
@@ -29,6 +34,8 @@ public extension ShapeStyle where Self == Color {
     static var bizarreOutline:         Color { .bizarreOutline }
     static var bizarreOnSurface:       Color { .bizarreOnSurface }
     static var bizarreOnSurfaceMuted:  Color { .bizarreOnSurfaceMuted }
+    static var bizarrePrimary:         Color { .bizarrePrimary }
+    static var bizarreOnPrimary:       Color { .bizarreOnPrimary }
     static var bizarreOrange:          Color { .bizarreOrange }
     static var bizarreOrangeContainer: Color { .bizarreOrangeContainer }
     static var bizarreOnOrange:        Color { .bizarreOnOrange }
