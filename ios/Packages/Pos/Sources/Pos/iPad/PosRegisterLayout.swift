@@ -142,34 +142,6 @@ public extension PosRegisterLayout where Inspector == EmptyView {
     }
 }
 
-// MARK: - Cart-collapse modifier
-
-/// Convenience view modifier — apply to the `PosReceiptView` parent to trigger
-/// the cart column collapse animation when payment completes.
-///
-/// Usage:
-/// ```swift
-/// PosRegisterLayout(isCartCollapsed: $cartCollapsed) { ... }
-///     .posCartCollapse(isCollapsed: isPaid)
-/// ```
-public struct PosCartCollapseModifier: ViewModifier {
-    let isCollapsed: Bool
-
-    public func body(content: Content) -> some View {
-        // The actual collapse is driven by the `isCartCollapsed` binding
-        // passed into `PosRegisterLayout`. This modifier exists so callers
-        // can use a clean `.posCartCollapse(isCollapsed:)` syntax.
-        content
-    }
-}
-
-public extension View {
-    /// Signal that the cart column should collapse (used on the receipt screen).
-    func posCartCollapse(isCollapsed: Bool) -> some View {
-        modifier(PosCartCollapseModifier(isCollapsed: isCollapsed))
-    }
-}
-
 // MARK: - Helpers
 
 private extension Comparable {
