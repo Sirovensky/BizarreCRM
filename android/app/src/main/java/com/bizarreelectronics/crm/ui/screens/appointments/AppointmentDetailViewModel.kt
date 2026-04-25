@@ -24,6 +24,21 @@ data class AppointmentDetailUiState(
     val conflictWarning: String? = null,
     /** Whether the cancel+notify dialog is showing. */
     val showCancelDialog: Boolean = false,
+    /**
+     * Whether the recurring-edit scope dialog is showing (item 5).
+     * Set to true when the user taps Save on a recurring appointment (rrule != null).
+     */
+    val showRecurringEditDialog: Boolean = false,
+    /**
+     * Selected scope in the recurring-edit dialog.
+     * One of "single" | "future" | "all". Defaults to "single".
+     */
+    val pendingRecurringScope: String = "single",
+    /**
+     * The PATCH body buffered while waiting for the user to choose an edit scope.
+     * Dispatched once [confirmRecurringEdit] is called.
+     */
+    val pendingPatchBody: Map<String, Any?>? = null,
 )
 
 @HiltViewModel
@@ -158,6 +173,42 @@ class AppointmentDetailViewModel @Inject constructor(
             val time = other.startTime?.take(5) ?: "?"
             "Overlaps with ${other.customerName ?: "another appointment"} at $time"
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Recurring-edit scope dialog (item 5)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Call instead of [patch] when the appointment has an rrule. Shows the scope
+     * dialog and buffers [body] until the user confirms their choice.
+     */
+    fun requestRecurringEdit(body: Map<String, Any?>) {
+        val isRecurring = _state.value.appointment?.rrule?.isNotBlank() == true ||
+            _state.value.appointment?.recurrenceParentId != null
+        if (isRecurring) {
+            _state.update { it.copy(showRecurringEditDialog = true, pendingPatchBody = body) }
+        } else {
+            patch(body, optimisticUpdate = { it })
+        }
+    }
+
+    fun updateRecurringScope(scope: String) {
+        _state.update { it.copy(pendingRecurringScope = scope) }
+    }
+
+    fun confirmRecurringEdit() {
+        val body = _state.value.pendingPatchBody ?: return
+        val scope = _state.value.pendingRecurringScope
+        _state.update { it.copy(showRecurringEditDialog = false, pendingPatchBody = null) }
+        patch(
+            body = body + mapOf("edit_scope" to scope),
+            optimisticUpdate = { it },
+        )
+    }
+
+    fun dismissRecurringEditDialog() {
+        _state.update { it.copy(showRecurringEditDialog = false, pendingPatchBody = null) }
     }
 
     // ---------------------------------------------------------------------------

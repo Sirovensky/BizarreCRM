@@ -1403,8 +1403,8 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.4 Create
 - [x] Minimal form.
-- [ ] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
-- [ ] **Offline create** + reconcile.
+- [x] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
+- [x] **Offline create** + reconcile.
 
 ### 9.5 Lost-reason modal
 - [x] Required dropdown (price / timing / competitor / not-a-fit / other) + free-text. (commit e3f5579 — `components/LostReasonDialog.kt` + `LostReasonCategory` enum + validation before confirm)
@@ -1425,24 +1425,24 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
 ### 10.2 Detail
-- [ ] Customer card + linked ticket / estimate / lead.
-- [ ] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
+- [x] Customer card + linked ticket / estimate / lead.
+- [x] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
 - [x] Reminder offsets (15min / 1h / 1day before) — respects per-user default. (commit c00bd78 — `ReminderOffsetPicker.kt` Off/15min/1h/1day/Custom SegmentedButton + custom OutlinedTextField)
 - [x] Quick actions chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket. (commit c00bd78 — Confirm/Reschedule/Cancel/No-show SuggestionChip row in detail header)
 - [x] Send-reminder manually (`POST /sms/send` + template). (commit c00bd78 — Send Reminder OutlinedButton → POST /appointments/:id/send-reminder; 404 tolerated)
 
 ### 10.3 Create
 - [ ] Minimal.
-- [ ] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
+- [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
 - [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
 - [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
-- [ ] **Idempotency** + offline temp-id.
+- [x] **Idempotency** + offline temp-id.
 
 ### 10.4 Edit / reschedule / cancel
 - [x] Drag-to-reschedule (tablet day/week views) with `HapticFeedbackConstants.GESTURE_END` on drop.
 - [x] Cancel — ask "Notify customer?" (SMS/email). (commit c00bd78 — dialog with `notify_customer` checkbox → POST /appointments/:id/cancel)
 - [x] No-show — one-tap from detail; optional fee. (commit c00bd78 — single tap → PATCH `status="no_show"` + toast; fee flow deferred)
-- [ ] Recurring-event edits — "This event" / "This and following" / "All".
+- [x] Recurring-event edits — "This event" / "This and following" / "All".
 
 ### 10.5 Reminders
 - [ ] Server cron sends FCM N min before (per-user setting).
@@ -2301,11 +2301,11 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 23.5 Window insets
 - [x] Edge-to-edge via `WindowCompat.setDecorFitsSystemWindows(window, false)`.
 - [~] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently.
-- [ ] Respect 3-button vs gesture navigation.
+- [x] Respect 3-button vs gesture navigation.
 
 ### 23.6 Predictive back
-- [ ] `PredictiveBackHandler` on every non-root screen; animations preview the back target.
-- [ ] Custom enter/exit transitions survive the drag.
+- [x] `PredictiveBackHandler` on every non-root screen; animations preview the back target.
+- [x] Custom enter/exit transitions survive the drag.
 
 ---
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
@@ -4759,6 +4759,34 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 Findings produced by 10 parallel sonnet code-audit agents, deduped. Each item is independently checkable. Cron `pos-fix-loop-reminder` fires every 10 minutes nudging continuation; remove the cron when this section is empty.
 
 ---
+
+## Login-flow mockup parity wave — 2026-04-24
+
+### Wave-2 Finder-E copy fidelity
+
+Scope: exact string comparison of every visible text node in screens 01–11 against `LoginScreen.kt`. Items 001–089 were filed in Wave 1; this wave starts at 090. Mockup source: `screen-01-login.png`, `screen-02-register.png`, `screen-03-register-filled.png`, `screen-04-url-only.png`, `screen-05-filled.png`, `screen-06-after-create.png`, `screen-07-back.png`, `screen-08-retry.png`, `screen-09-create-result.png`, `screen-10-signed-in.png`, `screen-11-post-2fa.png`.
+
+- [ ] **LOGIN-MOCK-090 (Copy). "Register new shop" link is sentence-case while "Register New Shop" heading on the next screen is title-case — inconsistent capitalisation for the same destination.** `ServerStep` line 2262: `Text("Register new shop", ...)`. Mockup screen-01 renders it as "Register new shop" (sentence-case), which the code matches. However the Register form heading at line 2283 is `"Register New Shop"` (title-case), confirmed by mockup screen-02. The two surfaces name the same destination differently. Decide on one rule; if title-case wins, fix line 2262. `LoginScreen.kt:2262, 2283`.
+
+- [ ] **LOGIN-MOCK-091 (Copy). Self-hosted mode subtitle "Enter your self-hosted server address" has no mockup backing — copy is unreviewed.** When `state.useCustomServer == true`, `ServerStep` shows `"Enter your self-hosted server address"` (line 2172). None of the 11 mockup screens depict the self-hosted subtitle. The cloud-mode subtitle `"Enter your shop name to connect"` is confirmed by screens 01, 07, 08; the self-hosted variant is live UI copy that was never validated against a mockup frame. `LoginScreen.kt:2172`.
+
+- [ ] **LOGIN-MOCK-092 (Copy). "Server URL" label (self-hosted mode) is live but unreviewed; conflicts in noun with "Shop URL" on the Register form.** The field label `"Server URL"` (line 2184) only renders in self-hosted mode, which no mockup depicts. The Register step uses `"Shop URL"` (line 2302, confirmed by mockup screens 02–06). Two different nouns ("Server URL" vs "Shop URL") describe analogous URL-entry fields with no mockup to adjudicate. `LoginScreen.kt:2184, 2302`.
+
+- [ ] **LOGIN-MOCK-093 (Copy). "Use BizarreCRM Cloud" toggle label has no mockup backing.** The `TextButton` in `ServerStep` shows `"Use BizarreCRM Cloud"` (line 2256) when self-hosted mode is active. No mockup screen shows this toggle state — only `"Self-hosted?"` (confirmed screen-01) is reviewed. The reverse-toggle label is live copy never validated against design. `LoginScreen.kt:2256`.
+
+- [ ] **LOGIN-MOCK-094 (Copy). TwoFaVerifyStep title "Two-Factor Authentication" and body "Enter the 6-digit code from your authenticator app" have no mockup backing.** All 11 mockup screens show only the *setup* step (`"Set Up Two-Factor Auth"` / `"Scan this QR code…"`). The verify-step strings at lines 3377 and 3380 are live UI copy that has never been reviewed. Note that the setup-step title and body at lines 3181 and 3184 exactly match the mockup. `LoginScreen.kt:3377, 3380`.
+
+- [ ] **LOGIN-MOCK-095 (Copy). SSO, magic-link, and passkey button labels on the Credentials step have no mockup backing.** `"Sign in with SSO"` (line 2757), `"Email me a link"` (line 2811), and `"Use passkey"` (line 2851) are all live on the Credentials step but do not appear in any of the 11 mockup screens. All three are feature-flag-gated copy that has never been reviewed against design. `LoginScreen.kt:2757, 2811, 2851`.
+
+- [ ] **LOGIN-MOCK-096 (Copy). Entire magic-link bottom-sheet copy block is unreviewed against any mockup.** `MagicLinkRequestSheet` contains: `"Sign in with a magic link"` (line 2882), `"We'll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Email address"` label (line 2899), `"Send link"` button (line 2927), `"Check your email"` sent banner (line 2949), `"A sign-in link was sent to …"` body (line 2955), and resend controls (lines 2989, 2991). No mockup screen depicts this sheet. `LoginScreen.kt:2882–2991`.
+
+- [ ] **LOGIN-MOCK-097 (Copy). "Origin header required" error in screen-06 is a raw server message, not a client-owned string — wording is outside the app's control.** Mockup `screen-06-after-create.png` shows the red inline error `"Origin header required"` below the password field on the Register form. In code the text is the raw server JSON `message` field surfaced at line 758 (`rJson.optString("message", "Registration failed")`); the string `"Origin header required"` does not appear in the source. A server-wording change propagates to the UI silently. Consider a client-side map from known technical server messages to user-readable strings. `LoginScreen.kt:755–758`.
+
+- [ ] **LOGIN-MOCK-098 (Copy). Loading-state inline text "Connecting to your server…" and "Checking sign-in method…" are live copy with no mockup coverage.** Lines 2441 and 2665 use Unicode HORIZONTAL ELLIPSIS (U+2026) correctly, but neither loading state is shown in any of the 11 mockup screens. The copy has never been reviewed against design. `LoginScreen.kt:2441, 2665`.
+
+- [ ] **LOGIN-MOCK-099 (Copy). Error banner strings "You're offline. Connect to sign in." and "Can't reach this server. Check the address." have no mockup backing.** The offline banner (line 2520) and unreachable-host banner (line 2548) render on the Credentials step. No mockup screen depicts either error state. Both are live copy unreviewed against design. `LoginScreen.kt:2520, 2548`.
+
+- [ ] **LOGIN-MOCK-100 (Copy). The ".bizarrecrm.com" suffix is rendered from `BuildConfig.BASE_DOMAIN` at runtime and is invisible to string-search tooling.** Mockup screens 01–06 show `.bizarrecrm.com` as an inline suffix on both the "Shop Name" and "Shop URL" fields. In code both render `".$CLOUD_DOMAIN"` where `CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` (line 110). The displayed string matches the mockup in production, but any `BASE_DOMAIN` rename in `build.gradle` silently breaks both fields with no compile error or test failure. Add a compile-time assertion or screenshot snapshot asserting `CLOUD_DOMAIN == "bizarrecrm.com"`. `LoginScreen.kt:110, 2209, 2308`.
 
 ## Login-flow mockup parity wave — 2026-04-24
 

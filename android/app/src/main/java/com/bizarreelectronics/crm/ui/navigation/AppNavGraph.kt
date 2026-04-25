@@ -230,6 +230,9 @@ sealed class Screen(val route: String) {
     // Appointments (part of leads module)
     data object Appointments : Screen("appointments")
     data object AppointmentCreate : Screen("appointment-create")
+    data object AppointmentDetail : Screen("appointments/{appointmentId}") {
+        fun createRoute(id: Long) = "appointments/$id"
+    }
 
     // Estimates
     data object Estimates : Screen("estimates")
@@ -649,6 +652,7 @@ fun AppNavGraph(
             !currentRoute.startsWith("leads/") &&
             currentRoute != Screen.LeadCreate.route &&
             currentRoute != Screen.AppointmentCreate.route &&
+            !currentRoute.startsWith("appointments/") &&
             !currentRoute.startsWith("estimates/") &&
             currentRoute != Screen.ExpenseCreate.route &&
             !currentRoute.startsWith("settings/") &&
@@ -913,10 +917,29 @@ fun AppNavGraph(
                 navController = navController,
                 startDestination = startDest,
                 modifier = Modifier.weight(1f),
-                enterTransition = { fadeIn(animationSpec = tween(200)) },
-                exitTransition = { fadeOut(animationSpec = tween(200)) },
-                popEnterTransition = { fadeIn(animationSpec = tween(200)) },
-                popExitTransition = { fadeOut(animationSpec = tween(200)) },
+                // Foldable §23: horizontal slide transitions make predictive-back
+                // system gesture preview meaningful — the back-target screen slides
+                // in from the left as the user swipes. Navigation 2.8+ with
+                // enableOnBackInvokedCallback="true" in the manifest + the system
+                // handling predictive back means these transitions are replayed
+                // during the drag automatically. 200ms tween is fast enough to feel
+                // snappy on a phone but slow enough to be visible on a large tablet.
+                enterTransition = {
+                    slideInHorizontally(animationSpec = tween(200)) { it } +
+                        fadeIn(animationSpec = tween(200))
+                },
+                exitTransition = {
+                    slideOutHorizontally(animationSpec = tween(200)) { -it / 3 } +
+                        fadeOut(animationSpec = tween(200))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(animationSpec = tween(200)) { -it / 3 } +
+                        fadeIn(animationSpec = tween(200))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(animationSpec = tween(200)) { it } +
+                        fadeOut(animationSpec = tween(200))
+                },
             ) {
             // §2.7 L330 — the Login route accepts an optional `setupToken` query arg
             // delivered by DeepLinkBus when an invite link is tapped. The arg is
@@ -1870,12 +1893,34 @@ fun AppNavGraph(
             composable(Screen.Appointments.route) {
                 com.bizarreelectronics.crm.ui.screens.leads.AppointmentListScreen(
                     onCreateClick = { navController.navigate(Screen.AppointmentCreate.route) },
+                    onAppointmentClick = { id ->
+                        navController.navigate(Screen.AppointmentDetail.createRoute(id))
+                    },
                 )
             }
             composable(Screen.AppointmentCreate.route) {
                 com.bizarreelectronics.crm.ui.screens.leads.AppointmentCreateScreen(
                     onBack = { navController.popBackStack() },
                     onCreated = { _ -> navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.AppointmentDetail.route,
+                arguments = listOf(navArgument("appointmentId") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.appointments.AppointmentDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id))
+                    },
+                    onNavigateToTicket = { id ->
+                        navController.navigate(Screen.TicketDetail.createRoute(id))
+                    },
+                    onNavigateToEstimate = { id ->
+                        navController.navigate(Screen.EstimateDetail.createRoute(id))
+                    },
+                    // TODO(10.2): wire onNavigateToLead once LeadDetail route accepts a Long
+                    onNavigateToLead = null,
                 )
             }
 

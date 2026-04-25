@@ -216,6 +216,7 @@ class AppointmentListViewModel @Inject constructor(
 @Composable
 fun AppointmentListScreen(
     onCreateClick: () -> Unit,
+    onAppointmentClick: (Long) -> Unit = {},
     viewModel: AppointmentListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -339,7 +340,7 @@ fun AppointmentListScreen(
                 weekStart = weekStart,
                 onWeekPrev = { weekStart = weekStart.minusWeeks(1) },
                 onWeekNext = { weekStart = weekStart.plusWeeks(1) },
-                onAppointmentClick = { /* detail nav deferred — read-only this wave */ },
+                onAppointmentClick = { appt -> onAppointmentClick(appt.id) },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -471,7 +472,10 @@ fun AppointmentListScreen(
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        AppointmentList(appointments = state.appointments)
+                        AppointmentList(
+                            appointments = state.appointments,
+                            onAppointmentClick = onAppointmentClick,
+                        )
                     }
                 }
             }
@@ -480,7 +484,10 @@ fun AppointmentListScreen(
 }
 
 @Composable
-private fun AppointmentList(appointments: List<AppointmentDetail>) {
+private fun AppointmentList(
+    appointments: List<AppointmentDetail>,
+    onAppointmentClick: (Long) -> Unit = {},
+) {
     // Group by day key extracted from start_time
     val grouped: Map<String, List<AppointmentDetail>> = appointments
         .sortedBy { it.startTime ?: "" }
@@ -503,7 +510,7 @@ private fun AppointmentList(appointments: List<AppointmentDetail>) {
                 DayHeader(dayKey = dayKey)
             }
             items(dayAppointments, key = { it.id }) { appointment ->
-                AppointmentCard(appointment = appointment)
+                AppointmentCard(appointment = appointment, onClick = { onAppointmentClick(appointment.id) })
             }
         }
     }
@@ -534,7 +541,7 @@ private fun DayHeader(dayKey: String) {
 }
 
 @Composable
-private fun AppointmentCard(appointment: AppointmentDetail) {
+private fun AppointmentCard(appointment: AppointmentDetail, onClick: () -> Unit = {}) {
     val meta = appointmentStatusMeta(appointment.status)
 
     // a11y: build the announcement string once. The card is visually tappable (Row with
@@ -552,6 +559,7 @@ private fun AppointmentCard(appointment: AppointmentDetail) {
     }
 
     Card(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {

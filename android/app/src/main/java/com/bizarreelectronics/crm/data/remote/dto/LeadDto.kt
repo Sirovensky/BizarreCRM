@@ -194,6 +194,15 @@ data class CreateLeadRequest(
     @SerializedName("assigned_to")
     val assignedTo: Long? = null,
     val notes: String? = null,
+    // Extended fields (section 9 batch 1)
+    @SerializedName("lead_score")
+    val leadScore: Int? = null,
+    val value: Double? = null,
+    val stage: String? = null,
+    @SerializedName("follow_up_date")
+    val followUpDate: String? = null,
+    val tags: List<String>? = null,
+    // TODO: custom fields support — skip for now until server schema is defined
     val devices: List<CreateLeadDeviceRequest>? = null,
 )
 
@@ -233,6 +242,15 @@ data class UpdateLeadRequest(
     val notes: String? = null,
     @SerializedName("lost_reason")
     val lostReason: String? = null,
+    // Extended fields (section 9 batch 1)
+    @SerializedName("lead_score")
+    val leadScore: Int? = null,
+    val value: Double? = null,
+    val stage: String? = null,
+    @SerializedName("follow_up_date")
+    val followUpDate: String? = null,
+    val tags: List<String>? = null,
+    // TODO: custom fields support — skip for now until server schema is defined
     val devices: List<CreateLeadDeviceRequest>? = null,
 )
 
@@ -246,7 +264,26 @@ data class CreateAppointmentRequest(
     val startTime: String,
     @SerializedName("end_time")
     val endTime: String? = null,
+    @SerializedName("duration_minutes")
+    val durationMinutes: Int? = null,
     @SerializedName("assigned_to")
     val assignedTo: Long? = null,
+    val location: String? = null,
+    val type: String? = null,
+    // Linked entities (10.3)
+    @SerializedName("linked_ticket_id")
+    val linkedTicketId: Long? = null,
+    @SerializedName("linked_estimate_id")
+    val linkedEstimateId: Long? = null,
+    @SerializedName("linked_lead_id")
+    val linkedLeadId: Long? = null,
+    // Reminder offsets — comma-separated list of minutes, e.g. "5,15,60" (10.3)
+    @SerializedName("reminder_offsets")
+    val reminderOffsets: String? = null,
+    // Recurrence (10.3) — RRULE string e.g. "FREQ=WEEKLY;BYDAY=MO"
+    val rrule: String? = null,
     val notes: String? = null,
+    // Idempotency key — per-attempt UUID (AP5)
+    @SerializedName("idempotency_key")
+    val idempotencyKey: String? = null,
 )
