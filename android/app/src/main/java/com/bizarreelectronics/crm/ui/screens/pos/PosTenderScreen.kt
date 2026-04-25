@@ -48,6 +48,33 @@ fun PosTenderScreen(
         )
     }
 
+    PosKeyboardShortcuts(
+        // F1 — new sale: go back (caller pops Tender → Cart → Entry, or
+        // PosCoordinator handles full reset via back-stack).
+        onNewSale = onBack,
+        // F2 — scan: no barcode scanner on tender screen. No-op.
+        onScan = {},
+        // F3 — customer search: customer is already attached at tender stage. No-op.
+        onCustomerSearch = {},
+        // F4 — discount: discounts must be applied in the cart, not at tender. No-op.
+        onDiscount = {},
+        // F5 — tender / charge: invoke finalizeSale() — same as the "Charge $X"
+        // bottom-bar button. Only fires if isFullyPaid; otherwise VM no-ops.
+        onTender = viewModel::finalizeSale,
+        // F6 — park: available via the PaymentMethodGrid "Park cart" tile;
+        // delegate to parkCart() so the key mirrors the tile.
+        onPark = viewModel::parkCart,
+        // F7 — print: navigate to receipt with the completed orderId for
+        // reprint, but only when the sale is already completed. If not yet
+        // completed, the key is a no-op to prevent a premature nav.
+        onPrint = {
+            state.completedOrderId?.let { onNavigateToReceipt(it) }
+        },
+        // F8 — refund: refund flow not yet implemented. No-op.
+        onRefund = {},
+        // Ctrl+F — no search field on tender screen. No-op.
+        onFocusSearch = {},
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -143,6 +170,7 @@ fun PosTenderScreen(
             viewModel.clearError()
         }
     }
+    } // end PosKeyboardShortcuts
 }
 
 // ─── Balance hero card ────────────────────────────────────────────────────────

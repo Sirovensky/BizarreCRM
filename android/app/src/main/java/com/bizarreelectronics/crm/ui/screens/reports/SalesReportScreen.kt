@@ -1,7 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.reports
 
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +12,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -21,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -34,6 +43,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.reports.components.ChartDrillThrough
 import com.bizarreelectronics.crm.ui.screens.reports.components.ReportsExportActions
+import com.bizarreelectronics.crm.ui.screens.pos.toDollarString
 import com.bizarreelectronics.crm.util.CurrencyFormatter
 
 /**
@@ -50,10 +60,11 @@ import com.bizarreelectronics.crm.util.CurrencyFormatter
  * Rendered inside ReportsScreen when the SALES type is selected.
  * The ViewModel is shared with the parent ReportsScreen.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SalesReportScreen(
     onDrillThroughDate: (isoDate: String) -> Unit = {},
+    onReprintOrder: (orderId: String) -> Unit = {},
     viewModel: ReportsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -177,6 +188,95 @@ fun SalesReportScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
+
+            // ── Recent transactions with reprint ──────────────────────────────
+            if (state.recentTransactions.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Recent Transactions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .semantics { heading() },
+                    )
+                }
+                items(state.recentTransactions, key = { it.invoiceId }) { tx ->
+                    SaleTransactionRow(
+                        transaction = tx,
+                        onReprint = { onReprintOrder(tx.orderId) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── Sale transaction row with reprint dropdown ───────────────────────────────
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SaleTransactionRow(
+    transaction: SaleTransaction,
+    onReprint: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { menuExpanded = true },
+                onLongClickLabel = "Show actions for order ${transaction.orderId}",
+            ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "#${transaction.orderId}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    transaction.customerName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                transaction.totalCents.toDollarString(),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Outlined.MoreVert,
+                        contentDescription = "Actions for order ${transaction.orderId}",
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Reprint receipt") },
+                        onClick = {
+                            menuExpanded = false
+                            onReprint()
+                        },
                     )
                 }
             }

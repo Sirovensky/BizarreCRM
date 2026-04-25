@@ -10,4 +10,13 @@
     <files-path
         name="crash-reports"
         path="crash-reports/" />
+
+    <!--
+      POS-RECEIPT-RE-AUDIT — exposes cacheDir/receipts/ so PosReceiptViewModel
+      can render a PDF to a File and share it via ACTION_SEND without needing
+      world-readable storage. "cache-path" root maps to Context.getCacheDir().
+    -->
+    <cache-path
+        name="receipts"
+        path="receipts/" />
 </paths>

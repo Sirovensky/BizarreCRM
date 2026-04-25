@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,8 +27,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +42,9 @@ fun PosReceiptScreen(
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
 
+    // Gift receipt toggle — local UI state passed down to print call.
+    var giftReceipt by remember { mutableStateOf(false) }
+
     fun launchTrackingUrl(url: String) {
         val uri = Uri.parse(url)
         try {
@@ -48,6 +55,37 @@ fun PosReceiptScreen(
         }
     }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // SAF launcher — opens system file picker for "Save PDF".
+    val pdfSafLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        uri?.let { viewModel.downloadPdf(it) }
+    }
+
+    // When VM sets pendingEmailPdfUri, wrap with FileProvider and fire ACTION_SEND.
+    LaunchedEffect(state.pendingEmailPdfUri) {
+        val rawUri = state.pendingEmailPdfUri ?: return@LaunchedEffect
+        // rawUri is a file:// URI from VM; wrap into content:// via FileProvider.
+        val file = File(rawUri.path ?: return@LaunchedEffect)
+        val contentUri = runCatching {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+        }.getOrNull() ?: return@LaunchedEffect
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, contentUri)
+            state.customerEmail?.let { putExtra(Intent.EXTRA_EMAIL, arrayOf(it)) }
+            putExtra(Intent.EXTRA_SUBJECT, "Your receipt — Invoice #${state.invoiceId ?: state.orderId}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Email receipt via…"))
+        viewModel.clearPendingEmailUri()
+    }
 
     LaunchedEffect(state.snackbarMessage) {
         state.snackbarMessage?.let { msg ->
@@ -180,15 +218,66 @@ fun PosReceiptScreen(
                     contentDesc = "Send email receipt to $email",
                 )
             }
+            // ── Gift receipt toggle ────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "Gift receipt (hide prices)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Switch(
+                    checked = giftReceipt,
+                    onCheckedChange = { giftReceipt = it },
+                )
+            }
+
             SendRow(
                 emoji = "🖨",
                 title = "Thermal print",
                 subtitle = "Epson TM-m30 · counter",
                 isPrimary = false,
-                sendState = SendState.IDLE,
-                onSend = { /* thermal print — Phase 4 hardware */ },
+                sendState = state.printSentState,
+                onSend = { viewModel.printThermal(giftReceipt) },
                 contentDesc = "Print thermal receipt",
             )
+
+            // ── PDF / Email actions ────────────────────────────────────────────
+            Text(
+                "EXPORT",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+            )
+
+            SendRow(
+                emoji = "⬇",
+                title = "Download PDF",
+                subtitle = "Save to device via Files",
+                isPrimary = false,
+                sendState = SendState.IDLE,
+                onSend = {
+                    pdfSafLauncher.launch("receipt_${state.orderId.ifBlank { "sale" }}.pdf")
+                },
+                contentDesc = "Download receipt as PDF",
+            )
+
+            state.customerEmail?.let { email ->
+                SendRow(
+                    emoji = "📧",
+                    title = "Email via mail app",
+                    subtitle = "$email · opens mail app",
+                    isPrimary = false,
+                    sendState = SendState.IDLE,
+                    onSend = { viewModel.prepareLocalEmailIntent() },
+                    contentDesc = "Email receipt via local mail app to $email",
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
         }

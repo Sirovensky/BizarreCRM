@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -12,9 +13,11 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.*
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -30,11 +33,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +58,7 @@ fun PosCartScreen(
     var showDiscountDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var showParkedCarts by remember { mutableStateOf(false) }
     // Mockup PHONE 3 path tabs: Catalog | Cart · N · $X — selected tab
     // index 1 by default since cashier reaches this screen with intent to
     // tender. Catalog tab populates from quick-add (Today's Top-5).
@@ -79,6 +85,30 @@ fun PosCartScreen(
         }
     }
 
+    PosKeyboardShortcuts(
+        // F1 — new sale: go back to PosEntry (caller pops the cart screen,
+        // which resets the VM via PosCoordinator.startNewSale).
+        onNewSale = onBack,
+        // F2 — scan: delegate to the same camera-scanner callback used by the
+        // top-bar scan icon.
+        onScan = onScanBarcode,
+        // F3 — customer search: no standalone search field on cart screen;
+        // customer is already attached. No-op.
+        onCustomerSearch = {},
+        // F4 — discount: programmatically open the cart-discount dialog.
+        onDiscount = { showDiscountDialog = true },
+        // F5 — tender: navigate to PosTender (same as the Tender button CTA).
+        onTender = onNavigateToTender,
+        // F6 — park: POS-PARK-001 stub — mirrors the overflow-menu "Park cart"
+        // item which is also a no-op pending implementation.
+        onPark = {},
+        // F7 — print: no receipt exists at cart stage. No-op.
+        onPrint = {},
+        // F8 — refund: refund flow not yet implemented. No-op.
+        onRefund = {},
+        // Ctrl+F — catalog tab has tile grid, not a TextField. No-op.
+        onFocusSearch = {},
+    ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -121,6 +151,57 @@ fun PosCartScreen(
                     } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
                 },
                 actions = {
+                    // ── Location chip ────────────────────────────────────────
+                    AssistChip(
+                        onClick = { /* TODO: location picker */ },
+                        label = {
+                            Text(state.locationName, style = MaterialTheme.typography.labelSmall)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Outlined.Place,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        },
+                        modifier = Modifier.height(28.dp),
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    // ── Shift status chip ────────────────────────────────────
+                    AssistChip(
+                        onClick = { /* TODO: clock-in/out */ },
+                        label = {
+                            Text(
+                                if (state.shiftActive) "On shift" else "Off shift",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Circle,
+                                contentDescription = null,
+                                modifier = Modifier.size(8.dp),
+                                tint = if (state.shiftActive) LocalExtendedColors.current.success
+                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        modifier = Modifier.height(28.dp),
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    // ── Parked carts chip (only when count > 0) ──────────────
+                    if (state.parkedCartCount > 0) {
+                        AssistChip(
+                            onClick = { showParkedCarts = true },
+                            label = {
+                                Text(
+                                    "${state.parkedCartCount} parked",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            modifier = Modifier.height(28.dp),
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                    }
                     IconButton(onClick = onScanBarcode) {
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
                     }
@@ -303,6 +384,17 @@ fun PosCartScreen(
             },
         )
     }
+    // ── Parked carts sheet ───────────────────────────────────────────────────
+    if (showParkedCarts) {
+        PosParkedCartsSheet(
+            onDismiss = { showParkedCarts = false },
+            onRestoreCart = { cartId ->
+                viewModel.restoreParkedCart(cartId)
+                showParkedCarts = false
+            },
+        )
+    }
+    } // end PosKeyboardShortcuts
 }
 
 // ─── Cart line row with swipe-to-remove ──────────────────────────────────────
@@ -549,11 +641,17 @@ private fun CartPathTabs(
 
 // ─── Catalog tab — quick-add tile grid ───────────────────────────────────────
 
+// MVP category list — hardcoded until a /pos-enrich/categories endpoint exists.
+private val CATALOG_CATEGORIES = listOf("Parts", "Services", "Accessories", "Refurbished")
+
 @Composable
 private fun CatalogTab(
     items: List<com.bizarreelectronics.crm.data.remote.api.QuickAddItem>,
     onTileTap: (com.bizarreelectronics.crm.data.remote.api.QuickAddItem) -> Unit,
 ) {
+    // Category filter state — null means "All"
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
+
     if (items.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -568,15 +666,62 @@ private fun CatalogTab(
         }
         return
     }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        gridItems(items, key = { it.id }) { item ->
-            CatalogTile(item = item, onClick = { onTileTap(item) })
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // ── Category filter chips ─────────────────────────────────────────
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // "All" chip
+            item {
+                FilterChip(
+                    selected = selectedCategory == null,
+                    onClick = { selectedCategory = null },
+                    label = { Text("All") },
+                )
+            }
+            items(CATALOG_CATEGORIES, key = { it }) { category ->
+                FilterChip(
+                    selected = selectedCategory == category,
+                    onClick = {
+                        selectedCategory = if (selectedCategory == category) null else category
+                    },
+                    label = { Text(category) },
+                )
+            }
+        }
+
+        // ── Filtered tile grid ────────────────────────────────────────────
+        val filtered = if (selectedCategory == null) items
+                       else items.filter { it.category == selectedCategory }
+
+        if (filtered.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "No items in this category.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            // GridCells.Adaptive(140.dp): phones (~360dp) → 2 cols,
+            // tablets (~800dp) → 4+ cols automatically.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                gridItems(filtered, key = { it.id }) { item ->
+                    CatalogTile(item = item, onClick = { onTileTap(item) })
+                }
+            }
         }
     }
 }
@@ -586,29 +731,69 @@ private fun CatalogTile(
     item: com.bizarreelectronics.crm.data.remote.api.QuickAddItem,
     onClick: () -> Unit,
 ) {
+    // Tile is 120dp tall: top-half photo (or emoji fallback), bottom-half text.
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(120.dp)
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClickLabel = "Add ${item.name}") { onClick() }
-            .padding(10.dp)
-            .defaultMinSize(minHeight = 92.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .clickable(onClickLabel = "Add ${item.name}") { onClick() },
+        verticalArrangement = Arrangement.Top,
     ) {
-        Text(
-            item.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-        )
-        Text(
-            item.priceCents.toDollarString(),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        if (item.photoUrl != null) {
+            // Photo fills top half of the tile (1:1 crop).
+            AsyncImage(
+                model = item.photoUrl,
+                contentDescription = item.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+            )
+        } else {
+            // Fallback: emoji/icon area in surfaceVariant
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                val glyph = when (item.category?.lowercase()) {
+                    "services" -> "⚙"
+                    "accessories" -> "🎧"
+                    "refurbished" -> "♻"
+                    else -> "🔧"
+                }
+                Text(glyph, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        // Bottom half: name + price
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                item.name,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Text(
+                item.priceCents.toDollarString(),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

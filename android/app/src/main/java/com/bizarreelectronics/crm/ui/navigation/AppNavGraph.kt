@@ -1498,6 +1498,9 @@ fun AppNavGraph(
             composable(Screen.ReportSales.route) {
                 com.bizarreelectronics.crm.ui.screens.reports.SalesReportScreen(
                     onDrillThroughDate = { date -> navController.navigate("tickets?date=$date") },
+                    onReprintOrder = { orderId ->
+                        navController.navigate(Screen.PosReceipt.createRoute(orderId))
+                    },
                 )
             }
             composable(Screen.ReportTickets.route) {

@@ -221,6 +221,16 @@ private fun ShortcutHelpTable() {
         "Ctrl+Shift+A" to "Assign ticket (ticket detail)",
         "Ctrl+P" to "Print receipt (ticket detail)",
         "Ctrl+Delete" to "Delete ticket / admin (ticket detail)",
+        // POS F-keys — active on PosCartScreen / PosEntryScreen / PosTenderScreen
+        "F1" to "New sale (POS — reset / return to entry)",
+        "F2" to "Scan barcode (POS Cart)",
+        "F3" to "Customer / catalog search (POS Entry + Cart)",
+        "F4" to "Cart discount dialog (POS Cart)",
+        "F5" to "Tender / charge (POS Cart → Tender; finalize on Tender)",
+        "F6" to "Park cart — hold sale (POS Cart + Tender)",
+        "F7" to "Print / reprint receipt (POS Tender — post-sale only)",
+        "F8" to "Refund flow (POS — stub, not yet implemented)",
+        "Ctrl+F" to "Focus search field (POS Entry)",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { (chord, label) ->

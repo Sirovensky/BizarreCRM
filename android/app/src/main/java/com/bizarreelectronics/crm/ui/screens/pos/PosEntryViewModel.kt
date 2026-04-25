@@ -221,6 +221,32 @@ class PosEntryViewModel @Inject constructor(
 
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 
+    /**
+     * HID scanner barcode lookup.  Searches inventory by barcode/SKU and
+     * surfaces a result snackbar.  Called from PosEntryScreen's onPreviewKeyEvent
+     * when the HID buffer accumulates ≥ 6 chars and Enter is received.
+     *
+     * TODO: wire result to add the item to the coordinator cart + auto-expand
+     * to cart screen (POS-HID-001). For now just shows an error/success message.
+     */
+    fun lookupBarcode(code: String) {
+        viewModelScope.launch {
+            runCatching { inventoryApi.lookupBarcode(code.trim()) }
+                .onSuccess { resp ->
+                    val item = resp.data?.item
+                    if (item == null) {
+                        _uiState.update { it.copy(errorMessage = "No item for barcode $code") }
+                    } else {
+                        // TODO: POS-HID-001 — add item to coordinator cart then navigate to cart
+                        _uiState.update { it.copy(errorMessage = "Scan: ${item.name ?: code}") }
+                    }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(errorMessage = "Scan lookup failed: ${e.message}") }
+                }
+        }
+    }
+
     private fun runSearch(query: String) {
         _uiState.update { it.copy(isSearching = true) }
         viewModelScope.launch {

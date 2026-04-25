@@ -86,6 +86,8 @@ data class QuickAddItem(
     @SerializedName("price_cents") val priceCents: Long,
     @SerializedName("photo_url") val photoUrl: String? = null,
     val type: String = "inventory",
+    /** MVP category for filter chips: "Parts" | "Services" | "Accessories" | "Refurbished". Null = uncategorized. */
+    val category: String? = null,
 )
 
 data class QuickAddData(val items: List<QuickAddItem>)

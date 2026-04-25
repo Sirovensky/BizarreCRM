@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.data.remote.api.ScheduleFrequency
 import com.bizarreelectronics.crm.data.remote.api.ScheduledReport
 import com.bizarreelectronics.crm.data.remote.api.ScheduledReportSpec
 import com.bizarreelectronics.crm.data.repository.DashboardRepository
+import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
@@ -146,6 +147,19 @@ data class SalesReport(
     val isFromCache: Boolean = false,
 )
 
+/**
+ * A single transaction row displayed in the "Recent Transactions" section of
+ * [SalesReportScreen]. Sourced from the local [InvoiceEntity] cache so it is
+ * available offline and does not require a dedicated server endpoint.
+ */
+data class SaleTransaction(
+    val orderId: String,
+    val invoiceId: Long,
+    val customerName: String,
+    val totalCents: Long,
+    val createdAt: String,
+)
+
 data class ReportsUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -178,6 +192,8 @@ data class ReportsUiState(
     val scheduleSnackbar: String? = null,
     // Serialized filter spec for drill-through back-stack restoration
     val currentFilterSpec: String = "",
+    // Recent transactions list — sourced from local invoice cache for reprint support.
+    val recentTransactions: List<SaleTransaction> = emptyList(),
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -189,6 +205,7 @@ class ReportsViewModel @Inject constructor(
     private val serverMonitor: ServerReachabilityMonitor,
     val appPreferences: AppPreferences,
     private val savedStateHandle: SavedStateHandle,
+    private val invoiceRepository: InvoiceRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReportsUiState())
@@ -202,6 +219,25 @@ class ReportsViewModel @Inject constructor(
         loadData()
         loadSalesReport()
         observeOnlineState()
+        observeRecentTransactions()
+    }
+
+    /** Keeps [ReportsUiState.recentTransactions] in sync with the local invoice DB (top 50). */
+    private fun observeRecentTransactions() {
+        viewModelScope.launch {
+            invoiceRepository.getInvoices().collect { invoices ->
+                val transactions = invoices.take(50).map { inv ->
+                    SaleTransaction(
+                        orderId = inv.orderId,
+                        invoiceId = inv.id,
+                        customerName = inv.customerName ?: "Unknown",
+                        totalCents = inv.total,
+                        createdAt = inv.createdAt,
+                    )
+                }
+                _state.update { it.copy(recentTransactions = transactions) }
+            }
+        }
     }
 
     private fun observeOnlineState() {

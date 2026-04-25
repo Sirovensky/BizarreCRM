@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
@@ -9,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -26,6 +28,13 @@ data class PosCartUiState(
     val linkedTicketId: Long? = null,
     /** Quick-add catalog tiles populated from /pos-enrich/quick-add (Today's Top-5 + fallback). */
     val catalog: List<QuickAddItem> = emptyList(),
+    // ── TopAppBar chip state ──────────────────────────────────────────────────
+    /** Location display name. TODO: fetch from server settings. */
+    val locationName: String = "Main Store",
+    /** Whether a shift is currently active. TODO: wire to actual clock-in API. */
+    val shiftActive: Boolean = true,
+    /** Count of locally parked carts. Sourced from ParkedCartDao.observeCount(). */
+    val parkedCartCount: Int = 0,
 ) {
     val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
     val taxCents: Long get() = lines.sumOf { it.taxCents }
@@ -40,10 +49,14 @@ class PosCartViewModel @Inject constructor(
     private val coordinator: PosCoordinator,
     private val inventoryApi: InventoryApi,
     private val posApi: PosApi,
+    private val parkedCartDao: ParkedCartDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosCartUiState())
     val uiState: StateFlow<PosCartUiState> = _uiState.asStateFlow()
+
+    /** Live list of parked carts for [PosParkedCartsSheet]. */
+    val parkedCarts = parkedCartDao.observeAll()
 
     init {
         // Mirror coordinator session into local UI state
@@ -90,6 +103,13 @@ class PosCartViewModel @Inject constructor(
                     val items = resp.data?.items.orEmpty()
                     _uiState.update { it.copy(catalog = items) }
                 }
+        }
+        // Mirror parked-cart count into UI state so the TopAppBar chip appears
+        // automatically whenever a cart is parked and disappears when restored.
+        viewModelScope.launch {
+            parkedCartDao.observeCount().collect { count ->
+                _uiState.update { it.copy(parkedCartCount = count) }
+            }
         }
     }
 
@@ -216,6 +236,19 @@ class PosCartViewModel @Inject constructor(
     fun openLineEdit(lineId: String) = _uiState.update { it.copy(editingLineId = lineId) }
 
     fun dismissLineEdit() = _uiState.update { it.copy(editingLineId = null) }
+
+    /**
+     * Restore a parked cart by id.
+     * TODO: POS-PARK-002 — deserialize cartJson → PosCoordinator session.
+     * Currently just deletes the parked row so the chip count decrements.
+     */
+    fun restoreParkedCart(cartId: String) {
+        viewModelScope.launch {
+            parkedCartDao.deleteById(cartId)
+            // TODO: POS-PARK-002 — parse cartJson and call coordinator.setLines()
+            //       + coordinator.attachCustomer() to restore the full session.
+        }
+    }
 
     private fun pushLines(lines: List<CartLine>) {
         coordinator.setLines(lines)

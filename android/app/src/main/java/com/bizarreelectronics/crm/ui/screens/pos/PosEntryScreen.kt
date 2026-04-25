@@ -30,6 +30,12 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -61,8 +67,47 @@ fun PosEntryScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val searchFocusRequester = remember { FocusRequester() }
 
+    // ── HID barcode scanner buffer ────────────────────────────────────────────
+    // HID scanners emit keystrokes extremely fast (< 50ms between chars).
+    // Normal typing is slower. We detect HID vs human by measuring inter-key
+    // gaps and accumulate a HID buffer; on Enter we submit it as a barcode
+    // lookup rather than a text search.
+    var hidBuffer by remember { mutableStateOf("") }
+    var lastKeyMillis by remember { mutableLongStateOf(0L) }
+
     BackHandler(enabled = searchExpanded) { searchExpanded = false }
 
+    PosKeyboardShortcuts(
+        // F1 — new sale: collapse search bar and clear the search query so the
+        // entry screen returns to its initial state. A full "detach customer +
+        // clear cart" would go through PosCoordinator; at entry stage the
+        // cheapest correct reset is to collapse the search overlay.
+        onNewSale = { viewModel.onQueryChange(""); searchExpanded = false },
+        // F2 — scan: no independent scan action on entry screen (scanner is
+        // wired in PosCartScreen). No-op.
+        onScan = {},
+        // F3 / Ctrl+F — customer search: expand the SearchBar and focus it,
+        // same as tapping the "Search customer" path tile.
+        onCustomerSearch = {
+            searchExpanded = true
+            searchFocusRequester.requestFocus()
+        },
+        // F4 — discount: no cart yet at entry stage. No-op.
+        onDiscount = {},
+        // F5 — tender: no cart to tender from entry screen. No-op.
+        onTender = {},
+        // F6 — park: no cart to park at entry stage. No-op.
+        onPark = {},
+        // F7 — print: no receipt to print at entry stage. No-op.
+        onPrint = {},
+        // F8 — refund: refund flow not yet wired to PosEntry. No-op.
+        onRefund = {},
+        // Ctrl+F — same as F3: expand + focus customer SearchBar.
+        onFocusSearch = {
+            searchExpanded = true
+            searchFocusRequester.requestFocus()
+        },
+    ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = WindowInsets(0),
@@ -148,7 +193,39 @@ fun PosEntryScreen(
                 .fillMaxWidth()
                 .align(if (searchExpanded) Alignment.TopCenter else Alignment.BottomCenter)
                 .padding(horizontal = 14.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
-                .focusRequester(searchFocusRequester),
+                .focusRequester(searchFocusRequester)
+                .onPreviewKeyEvent { event ->
+                    // HID scanner buffer: accumulate chars arriving < 50ms apart.
+                    // On Enter (with a ≥ 6-char buffer), submit as barcode lookup.
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    val now = System.currentTimeMillis()
+                    val gap = now - lastKeyMillis
+                    lastKeyMillis = now
+                    when {
+                        event.key == Key.Enter || event.key == Key.NumPadEnter -> {
+                            val buf = hidBuffer
+                            hidBuffer = ""
+                            if (buf.length >= 6) {
+                                // HID-fast scan — treat as barcode, not text search
+                                viewModel.lookupBarcode(buf)
+                                true  // consume
+                            } else false
+                        }
+                        gap < 50L -> {
+                            // Fast keystroke — HID device
+                            val char = event.utf16CodePoint.toChar()
+                            if (char.isLetterOrDigit() || char in "-_/") {
+                                hidBuffer += char
+                            }
+                            false  // let SearchBar also receive it
+                        }
+                        else -> {
+                            // Slow keystroke — human typing; reset HID buffer
+                            hidBuffer = ""
+                            false
+                        }
+                    }
+                },
         ) {
             SearchResultsContent(
                 results = state.searchResults,
@@ -181,6 +258,7 @@ fun PosEntryScreen(
             viewModel.clearError()
         }
     }
+    } // end PosKeyboardShortcuts
 }
 
 // ─── Static content (path picker + hero + past repairs) ─────────────────────

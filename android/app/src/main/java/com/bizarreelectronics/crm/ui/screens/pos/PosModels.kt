@@ -33,6 +33,8 @@ data class PosAttachedCustomer(
     val email: String? = null,
     val ticketCount: Int = 0,
     val storeCreditCents: Long = 0L,
+    /** When true the customer holds a tax-exempt certificate; no tax is charged on any line. */
+    val taxExempt: Boolean = false,
 )
 
 data class ReadyForPickupTicket(
@@ -100,6 +102,31 @@ data class AppliedTender(
     val label: String,
     val amountCents: Long,
     val detail: String? = null,
+)
+
+/**
+ * Minimal customer view consumed by the tax engine and unit tests.
+ *
+ * Kept in the `pos` package (same package as the test) so tests can reference
+ * it without a qualified import.  Production session code uses
+ * [PosAttachedCustomer]; the tax calculator accepts this lighter type so it
+ * has no dependency on the full coordinator model.
+ */
+data class AttachedCustomer(
+    val id: Long,
+    val name: String,
+    val taxExempt: Boolean = false,
+)
+
+/**
+ * Thin wrapper around a list of [CartLine] items used by the tax engine.
+ *
+ * Kept in the `pos` package so tests can construct it without a qualified
+ * import.  Production code drives cart state via [PosCoordinator.PosSession].
+ */
+data class PosCartState(
+    val lines: List<CartLine> = emptyList(),
+    val customer: AttachedCustomer? = null,
 )
 
 /** Format cents to "$NNN.NN" display string. Handles negatives as "-$N.NN". */
