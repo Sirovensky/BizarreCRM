@@ -510,6 +510,8 @@ struct PosSearchRow: View {
                         .font(.brandMono(size: 12))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
+                        // CLAUDE.md iPad-affordance: text-selectable IDs/SKUs (no-op on iPhone)
+                        .textSelection(.enabled)
                 }
             }
             Spacer(minLength: BrandSpacing.sm)
