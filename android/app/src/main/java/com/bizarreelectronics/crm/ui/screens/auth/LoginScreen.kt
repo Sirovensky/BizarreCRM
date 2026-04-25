@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.ui.components.WaveDivider
+import com.bizarreelectronics.crm.ui.components.auth.LoginPillButton
 import com.bizarreelectronics.crm.ui.components.auth.PasswordStrengthMeter
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.util.PasswordStrength
@@ -2003,9 +2005,8 @@ fun LoginScreen(
             ) { step ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF1F1F23),
-                    tonalElevation = 0.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         when (step) {
@@ -2028,7 +2029,8 @@ fun LoginScreen(
  * LoginTabBar — Material3 TabRow replacing the old StepIndicator bar+text widget.
  *
  * Three tabs: Server | Sign In | 2FA.
- * Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.
+ * Active tab: cream (#FDEED0) text + 2dp cream underline indicator
+ *   — driven by MaterialTheme.colorScheme.primary (= cream in BizarreCrmTheme).
  * Inactive tabs: muted onSurfaceVariant text + faint divider underline.
  * Container is transparent so it blends with the screen background.
  */
@@ -2049,7 +2051,6 @@ private fun LoginTabBar(currentStep: SetupStep) {
         selectedTabIndex = selectedIndex,
         modifier = Modifier.fillMaxWidth(),
         containerColor = Color.Transparent,
-        contentColor = activeColor,
         indicator = { tabPositions ->
             // M3 Expressive removed Modifier.tabIndicatorOffset. Inline the
             // offset+width math instead (parity with the deleted helper).
@@ -2226,24 +2227,12 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
 
     val isConnectEnabled = if (state.useCustomServer) state.serverUrl.isNotBlank() && !state.isLoading
                            else state.shopSlug.length >= 3 && !state.isLoading
-    Button(
+    LoginPillButton(
         onClick = viewModel::connectToServer,
         enabled = isConnectEnabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-    ) {
-        if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        } else {
-            Text("Connect", style = MaterialTheme.typography.labelLarge)
-        }
-    }
+        isLoading = state.isLoading,
+        label = "Connect",
+    )
 
     Spacer(Modifier.height(12.dp))
 
@@ -2278,7 +2267,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         IconButton(onClick = viewModel::goBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(12.dp))
         Text(
             text = "Register New Shop",
             style = MaterialTheme.typography.titleLarge,
@@ -2314,7 +2303,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
 
     // Field 2: Shop Display Name
     OutlinedTextField(
@@ -2327,7 +2316,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
 
     // Field 3: Admin Email
     OutlinedTextField(
@@ -2340,7 +2329,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
 
     // Field 4: Admin Password
     OutlinedTextField(
@@ -2374,7 +2363,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         )
     }
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
 
     val isFormValid = state.shopSlug.length >= 3
         && state.registerShopName.isNotBlank()
@@ -2383,30 +2372,12 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         && !state.isLoading
 
     // §2.7-L327 — onAutoLogin navigates to dashboard when server returns a token
-    Button(
+    LoginPillButton(
         onClick = { viewModel.registerShop(onAutoLogin = onLoginSuccess) },
         enabled = isFormValid,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
-            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
-        ),
-    ) {
-        if (state.isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
-        } else {
-            Text("Create Shop")
-        }
-    }
+        isLoading = state.isLoading,
+        label = "Create Shop",
+    )
 }
 
 // ─── Step 2: Credentials ────────────────────────────────────────────
@@ -2719,18 +2690,13 @@ private fun CredentialsStep(
     // §2.20 L449: when SSO mode detected, the SSO CTA above is the primary action;
     // this "Sign In" button is hidden to avoid duplicate CTAs.
     if (!state.domainSsoDetected) {
-        BrandPrimaryButton(
+        LoginPillButton(
             onClick = viewModel::login,
             enabled = state.username.isNotBlank() && state.password.isNotBlank()
                     && !state.isLoading && !state.networkOffline && !state.rateLimited,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) {
-            if (state.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-            } else {
-                Text("Sign In")
-            }
-        }
+            isLoading = state.isLoading,
+            label = "Sign In",
+        )
     }
 
     // §2.20 L445 — "Sign in with SSO" button + provider picker.
@@ -3103,7 +3069,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     val focusManager = LocalFocusManager.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
-            Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
         Text("Set Your Password", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -3213,15 +3179,22 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp),
+            .height(240.dp),
         contentAlignment = Alignment.Center,
     ) {
         when {
-            qrBitmap != null -> Image(
-                bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = "2FA QR Code — scan with your authenticator app",
-                modifier = Modifier.size(200.dp),
-            )
+            qrBitmap != null -> Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Image(
+                    bitmap = qrBitmap.asImageBitmap(),
+                    contentDescription = "2FA QR Code — scan with your authenticator app",
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .size(200.dp),
+                )
+            }
             state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() ->
                 CircularProgressIndicator()
             else -> Text(
@@ -3371,7 +3344,7 @@ private fun TwoFaVerifyStep(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = viewModel::goBack) {
-            Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
         Text("Two-Factor Authentication", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -3421,7 +3394,7 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
         ),
-        leadingIcon = { Icon(Icons.Default.Lock, null) },
+        leadingIcon = { Icon(Icons.Outlined.VerifiedUser, null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = {
             focusManager.clearFocus() // Dismiss keyboard
@@ -3431,15 +3404,10 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
     ErrorMessage(state.error)
     Spacer(Modifier.height(16.dp))
 
-    Button(
+    LoginPillButton(
         onClick = { viewModel.verify2FA(onSuccess) },
         enabled = state.totpCode.length == 6 && !state.isLoading,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-    ) {
-        if (state.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-        } else {
-            Text("Continue")
-        }
-    }
+        isLoading = state.isLoading,
+        label = "Continue",
+    )
 }
