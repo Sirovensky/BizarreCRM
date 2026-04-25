@@ -264,11 +264,11 @@ public struct TipSelectorSheet: View {
         VStack(spacing: 2) {
             Text(primary)
                 .font(.brandHeadlineMedium())
-                .foregroundStyle(isSelected ? Color.white : Color.bizarreOnSurface)
+                .foregroundStyle(isSelected ? Color.bizarreOnPrimary : Color.bizarreOnSurface)
             if let sub = secondary {
                 Text(sub)
                     .font(.brandBodyMedium())
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.bizarreOnSurfaceMuted)
+                    .foregroundStyle(isSelected ? Color.bizarreOnPrimary.opacity(0.8) : Color.bizarreOnSurfaceMuted)
             }
         }
         .frame(maxWidth: .infinity)

@@ -302,11 +302,11 @@ struct PosCartTipSheet: View {
                     VStack(spacing: 4) {
                         Text("\(Int(p * 100))%")
                             .font(.brandTitleSmall())
-                            .foregroundStyle(isSelected ? .white : .bizarreOrange)
+                            .foregroundStyle(isSelected ? .bizarreOnPrimary : .bizarreOrange)
                         let tipCents = Int((Double(cart.subtotalCents) * p).rounded())
                         Text(CartMath.formatCents(tipCents))
                             .font(.brandLabelSmall())
-                            .foregroundStyle(isSelected ? .white.opacity(0.8) : .bizarreOnSurfaceMuted)
+                            .foregroundStyle(isSelected ? Color.bizarreOnPrimary.opacity(0.8) : .bizarreOnSurfaceMuted)
                             .monospacedDigit()
                     }
                     .frame(maxWidth: .infinity)

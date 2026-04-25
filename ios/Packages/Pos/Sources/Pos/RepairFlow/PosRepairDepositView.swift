@@ -250,7 +250,7 @@ public struct PosRepairDepositView: View {
                                 isSelected ? Color.bizarreOrange : Color.bizarreSurface1,
                                 in: RoundedRectangle(cornerRadius: 10)
                             )
-                            .foregroundStyle(isSelected ? Color.white : Color.bizarreOnSurface)
+                            .foregroundStyle(isSelected ? Color.bizarreOnPrimary : Color.bizarreOnSurface)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(
