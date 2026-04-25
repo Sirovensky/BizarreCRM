@@ -449,6 +449,7 @@ public struct PosIPadInspectorPane: View {
                         Text(sku)
                             .font(.brandMono(size: 12))
                             .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
                     }
                 }
             }
