@@ -21,7 +21,7 @@ public struct PickupRow: View {
     public var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // Checkmark badge
+                // Checkmark badge — mockup: 32×32, corner radius 9
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(Color.bizarreSuccess.opacity(0.2))
@@ -29,7 +29,7 @@ public struct PickupRow: View {
                             RoundedRectangle(cornerRadius: 9)
                                 .stroke(Color.bizarreSuccess.opacity(0.35), lineWidth: 1)
                         )
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.bizarreSuccess)
@@ -55,9 +55,10 @@ public struct PickupRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Amount
+                // Amount — mockup: BarlowCondensed-SemiBold 17pt, primary color
                 Text(pickup.totalFormatted)
-                    .font(.system(.title3, design: .default).weight(.bold))
+                    .font(.custom("BarlowCondensed-SemiBold", size: 17, relativeTo: .body))
+                    .monospacedDigit()
                     .foregroundStyle(Color.bizarreOrange)
                     .accessibilityLabel("Total: \(pickup.totalFormatted)")
             }
