@@ -246,12 +246,9 @@ private struct MethodTile: View {
     @ViewBuilder
     private var tileBackground: some View {
         if isSelected {
-            // Light mode: orange fill; dark mode: cream fill.
-            if colorScheme == .dark {
-                Color(red: 253/255, green: 238/255, blue: 208/255, opacity: 0.18)
-            } else {
-                Color(red: 194/255, green: 65/255, blue: 12/255, opacity: 0.12)
-            }
+            // bizarreOrange adapts: cream `#fdeed0` (dark) / deep orange `#c2410c` (light).
+            // Same opacity in both modes — selection tint reads correctly on either surface.
+            Color.bizarreOrange.opacity(colorScheme == .dark ? 0.18 : 0.12)
         } else {
             theme.surfaceElev
         }

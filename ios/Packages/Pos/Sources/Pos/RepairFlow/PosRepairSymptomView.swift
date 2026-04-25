@@ -296,14 +296,14 @@ public struct PosRepairSymptomView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(12)
-                // Dashed amber border per mockup: rgba(232,163,61,0.45)
-                .background(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                // Dashed amber border per mockup: rgba(232,163,61,0.45) — use bizarreWarning token.
+                .background(Color.bizarreWarning.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(
+                            Color.bizarreWarning.opacity(0.45),
                             style: StrokeStyle(lineWidth: 1, dash: [5, 3])
                         )
-                        .foregroundStyle(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.45))
                 )
                 .onChange(of: internalNotes) { _, _ in
                     vm.internalNotes = internalNotes
