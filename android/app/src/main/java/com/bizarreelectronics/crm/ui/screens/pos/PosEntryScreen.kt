@@ -55,7 +55,9 @@ fun PosEntryScreen(
 
     BackHandler(enabled = searchExpanded) { searchExpanded = false }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // statusBarsPadding pushes the entire POS-entry surface below the
+    // system status bar so the customer banner / clock no longer overlap.
+    Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         // ── Content layer ───────────────────────────────────────────────────
         AnimatedVisibility(
             visible = !searchExpanded,
@@ -147,43 +149,24 @@ private fun EntryContent(
     onOpenPickup: (Long) -> Unit,
     onWalkIn: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(top = 24.dp, bottom = 120.dp),
-    ) {
-        // ── Two-state surface matching pos-phone-mockups.html flow:
-        //    * Pre-attach (no customer picked): customer-picker tiles only
-        //      (Search / Create new / Walk-in) + RECENT strip.
-        //    * Post-attach (customer picked): customer chip header + path
-        //      tiles (Retail / Repair / Store credit) + Ready-for-pickup
-        //      hero + Past repairs.
-        //    Old behavior rendered every tile at once, which mixed the two
-        //    mockup states and hid which action was reachable next.
-        if (state.attachedCustomer == null) {
-            // Pre-attach state
-            item {
-                PathTile(
-                    emoji = "👤",
-                    title = "Search customer",
-                    subtitle = "Tap or use search below",
-                    isPrimary = false,
-                    onClick = { /* keyboard focus drives search; no-op */ },
-                )
-            }
-            item {
-                PathTile(
-                    emoji = "+",
-                    title = "Create new customer",
-                    subtitle = "First name required",
-                    isPrimary = true,
-                    onClick = { /* search bar handles create flow */ },
-                )
-            }
-            item { GhostWalkInTile(onWalkIn = onWalkIn) }
-        } else {
+    if (state.attachedCustomer == null) {
+        // Pre-attach: vertically center the 3 path tiles in the available
+        // space between the top and the bottom search bar (mockup PHONE 1
+        // uses flex 0.6 / 0.4 spacers around the tile column for the same
+        // effect). RECENT strip pinned below the tiles.
+        PreAttachContent(
+            recentTickets = state.pastRepairs,
+            onWalkIn = onWalkIn,
+            onOpenTicket = { /* recent ticket tap — no-op pre-attach for now */ },
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(top = 24.dp, bottom = 120.dp),
+        ) {
             // Post-attach state — customer is already attached
             item { CustomerHeaderBanner(customer = state.attachedCustomer!!) }
 
@@ -230,23 +213,180 @@ private fun EntryContent(
             items(state.readyForPickupTickets) { ticket ->
                 ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
             }
-        }
 
-        // ── Past repairs compact list ────────────────────────────────────────
-        if (state.pastRepairs.isNotEmpty()) {
-            item {
-                Text(
-                    "PAST REPAIRS",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                )
-            }
-            items(state.pastRepairs) { repair ->
-                PastRepairRow(repair = repair)
+            // Past repairs (or recent tickets if ready-for-pickup is empty).
+            if (state.pastRepairs.isNotEmpty()) {
+                item {
+                    Text(
+                        if (state.readyForPickupTickets.isEmpty()) "RECENT TICKETS" else "PAST REPAIRS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                    )
+                }
+                items(state.pastRepairs) { repair ->
+                    PastRepairRow(repair = repair)
+                }
             }
         }
     }
+}
+
+// ─── Pre-attach content: vertically-centered tile column + RECENT strip ──
+
+@Composable
+private fun PreAttachContent(
+    recentTickets: List<PastRepair>,
+    onWalkIn: () -> Unit,
+    onOpenTicket: (Long) -> Unit,
+) {
+    val viewModel: PosEntryViewModel = hiltViewModel()
+    var showCreateDialog by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 14.dp)
+            // Reserve room at the bottom for the docked SearchBar (~72dp + padding).
+            .padding(bottom = 88.dp),
+    ) {
+        // Top spacer biases the tile column slightly above center (mockup
+        // PHONE 1 uses 0.6/0.4 flex). Tiles render in middle band; RECENT
+        // strip pinned below.
+        Spacer(modifier = Modifier.weight(0.6f))
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PathTile(
+                emoji = "👤",
+                title = "Search customer",
+                subtitle = "Tap or use search below",
+                isPrimary = false,
+                onClick = { /* search bar drives flow; tap is hint */ },
+            )
+            PathTile(
+                emoji = "+",
+                title = "Create new customer",
+                subtitle = "First name required",
+                isPrimary = true,
+                onClick = { showCreateDialog = true },
+            )
+            GhostWalkInTile(onWalkIn = onWalkIn)
+        }
+
+        Spacer(modifier = Modifier.weight(0.4f))
+
+        // RECENT chip strip — mockup PHONE 1 'RECENT' caption + chip row of
+        // recent activity. Surfaces past tickets even pre-attach so cashier
+        // can jump to a known sale.
+        if (recentTickets.isNotEmpty()) {
+            Text(
+                "RECENT",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(recentTickets, key = { it.ticketId }) { t ->
+                    RecentTicketChip(repair = t, onClick = { onOpenTicket(t.ticketId) })
+                }
+            }
+        }
+    }
+
+    if (showCreateDialog) {
+        CreateCustomerDialog(
+            onSubmit = { firstName, lastName, phone, email ->
+                viewModel.createCustomerAndAttach(
+                    firstName = firstName,
+                    lastName = lastName.takeIf { it.isNotBlank() },
+                    phone = phone.takeIf { it.isNotBlank() },
+                    email = email.takeIf { it.isNotBlank() },
+                )
+                showCreateDialog = false
+            },
+            onDismiss = { showCreateDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun RecentTicketChip(repair: PastRepair, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(99.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.clickable(onClickLabel = "Open ticket ${repair.ticketId}") { onClick() },
+    ) {
+        Text(
+            "#${repair.ticketId} · ${repair.description.take(18)}",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun CreateCustomerDialog(
+    onSubmit: (firstName: String, lastName: String, phone: String, email: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    val canSubmit = firstName.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create new customer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it.take(80) },
+                    label = { Text("First name *") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it.take(80) },
+                    label = { Text("Last name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it.take(40) },
+                    label = { Text("Phone") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it.take(120) },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canSubmit,
+                onClick = { onSubmit(firstName.trim(), lastName.trim(), phone.trim(), email.trim()) },
+            ) { Text("Create") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 // ─── Reusable sub-composables ────────────────────────────────────────────────
@@ -304,10 +444,19 @@ private fun PathTile(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        // M3 Expressive: primary tile uses MaterialShapes.Cookie9Sided for
+        // its icon container so the alpha-shape morph is visible on the
+        // brand-cream + tile (mockup uses plain rounded square; we lean into
+        // expressive on the canonical primary action). Non-primary tiles
+        // stay rounded to keep the row readable.
+        @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+        val iconShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
+            MaterialShapes.Cookie9Sided.toShape()
+        else RoundedCornerShape(11.dp)
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(RoundedCornerShape(11.dp))
+                .clip(iconShape)
                 .background(if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
