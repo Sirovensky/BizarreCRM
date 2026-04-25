@@ -87,19 +87,19 @@ public struct PosIPadCartPanel: View {
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
         HStack(spacing: BrandSpacing.md) {
-            // 32pt teal avatar (mockup spec: gradient teal background, dark teal initials)
+            // 32pt teal avatar
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color.bizarreTeal, Color.bizarreTeal.opacity(0.55)],
+                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                 Text(customer.initials)
                     .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(Color.bizarreSurfaceBase)
+                    .foregroundStyle(Color(hex: 0x002D35))
             }
             .frame(width: 32, height: 32)
             .accessibilityHidden(true)
@@ -114,6 +114,7 @@ public struct PosIPadCartPanel: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -123,10 +124,10 @@ public struct PosIPadCartPanel: View {
             if cart.lineCount > 0 {
                 Text("\(cart.lineCount) \(cart.lineCount == 1 ? "line" : "lines")")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.bizarreOnPrimary)
+                    .foregroundStyle(Color(hex: 0x2B1400))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Color.bizarreOrange, in: Capsule())
+                    .background(Color(hex: 0xFDEED0), in: Capsule())
                     .accessibilityLabel("\(cart.lineCount) cart lines")
             }
         }
@@ -213,12 +214,6 @@ public struct PosIPadCartPanel: View {
             } label: {
                 Label("Edit line", systemImage: "pencil")
             }
-            Button(role: .destructive) {
-                BrandHaptics.tap()
-                cart.removeLine(id: item.id)
-            } label: {
-                Label("Remove from cart", systemImage: "trash")
-            }
         }
         .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
         .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
@@ -278,11 +273,11 @@ public struct PosIPadCartPanel: View {
             if cart.effectiveDiscountCents > 0 {
                 let label = cart.cartDiscountPercent
                     .map { "\(Int($0 * 100))% discount" } ?? "Discount"
-                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color.bizarreSuccess)
+                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.couponDiscountCents > 0 {
-                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color.bizarreSuccess)
+                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.pricingSavingCents > 0 {
@@ -383,10 +378,10 @@ public struct PosIPadCartPanel: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .padding(.horizontal, 16)
-                    .foregroundStyle(Color.bizarreOnPrimary)
+                    .foregroundStyle(Color(hex: 0x2B1400))
                     .background(
                         LinearGradient(
-                            colors: [Color.bizarreOrange.opacity(0.92), Color.bizarreOrange],
+                            colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
