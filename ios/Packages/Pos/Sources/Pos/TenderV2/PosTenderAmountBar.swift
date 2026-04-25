@@ -105,7 +105,7 @@ public struct PosTenderAmountBar: View {
 
             Spacer()
 
-            // Confirm
+            // Confirm / "Select a payment method" CTA
             Button {
                 Task { await coordinator.confirm() }
             } label: {
@@ -115,11 +115,11 @@ public struct PosTenderAmountBar: View {
                             .tint(theme.onPrimary)
                             .controlSize(.small)
                     } else {
-                        Text("Confirm")
+                        Text(ctaLabel)
                             .font(.brandTitleMedium())
                     }
                 }
-                .frame(minWidth: 100)
+                .frame(minWidth: 120)
                 .padding(.horizontal, BrandSpacing.lg)
                 .padding(.vertical, BrandSpacing.md)
                 .foregroundStyle(confirmEnabled ? theme.onPrimary : theme.muted)
@@ -127,11 +127,14 @@ public struct PosTenderAmountBar: View {
             .buttonStyle(.borderedProminent)
             .tint(confirmEnabled ? theme.primary : theme.surfaceElev)
             .disabled(!confirmEnabled)
+            .opacity(confirmEnabled ? 1.0 : 0.4)
             .keyboardShortcut(.return, modifiers: .command)
-            .accessibilityLabel("Confirm payment")
+            .accessibilityLabel(ctaLabel)
             .accessibilityHint(coordinator.remaining == 0
                 ? "Finalize the transaction"
-                : "Enter full payment before confirming")
+                : coordinator.method == nil
+                    ? "Choose a payment method first"
+                    : "Enter full payment before confirming")
             .accessibilityIdentifier("pos.tenderBar.confirm")
         }
     }
@@ -140,6 +143,17 @@ public struct PosTenderAmountBar: View {
         coordinator.remaining == 0 &&
         !coordinator.appliedTenders.isEmpty &&
         !coordinator.isConfirming
+    }
+
+    /// CTA label changes based on tender flow stage:
+    /// - Step 1, no method chosen → "Select a payment method" (disabled, 0.4 opacity)
+    /// - Step 2, method chosen but amount not fully covered → "Confirm" (disabled)
+    /// - All paid → "Confirm" (enabled, full opacity)
+    private var ctaLabel: String {
+        guard coordinator.method != nil || !coordinator.appliedTenders.isEmpty else {
+            return "Select a payment method"
+        }
+        return "Confirm"
     }
 
     // MARK: - Tip entry sheet
