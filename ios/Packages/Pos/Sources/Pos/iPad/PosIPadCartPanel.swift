@@ -86,8 +86,8 @@ public struct PosIPadCartPanel: View {
     // MARK: - Customer header
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
-        HStack(spacing: 12) {
-            // 42pt teal avatar (mockup: .cart-head .avatar { width: 42px; height: 42px })
+        HStack(spacing: BrandSpacing.md) {
+            // 42pt teal avatar with strokeBorder ring (mockup: box-shadow 0 0 0 1px rgba(255,255,255,0.12))
             ZStack {
                 Circle()
                     .fill(
@@ -98,7 +98,8 @@ public struct PosIPadCartPanel: View {
                         )
                     )
                     .overlay(
-                        Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                     )
                 Text(customer.initials)
                     .font(.system(size: 14, weight: .bold))
@@ -117,7 +118,6 @@ public struct PosIPadCartPanel: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
-                        .textSelection(.enabled)
                 }
             }
 
@@ -134,7 +134,6 @@ public struct PosIPadCartPanel: View {
                     .accessibilityLabel("\(cart.lineCount) cart lines")
             }
         }
-        // Mockup: padding: 14px 18px 12px
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .padding(.bottom, 12)
@@ -156,13 +155,13 @@ public struct PosIPadCartPanel: View {
             onEditItem?(item)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                // Icon (mockup: .ci { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08) })
+                // Icon (mockup: bg rgba(255,255,255,0.04) + border rgba(255,255,255,0.08), 38pt)
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Color.bizarreOnSurface.opacity(0.04))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                .strokeBorder(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1)
                         )
                     Image(systemName: item.inventoryItemId == nil ? "pencil" : "shippingbox.fill")
                         .font(.system(size: 13))
@@ -216,14 +215,6 @@ public struct PosIPadCartPanel: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .contextMenu {
-            Button {
-                BrandHaptics.tap()
-                onEditItem?(item)
-            } label: {
-                Label("Edit line", systemImage: "pencil")
-            }
-        }
         .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
         .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
     }
@@ -282,11 +273,11 @@ public struct PosIPadCartPanel: View {
             if cart.effectiveDiscountCents > 0 {
                 let label = cart.cartDiscountPercent
                     .map { "\(Int($0 * 100))% discount" } ?? "Discount"
-                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color.bizarreSuccess)
+                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.couponDiscountCents > 0 {
-                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color.bizarreSuccess)
+                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color(hex: 0x34C47E))
             }
 
             if cart.pricingSavingCents > 0 {
@@ -305,12 +296,11 @@ public struct PosIPadCartPanel: View {
 
             Divider().background(.bizarreOutline)
 
-            // Total — large (mockup: .ttotal .tl = uppercase/muted 13px · .ta = Barlow 32px on-surface)
+            // Total — large (mockup: .ttotal .tl uppercase muted + .ta large)
             HStack(alignment: .lastTextBaseline) {
                 Text("TOTAL")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: 13))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .kerning(0.04 * 13)
                 Spacer()
                 Text(CartMath.formatCents(cart.totalCents))
                     .font(.brandHeadlineMedium())
@@ -385,31 +375,31 @@ public struct PosIPadCartPanel: View {
                         Text("⌘ P")
                             .font(.system(size: 14))
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 56)
-                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .padding(.vertical, 17)
                     .padding(.horizontal, 16)
-                    .foregroundStyle(Color.bizarreOnOrange)
-                    .background {
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(LinearGradient(
-                                colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(RadialGradient(
-                                        colors: [Color.white.opacity(0.45), Color.clear],
-                                        center: .init(x: 0.5, y: 0),
-                                        startRadius: 0,
-                                        endRadius: 100
-                                    ))
-                            }
-                    }
+                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        in: RoundedRectangle(cornerRadius: 18)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
+                        // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.42), Color.clear],
+                            center: UnitPoint(x: 0.5, y: 0),
+                            startRadius: 0,
+                            endRadius: 60
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
                     )
                 }
                 .buttonStyle(.plain)
@@ -436,9 +426,8 @@ public struct PosIPadCartPanel: View {
                 .foregroundStyle(emphasized ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
             Spacer()
             let isNegative = cents < 0
-            // Mockup: .trow { color: var(--muted) } — both label and value muted for normal rows
             Text(isNegative ? "− \(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
-                .font(emphasized ? .brandHeadlineMedium() : .brandBodyMedium())
+                .font(emphasized ? .brandHeadlineMedium() : .brandBodyLarge())
                 .foregroundStyle(color ?? (emphasized ? .bizarreOnSurface : .bizarreOnSurfaceMuted))
                 .monospacedDigit()
         }

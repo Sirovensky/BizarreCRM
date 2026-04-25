@@ -138,6 +138,18 @@ public final class PosRepairFlowCoordinator {
         onCancel?()
     }
 
+    /// Skip the current step without validation. Advances directly to the next
+    /// step; if already on the last step, stays in place.
+    ///
+    /// Only valid for skippable steps (`.describeIssue`, `.diagnosticQuote`).
+    /// Server-side audit wiring is deferred — see §16.6 skip-audit route.
+    public func skipCurrent() {
+        errorMessage = nil
+        let before = currentStep
+        currentStep = currentStep.next ?? currentStep
+        print("Skipped step \(before) at \(Date())")
+    }
+
     // MARK: - Draft mutations (called by step VMs)
 
     /// Called by `PosRepairDevicePickerView` when the user selects or confirms a device.

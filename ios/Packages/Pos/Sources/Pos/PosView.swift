@@ -96,6 +96,13 @@ public struct PosView: View {
     @State private var showingTenderSelect: Bool = false
     @State private var cashTenderVM: CashTenderViewModel?
     @State private var tenderErrorMessage: String?
+    /// §16.6 — Store-credit balance for the attached customer.
+    /// Loaded lazily when the tender phase begins. Nil = not yet fetched or
+    /// no customer attached. `PosTenderMethodPickerView` / `PosTenderAmountEntryView`
+    /// fall back to "Avail. balance" subtitle when nil.
+    // TODO(b2): wire via api.storeCredit(customerId:) once APIClient exposes the
+    // GET /api/v1/store-credit/:customerId endpoint (§16.6).
+    @State private var storeCreditCents: Int? = nil
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -583,12 +590,15 @@ public struct PosView: View {
                         advanceToReceipt(from: coordinator)
                     }
             } else if coordinator.method != nil {
-                PosTenderAmountEntryView(coordinator: coordinator)
-                    .onChange(of: coordinator.stage) { _, new in
-                        if new == .confirmed {
-                            advanceToReceipt(from: coordinator)
-                        }
+                PosTenderAmountEntryView(
+                    coordinator: coordinator,
+                    storeCreditBalanceCents: storeCreditCents
+                )
+                .onChange(of: coordinator.stage) { _, new in
+                    if new == .confirmed {
+                        advanceToReceipt(from: coordinator)
                     }
+                }
             } else {
                 PosTenderMethodPickerView(
                     coordinator: coordinator,
@@ -597,6 +607,18 @@ public struct PosView: View {
                 )
             }
         }
+        .task { await loadStoreCredit() }
+    }
+
+    /// §16.6 — Loads the attached customer's store-credit balance from the server.
+    /// Silently no-ops when no customer is attached or API is unavailable.
+    // TODO(b2): implement once APIClient exposes storeCredit(customerId:) for
+    // GET /api/v1/store-credit/:customerId (§16.6). Current value stays nil,
+    // causing PosTenderAmountEntryView to show the generic "Avail. balance" subtitle.
+    private func loadStoreCredit() async {
+        guard let customer = cart.customer, let customerId = customer.id, customerId > 0 else { return }
+        // TODO(b2): storeCreditCents = try? await api?.storeCredit(customerId: customerId)
+        _ = customerId // suppress unused-variable warning until API extension lands
     }
 
     private func advanceToReceipt(from coordinator: PosTenderCoordinator) {
