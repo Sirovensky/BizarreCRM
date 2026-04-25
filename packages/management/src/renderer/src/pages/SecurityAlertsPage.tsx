@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import type { SecurityAlert, SecurityAlertSeverity } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
@@ -43,6 +44,7 @@ export function SecurityAlertsPage() {
   const [ackingId, setAckingId] = useState<number | null>(null);
   const [ackingAll, setAckingAll] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [ackAllDialogOpen, setAckAllDialogOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -92,13 +94,14 @@ export function SecurityAlertsPage() {
     }
   }
 
-  async function handleAckAll() {
+  function handleAckAll() {
     if (unackCount === 0) return;
-    const proceed = window.confirm(
-      `Acknowledge all ${unackCount} unacknowledged alert${unackCount > 1 ? 's' : ''}? ` +
-        'Review the list before confirming — this marks every entry as reviewed.'
-    );
-    if (!proceed) return;
+    // DASH-ELEC-070: replaced window.confirm with ConfirmDialog for consistency.
+    setAckAllDialogOpen(true);
+  }
+
+  async function doAckAll() {
+    setAckAllDialogOpen(false);
     setAckingAll(true);
     try {
       const res = await getAPI().superAdmin.acknowledgeAllAlerts();
@@ -208,9 +211,19 @@ export function SecurityAlertsPage() {
                     : 'bg-surface-900 border-surface-700'
                 }`}
               >
+                {/* DASH-ELEC-065: tabIndex/role/onKeyDown for keyboard accessibility */}
                 <div
-                  className="flex items-start gap-3 p-3 cursor-pointer"
+                  className="flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:bg-surface-800/30 rounded-t-lg"
                   onClick={() => setExpanded(isOpen ? null : alert.id)}
+                  tabIndex={0}
+                  role="button"
+                  aria-expanded={isOpen}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setExpanded(isOpen ? null : alert.id);
+                    }
+                  }}
                 >
                   <div className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium flex items-center gap-1 ${SEVERITY_COLOR[alert.severity]}`}>
                     <Icon className="w-3 h-3" />
@@ -235,7 +248,7 @@ export function SecurityAlertsPage() {
                         {details}
                       </p>
                     )}
-                    <p className="text-[11px] text-surface-600 mt-1">{formatDateTime(alert.created_at)}</p>
+                    <p className="text-[11px] text-surface-400 mt-1">{formatDateTime(alert.created_at)}</p>
                   </div>
                   <div className="shrink-0">
                     {alert.acknowledged === 1 ? (
@@ -276,6 +289,16 @@ export function SecurityAlertsPage() {
           })}
         </div>
       )}
+
+      {/* DASH-ELEC-070: ConfirmDialog replaces window.confirm for "Acknowledge all" */}
+      <ConfirmDialog
+        open={ackAllDialogOpen}
+        title="Acknowledge all alerts"
+        message={`Mark all ${unackCount} unacknowledged alert${unackCount > 1 ? 's' : ''} as reviewed? Review the list before confirming — this cannot be undone.`}
+        confirmLabel="Acknowledge all"
+        onConfirm={doAckAll}
+        onCancel={() => setAckAllDialogOpen(false)}
+      />
     </div>
   );
 }

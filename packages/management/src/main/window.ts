@@ -108,6 +108,11 @@ export function createWindow(): BrowserWindow {
       webviewTag: false,
       // Explicit: no remote loading via <script src> from http(s).
       webSecurity: true,
+      // PERF: Keep pollers (LogsPage 2s, useServerHealth, CrashMonitorPage 30s)
+      // running when the window is minimized or hidden. This is a local
+      // management tool — battery impact is not a concern here, but stale
+      // data on window restore is. Chrome defaults this to true (throttled).
+      backgroundThrottling: false,
     },
   });
 
@@ -165,6 +170,13 @@ export function createWindow(): BrowserWindow {
   mainWindow.webContents.on('will-attach-webview', (event) => {
     event.preventDefault();
   });
+
+  // DASH-ELEC-122: Suppress the Chromium default right-click context menu.
+  // In dev mode Chromium shows full DevTools/Inspect/Reload options;
+  // in prod it still surfaces a minimal Chromium menu. Neither is appropriate
+  // for a kiosk-style management tool. Application-specific copy/paste is
+  // handled by CopyText; power users use keyboard shortcuts.
+  mainWindow.webContents.on('context-menu', (e) => { e.preventDefault(); });
 
   // EL9: Deny all permission requests (camera, mic, notifications, etc.).
   // A server-management dashboard should never ask for hardware access;

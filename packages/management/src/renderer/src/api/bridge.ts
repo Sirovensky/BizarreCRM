@@ -14,6 +14,13 @@ export interface ApiResponse<T = unknown> {
   code?: string;
   /** Server-supplied correlation id (matches an X-Request-Id log entry). */
   request_id?: string;
+  /**
+   * DASH-ELEC-060: HTTP status code propagated from the main-process IPC
+   * handler via bodyOf(). Use `status === 401` as the primary auth-expiry
+   * signal in handleApiResponse() rather than substring-matching messages.
+   * Absent for IPC errors that never reached the server (network failures).
+   */
+  status?: number;
 }
 
 // ── Server stats ──────────────────────────────────────────────────

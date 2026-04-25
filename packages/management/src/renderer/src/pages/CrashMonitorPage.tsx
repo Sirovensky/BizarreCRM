@@ -89,7 +89,10 @@ export function CrashMonitorPage() {
     );
   }
 
-  const recentCrashes = [...crashes].reverse().slice(0, 50);
+  // DASH-ELEC-071: show all toggle
+  const [showAll, setShowAll] = useState(false);
+  const allReversed = [...crashes].reverse();
+  const recentCrashes = showAll ? allReversed : allReversed.slice(0, 50);
 
   // Last 30 days crash rate — per-day bucket for a sparkline trend chart.
   // Uses crashes rather than crashStats because we need the per-event timestamps.
@@ -125,9 +128,13 @@ export function CrashMonitorPage() {
           <button
             onClick={() => {
               if (crashes.length === 0) { toast('No crashes to export'); return; }
+              // Exclude errorStack: stacks may contain absolute paths, SQL
+              // fragments with customer PII, and full request context.
+              // The file is unencrypted on disk and may land in support
+              // tickets — safer to omit by default (DASH-ELEC-118).
               const csv = toCsv(
-                ['timestamp', 'route', 'type', 'recovered', 'errorMessage', 'errorStack'],
-                crashes as unknown as Record<string, unknown>[],
+                ['timestamp', 'route', 'type', 'recovered', 'errorMessage'],
+                crashes,
               );
               const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
               downloadCsv(`crashes-${stamp}.csv`, csv);
@@ -188,7 +195,7 @@ export function CrashMonitorPage() {
               const maxCount = topRoutes[0][1];
               return topRoutes.map(([route, count]) => (
                 <div key={route} className="flex items-center gap-2 text-xs">
-                  <code className="font-mono text-amber-400 w-48 truncate" title={route}>{route}</code>
+                  <code className="font-mono text-amber-400 max-w-[20rem] truncate" title={route}>{route}</code>
                   <div className="flex-1 h-5 bg-surface-900 border border-surface-800 rounded overflow-hidden">
                     <div
                       className="h-full bg-red-500/30 border-r border-red-500/60"
@@ -216,7 +223,7 @@ export function CrashMonitorPage() {
                 <div>
                   <div className="font-mono text-sm text-red-300">{r.route}</div>
                   <div className="text-xs text-surface-500 mt-1">
-                    Disabled {formatRelativeTime(r.disabledAt)} | {r.crashCount} crashes | {r.lastError.slice(0, 80)}
+                    Disabled <span title={formatDateTime(r.disabledAt)}>{formatRelativeTime(r.disabledAt)}</span> | {r.crashCount} crashes | {r.lastError.slice(0, 80)}
                   </div>
                 </div>
                 <button
@@ -235,16 +242,34 @@ export function CrashMonitorPage() {
       {/* Crash Log */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-surface-300">Crash Log</h2>
-          {crashes.length > 0 && (
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-surface-400 border border-surface-700 rounded-md hover:bg-surface-800 transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-              Clear
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-surface-300">Crash Log</h2>
+            {/* DASH-ELEC-071: count label + show-all toggle */}
+            {crashes.length > 50 && (
+              <span className="text-xs text-surface-500">
+                Showing {recentCrashes.length} of {crashes.length}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {crashes.length > 50 && (
+              <button
+                onClick={() => setShowAll(v => !v)}
+                className="text-xs text-accent-400 hover:text-accent-300 transition-colors"
+              >
+                {showAll ? 'Show less' : 'Show all'}
+              </button>
+            )}
+            {crashes.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-surface-400 border border-surface-700 rounded-md hover:bg-surface-800 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {recentCrashes.length === 0 ? (
@@ -265,9 +290,19 @@ export function CrashMonitorPage() {
                   const isOpen = expandedId === c.id;
                   return (
                     <Fragment key={c.id}>
+                      {/* DASH-ELEC-065: tabIndex/role/onKeyDown for keyboard accessibility */}
                       <tr
-                        className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                        className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer focus:outline-none focus:bg-surface-800/50"
                         onClick={() => setExpandedId(isOpen ? null : c.id)}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={isOpen}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setExpandedId(isOpen ? null : c.id);
+                          }
+                        }}
                       >
                         <td className="py-1.5 px-2 text-surface-500 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1">

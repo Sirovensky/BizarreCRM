@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, RefreshCw, Check, ArrowUpCircle, Undo2 } from 'lucide-react';
+import { Download, RefreshCw, Check, ArrowUpCircle, Undo2, AlertTriangle } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
@@ -20,6 +20,8 @@ interface RollbackInfo {
 
 export function UpdatesPage() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -28,17 +30,20 @@ export function UpdatesPage() {
   const [rollingBack, setRollingBack] = useState(false);
 
   useEffect(() => {
-    // @audit-fixed: previously these `.then()` chains lacked any `.catch()`,
-    // so an offline server (the most common state on dashboard cold-start)
-    // produced an unhandled promise rejection that React StrictMode logs as
-    // a noisy "uncaught (in promise)" warning. Both calls now log the error
-    // and leave the existing state untouched so the rest of the page
-    // continues to render.
+    // DASH-ELEC-034: explicit loading + error states so the page never renders nothing.
     getAPI().management.getUpdateStatus()
       .then((res) => {
-        if (res.success && res.data) setStatus(res.data as UpdateStatus);
+        if (res.success && res.data) {
+          setStatus(res.data as UpdateStatus);
+        } else {
+          setStatusError('Could not fetch update status from server.');
+        }
       })
-      .catch((err) => console.warn('[UpdatesPage] getUpdateStatus failed', err));
+      .catch((err) => {
+        console.warn('[UpdatesPage] getUpdateStatus failed', err);
+        setStatusError('Server unreachable — check that the CRM server is running.');
+      })
+      .finally(() => setStatusLoading(false));
     // UP5: After a failed update, the dashboard reopens and sees the snapshot
     // left behind by the main process. Surface the rollback option.
     // MGT-028: If a snapshot exists (update was launched), record the audit
@@ -170,6 +175,17 @@ export function UpdatesPage() {
         <Download className="w-5 h-5 text-accent-400" />
         Updates
       </h1>
+
+      {/* DASH-ELEC-034: loading / error states */}
+      {statusLoading && (
+        <p className="text-sm text-surface-500 animate-pulse">Loading update status…</p>
+      )}
+      {!statusLoading && statusError && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-red-950/20 border border-red-900/50">
+          <AlertTriangle className="w-4 h-4 mt-0.5 text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-300">{statusError}</p>
+        </div>
+      )}
 
       {/* Rollback banner (UP5) — shown after a previous update was launched */}
       {rollback.available && rollback.sha && (

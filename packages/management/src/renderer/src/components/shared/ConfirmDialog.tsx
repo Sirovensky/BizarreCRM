@@ -124,6 +124,7 @@ function _ConfirmDialogInner({
     } else {
       el.focus();
     }
+  // intentional: containerRef is stable (ref object), effect is mount-only — focus the dialog once on open
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // MGT-024: Keyboard handler — Escape cancels; Tab is trapped inside dialog.
@@ -202,7 +203,7 @@ function _ConfirmDialogInner({
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               autoFocus
-              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-red-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-red-500 focus:outline-none"
               placeholder={requireTyping}
             />
           </div>
@@ -220,10 +221,12 @@ function _ConfirmDialogInner({
             onClick={handleConfirm}
             disabled={!canConfirm}
             className={cn(
-              'px-4 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+              // DASH-ELEC-143: disabled:opacity-40 drops danger button below 3:1;
+              // raise to opacity-50 + darker bg + lighter text to maintain contrast.
+              'px-4 py-2 text-sm font-semibold rounded-lg transition-colors disabled:cursor-not-allowed',
               danger
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-accent-600 text-white hover:bg-accent-700'
+                ? 'bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:bg-red-800 disabled:text-red-200'
+                : 'bg-accent-600 text-white hover:bg-accent-700 disabled:opacity-50'
             )}
           >
             {confirmLabel}

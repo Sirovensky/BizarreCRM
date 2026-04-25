@@ -1713,4 +1713,504 @@ P1 (wrong data / significant UX failure / N+1 under load): 22 findings (WEB-S7-0
 P2 (edge case / minor inconsistency / cosmetic under specific conditions): 15 findings (WEB-S7-031 through 045)
 
 Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — silent blank screens on any API failure. (2) Hardcoded `$` + `.toFixed(2)` bypassing `formatCurrency()` in 3 pages. (3) No server-side date-format validation on filter inputs (SQLite silently returns NULL). (4) Naive date arithmetic ignores DST in reports and portal timeline sort. (5) `GET /inventory` missing `asyncHandler` — process-crashing unhandled rejection.
+### Dashboard Electron audit loop (2026-04-24+)
+
+- [ ] DASH-ELEC-001. **[HIGH][SEC] Token stored in process memory without expiry or clear cleanup path** — packages/management/src/main/services/api-client.ts:204 — `let superAdminToken: string | null = null` is module-level, persists until setSuperAdminToken(null) is called; on logout the token should be cleared AND revoked on the server before clearing locally; currently logout calls setSuperAdminToken(null) but no server revocation call observed; fix: add explicit token revocation POST before nullifying.
+
+- [ ] DASH-ELEC-002. **[HIGH][SEC] IPC handlers wrap exceptions with wrapHandler but don't guarantee main process doesn't crash on unhandled promise rejections** — packages/management/src/main/ipc/management-api.ts:861 — wrapHandler catches synchronous errors but an unhandled promise rejection inside apiRequest or concurrent async call will crash the main process; fix: add top-level process.on('unhandledRejection') handler in index.ts (one exists for uncaughtException but not unhandledRejection until line 124-126 which does handle it, but verify it returns gracefully and doesn't exit).
+
+- [x] DASH-ELEC-003. **[MED][SEC] PowerShell script injection risk in spawnElevated via psQuote escaping** — packages/management/src/main/index.ts:171 — psQuote doubles single quotes but doesn't validate that `command` itself is a trusted literal; if a future maintainer adds variable input to `command` parameter (not just args) it will execute arbitrary code; fix: hardcode allowed commands in a Set at module top-level and reject any command not in the whitelist before spawning.
+
+- [ ] DASH-ELEC-004. **[MED][SEC] execSync in system-info.ts without timeout on PowerShell script inline string** — packages/management/src/main/ipc/system-info.ts:158 — the PowerShell script is hardcoded (safe) but passed as a string inside backticks; any future use of execSync with caller-supplied input will be vulnerable; fix: migrate all execSync calls to spawnSync with explicit argv array, or document the pattern so maintainers avoid inline shell strings.
+
+- [x] DASH-ELEC-005. **[MED][WIRING] Service control IPC handlers don't validate that `state.root` in direct-server.json matches the trusted project root before using it** — packages/management/src/main/ipc/service-control.ts:303-320 — readDirectState() calls isProjectRoot(parsed.root) but isProjectRoot only checks for package.json markers, not that the path matches resolveTrustedProjectRoot(); AUDIT-MGT-030 comment acknowledges this but the cross-check should happen BEFORE the function returns; currently a typo in the PID file's `root` field that still has package.json would be accepted; fix: move the trustedRoot check inside readDirectState before returning.
+
+- [ ] DASH-ELEC-006. **[LOW][WIRING] IPC handlers for env-settings (admin:get-env-settings, admin:set-env-settings) don't appear to validate against SERVER_ENV_ALLOWLIST at handler boundary** — packages/management/src/main/ipc/management-api.ts — grep shows handlers exist but detailed validation not found in the audit scope; fix: verify both GET and SET envelope the .env keys through the allowlist at IPC layer, not just inside the server's env-startup code.
+
+- [ ] DASH-ELEC-007. **[LOW][SEC] No rate-limit or request-deduplication on IPC invoke calls from renderer** — packages/management/src/preload/index.ts:117-125 — safeInvoke passes through to ipcRenderer.invoke() with no dedup or throttling; a rapid-fire loop calling `management.getStats()` 1000 times will spawn 1000 API requests; fix: add optional debounce/throttle wrapper on hot-path invokes (stats, disk-space polling).
+
+- [x] DASH-ELEC-008. **[LOW][WIRING] vite.config.ts has sourcemap disabled for prod but no explicit mention of dev-sourcemaps handling** — packages/management/src/main/vite.config.ts:17 — `sourcemap: false` is set but dev mode sourcemaps aren't explicitly configured; if dev build is packaged accidentally with sourcemap enabled, renderer code is exposed; fix: add explicit `sourcemap: false` comment or conditional logic to ensure dev builds are never packaged with sourcemaps.
+
+- [ ] DASH-ELEC-009. **[LOW][SEC] updateBrowserWindow error paths in management-api.ts don't surface error detail on failure** — packages/management/src/main/ipc/management-api.ts (lines ~1400+) — git fetch/checkout/verify failures are swallowed in the error case and return a generic "update check failed" message; attacker who poisons git binary or redirects origin sees no diagnostics; fix: log full spawnSync result (stderr) to main process logs so operators can diagnose update failures without user visibility to the command itself.
+
+- [ ] DASH-ELEC-010. **[LOW][WIRING] No explicit audit log of IPC calls that modify system state (restart, stop, create-tenant, delete-tenant)** — all of packages/management/src/main/ipc/*.ts — sensitive operations like `service:restart`, `super-admin:delete-tenant` succeed silently without recording in a main-process audit log who (which renderer origin) initiated them; fix: add a per-file audit logger that records timestamp, origin, operation, and result to a rotating audit.log alongside dashboard.log for compliance/forensics.
+
+
+- [ ] DASH-ELEC-011. **[MED][WIRING] RecentActivityWidget and DiagnosticsPage use manual `cancelled` flag instead of AbortController for fetch cleanup** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:39-59, packages/management/src/renderer/src/pages/DiagnosticsPage.tsx:40-53 — Promise.all() responses are checked against a cancelled boolean on unmount, but if a response arrives AFTER unmount but BEFORE the flag is checked, the state-setter will still fire and cause a memory leak warning; fix: replace with AbortController so the actual fetch is terminated, not just the state update.
+
+- [ ] DASH-ELEC-012. **[MED][WIRING] useServerHealth hook lacks AbortSignal for concurrent getStats + service.getStatus calls** — packages/management/src/renderer/src/hooks/useServerHealth.ts:46-51 — Promise.all([api.management.getStats(), api.service.getStatus()]) has no abort signal, so if the user logs out mid-poll the pending requests continue and may trigger an update to a dead store; fix: add AbortController at hook level and pass signal to both IPC calls (if the IPC bridge supports it).
+
+- [ ] DASH-ELEC-013. **[MED][WIRING] QueryClient staleTime=10s but no explicit refetchInterval or polling strategy in management pages** — packages/management/src/renderer/src/main.tsx:60-68 — TanStack Query is configured but pages use manual setInterval (useInterval hook, useServerHealth setTimeout) instead of useQuery; mixed polling strategies may cause redundant fetches; fix: migrate high-frequency polls (stats, crashes, audit log) to useQuery with refetchInterval so react-query deduplicates and batches requests.
+
+- [ ] DASH-ELEC-014. **[LOW][WIRING] CrashMonitorPage refreshes on interval (30s) but polls are not cancelled on page unmount** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:45-49 — setInterval(refresh, 30_000) is cleaned up correctly, but refresh() calls do not use AbortController; fix: add AbortController to CrashMonitorPage's refresh so pending Promise.all responses don't setState after unmount.
+
+- [ ] DASH-ELEC-015. **[MED][WIRING] No error boundary wrapping individual page content, only top-level and PageErrorBoundary** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30-32 — PageErrorBoundary wraps Outlet but a render error in Header, Sidebar, StatusFooter, or Banner components will crash the entire shell; fix: split PageErrorBoundary into smaller boundaries per major layout section (header, sidebar, main, footer).
+
+- [x] DASH-ELEC-016. **[LOW][WIRING] CSV export in AuditLogPage and CrashMonitorPage doesn't check for toCsv injection risk with special leading characters** — packages/management/src/renderer/src/utils/csv.ts:13-20 — escapeCsvField wraps fields with quotes if they contain comma/quote/newline, but RFC-4180 sec.2 note 2 recommends quoting fields starting with =, +, @, - to prevent spreadsheet formula injection; fix: add check in escapeCsvField to prepend single quote if s[0] matches /[=+@-]/.
+
+- [x] DASH-ELEC-017. **[LOW][WIRING] formatNumber uses toLocaleString() without explicit locale, may break sorting/parsing in downstream systems** — packages/management/src/renderer/src/utils/format.ts:43-45 — toLocaleString() uses browser locale which may insert non-ASCII separators (e.g., space or comma depending on locale); exported CSV may not re-import correctly; fix: explicitly pass 'en-US' locale to toLocaleString, or provide a separate non-localized export version.
+
+- [x] DASH-ELEC-018. **[MED][WIRING] uiStore density setting persists to localStorage without schema validation on read** — packages/management/src/renderer/src/stores/uiStore.ts:24-28 — initialDensity() reads raw localStorage value and coerces to 'default' if not 'compact', but malicious script or storage corruption could inject arbitrary string; fix: explicitly validate against a Set<string> of allowed values and return 'default' on any mismatch.
+
+- [ ] DASH-ELEC-019. **[MED][WIRING] authStore logout event listener is added once at module load but not scoped to window type check** — packages/management/src/renderer/src/stores/authStore.ts:47-64 — event listener is registered in module scope with typeof window check, but if the module is hot-reloaded during dev the duplicate listener accumulates (though MGT-025 addresses this with import.meta.hot.dispose, verify the cleanup actually fires); fix: ensure HMR dispose callback runs and prevents listener duplication in production bundles.
+
+- [x] DASH-ELEC-020. **[LOW][WIRING] SecurityAlertsPage doesn't re-poll when acknowledgement succeeds, showing stale alert count in sidebar badge** — packages/management/src/renderer/src/pages/SecurityAlertsPage.tsx (if it exists) — after acknowledging an alert, useServerHealth's next poll will refresh stats, but that may be 5-60s away depending on backoff state; fix: call refresh() immediately after a successful acknowledgeAlert() so the badge updates instantly.
+
+- [x] DASH-ELEC-021. **[HIGH][UI] LoginPage form inputs lack `<label>` association** — packages/management/src/renderer/src/pages/LoginPage.tsx:314-325 — username/password/confirm/2FA inputs have placeholder only, no `<label htmlFor>`. Screen readers can't announce field purpose. Fix: wrap each input in `<label>` or add `aria-label`.
+
+- [x] DASH-ELEC-022. **[HIGH][UI] CommandPalette search input has `focus:outline-none` with no ring fallback** — packages/management/src/renderer/src/components/CommandPalette.tsx:209 — keyboard users can't see focus. Fix: add `focus:ring-2 focus:ring-accent-500` or `focus:border-accent-500`.
+
+- [x] DASH-ELEC-023. **[MED][UI] ActivityPage tabs missing `aria-selected` and `role="tab"`** — packages/management/src/renderer/src/pages/ActivityPage.tsx:67-74 — tabs are plain buttons; screen readers can't announce active tab. Fix: add `role="tablist"` to container, `role="tab"` to buttons, `aria-selected={isActive}`.
+
+- [ ] DASH-ELEC-024. **[MED][UI] tailwind.config.ts uses "Inter" font family — brand requires Saved By Zero (logo) + Bebas Neue (display) + Futura Medium (body)** — packages/management/tailwind.config.ts:58 — currently falls back to system UI sans-serif. Fix: load brand fonts (Bebas Neue + Futura Medium + Jost fallback per CLAUDE memory) and update `fontFamily.sans/display/heading`.
+
+- [x] DASH-ELEC-025. **[MED][UI] SettingsPage Eye/EyeOff reveal buttons lack `aria-label`** — packages/management/src/renderer/src/pages/SettingsPage.tsx — icon-only buttons; SR users hear "button". Fix: `aria-label="Show password"` / `"Hide password"`.
+
+- [x] DASH-ELEC-026. **[MED][UI] Sidebar collapse toggle has only `title`, no `aria-label`** — packages/management/src/renderer/src/components/layout/Sidebar.tsx:113-122 — `title` is visual tooltip; screen readers see generic "button". Fix: add `aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}`.
+
+- [ ] DASH-ELEC-027. **[MED][UI] LogsPage long list not virtualized** — packages/management/src/renderer/src/pages/LogsPage.tsx — up to 2000 lines render as full DOM nodes; scroll jank on slow machines. Fix: react-window or custom virtualization for log rows.
+
+- [x] DASH-ELEC-028. **[MED][UI] RecentActivityWidget empty state too terse** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:94-95 — shows "No entries yet." with no context. Fix: expand to "No audit log entries. System will record admin actions here when they occur."
+
+- [x] DASH-ELEC-029. **[MED][UI] Activity loading state lacks `aria-busy` / `aria-live`** — packages/management/src/renderer/src/components/RecentActivityWidget.tsx:79-80 — static "Loading…" text not announced. Fix: add `aria-busy="true"` or wrap in `aria-live="polite"` region.
+
+- [x] DASH-ELEC-030. **[MED][UI] StatusBadge pulsing dot has no semantic label** — packages/management/src/renderer/src/components/shared/StatusBadge.tsx:35-46 — animated circle conveys state visually only. Fix: ensure parent has clear text label, or add `aria-label` to the dot span.
+
+- [ ] DASH-ELEC-031. **[LOW][UI] CommandPalette group labels are plain divs, not headings** — packages/management/src/renderer/src/components/CommandPalette.tsx:221-237 — "Pages" / "Actions" dividers should be `<h3>` or `role="heading" aria-level="3"` so SR users can skim groups.
+
+- [ ] DASH-ELEC-032. **[LOW][UI] CopyText button uses only `title` tooltip — invisible on keyboard focus** — packages/management/src/renderer/src/components/CopyText.tsx:47-58 — Fix: replace/supplement `title` with visible text label or visible-on-focus tooltip.
+
+- [ ] DASH-ELEC-033. **[LOW][UI] ServerControlPage + AdminToolsPage destructive actions use `window.confirm()` instead of ConfirmDialog** — packages/management/src/renderer/src/pages/ServerControlPage.tsx:74 + AdminToolsPage.tsx — inconsistent with TenantsPage/SessionsPage which use ConfirmDialog. Fix: migrate to ConfirmDialog.
+
+- [x] DASH-ELEC-034. **[LOW][UI] UpdatesPage + DiagnosticsPage may render nothing on empty/error** — packages/management/src/renderer/src/pages/{UpdatesPage,DiagnosticsPage}.tsx — audit both for explicit empty-state and error-state UI.
+
+- [x] DASH-ELEC-035. **[HIGH][PERF] Main-process source maps shipped in production ASAR** — packages/management/tsconfig.node.json:15 emits `dist/main/*.js.map`; electron-builder.yml `files:` glob excludes only `node_modules/**/*.map`, so every main `.map` ships, leaking full TS source. Fix: add `"!dist/**/*.map"` to `files:`, or set `sourceMap: false` in tsconfig.node.json for prod CI.
+
+- [x] DASH-ELEC-036. **[MED][PERF] No explicit `asar:` key in electron-builder.yml** — relies on implicit default; future upgrade could silently flip to unarchived directory install (slower I/O, larger disk footprint, no tamper protection). Fix: add `asar: true` (and `asarUnpack` for native modules) explicitly.
+
+- [x] DASH-ELEC-037. **[MED][PERF] `package` script skips typecheck** — packages/management/package.json:20 `"package": "electron-builder --win"` does not call build/tsc; type errors silently package. Fix: `"package": "npm run build && electron-builder --win"`.
+
+- [x] DASH-ELEC-038. **[HIGH][PERF] LogsPage splits content string 3× per 2s poll** — packages/management/src/renderer/src/pages/LogsPage.tsx:17,124,126,137 — REFRESH_INTERVAL_MS=2000 + content.split('\n') in filteredLines (124/126) + errorCodeCounts regex (137). 3×O(N) per tick at 2000-line tail. Fix: derive `lines` once via `useMemo([content])`, consume in both.
+
+- [x] DASH-ELEC-039. **[MED][PERF] LogsPage list uses array-index key** — packages/management/src/renderer/src/pages/LogsPage.tsx:294 `key={i}` — every 2s tail refresh forces full DOM diff. Fix: content-derived key `key={i + '-' + line.slice(0, 20)}` or virtualise (react-window).
+
+- [x] DASH-ELEC-040. **[MED][PERF] OverviewPage fan-out 6 setState calls per stats poll** — packages/management/src/renderer/src/pages/OverviewPage.tsx:602-607 — currently safe under React 18 auto-batching but breaks if any `await` is introduced before the setState chain. Fix: consolidate into single `useState<SeriesMap>` or reducer.
+
+- [x] DASH-ELEC-041. **[MED][PERF] `backgroundThrottling` unset in webPreferences — pollers freeze when window hidden** — packages/management/src/main/window.ts:91-111 — defaults to true; LogsPage (2s), CrashMonitorPage (30s), useServerHealth all stall up to 1 minute on restore. Fix: add `backgroundThrottling: false` to webPreferences (this is a local management tool, not battery-bound).
+
+- [x] DASH-ELEC-042. **[HIGH][PERF] `extraResources` ships full TS source for web/server/shared** — packages/management/electron-builder.yml:115 — `packages/web/src/**`, `packages/server/src/**`, `packages/shared/**` inflate installer with raw TSX. Server only needs `dist/**`. Fix: remove `src/**` entries; keep only `dist/**`, config files, scripts/.
+
+- [x] DASH-ELEC-043. **[MED][UI] KeyboardShortcutsHelp overlay missing role="dialog", aria-modal, focus-trap** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:57-103 — visually-modal panel without `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus trap. ConfirmDialog has all four. Fix: mirror ConfirmDialog's pattern (role/aria + Tab-trap onKeyDown).
+
+- [x] DASH-ELEC-044. **[MED][UI] KeyboardShortcutsHelp shows "Ctrl+K" on macOS instead of ⌘K** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:11 — SHORTCUTS hardcoded `['Ctrl', 'K']` but CommandPalette accepts both metaKey+ctrlKey. Fix: detect platform and render `['⌘', 'K']` on macOS.
+
+- [ ] DASH-ELEC-045. **[MED][WIRE] CommandPalette uses `window.confirm()` for Restart/Stop** — packages/management/src/renderer/src/components/CommandPalette.tsx:77,95 — inconsistent with ConfirmDialog used in TenantsPage/SessionsPage/UpdatesPage; `window.confirm` may silently return false in Electron under nodeIntegration off. Fix: replace with portal-rendered ConfirmDialog state.
+
+- [x] DASH-ELEC-046. **[MED][WIRE] CopyText `setTimeout(() => setJust(false), 1400)` not cleared on unmount** — packages/management/src/renderer/src/components/CopyText.tsx:38 — state-update-on-unmounted warning if user navigates within 1400ms of copy. Fix: store timer ref, clearTimeout in useEffect cleanup.
+
+- [x] DASH-ELEC-047. **[MED][WIRE] useServerHealth fragile under React 18 StrictMode double-mount** — packages/management/src/renderer/src/hooks/useServerHealth.ts:40-91 — dev mode can fire two concurrent Promise.all polls before pollingRef guard kicks in. Fix: add `isMounted` ref set false in cleanup, gate setState on it.
+
+- [x] DASH-ELEC-048. **[MED][WIRE] SetupChecklist + BannerCertWarning + BannerTagVerifyWarning skip handleApiResponse** — packages/management/src/renderer/src/components/{SetupChecklist,BannerCertWarning,BannerTagVerifyWarning}.tsx — 401 responses to getCertPinningStatus/getTagVerifyStatus/getEnvSettings/listBackups silently swallowed; auth expiry undetected up to 60s until next health poll. Fix: `if (handleApiResponse(res)) return;` before processing.
+
+- [x] DASH-ELEC-049. **[LOW][WIRE] StatusFooter displays stale stats.uptime — never increments between polls** — packages/management/src/renderer/src/components/layout/StatusFooter.tsx:34-36 — value frozen at last poll time (up to 60s old at max backoff). Fix: compute `stats.uptime + Math.floor((Date.now() - lastUpdated) / 1000)` using existing serverStore.lastUpdated.
+
+- [ ] DASH-ELEC-050. **[LOW][SEC] CSP `style-src 'unsafe-inline'` is broader than needed** — packages/management/src/renderer/index.html:23 — Tailwind compiles to static bundle; only Lucide SVG stroke/fill needs inline styles. unsafe-inline allows any injected `<style>` or `style=`, enabling CSS-injection attribute-selector exfil. Fix: nonce-based style-src for prod build.
+
+- [ ] DASH-ELEC-051. **[LOW][WIRE] CommandPalette missing "Activity → Sessions" deep-link** — packages/management/src/renderer/src/components/CommandPalette.tsx:56-57 — has alerts + audit deep-links but not sessions even though ActivityPage line 24 defines sessions tab. Fix: add `{ id: 'nav-activity-sessions', group: 'Pages', label: 'Activity → Sessions', onRun: () => navigate('/activity?tab=sessions') }` guarded by isMultiTenant.
+
+- [x] DASH-ELEC-052. **[LOW][UI] formatDateTime calls toLocaleString() without locale args — output varies by OS locale** — packages/management/src/renderer/src/utils/format.ts:67 — formatNumber was fixed but formatDateTime not. On non-en systems renders "24.4.2026, 14:23:05" or "2026/4/24". Fix: pass `'en-US', { dateStyle: 'medium', timeStyle: 'short' }`.
+
+- [ ] DASH-ELEC-053. **[HIGH][SEC] Logout does not invalidate server-side JWT** — packages/management/src/main/ipc/management-api.ts:964-971 — handler only calls `setSuperAdminToken(null)` locally; comment says "Server-side invalidation is a TODO". Stolen token remains valid until natural expiry. Fix: add `POST /super-admin/api/logout` server endpoint that revokes JWT, call it before clearing local token.
+
+- [ ] DASH-ELEC-054. **[MED][SEC] Logout leaves serverStore populated with stale tenant/stats data** — packages/management/src/renderer/src/components/CommandPalette.tsx:103-108 — logout calls authStore.logout() + navigate but never resets useServerStore; stats, tenant counts, multiTenant flag readable post-logout. Fix: add reset() action to serverStore + call `useServerStore.getState().setOffline('logged out')` before navigation.
+
+- [ ] DASH-ELEC-055. **[HIGH][SEC] Setup-step password min=8 vs set-password min=10 — inconsistent policy + IPC schema accepts min(1)** — packages/management/src/renderer/src/pages/LoginPage.tsx:77 vs :157 + packages/management/src/main/ipc/management-api.ts:43 — first-run accepts 8 chars, forced-change requires 10, IPC schema only requires 1. Fix: align UI + IPC schemas to min(10) shared `PASSWORD_MIN_LENGTH` constant.
+
+- [ ] DASH-ELEC-056. **[MED][SEC] No forgot-password / lost-2FA recovery path** — packages/management/src/renderer/src/pages/LoginPage.tsx (entire) — no recovery flow; no recovery codes shown during 2fa-setup; no "forgot 2FA" IPC handler. Operator who loses TOTP device fully locked out. Fix: show recovery codes during 2fa-setup; document CLI-assisted reset path in dashboard.
+
+- [ ] DASH-ELEC-057. **[MED][UI] Admin Tools "step-up TOTP" claim is description-only — no challenge UI** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:196 — text claims TOTP gating but page only uses `window.confirm()` (lines 74, 124, 153) before destructive actions. Fix: add TOTP input modal before dispatch; verify server enforces independently.
+
+- [x] DASH-ELEC-058. **[LOW][UI] Tenant suspend/activate fires with zero confirmation** — packages/management/src/renderer/src/pages/TenantsPage.tsx:160-170 — handleSuspend / handleActivate dispatch immediately on click; mis-click cuts off all tenant users instantly. Delete uses ConfirmDialog with requireTyping but suspend bypasses entirely. Fix: wrap suspend in ConfirmDialog (no typing required).
+
+- [ ] DASH-ELEC-059. **[MED][SEC] Session revoke has no audit-log write at dashboard layer** — packages/management/src/renderer/src/pages/SessionsPage.tsx:89-99 — handleRevoke calls superAdmin.revokeSession(id) but no client/IPC audit record. If server DELETE endpoint doesn't write audit_log, action is invisible. Fix: confirm server records revoker identity; else add explicit audit-log IPC call.
+
+- [x] DASH-ELEC-060. **[MED][WIRE] handleApiResponse 401 detection is string-match only** — packages/management/src/renderer/src/utils/handleApiResponse.ts:24-35 — checks message for 5 hardcoded substrings; non-standard server message → silent failure with stale auth. Fix: propagate HTTP status through IPC envelope, check `status === 401` primary, fallback string list.
+
+- [ ] DASH-ELEC-061. **[LOW][SEC] QR code rendered from server-supplied data URI without validation** — packages/management/src/renderer/src/pages/LoginPage.tsx:397-399 — `qrCode` set from setupRes.data.qr and rendered as `<img src={qrCode}>`; compromised server could return `javascript:` or `data:text/html`. Fix: validate value starts with `data:image/` before rendering.
+
+- [x] DASH-ELEC-062. **[MED][WIRE] SchemaSetPassword IPC accepts password of length 1** — packages/management/src/main/ipc/management-api.ts:37-39 — `z.string().min(1).max(1024)` — UI enforces 10 but renderer-side dev-tools `ipcRenderer.invoke` can set 1-char. Fix: change schema to `min(10).max(1024)`; align with SchemaSetup once 055 is fixed.
+
+- [ ] DASH-ELEC-063. **[MED][UI] AuditLogPage + SecurityAlertsPage filter state ephemeral — back-button loses filters** — packages/management/src/renderer/src/pages/AuditLogPage.tsx:22-23, SecurityAlertsPage.tsx:41-42 — actionFilter/textFilter/ackFilter/severityFilter in useState only. DiagnosticsPage uses useSearchParams. Fix: migrate filters to useSearchParams (e.g. `?action=login_failed&q=192.168`).
+
+- [ ] DASH-ELEC-064. **[MED][UI] AuditLogPage + SecurityAlertsPage hard-cap fetch at 200 entries with no pagination UI** — AuditLogPage.tsx:30 `limit: 200`, SecurityAlertsPage.tsx:53 same — installations with 50k entries silently truncate. Fix: add offset state + "Load next 200" button (or infinite-scroll); user-selectable limit (50/200/all).
+
+- [x] DASH-ELEC-065. **[HIGH][UI] CrashMonitorPage expandable `<tr>` and SecurityAlertsPage expand `<div>` keyboard-inaccessible** — CrashMonitorPage.tsx:268-271 + SecurityAlertsPage.tsx:211-214 — onClick on tr/div with no tabIndex/role/onKeyDown. Fix: `tabIndex={0} role="button" aria-expanded={isOpen} onKeyDown` (Enter/Space → toggle).
+
+- [x] DASH-ELEC-066. **[MED][UI] DiagnosticsPage tabs missing role="tab"/aria-selected/role="tablist"** — DiagnosticsPage.tsx:86-103. Fix: `role="tablist"` container, `role="tab" aria-selected aria-controls` per button, `role="tabpanel"` wrapper.
+
+- [x] DASH-ELEC-067. **[MED][UI] BackupPage stat grids use fixed `grid-cols-3` with no responsive fallback** — BackupPage.tsx:192, 211 — at <480px window each card shrinks to <100px. Fix: `grid-cols-2 sm:grid-cols-3` (matches OverviewPage).
+
+- [ ] DASH-ELEC-068. **[LOW][UI] BackupPage missing download-to-file + upload-from-file** — BackupPage.tsx — no off-box backup path. Fix: `admin:download-backup` IPC (`dialog.showSaveDialog` + `fs.copyFile`); upload via `<input type="file">` + `admin:upload-backup`.
+
+- [ ] DASH-ELEC-069. **[MED][UI] UpdatesPage shows "Unknown" before first fetch — no loading + no handleApiResponse** — UpdatesPage.tsx:22, 215 — status starts null, renders "Up to date" while in-flight + silently ignores 401. Fix: add loading state, handleApiResponse, spinner/skeleton.
+
+- [x] DASH-ELEC-070. **[MED][UI] SecurityAlertsPage "Acknowledge all" uses `window.confirm()`** — SecurityAlertsPage.tsx:97-101 — inconsistent with ConfirmDialog elsewhere. Fix: replace with ConfirmDialog state.
+
+- [x] DASH-ELEC-071. **[LOW][UI] CrashMonitorPage caps display at 50 silently** — CrashMonitorPage.tsx:92 `slice(0, 50)` but Export CSV uses full set; no "showing 50 of N" label. Fix: add count label + "Show all" toggle.
+
+- [x] DASH-ELEC-072. **[LOW][UI] CrashMonitorPage relative time has no absolute-time tooltip** — CrashMonitorPage.tsx:219 — `formatRelativeTime(r.disabledAt)` no `title`. Fix: wrap in `<span title={formatDateTime(r.disabledAt)}>`.
+
+- [ ] DASH-ELEC-073. **[LOW][UI] OverviewPage canvas graph uses hardcoded hex colours not theme-tokenised** — OverviewPage.tsx:142-283 — drawGraphFn raw `#3b82f6`, `#1e1e22`, `#71717a`. Light-mode/custom theme cannot update. Fix: `getComputedStyle(canvas).getPropertyValue('--color-accent-500')` cached per draw.
+
+- [ ] DASH-ELEC-074. **[LOW][WIRE] DiagnosticsPage tab switch unmounts panel → flash of empty state** — DiagnosticsPage.tsx:113-117 — conditional render forces unmount/remount. Fix: CSS `display:none` toggle, or parent-level cache.
+
+- [x] DASH-ELEC-075. **[LOW][UI] PlaceholderPage orphaned — no route registers it** — PlaceholderPage.tsx:11-18 — App.tsx:48-80 no longer references it. Fix: delete the file.
+
+- [ ] DASH-ELEC-076. **[HIGH][SEC] All `service:*` IPC handlers skip `assertRendererOrigin`** — packages/management/src/main/ipc/service-control.ts:596-743 — service:get-status/start/stop/restart/emergency-stop/kill-all/disable/set-auto-start take no event arg or pass `_event` without origin check. Compromised renderer can call kill-all (`taskkill /F /IM node.exe` + `app.exit(0)`). Fix: add `assertRendererOrigin(event)` first line of each handler, matching management-api.ts pattern.
+
+- [x] DASH-ELEC-077. **[HIGH][SEC] `service:set-auto-start` accepts unvalidated boolean — type erasure bypass** — packages/management/src/main/ipc/service-control.ts:697 — `enabled: boolean` is TS-only; runtime accepts any unknown. String "true" truthy. Fix: `z.boolean().parse(enabled)` before use.
+
+- [ ] DASH-ELEC-078. **[HIGH][SEC] `SchemaSlug` more permissive than `SchemaCreateTenant.slug`** — packages/management/src/main/ipc/management-api.ts:51-53 vs :109 — SchemaSlug allows `[A-Z]`, `_`, up to 256 chars; create-tenant restricts `[a-z0-9-]{3,64}`. Renderer can pass `ADMIN_TENANT` for delete/suspend that could never have been created via UI. Fix: shared regex `z.string().regex(/^[a-z0-9-]{3,64}$/)`.
+
+- [ ] DASH-ELEC-079. **[MED][SEC] EXPECTED_FINGERPRINT frozen at module load — cert rotation falls back to unauthenticated** — packages/management/src/main/services/api-client.ts:121-140 — fingerprint computed once via IIFE; after `setup.bat --reset-certs` mismatch returns Error from checkCertFingerprint but `rejectUnauthorized: false` ignores it. Fix: reload fingerprint per-request, or expose `refreshCertPin()` after server restart, or set `rejectUnauthorized: true` with pinned cert as CA.
+
+- [ ] DASH-ELEC-080. **[MED][SEC] `tryPowershellDiskSpace` embeds `"` inside `-Command "..."` — breaks on Windows, OverviewPage disk chart silently empty on 24H2+** — packages/management/src/main/ipc/system-info.ts:157-158 — script literal contains `"` chars; outer execSync uses shell, inner quotes terminate -Command early. Caller catches → returns []. Fix: `spawnSync(psExe, ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command', script], { encoding: 'utf-8' })` — explicit args array, no shell.
+
+- [x] DASH-ELEC-081. **[MED][SEC] stopDirectServer TOCTOU between `isProcessAlive` and `taskkill /PID`** — packages/management/src/main/ipc/service-control.ts:583-593 — between signal-0 check and taskkill, target PID can exit and OS can reassign. Fix: remove early-exit `isProcessAlive` guard; always taskkill; treat exit 128 (no PID) as success.
+
+- [x] DASH-ELEC-082. **[MED][SEC] `.env.bak-*` backup inherits source ACL — secrets may be world-readable** — packages/management/src/main/ipc/management-api.ts:729-730 — `copyFileSync(envPath, bakPath)` inherits ACL; .tmp at line 747 uses mode 0o600 but backup does not. Multi-user Windows leaks Stripe keys + JWT secrets. Fix: `chmodSync(bakPath, 0o600)` after copy, or `writeFileSync(bakPath, readFileSync(envPath), { mode: 0o600 })`.
+
+- [ ] DASH-ELEC-083. **[MED][WIRE] No concurrency guard on service:start / stop / restart — parallel IPC calls race** — packages/management/src/main/ipc/service-control.ts:595-681 — rapid Restart click or CommandPalette + ServerControlPage simultaneously fires conflicting pm2 commands; readDirectState/writeDirectState non-atomic. Fix: module-level `serviceActionInFlight` Promise gate; new calls queue or return `{ success: false, output: 'Another action in progress' }`.
+
+- [ ] DASH-ELEC-084. **[MED][WIRE] `management:restart-server` and `service:restart` are two uncoordinated paths** — management-api.ts:1676-1680 (REST) + service-control.ts:663-681 (sc.exe/PM2/kill). Both exposed: `getAPI().management.restartServer()` (UpdatesPage) and `getAPI().service.restart()` (ServerControlPage). Fix: pick canonical path; remove or feature-flag the other; ensure mutual exclusion.
+
+- [ ] DASH-ELEC-085. **[MED][WIRE] api-client.ts single 30s timeout covers connect + body — slow-handshake hides connection failure** — packages/management/src/main/services/api-client.ts:26,294 — `req.setTimeout(30_000)` is idle-time, not connect-phase. Port-squatter holds dashboard 30s. Fix: `req.on('socket', s => s.setTimeout(5_000, () => req.destroy(new Error('Connect timeout'))))` for handshake; keep 30s for body.
+
+- [x] DASH-ELEC-086. **[LOW][SEC] `admin:list-logs` leaks absolute filesystem paths to renderer** — packages/management/src/main/ipc/management-api.ts:1851-1864 — response includes `path: resolved.path` (e.g. `C:\Users\admin\AppData\Roaming\BizarreCRM\logs\...`). Leaks install path, username, layout. Fix: omit `path` or sanitize to relative; renderer only needs name/size/mtime/exists.
+
+- [x] DASH-ELEC-087. **[LOW][WIRE] `service:kill-all` runs `taskkill /F /IM node.exe` — kills ALL user node.exe processes** — packages/management/src/main/ipc/service-control.ts:735 — terminates VS Code helpers, dev servers, unrelated Electron apps. Fix: constrain to known PID from `readDirectState().pid`, or `/FI "COMMANDLINE eq *bizarre-crm*"`.
+
+- [x] DASH-ELEC-088. **[LOW][WIRE] `system:open-browser` hardcodes `https://localhost`, ignores serverPort** — packages/management/src/main/ipc/management-api.ts:1900 — non-default port (e.g. 8443) opens wrong URL. Fix: export `getServerBase()` from api-client.ts; `shell.openExternal(getServerBase())`.
+
+- [x] DASH-ELEC-089. **[MED][UI] PageErrorBoundary never resets on route change — sticky crash state** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30 + components/shared/ErrorBoundary.tsx:19 — boundary wraps `<Outlet>` with no key tied to location; once `hasError=true` it stays sticky on every page until manual Retry. Fix: `const { pathname } = useLocation()` in DashboardShell, pass `key={pathname}` to `<PageErrorBoundary>`.
+
+- [ ] DASH-ELEC-090. **[MED][UI] All 16 pages statically imported — no code splitting** — packages/management/src/renderer/src/App.tsx:5-18 + vite.config.ts (no manualChunks) — entire SPA in one chunk; main-thread parse blocks open. Fix: `React.lazy(() => import('./pages/FooPage'))` + shared `<Suspense fallback>` around `<Outlet>` in DashboardShell. Lazy at minimum: DiagnosticsPage, AdminToolsPage, AuditLogPage, CrashMonitorPage, UpdatesPage.
+
+- [ ] DASH-ELEC-091. **[LOW][UI] `multiTenantOnly` routes have no page-level guard — accessible by typing URL in single-tenant installs** — App.tsx:59,64,69,70,71 — Sidebar filters them but routes themselves un-guarded; direct `/#/tenants` reaches full page in single-tenant mode. Fix: `<MultiTenantRoute>` guard wrapping each multi-tenant route element, redirecting to `/` with toast when isMultiTenant=false.
+
+- [x] DASH-ELEC-092. **[LOW][UI] `<main>` has no id/aria-label/tabIndex=-1 — focus not moved on route change** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:29 — keyboard/SR focus stays on sidebar link after nav. Fix: `id="main-content" tabIndex={-1}` on `<main>`; in App.tsx watch `useLocation().pathname` and call `document.getElementById('main-content')?.focus()`. Add visually-hidden skip-nav link before header.
+
+- [x] DASH-ELEC-093. **[LOW][UI] Header window-control buttons have only `title` attr, no `aria-label`** — packages/management/src/renderer/src/components/layout/Header.tsx:86-99 — Narrator on Windows often ignores title on `<button>`. Fix: add `aria-label="Minimize window"` / `aria-label="Maximize window"` alongside title.
+
+- [x] DASH-ELEC-094. **[LOW][UI] `bg-white` hardcoded on QR code container — dark-mode parity break** — packages/management/src/renderer/src/pages/LoginPage.tsx:398 — full card extends beyond QR image, jarring bright rectangle on dark login screen. Fix: scope `bg-white` only to the `<img>` element (`className="w-48 h-48 bg-white p-1 rounded"`); use surface token for card.
+
+- [x] DASH-ELEC-095. **[LOW][WIRE] Theme state in-memory only — does not persist to localStorage, resets to dark every reload** — packages/management/src/renderer/src/stores/uiStore.ts:57,63-71 — setTheme never writes localStorage; initialTheme hardcoded 'dark'. Density persists correctly but theme doesn't. Fix: THEME_KEY constant, `localStorage.setItem(THEME_KEY, theme)` in setTheme, validated read in initialTheme matching density pattern.
+
+- [ ] DASH-ELEC-096. **[LOW][WIRE] `bridge.ts` `service.getStatus()` return type diverges from safeInvoke `unknown` — silent cast** — packages/management/src/renderer/src/api/bridge.ts:369 vs preload/index.ts:117-125 — typed `Promise<ServiceStatus>` but contextBridge strips types; useServerHealth.ts:50 ingests directly. If main handler shape changes (e.g. wraps in ApiResponse), renderer silently consumes malformed data. Fix: runtime narrowing guard in useServerHealth or Zod schema validating raw IPC result before storing.
+
+- [ ] DASH-ELEC-097. **[HIGH][BUILD] `dev` script never launches Electron + skips preload build** — packages/management/package.json:13 — runs `build:main --watch` and `vite` only; no electron `.`, no preload watch, no main-process auto-restart. Devs must additionally run `dev:electron` (one-shot). Fix: replace `dev` with concurrently launching: `build:main --watch`, `build:preload --watch`, `vite --port 5174`, and `wait-on dist/main/index.js && nodemon --watch dist/main --exec electron .`.
+
+- [ ] DASH-ELEC-098. **[HIGH][BUILD] Zero test infrastructure — no framework, no test files, no CI test step** — packages/management/package.json (no vitest/jest), src/ (0 *.test.*), .github/workflows/ci.yml (no test job). CI only type-checks. Fix: add vitest + @vitest/ui + @testing-library/react + user-event; scripts `"test": "vitest run"` + `"test:watch"`; CI `test` job.
+
+- [ ] DASH-ELEC-099. **[MED][BUILD] No ESLint config — package fully un-linted** — packages/management/ (no .eslintrc*/eslint.config*); no eslint deps; no `lint` script; no CI lint step. Fix: eslint.config.js with @typescript-eslint, eslint-plugin-react, react-hooks, jsx-a11y; `"lint": "eslint src"`; CI lint step.
+
+- [x] DASH-ELEC-100. **[MED][BUILD] `@types/node` missing — main-process Node APIs typed `any`** — packages/management/package.json (no @types/node) — `fs`, `path`, `child_process` etc. defeat strict-mode; `skipLibCheck: true` hides symptom. Fix: add `"@types/node": "^22.0.0"` matching node engine.
+
+- [ ] DASH-ELEC-101. **[MED][DEPS] electron pinned to non-LTS 39.8.7** — packages/management/package.json:37 — even-numbered Electron releases are LTS (32, 34, 36); 39 is odd dev/latest with no LTS security backports. As of 2026-04, Electron 36.x is current LTS. Fix: downgrade to `"electron": "^36.0.0"`.
+
+- [ ] DASH-ELEC-102. **[MED][DEPS] `app-builder-bin` pinned to alpha `5.0.0-alpha.10`** — packages/management/package.json:28 — electron-builder internal binary as pre-release; production installers built with unfinished tool. Fix: remove explicit override (let electron-builder pull vetted bin), or pin to latest stable.
+
+- [ ] DASH-ELEC-103. **[MED][BUILD] electron-builder.yml has no `publish` section — auto-update structurally broken** — no publish key + no electron-updater dep. Future auto-update silently produces un-updateable installers. Fix: add `publish: { provider: 'github', owner, repo }`; add `"electron-updater": "^6.0.0"` to deps.
+
+- [x] DASH-ELEC-104. **[LOW][BUILD] noUnusedLocals + noUnusedParameters absent from all 3 tsconfigs** — tsconfig.json:8 + tsconfig.node.json:7 + tsconfig.preload.json:7 — strict alone doesn't enable them; dead code accumulates silently. Fix: add to all 3 compilerOptions (or a shared tsconfig.base.json).
+
+- [x] DASH-ELEC-105. **[LOW][BUILD] engines.node too permissive vs root** — packages/management/package.json:10 `>=22.0.0` vs root `>=22.11.0 <25` — admits CVE-vulnerable 22.0-22.10, no upper bound (admits 23/24 monorepo excludes). Fix: align to `">=22.11.0 <25"`.
+
+- [ ] DASH-ELEC-106. **[LOW][BUILD] Root `build` excludes management — Electron dashboard never built by CI** — package.json:19 root build does shared/web/server only; CI Build & Type-check runs `tsc --noEmit` for management but not `build`. Broken renderer/preload build undetected until manual package. Fix: append `&& npm run build --workspace=packages/management` to root; add CI step.
+
+- [x] DASH-ELEC-107. **[LOW][BUILD] license + repository fields absent from package.json** — packages/management/package.json — SBOM/compliance scanners report unlicensed/unlocated. Fix: add `"license": "UNLICENSED"` + `"repository": { "type": "git", "url": "https://github.com/bizarre-electronics/bizarrecrm", "directory": "packages/management" }`.
+
+- [ ] DASH-ELEC-108. **[LOW][BUILD] No README.md in packages/management/ — build/dev workflow undocumented** — no doc explaining 3 tsconfigs, 2-step dev/dev:electron pattern, or code-signing env vars. Fix: README covering local dev, 3 build targets, code-signing variables, CI jobs.
+
+- [x] DASH-ELEC-109. **[MED][I18N] OverviewPage 9 toLocaleTimeString/Date calls pass empty locale array** — packages/management/src/renderer/src/pages/OverviewPage.tsx:307-327, 515, 750 — inherits Windows locale; FR/DE operator sees inconsistent axis labels. DASH-ELEC-052 only covered format.ts:67. Fix: add `'en-US'` first arg uniformly, or `formatGraphDate`/`formatGraphTime` helpers in format.ts.
+
+- [x] DASH-ELEC-110. **[MED][SEC] `unhandledRejection` handler logs raw `reason` object — JWT/password may land in dashboard.log** — packages/management/src/main/index.ts:124-126 `console.error('[Dashboard] Unhandled rejection:', reason)`. If rejection from apiRequest carries Authorization header, token persists to disk. Zod parse rejection could carry cleartext password. Fix: `reason instanceof Error ? reason.message : String(reason)` — never raw object.
+
+- [ ] DASH-ELEC-111. **[MED][SEC] UpdatesPage logs raw git subprocess output to renderer console** — packages/management/src/renderer/src/pages/UpdatesPage.tsx:113-116 `console.log('[Update output]\n' + result.output)` — can contain absolute filesystem paths, repo root, env-var printouts from misconfigured hooks. Fix: route through main IPC log channel with `redactRoot` helper from management-api.ts.
+
+- [ ] DASH-ELEC-112. **[LOW][TELEM] No structured logging library in main process — plain console.log only** — packages/management/src/main/index.ts:102-104 + management-api.ts + service-control.ts — no levels, no JSON, no correlation IDs; no electron-log/winston/pino. Fix: introduce electron-log (zero-dep) for structured JSON lines `{ level, time, msg }`; serialize objects properly.
+
+- [x] DASH-ELEC-113. **[LOW][TELEM] dashboard.log rotation keeps 1 backup max 20MB — no documented retention** — packages/management/src/main/index.ts:44-53 `rotateLogIfLarge` rotates at 10MB, 1 backup. <1 day for busy install. No comment/operator doc. Fix: document policy, consider configurable retention via settings.json.
+
+- [ ] DASH-ELEC-114. **[MED][SEC] Electron Crashpad enabled by default — minidumps accumulate with in-memory JWT/passwords** — packages/management/src/main/index.ts (no `crashReporter.start({uploadToServer: false})`) — `%APPDATA%\BizarreCRM Management\CrashDumps` may contain superAdminToken, pending Zod password, tenant PII. No cleanup policy. Fix: `crashReporter.start({ uploadToServer: false, compress: true })` before whenReady; log path on startup; 30-day cleanup or expose in Settings.
+
+- [x] DASH-ELEC-115. **[MED][SEC] PageErrorBoundary renders `error.message` directly in production** — packages/management/src/renderer/src/components/shared/ErrorBoundary.tsx:44-48 + main.tsx:40-44 — TLS fingerprint mismatch messages or Zod parse errors leak internals. Fix: render error.message only when `import.meta.env.DEV`; production shows generic "internal error" + ref code.
+
+- [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls.
+
+- [ ] DASH-ELEC-117. **[LOW][TELEM] No telemetry opt-out mechanism** — packages/management/ has no telemetry now but no opt-out infrastructure either; any future SDK would be on-by-default. Self-hosted GDPR concern. Fix: add `telemetry_opt_in: false` to platform_config; Settings toggle "Crash reporting & diagnostics"; gate future analytics behind it.
+
+- [x] DASH-ELEC-118. **[LOW][SEC] CrashMonitorPage CSV exports `errorStack` verbatim** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:128-132 — stacks may contain absolute paths, SQL with customer names/emails, request context. CSV unencrypted. Fix: exclude errorStack by default, or truncate to first 3 frames stripping path lines.
+
+- [x] DASH-ELEC-119. **[LOW][I18N] formatRelativeTime hardcodes English suffixes "m ago"/"h ago"/"just now"** — packages/management/src/renderer/src/utils/format.ts:76-85 — used on CrashMonitor disabled-route chip, AuditLogPage, RecentActivityWidget. date-fns already installed (devDeps:36) ships locale-aware `formatDistanceToNow`. Fix: replace hand-rolled with `formatDistanceToNow`; expose locale selector once i18n bootstrapped.
+
+- [ ] DASH-ELEC-120. **[MED][UI] TenantsPage Create Tenant modal missing role="dialog"/aria-modal/Escape/focus-trap** — packages/management/src/renderer/src/pages/TenantsPage.tsx:483-510 — `showCreate` overlay div has none of the four; ConfirmDialog + KeyboardShortcutsHelp have all four. Fix: mirror ConfirmDialog pattern (role + aria + tabIndex + onKeyDown Escape/Tab-trap).
+
+- [x] DASH-ELEC-121. **[LOW][UI] DashboardShell `<main>` scroll position not reset on route change** — packages/management/src/renderer/src/components/layout/DashboardShell.tsx:30 — main is overflow-y-auto container; pathname already read at line 15 for boundary key but no scroll reset. Long page → short page leaves scroll mid-page. Fix: `mainRef = useRef`; `useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [pathname])`.
+
+- [ ] DASH-ELEC-122. **[MED][UI] No webContents `context-menu` handler — right-click exposes Chromium debug menu in dev** — packages/management/src/main/window.ts (no handler) — `Menu.setApplicationMenu(null)` removes menu bar but not right-click. Dev shows full Inspect/Reload; prod shows minimal Chromium menu. Fix: `mainWindow.webContents.on('context-menu', e => e.preventDefault())`, or build app-appropriate Copy/Select-All menu.
+
+- [ ] DASH-ELEC-123. **[LOW][UI] KeyboardShortcutsHelp lists mouse-only actions as keyboard shortcuts** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:24-25 — `keys: ['Click']` and `['Hover + Click']` mislead keyboard-only operators. Fix: separate "Mouse Shortcuts" section, or add real keyboard equivalent (Tab to CopyText → Enter).
+
+- [ ] DASH-ELEC-124. **[LOW][UI] CommandPalette missing role="combobox"/role="listbox"/role="option" semantics** — packages/management/src/renderer/src/components/CommandPalette.tsx:202-288 — input has aria-label but no combobox role; result `<button>` items have no role="option"/aria-selected. SR reads as plain input + buttons, not controlled widget. Fix: `role="combobox" aria-expanded aria-autocomplete="list" aria-controls` on input; `role="listbox" id` on results; `role="option" aria-selected={isActive}` on each button.
+
+- [ ] DASH-ELEC-125. **[LOW][UI] navigator.platform (deprecated) used for macOS detection in KeyboardShortcutsHelp** — packages/management/src/renderer/src/components/KeyboardShortcutsHelp.tsx:13 — deprecated since Chrome 100+; future Chromium returns "". Fix: prefer `navigator.userAgentData?.platform === 'macOS'` with userAgent Macintosh fallback, or expose process.platform via preload constant.
+
+- [ ] DASH-ELEC-126. **[LOW][UI] Header `⌘K` badge is non-focusable `<span>` with only `title` — keyboard users get no shortcut hint** — packages/management/src/renderer/src/components/layout/Header.tsx:77-82 — span with `title="Ctrl/Cmd + K..."` skipped by SR; keyboard Tab never reaches it. No clickable target in header to bind aria-keyshortcuts. Fix: use `<kbd>` element + add `aria-keyshortcuts="Control+k Meta+k"` to `<main>` so AT announces on focus.
+
+- [ ] DASH-ELEC-127. **[MED][UI] LogsPage auto-scroll clobbers user's manual scroll position every 2s** — packages/management/src/renderer/src/pages/LogsPage.tsx:117-121 — `useEffect([content, autoRefresh])` sets scrollTop=scrollHeight unconditionally when autoRefresh; user investigating an earlier error gets dragged to bottom every poll. Fix: track `userScrolled` boolean (true when `scrollTop < scrollHeight - clientHeight - 50` in onScroll); skip auto-scroll while true; reset on "scroll to bottom" click.
+
+- [x] DASH-ELEC-128. **[LOW][UI] TenantsPage Suspend/Activate/Delete icon buttons have `title` but no `aria-label`** — packages/management/src/renderer/src/pages/TenantsPage.tsx:433,437,450 — Narrator/NVDA usually ignores title on focusable elements. Fix: ``aria-label={`Suspend ${t.name}`}`` per button so each has unique accessible name.
+
+- [ ] DASH-ELEC-129. **[MED][UI] AutoStart toggle optimistic update never rolls back on IPC failure** — packages/management/src/renderer/src/pages/ServerControlPage.tsx:169-173 — `setAutoStart(newState)` fires before doAction resolves; failure toast shown but toggle stays flipped wrong until next 10s poll. rateLimitBypass at line 259 rolls back correctly. Fix: capture `prev = autoStart`; call `setAutoStart(prev)` in doAction error branch.
+
+- [ ] DASH-ELEC-130. **[MED][UI] Restore dialog dismissable while restore in flight — race window** — packages/management/src/renderer/src/pages/BackupPage.tsx:281-296 — `restoring` state tracked but never passed to ConfirmDialog; Cancel + Escape stay active during entire async, operator can close + retrigger another DB swap concurrently. Fix: pass `disabled`/`loading` to ConfirmDialog; suppress onCancel while restoring.
+
+- [ ] DASH-ELEC-131. **[MED][WIRE] No "Revoke All Sessions" action — only per-session revoke** — packages/management/src/renderer/src/pages/SessionsPage.tsx (entire) — `super-admin:revoke-all` IPC handler does not exist. Credential-compromise incident requires one-by-one revoke; with 100s of sessions impractical. Fix: add `ipcMain.handle('super-admin:revoke-all-sessions', ...)` → POST /super-admin/api/sessions/revoke-all; "Revoke All" danger button in SessionsPage with ConfirmDialog.
+
+- [ ] DASH-ELEC-132. **[LOW][UI] Empty SessionsPage state has no recovery cue after bulk revoke** — packages/management/src/renderer/src/pages/SessionsPage.tsx:135 — `"No active sessions"` plain dim string; if operator revoked self (no IPC self-revoke guard) no "Back to Login" link. Fix: when `sessions.length === 0` render empty-state with `<Link to="/login">`.
+
+- [ ] DASH-ELEC-133. **[MED][UI] Tenant Repair button fires with no confirmation** — packages/management/src/renderer/src/pages/TenantsPage.tsx:442-449 — handleRepair(t.slug) dispatches with zero interstitial; tooltip 11px partially explains. Fix: ConfirmDialog explaining what repair does (creates missing DB tables, re-generates setup token); inline result detail like DNS-backfill ResultPanel.
+
+- [ ] DASH-ELEC-134. **[LOW][UI] Repair button visible only for non-active tenants — server handler accepts any** — packages/management/src/renderer/src/pages/TenantsPage.tsx:441 `t.status !== 'active'` — server `repairTenant` (management-api.ts:1054) carries no such restriction; active tenant with missing DB table cannot be repaired from UI. Fix: show Repair for all tenants, or expose via expanded detail row.
+
+- [ ] DASH-ELEC-135. **[LOW][UI] Create Tenant modal: slug not auto-derived from shop name** — packages/management/src/renderer/src/pages/TenantsPage.tsx:487-489 — newSlug + newName independent. Operators forget hyphens-only rule, type uppercase, etc. Fix: onChange of newName populate newSlug if empty: `newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)`.
+
+- [ ] DASH-ELEC-136. **[LOW][UI] No bulk-select checkbox on TenantsPage table** — packages/management/src/renderer/src/pages/TenantsPage.tsx:357-479 — bulk suspend/activate/delete requires per-row clicks; 50+ tenants is friction-heavy. Fix: `<th>` checkbox column; `selectedSlugs: Set<string>`; contextual bulk-action bar with ConfirmDialog routing.
+
+- [ ] DASH-ELEC-137. **[LOW][SEC] AdminTools rate-limit inspector hard-caps 200 rows; silently truncates** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:53 `listRateLimits({ limit: 200 })` — summary badge shows total/locked but table silently shows ≤200; if 350 keys locked operator sees 200 only. Fix: render `Showing {rlRows.length} of {rlSummary.total}` when truncated, or paginate.
+
+- [ ] DASH-ELEC-138. **[LOW][WIRE] BackupPage refresh after restore fires immediately — stale list likely** — packages/management/src/renderer/src/pages/BackupPage.tsx:105-123 — `refresh()` called right after `restoreBackup` resolves; restore involves DB file swap taking seconds. Fix: `setTimeout(refresh, 2000)` or show "Server restarting — refresh shortly" state.
+
+- [x] DASH-ELEC-139. **[MED][UI] StatCard sublabel `text-[9px] text-surface-600` fails WCAG AA** — packages/management/src/renderer/src/pages/OverviewPage.tsx:44 — surface-600 on surface-900 ~3.2:1; fails 4.5:1. Fix: text-surface-400 (~6.1:1).
+
+- [ ] DASH-ELEC-140. **[MED][UI] Canvas axis labels hardcoded #71717a / #52525b — Y ~3.1:1, X ~2.2:1** — OverviewPage.tsx:145,152 — fails AA. Fix: raise Y to #a1a1aa, X to #71717a; via CSS var (links 073).
+
+- [x] DASH-ELEC-141. **[MED][UI] SecurityAlertsPage timestamp `text-[11px] text-surface-600` ~2.2:1** — SecurityAlertsPage.tsx:238. Fix: text-surface-400.
+
+- [x] DASH-ELEC-142. **[MED][UI] LogsPage DEBUG/TRACE `text-surface-500` on surface-950 ~3.4:1** — LogsPage.tsx:24. Fix: text-surface-400 + opacity-70.
+
+- [x] DASH-ELEC-143. **[LOW][UI] ConfirmDialog `disabled:opacity-40` drops danger button below 3:1** — ConfirmDialog.tsx:223. Fix: disabled:opacity-50 + bg-red-800 + text-red-200.
+
+- [x] DASH-ELEC-144. **[LOW][UI] `placeholder:text-surface-600` on all inputs ~2.2:1** — LoginPage.tsx:319,326,349,355,376,382,409,430 + ConfirmDialog.tsx:205 + SettingsPage.tsx:382. Fix: placeholder:text-surface-400.
+
+- [x] DASH-ELEC-145. **[LOW][UI] Alpha-reduced semantic body text fails AA** — OverviewPage.tsx:650 + BannerCertWarning.tsx:46 + BannerTagVerifyWarning.tsx:47 — red-400 at 80% on red-950/40 ~4.1:1. Fix: drop /70 + /80 from semantic body.
+
+- [ ] DASH-ELEC-146. **[MED][UI] Light-mode parity absent — zero `dark:` utilities** — uiStore VALID_THEMES still includes 'light' but components hardcoded to dark surface tokens. setTheme('light') makes UI unreadable. Fix: drop 'light' from VALID_THEMES OR add `dark:` variants across components.
+
+- [x] DASH-ELEC-147. **[LOW][UI] globals.css scrollbar uses hardcoded hex** — globals.css:37,41. Fix: theme('colors.surface.700') via @apply.
+
+- [x] DASH-ELEC-148. **[LOW][UI] `*:focus-visible` global rule uses hardcoded #3b82f6** — globals.css:56. Fix: outline solid theme('colors.accent.500').
+
+- [x] DASH-ELEC-149. **[LOW][UI] No `prefers-reduced-motion` guard on animations** — globals.css:92 + tailwind.config.ts:61-64 + Sidebar.tsx:41. Fix: globals.css `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }`.
+
+- [ ] DASH-ELEC-150. **[LOW][UI] `@apply` in globals.css component layer drifts from Tailwind tokens** — globals.css:70-97. Fix: remove `.stat-card`; inline as per-component constant.
+
+- [ ] DASH-ELEC-151. **[LOW][UI] Dynamic className template literals risk Tailwind purge** — SetupChecklist.tsx:229,253 + RecentActivityWidget.tsx:129 + StatusFooter.tsx:75 + SettingsPage.tsx:321. Fix: cn() with explicit object map.
+
+- [ ] DASH-ELEC-152. **[HIGH][SEC] @xmldom/xmldom ≤0.8.12 — 4 active CVEs in electron-builder transitive** — package-lock.json:3932 — DoS + 3 XML-injection. Dev-only but runs in CI. Fix: `npm audit fix` or root override `{ "@xmldom/xmldom": "^0.9.0" }`.
+
+- [ ] DASH-ELEC-153. **[MED][SEC] postcss <8.5.10 CVE — XSS via unescaped `</style>`** — package-lock.json:4726. Fix: bump `"postcss": "^8.5.10"`.
+
+- [ ] DASH-ELEC-154. **[HIGH][DEPS] `app-builder-bin` 3-way alpha split** — packages/management/package.json:28 declares alpha.10; lockfile resolves alpha.13 + nested alpha.12. Fix: remove explicit override.
+
+- [ ] DASH-ELEC-155. **[MED][DEPS] Renderer runtime deps misclassified as devDependencies** — packages/management/package.json:29-50 — react/react-dom/zustand/react-query/react-router-dom/clsx/date-fns/lucide-react/tailwind-merge/react-hot-toast in devDeps. Fix: move all renderer runtime to `dependencies`.
+
+- [ ] DASH-ELEC-156. **[MED][DEPS] `app-builder-bin` erroneously listed in `dependencies` (prod) in lockfile** — package-lock.json:12535. Fix: remove from `dependencies`.
+
+- [ ] DASH-ELEC-157. **[MED][DEPS] `inflight` + `glob@7` deprecated transitives** — package-lock.json:7620-7624 + 415-419. Fix: track electron-builder release that drops them.
+
+- [ ] DASH-ELEC-158. **[MED][DEPS] `prebuild-install@7.1.3` deprecated — native-addon install vector** — package-lock.json:9368 — pulled by better-sqlite3 + canvas. Fix: update better-sqlite3 to version migrating away.
+
+- [ ] DASH-ELEC-159. **[LOW][DEPS] `boolean@3.2.0` "no longer supported"** — package-lock.json:4570-4577. Fix: monitor electron-builder for removal.
+
+- [ ] DASH-ELEC-160. **[LOW][DEPS] CSP `'unsafe-inline'` for style-src — prod build not verified to strip** — packages/management/src/renderer/index.html:23. Fix: evaluate `vite-plugin-csp` for nonce-based CSP.
+
+- [x] DASH-ELEC-161. **[LOW][DEPS] `@bizarre-crm/shared: "*"` wildcard — no minimum version bound** — packages/management/package.json:23. Fix: `"workspace:*"` or `"^2.0.0"`.
+
+- [x] DASH-ELEC-162. **[MED][UI] LoginPage username inputs use autoComplete="off" — blocks credential managers** — packages/management/src/renderer/src/pages/LoginPage.tsx:316,345 — both setup-step + login-step username fields off; password fields no autoComplete attr at all. Fix: setup username `"username"` + password `"new-password"`; login username `"username"` + password `"current-password"`; set-password fields `"new-password"`.
+
+- [x] DASH-ELEC-163. **[MED][UI] 2FA inputs lack autoComplete="one-time-code"** — packages/management/src/renderer/src/pages/LoginPage.tsx:406,428 — iOS/Android SMS autofill blocked. Fix: add `autoComplete="one-time-code"` to both TOTP inputs.
+
+- [ ] DASH-ELEC-164. **[LOW][UI] LoginPage set-password step has no show-password toggle** — packages/management/src/renderer/src/pages/LoginPage.tsx:372-383 — newPassword/confirmPassword type="password" no Eye/EyeOff. SettingsPage has it. Fix: showNew/showConfirm state + Eye buttons.
+
+- [x] DASH-ELEC-165. **[LOW][UI] SettingsPage show-password toggle lacks aria-pressed** — packages/management/src/renderer/src/pages/SettingsPage.tsx:276-284 — DASH-ELEC-025 fixed aria-label but state not announced. Fix: `aria-pressed={isRevealed}`.
+
+- [ ] DASH-ELEC-166. **[MED][UI] Create Tenant modal has no `<form>` wrapper — Enter doesn't submit** — packages/management/src/renderer/src/pages/TenantsPage.tsx:502-529 — div + button onClick only. ConfirmDialog + LoginPage all use form onSubmit. Fix: wrap modal in `<form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>`.
+
+- [ ] DASH-ELEC-167. **[LOW][UI] Create Tenant modal inputs placeholder-only — no label/aria-label** — packages/management/src/renderer/src/pages/TenantsPage.tsx:507-514 — slug/name/email/plan select have only placeholder. SR announces placeholder once. Fix: add `<label htmlFor>` with id pairs, or aria-label per input.
+
+- [x] DASH-ELEC-168. **[LOW][UI] Create Tenant modal does not reset state on Cancel** — packages/management/src/renderer/src/pages/TenantsPage.tsx:521 — Cancel calls setShowCreate(false) only; reopening shows leftover newSlug/newName/newEmail/newPlan. Fix: reset all 4 in onCancel.
+
+- [ ] DASH-ELEC-169. **[LOW][UI] ConfirmDialog type-to-confirm input has no aria-label / aria-describedby** — packages/management/src/renderer/src/components/shared/ConfirmDialog.tsx:200-207 — anonymous text field with placeholder matching expected value. Fix: add id="confirm-typing-input" + aria-label or aria-describedby pointing to instruction `<p>`.
+
+- [ ] DASH-ELEC-170. **[MED][UI] AdminToolsPage tenant-slug input strips spaces on every keystroke — cursor jumps** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:383 — onChange `.toLowerCase().trim()` per char; leading-space typing jumps cursor; pasted trailing space silently discarded mid-edit. Fix: move `.trim()` to validation (handleReset only); for normalisation use `replace(/\s/g, '')`.
+
+- [ ] DASH-ELEC-171. **[LOW][UI] SettingsPage platform-config inputs save silently on blur — no undo** — packages/management/src/renderer/src/pages/SettingsPage.tsx:508-511 — onBlur fires handlePlatformConfigToggle immediately; Tab to next field permanent-writes. Env-settings on same page uses pending/discard pattern. Fix: dirty indicator + explicit Save button per field, OR "Tab to save / Esc to undo" hint.
+
+- [ ] DASH-ELEC-172. **[LOW][UI] SettingsPage env-text inputs no maxLength — accepts MB-large pastes** — packages/management/src/renderer/src/pages/SettingsPage.tsx:266-273 — Stripe keys / Cloudflare tokens / CORS origins unbounded; IPC fails server-side with generic error. Fix: secrets `maxLength={512}`, plain-text `maxLength={2048}`; remaining-chars counter near limit.
+
+- [ ] DASH-ELEC-173. **[LOW][UI] AdminToolsPage handleReset + handleRotateJwt still use window.confirm** — packages/management/src/renderer/src/pages/AdminToolsPage.tsx:74-83, 124 — DASH-ELEC-033 sketch targeted ServerControlPage; AdminToolsPage rate-limit reset + JWT rotation (also destructive: invalidates all sessions) still on window.confirm. Fix: ConfirmDialog state per action.
+
+- [ ] DASH-ELEC-174. **[MED][UI] BackupPage Restore ConfirmDialog button stays enabled during in-flight restore** — packages/management/src/renderer/src/pages/BackupPage.tsx:293 — confirmLabel changes to "Restoring…" but button only disabled when typing-mismatch; mid-restore re-click triggers second restore. Sibling of DASH-ELEC-130. Fix: add `disabled` prop to ConfirmDialog + pass `disabled={restoring}`.
+
+- [ ] DASH-ELEC-175. **[MED][UI] Create-tenant modal has hard `w-[420px]` no viewport clamp** — packages/management/src/renderer/src/pages/TenantsPage.tsx:504 — ConfirmDialog uses `w-[min(420px,calc(100vw-2rem))]`. Fix: same pattern.
+
+- [ ] DASH-ELEC-176. **[MED][UI] CommandPalette + KeyboardShortcutsHelp use fixed `pt-24` — clips on short windows** — CommandPalette.tsx:193 + KeyboardShortcutsHelp.tsx:106 — at 600px height with cert+tag banners visible (96px extra), palette body squeezed near zero. Fix: `pt-[max(1rem,min(6rem,10vh))]`.
+
+- [ ] DASH-ELEC-177. **[LOW][UI] StatusFooter uses `hidden sm:flex` — sm (640px) always satisfied at minWidth 900** — packages/management/src/renderer/src/components/layout/StatusFooter.tsx:71 — misleading dead breakpoint. Fix: document intent or use higher breakpoint matching actual minimum.
+
+- [ ] DASH-ELEC-178. **[LOW][UI] Header tick chip uses `hidden sm:inline-flex` — same dead breakpoint** — packages/management/src/renderer/src/components/layout/Header.tsx:61. Fix: remove guard or use `md:inline-flex`.
+
+- [ ] DASH-ELEC-179. **[MED][UI] SettingsPage system-info grid `grid-cols-2` no responsive fallback** — packages/management/src/renderer/src/pages/SettingsPage.tsx:529 — at minWidth content area each col ~280px; long values like hostnames overflow with no truncate/break-all. Fix: `grid-cols-1 sm:grid-cols-2 gap-x-4` + truncate/break-words on values.
+
+- [ ] DASH-ELEC-180. **[MED][UI] window.confirm in AdminToolsPage (3 calls) + SettingsPage (1 call) blocked in sandboxed renderer** — AdminToolsPage.tsx:74,124,153 + SettingsPage.tsx:183 — DASH-ELEC-070 fixed SecurityAlertsPage; these 4 not migrated. Fix: ConfirmDialog state per call-site.
+
+- [x] DASH-ELEC-181. **[LOW][UI] Toast `top-right` overlaps window controls at narrow widths** — packages/management/src/renderer/src/main.tsx:96 — react-hot-toast default top ~8px places first toast over 44px frameless header buttons. Fix: `containerStyle={{ top: 52 }}`.
+
+- [x] DASH-ELEC-182. **[LOW][UI] CrashMonitor "top offending routes" bar uses fixed `w-48` — silently truncates long API routes** — packages/management/src/renderer/src/pages/CrashMonitorPage.tsx:195 — `/api/v1/tenants/:slug/automation/runs/:runId/retry` cut to unreadable. Fix: `max-w-[12rem]` wider, or flex-1 and let bar take remaining.
+
+- [ ] DASH-ELEC-183. **[LOW][UI] SettingsPage system-info grid no single-column fallback for compact density** — packages/management/src/renderer/src/pages/SettingsPage.tsx:529 — long values + 32px gap-x-8 → no wrap room. Fix: `grid-cols-1 sm:grid-cols-2`.
+
+- [ ] DASH-ELEC-184. **[MED][DEBT] `wrapHandler` typed `(...args: any[]) => Promise<any>` — IPC boundary untyped across ~60 handlers** — packages/management/src/main/ipc/management-api.ts:867-870 — silenced by 2 eslint-disables. Fix: typed generic `<T extends unknown[], R>(fn: (event: IpcMainInvokeEvent, ...args: T) => Promise<R>)`.
+
+- [x] DASH-ELEC-185. **[LOW][DEBT] `@ts-expect-error Vite HMR` (×2) — missing `vite/client` types** — packages/management/src/renderer/src/stores/authStore.ts:57,59. Fix: add `"types": ["vite/client"]` to renderer tsconfig compilerOptions.
+
+- [x] DASH-ELEC-186. **[MED][DEBT] Sparkline useEffect captures stale `series` via eslint-disable — silent data drop on rapid polling** — packages/management/src/renderer/src/pages/OverviewPage.tsx:612-622 — effect reads series.* with `[stats]` deps; pushSpark appends to stale snapshot. Fix: functional dispatch `dispatchSeries(prev => ({ mem: pushSpark(prev.mem, ...), ... }))`.
+
+- [x] DASH-ELEC-187. **[LOW][DEBT] toCsv called with `as unknown as Record<string,unknown>[]` in 5 sites** — AuditLogPage.tsx:88 + CrashMonitorPage.tsx:134 + AutomationRunsPanel.tsx:103 + NotificationsPanel.tsx:110 + WebhookFailuresPanel.tsx:122. Fix: make toCsv generic `<T extends Record<string,unknown>>`.
+
+- [x] DASH-ELEC-188. **[LOW][DEBT] `z.enum(LOG_FILE_WHITELIST as unknown as [...])` double cast** — packages/management/src/main/ipc/management-api.ts:272. Fix: `z.enum([...LOG_FILE_WHITELIST] as const)`.
+
+- [ ] DASH-ELEC-189. **[LOW][DEBT] `getTenant` response double-cast `res.data as unknown as TenantDetail`** — packages/management/src/renderer/src/pages/TenantsPage.tsx:81 — bridge types superAdmin.getTenant as `Promise<unknown>`. Fix: extend bridge return type to `Promise<{ success: boolean; data: TenantDetail }>`.
+
+- [ ] DASH-ELEC-190. **[LOW][WIRE] `handleProtocolUrl` is permanent no-op stub but `bizarrecrm-dashboard:` scheme registered OS-wide** — packages/management/src/main/index.ts:246-269 — macOS `open-url` + Windows `second-instance` invoke dead handler. Fix: complete renderer routing OR remove OS registration until ready.
+
+- [x] DASH-ELEC-191. **[LOW][DEBT] Two `eslint-disable react-hooks/exhaustive-deps` mount effects undocumented** — ConfirmDialog.tsx:127 + OverviewPage.tsx:400 — ConfirmDialog has no inline rationale. Fix: add `// intentional: refs are stable, effect is mount-only` on ConfirmDialog line 127.
+
+- [x] DASH-ELEC-192. **[LOW][SEC] Startup `console.log` prints absolute app path + isPackaged unconditionally to dashboard.log** — packages/management/src/main/index.ts:315-316 — leaks local username + install layout. Fix: gate behind `!app.isPackaged` or DEBUG-prefix stripped in prod.
+
+- [ ] DASH-ELEC-193. **[MED][WIRE] No Test Connection for Stripe/Cloudflare/hCaptcha** — packages/management/src/renderer/src/pages/SettingsPage.tsx:40-55. Fix: IPC probes; per-section Test button.
+- [ ] DASH-ELEC-194. **[MED][UI] "Close Dashboard" no confirmation** — SettingsPage.tsx:359-360. Fix: ConfirmDialog state.
+- [x] DASH-ELEC-195. **[LOW][UI] Density buttons missing role="radiogroup"/role="radio"/aria-checked** — SettingsPage.tsx:610-626.
+- [x] DASH-ELEC-196. **[LOW][UI] Filter search input no aria-label** — SettingsPage.tsx:377-383.
+- [x] DASH-ELEC-197. **[LOW][UI] Reload-from-.env button only `title`** — SettingsPage.tsx:385-392. Fix: aria-label.
+- [x] DASH-ELEC-198. **[LOW][UI] flag env checkboxes no `id`; SR name includes raw `<code>{f.key}</code>`** — SettingsPage.tsx:231-249. Fix: explicit id+htmlFor or aria-hidden on code key.
+- [ ] DASH-ELEC-199. **[MED][WIRE] CORS origins single-line `<input>`** — SettingsPage.tsx:266-274. Fix: textarea when category=='cors'.
+- [ ] DASH-ELEC-200. **[MED][WIRE] Platform-config flag checkbox no loading + checked-state out-of-sync** — SettingsPage.tsx:133-148. Fix: optimistic+revert or aria-busy.
+- [ ] DASH-ELEC-201. **[LOW][WIRE] No settingsDeadToggles equivalent — dead platform-config keys live** — SettingsPage.tsx. Fix: server expose `status?: 'coming_soon'`; render badge.
+- [ ] DASH-ELEC-202. **[LOW][UI] Sticky save bar `z-10` insufficient + non-scroll-container** — SettingsPage.tsx:407-453. Fix: z-30.
+- [ ] DASH-ELEC-203. **[LOW][WIRE] `restartPending` never cleared on OS-level restart** — SettingsPage.tsx:72,193,407. Fix: Dismiss button or auto-clear via service.status() poll.
+- [ ] DASH-ELEC-204. **[MED][UI] Settings sections lack aria-labelledby landmarks** — SettingsPage.tsx:340,357,370,457,524.
+- [ ] DASH-ELEC-205. **[HIGH][SEC] `assertRendererOrigin` throw swallowed by `wrapHandler` — origin rejection becomes silent `{success:false}`** — management-api.ts:879-901. Fix: re-throw `IPC_ORIGIN_REJECTED` unconditionally before generic catch.
+- [x] DASH-ELEC-206. **[HIGH][SEC] `system:open-log-file` no `event` parameter — origin check structurally impossible** — system-info.ts:237. Fix: change to `async (event)` + assertRendererOrigin first.
+- [x] DASH-ELEC-207. **[HIGH][SEC] All 8 `service:*` handlers still no assertRendererOrigin (DASH-ELEC-076 unfixed)** — service-control.ts:606,639,662,673,693,707,724,736. Fix: import + add as first statement; convert signatures to accept `event`.
+- [ ] DASH-ELEC-208. **[MED][SEC] `management:get-rollback-info` + `rollback-update` + `clear-rollback` not wrapped with `wrapHandler`** — management-api.ts:1577,1586,1661 — bypass produces unstructured Electron rejection.
+- [x] DASH-ELEC-209. **[MED][SEC] SchemaUpdateConfig key field accepts arbitrary Unicode** — management-api.ts:125-130. Fix: add `.regex(/^[a-zA-Z0-9_-]+$/)`.
+- [x] DASH-ELEC-210. **[MED][WIRE] LOG_FILE_WHITELIST covers PM2 names only — direct-mode logs inaccessible** — management-api.ts:268-274. Fix: extend whitelist or runtime-detect mode.
+- [x] DASH-ELEC-211. **[MED][SEC] SchemaRoute lacks pattern restriction** — management-api.ts:61-63. Fix: `z.string().regex(/^\/[a-zA-Z0-9\/_:*-]{0,511}$/)`.
+- [ ] DASH-ELEC-212. **[LOW][SEC] Dev-mode origin fallback accepts any `file://` when VITE_DEV_SERVER_URL unset** — management-api.ts:336-343. Fix: validate path under `pathToFileURL(app.getAppPath())`.
+- [x] DASH-ELEC-213. **[LOW][WIRE] `.env` injection guard regex omits `\t`** — management-api.ts:1844 `/[\r\n ]/`. Fix: `/[\r\n\t ]/`.
+- [ ] DASH-ELEC-214. **[LOW][WIRE] `management:logout` server-side endpoint missing — JWT remains valid until expiry** — management-api.ts:982-989. Fix: implement `POST /super-admin/api/logout`; call before setSuperAdminToken(null).
+- [x] DASH-ELEC-215. **[MED][UI] LogsPage renders ANSI escape sequences as literal `^[[32m...` garbage** — LogsPage.tsx:302 + management-api.ts:855. Fix: `tailFile()` apply `/\x1b\[[0-9;]*m/g` strip.
+- [ ] DASH-ELEC-216. **[LOW][UI] LogsPage filter substring-only — no regex / invert** — LogsPage.tsx:130-132. Fix: regex toggle button + try/catch fallback.
+- [x] DASH-ELEC-217. **[LOW][UI] LogsPage no persistent LIVE indicator** — LogsPage.tsx:162-172. Fix: `{autoRefresh && <span animate-pulse>LIVE</span>}`.
+- [x] DASH-ELEC-218. **[LOW][UI] LogsPage mtime in local timezone with no UTC tooltip** — LogsPage.tsx:245-249. Fix: `title={new Date(mtime).toISOString()}`.
+- [ ] DASH-ELEC-219. **[MED][UI] AuditLogPage `details` truncated max-w-xs with no expand/diff + no human-description map** — AuditLogPage.tsx:172. Fix: click-to-expand `<pre>`; ACTION_DESCRIPTIONS lookup.
+- [ ] DASH-ELEC-220. **[LOW][UI] AuditLogPage filter-by-user is client-side free-text only — server-truncates >200** — AuditLogPage.tsx:29-31, 58-65. Fix: add `username` server-side query param.
+- [ ] DASH-ELEC-221. **[LOW][SEC] AuditLogPage CSV export unsigned — no integrity hash** — AuditLogPage.tsx:86-92. Fix: append SHA-256 hex hash as comment row.
+- [ ] DASH-ELEC-222. **[MED][UI] CrashMonitorPage no grouping — repeated identical errors shown N rows** — CrashMonitorPage.tsx:94-95, 112-121. Fix: `Map<string, {count,...}>` keyed `route+errorMessage.slice(0,120)`; expandable group rows.
+- [ ] DASH-ELEC-223. **[LOW][UI] CrashMonitorPage drill-in lacks OS/Node/Electron/build context** — CrashMonitorPage.tsx:331-336 + bridge.ts:58-66. Fix: extend CrashEntry; capture `process.versions` + `app.getVersion()` at crash time.
+- [ ] DASH-ELEC-224. **[LOW][UI] WebhookFailuresPanel expand shows `last_error` only — no sent payload** — WebhookFailuresPanel.tsx:213-217 + Row L10-18. Fix: `sent_payload: string | null` truncated 4KB server-side; Payload/Error tab switcher.
+- [x] DASH-ELEC-225. **[LOW][UI] AutomationRunsPanel + NotificationsPanel summary chips non-interactive** — AutomationRunsPanel.tsx:127-133 + NotificationsPanel.tsx:134-139. Fix: SummaryChip optional onClick → setStatusFilter(label) for non-"total" chips.
+
+- [x] DASH-ELEC-226. **[LOW][WIRE] Exponential backoff has no jitter** — useServerHealth.ts:70,91. Fix: `* (0.8 + Math.random() * 0.4)`.
+- [x] DASH-ELEC-227. **[MED][WIRE] wrapHandler doesn't classify "Request timeout" as offline** — management-api.ts:885-898 + api-client.ts:294-297. Fix: check message string or attach `err.code = 'ETIMEDOUT'`.
+- [x] DASH-ELEC-228. **[MED][WIRE] ECONNRESET + EPIPE not in wrapHandler isNetwork set** — management-api.ts:885-898. Fix: add both.
+- [ ] DASH-ELEC-229. **[MED][WIRE] HTTP 502/504/500 indistinguishable for operator** — api-client.ts:263-290 + handleApiResponse.ts. Fix: per-status mapping in formatApiError.
+- [ ] DASH-ELEC-230. **[MED][WIRE] No idempotency keys on POST mutations** — management-api.ts:1036,1134,1154,1160,1170,1246,1328,1334,1695,1699,1743,1745,1768,1774. Fix: UUID per non-GET as `X-Idempotency-Key`.
+- [ ] DASH-ELEC-231. **[LOW][PERF] No HTTPS keep-alive agent** — api-client.ts:239-261 — 720+ TLS handshakes/hour. Fix: module-level `https.Agent({ keepAlive: true })`.
+- [ ] DASH-ELEC-232. **[MED][WIRE] In-flight poll request not cancelled on logout** — management-api.ts:984-988 + useServerHealth.ts:47-48. Fix: logoutEpoch counter checked after await.
+- [ ] DASH-ELEC-233. **[MED][UI] Offline banner only on OverviewPage** — OverviewPage.tsx:630-638 vs DashboardShell.tsx. Fix: move offline banner into DashboardShell above `<main>`.
+- [ ] DASH-ELEC-234. **[LOW][UI] TenantsPage heading shows unfiltered total when filtering** — TenantsPage.tsx:218.
+- [x] DASH-ELEC-235. **[LOW][WIRE] TenantsPage `detailCache` never invalidated after suspend/activate/repair** — TenantsPage.tsx:165,172,187.
+- [ ] DASH-ELEC-236. **[LOW][UI] Slug max-length mismatch: renderer 30 vs IPC schema 64** — TenantsPage.tsx:121 vs management-api.ts:112.
+- [ ] DASH-ELEC-237. **[MED][WIRE] No tenant plan-change UI — plan locked after creation** — TenantsPage + management-api.ts:1028-1074. Fix: inline plan select + super-admin:update-tenant IPC + server endpoint.
+- [ ] DASH-ELEC-238. **[MED][WIRE] No tenant shop-name rename UI — name frozen post-create** — TenantsPage.tsx:385.
+- [ ] DASH-ELEC-239. **[LOW][UI] Status badge `<td>` cells lack scope/aria-label** — TenantsPage.tsx:387-392.
+- [x] DASH-ELEC-240. **[LOW][WIRE] SchemaAuditLogParams has no `tenant_slug`** — management-api.ts:80-86.
+- [ ] DASH-ELEC-241. **[MED][WIRE] Tenant detail `'loading'` sentinel can permanently stick** — TenantsPage.tsx:75. Fix: separate Set<string> of in-flight slugs.
+- [ ] DASH-ELEC-242. **[LOW][UI] TenantsPage search no debounce** — TenantsPage.tsx:279,99-110.
+- [ ] DASH-ELEC-243. **[LOW][WIRE] Suspend/activate IPC has no `reason` field** — management-api.ts:1047-1058. Fix: schema + reason textarea in ConfirmDialog.
+- [ ] DASH-ELEC-244. **[LOW][UI] Plan filter dropdown hidden when single plan** — TenantsPage.tsx:299.
+- [ ] DASH-ELEC-245. **[LOW][WIRE] No last_active / suspended_at timestamps in Tenant** — bridge.ts:92-100 + TenantsPage.tsx:23-28.
+- [x] DASH-ELEC-246. **[HIGH][SEC] `SchemaSetup.password` still min(1) — IPC bypasses 8-char UI guard for first-run setup** — packages/management/src/main/ipc/management-api.ts:46. Fix: `z.string().min(8).max(1024)`.
+- [ ] DASH-ELEC-247. **[HIGH][UI] 2FA first-run setup shows no TOTP recovery/backup codes** — packages/management/src/renderer/src/pages/LoginPage.tsx:395-420 — lost TOTP device permanently locks out sole super-admin. Fix: extend super-admin:2fa-setup response with one-time recovery codes; collapsible "Store these somewhere safe" UI before verify.
+- [ ] DASH-ELEC-248. **[MED][UI] Banner dismissal in-memory-only — re-appears on every page load/navigation** — packages/management/src/renderer/src/components/BannerCertWarning.tsx:19,37 + BannerTagVerifyWarning.tsx:19,36 — local useState(false). Fix: persist dismissal timestamp to localStorage; re-show after 24h or cold-start.
+- [ ] DASH-ELEC-249. **[MED][UI] SetupChecklist invisible in single-tenant mode + can return null entirely** — packages/management/src/renderer/src/components/SetupChecklist.tsx:76,99,212,225. Fix: always render backup + kill-switch items; only skip multi-tenant-specific items.
+- [ ] DASH-ELEC-250. **[MED][UI] SetupChecklist items not sorted by severity** — packages/management/src/renderer/src/components/SetupChecklist.tsx:252-273. Fix: sort by SEVERITY_ORDER (fail=0, warn=1, pass=2) before render.
+- [ ] DASH-ELEC-251. **[MED][UI] No Required vs Recommended distinction in SetupChecklist** — packages/management/src/renderer/src/components/SetupChecklist.tsx:11-20. Fix: `tier: 'required' | 'recommended'` field; inline badge.
+- [ ] DASH-ELEC-252. **[MED][WIRE] No cert expiry countdown — BannerCertWarning checks presence not validity** — packages/management/src/main/services/api-client.ts:312-322 + BannerCertWarning.tsx:17-37. Fix: parse via `crypto.X509Certificate(pem).validTo`; include `daysUntilExpiry`; banner amber ≤30d, red ≤7d.
+- [ ] DASH-ELEC-253. **[LOW][UI] SetupChecklist has no Help/Documentation link per item** — packages/management/src/renderer/src/components/SetupChecklist.tsx:263-270. Fix: optional `docsUrl?: string`; secondary `?` icon-button via `shell.openExternal`.
+- [x] DASH-ELEC-254. **[LOW][SEC] First-run setup `SchemaSetup.username` no min(3) — IPC bypasses UI guard** — packages/management/src/main/ipc/management-api.ts:45. Fix: `z.string().min(3).max(256)`.
+
+- [ ] DASH-ELEC-255. **[MED][WIRE] Backup/restore IPC uses global 30s timeout** — api-client.ts:26,294 + management-api.ts:1764-1795. Fix: per-call timeout overrides ≥5min.
+- [ ] DASH-ELEC-256. **[MED][UI] Logout while backup/restore in-flight — setState on unmounted** — BackupPage.tsx:73-121. Fix: isMountedRef pattern.
+- [ ] DASH-ELEC-257. **[MED][WIRE] Server restart mid-restore: failure shown but restore may be half-applied** — api-client.ts:294-296. Fix: on offline, immediate poll + "Server may be restarting" banner.
+- [ ] DASH-ELEC-258. **[LOW][WIRE] EXPECTED_FINGERPRINT pinned once at module load — cert rotation needs app restart** — api-client.ts:121-140. Fix: reloadCertFingerprint() + warning banner on detected mismatch.
+- [x] DASH-ELEC-259. **[LOW][UI] System-clock backward jump → backup health flips to overdue** — BackupPage.tsx:134-139. Fix: `Math.max(0, ageMs)` clamp.
+- [x] DASH-ELEC-260. **[LOW][UI] Tenant deleted while detail panel open — expandedSlug + detailCache not cleared** — TenantsPage.tsx:193-197. Fix: setExpandedSlug(null) + remove from detailCache on delete success.
+- [x] DASH-ELEC-261. **[LOW][UI] AdminTools rate-limit `rlServerNow` stale — countdown wrong after page sits open** — AdminToolsPage.tsx:46,320. Fix: 1Hz setInterval to advance local nowMs ref.
+- [x] DASH-ELEC-262. **[LOW][SEC] No `before-quit` handler — superAdminToken survives in main-process memory** — main/index.ts. Fix: `app.on('before-quit', () => setSuperAdminToken(null))`.
+- [ ] DASH-ELEC-263. **[LOW][WIRE] No powerMonitor integration — useServerHealth backoff doesn't reset after sleep/wake** — main/index.ts + useServerHealth.ts:37,70,91. Fix: emit IPC on `powerMonitor.on('resume')` → renderer poll() + reset to BASE_INTERVAL.
+- [x] DASH-ELEC-264. **[MED][DEBT] StatusBadge precedence bug `as string` no-op** — StatusBadge.tsx:31. Fix: extract `const isOnline`.
+- [x] DASH-ELEC-265. **[MED][DEBT] toCsv generic still `Record<string, any>`** — csv.ts:28-29. Fix: `<T extends Record<string, unknown>>`; remove eslint-disable.
+- [ ] DASH-ELEC-266. **[MED][DEBT] getAuditLog + getSessions return unparameterised `Promise<ApiResponse>`** — bridge.ts:263-264 + AuditLogPage.tsx:36-37 + SessionsPage.tsx:77-78.
+- [ ] DASH-ELEC-267. **[LOW][DEBT] superAdmin.setup2fa + login return unparameterised — 4 cast sites** — bridge.ts:251,253 + LoginPage.tsx:118,134,168,173.
+- [ ] DASH-ELEC-268. **[LOW][DEBT] createTenant + updateBackupSettings bridge params typed `unknown`** — bridge.ts:257,362.
+- [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203.
+- [ ] DASH-ELEC-270. **[LOW][DEBT] tsconfigs missing noFallthroughCasesInSwitch + useUnknownInCatchVariables + exactOptionalPropertyTypes + noImplicitOverride**.
+- [x] DASH-ELEC-271. **[LOW][DEBT] `wrapHandler` `catch (err: any)`** — management-api.ts:890.
+- [ ] DASH-ELEC-272. **[LOW][DEBT] AdminToolsPage redundant ternary `as` casts** — AdminToolsPage.tsx:95,167.
+- [ ] DASH-ELEC-273. **[MED][DEBT] safeInvoke returns `Promise<unknown>` — entire ElectronAPI surface erases return types** — preload/index.ts:117. Fix: typed IPC channel map or `safeInvoke<T>` overload.
+
+- [ ] DASH-ELEC-274. **[MED][A11Y] Global ErrorBoundary + PageErrorBoundary fallback no `role="alert"` / `aria-live`** — packages/management/src/renderer/src/main.tsx:41-44 + components/shared/ErrorBoundary.tsx:36-63. Fix: `role="alert"` on outermost fallback container.
+- [ ] DASH-ELEC-275. **[MED][A11Y] Toaster default ariaProps polite — error toasts not assertive** — packages/management/src/renderer/src/main.tsx:95-101 — react-hot-toast default `role="status"`. Fix: add `toastOptions.ariaProps: { role: 'alert', 'aria-live': 'assertive' }` for `.error()` type, or use type-aware override.
+- [ ] DASH-ELEC-276. **[MED][UI] 401 auto-logout redirects to /login with no explanatory toast** — packages/management/src/renderer/src/stores/authStore.ts:47-49 + App.tsx:36 — operator dropped on login screen with no reason. Fix: `toast.error('Session expired — please log in again', { duration: 6000 })` in authExpiredHandler before navigate, or `?reason=expired` query param + LoginPage notice.
+- [ ] DASH-ELEC-277. **[MED][UI] formatApiError omits HTTP status — 4xx vs 5xx invisible to operator** — packages/management/src/renderer/src/utils/apiError.ts:43-50 — DASH-ELEC-060 added `status` to envelope but formatApiError never includes it. Fix: expose status in ApiErrorFields; format as `Request failed [503] (ERR_INTERNAL · ref ...)`.
+- [ ] DASH-ELEC-278. **[LOW][UI] Tenant detail inline error has no Retry button** — packages/management/src/renderer/src/pages/TenantsPage.tsx:495-496 — when detailCache[slug]==='error', static `<p>Failed to load tenant metrics.</p>`; toggleExpand line 75 guards `!== 'error'` so re-expand never retries. Fix: Retry icon-button → `setDetailCache(c => ({ ...c, [slug]: undefined }))` then loadDetail(slug).
+- [ ] DASH-ELEC-279. **[LOW][WIRE] SettingsPage skips handleApiResponse on getEnvSettings/getConfigSchema/getConfig** — packages/management/src/renderer/src/pages/SettingsPage.tsx:91-127 — refreshEnv + refreshPlatformConfig; 401 silently leaves envFields empty. Fix: `if (handleApiResponse(res)) return;` after each await.
+- [ ] DASH-ELEC-280. **[LOW][WIRE] UpdatesPage skips handleApiResponse on getUpdateStatus + getRollbackInfo** — packages/management/src/renderer/src/pages/UpdatesPage.tsx:32-79 — both `.then` chains check res.success but no auth-expired detect. Fix: handleApiResponse pattern (matches OverviewPage.tsx:383).
+- [ ] DASH-ELEC-281. **[LOW][WIRE] LogsPage refreshFileList skips handleApiResponse on listLogs** — packages/management/src/renderer/src/pages/LogsPage.tsx:74-84 — tailLog (line 91) uses it but listLogs only checks res.message string + console.warn. 401 leaves dropdown silently empty. Fix: add handleApiResponse guard.
+- [ ] DASH-ELEC-282. **[LOW][UI] Error toasts use 4s default — too short for technical ERR_ + ref strings** — packages/management/src/renderer/src/main.tsx:99 — global duration: 4000; formatApiError produces ~65-char strings. BackupPage:111 already 8s. Fix: global 6000 + per-type override `error: { duration: 8000 }` in toastOptions.
+- [ ] DASH-ELEC-283. **[LOW][UI] NotificationsPanel + AutomationRunsPanel error cell `truncate` with title-only tooltip** — NotificationsPanel.tsx:177-179 + AutomationRunsPanel.tsx:185 — keyboard inaccessible; SMTP errors >100 chars. Fix: wrap in CopyText component for keyboard-accessible + copyable.
+- [ ] DASH-ELEC-284. **[LOW][A11Y] LoginPage inline error block has no role="alert"** — packages/management/src/renderer/src/pages/LoginPage.tsx:281-285 — `{error && <div>...}` mounts/updates without ARIA live region. Fix: `role="alert"` on error wrapper div.
+
+- [ ] DASH-ELEC-285. **[MED][UI] Canvas ResizeObserver `ctx.scale(dpr,dpr)` accumulates — blurry after second resize on Retina** — packages/management/src/renderer/src/pages/OverviewPage.tsx:454-455 — bitmap reset clears transform, but ResizeObserver should call `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` (idempotent) matching drawGraphFn pattern. Fix: replace `ctx.scale` with `ctx.setTransform`.
+- [ ] DASH-ELEC-286. **[MED][UI] devicePixelRatio change (monitor swap, undock) never triggers canvas rescale** — packages/management/src/renderer/src/pages/OverviewPage.tsx:448 — moving to HiDPI without resizing window leaves wrong dpr until manual resize. Fix: `window.matchMedia('(resolution: 1dppx)').addEventListener('change', ...)` listener triggers redraw.
+- [ ] DASH-ELEC-287. **[LOW][UI] Canvas has no role/aria-label/aria-hidden — graph content invisible to AT** — packages/management/src/renderer/src/pages/OverviewPage.tsx:559-564. Fix: `role="img" aria-label="Request rate over time"` + visually-hidden `<p>` summary live-updated with current/avg values; consider keyboard-accessible tooltip via onFocus/onKeyDown.
+- [ ] DASH-ELEC-288. **[LOW][UI] Sparkline normalises to local min — flat-line series exaggerated** — packages/management/src/renderer/src/components/Sparkline.tsx:32-37 — `min = Math.min(...data)` makes constant-0.5 series fill full height. Fix: add `baseline?: number` prop default 0; `Math.max(0, min)` floor.
+- [ ] DASH-ELEC-289. **[LOW][UI] Live dot uses red/blue only — colorblind users lose spike signal** — packages/management/src/renderer/src/pages/OverviewPage.tsx:271 — `current > avg * 2 ? '#ef4444' : '#3b82f6'` no shape change/aria. Fix: pair color with shape (triangle vs circle) + aria-label on status area reporting spike condition.
+- [ ] DASH-ELEC-290. **[LOW][WIRE] Tooltip top-clamp uses fixed 60px offset — overflows top + clips off-screen** — packages/management/src/renderer/src/pages/OverviewPage.tsx:570 — `top: Math.max(tooltipPos.y - 60, 0)` doesn't account for actual rendered height. Fix: measure tooltip element offsetHeight via ref + clamp both axes.
+- [ ] DASH-ELEC-291. **[LOW][PERF] ResizeObserver gets second `getContext('2d')` ref redundantly** — packages/management/src/renderer/src/pages/OverviewPage.tsx:454 + 105 — drawGraphFn owns its own setTransform; ResizeObserver call is duplicate. Fix: remove redundant getContext + ctx.scale; let drawGraphFn own all context state.
+- [ ] DASH-ELEC-292. **[LOW][UI] Sparkline `aria-hidden` written without explicit value + empty-state SVG has no SR alternative** — packages/management/src/renderer/src/components/Sparkline.tsx:27,41 — bare prop relies on JSX default; empty-state dashed line has no "trend loading" SR text. Fix: `aria-hidden={true}` explicit; visually-hidden span `"trend data loading"` until series ≥2 points then `"trend available"`.
+
+- [ ] DASH-ELEC-293. **[LOW][UI] "shop" leaks into tenant empty-state copy** — packages/management/src/renderer/src/pages/TenantsPage.tsx:331,353 — "Send this setup link to the shop admin" / "Every shop that uses this server is a tenant". Rest of product says "tenant". Fix: replace "shop" → "tenant".
+- [ ] DASH-ELEC-294. **[LOW][UI] Loading ellipsis: ASCII `...` vs Unicode `…` mixed** — OverviewPage.tsx:198 (ASCII) vs RecentActivityWidget.tsx:80 + AdminToolsPage.tsx:304 + TenantAuthEventsPanel.tsx:106 + WebhookFailuresPanel.tsx:167 + AutomationRunsPanel.tsx:144 + NotificationsPanel.tsx:144 (Unicode). Fix: standardise on Unicode `…`.
+- [ ] DASH-ELEC-295. **[LOW][UI] Empty-state trailing punctuation inconsistent** — TenantsPage.tsx:351 + BackupPage.tsx:240 (no period) vs DiagnosticsPage.tsx:117 + SecurityAlertsPage.tsx:197 (period). Fix: pick one style (no period for short empty-state labels) and apply consistently.
+- [ ] DASH-ELEC-296. **[LOW][UI] "Server restart requested" toast has two different lengths** — CommandPalette.tsx:81 (`'Server restart requested'`) vs SettingsPage.tsx:212 (`'Server restart requested. May take up to a minute to come back online.'`). Fix: use longer variant everywhere.
+- [ ] DASH-ELEC-297. **[LOW][UI] Clipboard-copy fallback error has 3 forms** — CopyText.tsx:49 + LogsPage.tsx:195 (`'Clipboard write failed'`) vs TenantsPage.tsx:220 (`'Copy failed'`). Fix: standardise to `'Copy failed'`.
+- [ ] DASH-ELEC-298. **[LOW][UI] Icon-button dismiss `aria-label` inconsistent** — BannerCertWarning.tsx:57 + BannerTagVerifyWarning.tsx:58 (`"Dismiss warning"`), KeyboardShortcutsHelp.tsx:126 (`"Close keyboard shortcuts"`), ConfirmDialog.tsx:186 (`"Cancel"`). Fix: `"Close"` for modals (ConfirmDialog, KeyboardShortcutsHelp); `"Dismiss"` for non-modal banners.
+- [ ] DASH-ELEC-299. **[LOW][UI] Destructive icon-button titles mixed case** — BackupPage.tsx:262 (`"Delete backup"` sentence case) vs :275 (`"Delete Backup"` Title Case) + TenantsPage.tsx:549 (`"Delete Tenant"`). Fix: Title Case to match `confirmLabel` style.
+- [ ] DASH-ELEC-300. **[LOW][UI] Error toast voice inconsistent: "Failed to ..." vs "[Noun] failed"** — UpdatesPage.tsx:97 + SessionsPage.tsx:81 (active "Failed to ...") vs SettingsPage.tsx:144 + SecurityAlertsPage.tsx:91,116 (passive "[Noun] failed"). Fix: adopt `"[Noun] failed"` throughout; reserve detail for chained err.message.
 

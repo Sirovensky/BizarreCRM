@@ -15,6 +15,7 @@ import { formatUptime } from '@/utils/format';
 export function StatusFooter() {
   const stats = useServerStore((s) => s.stats);
   const serviceStatus = useServerStore((s) => s.serviceStatus);
+  const lastUpdated = useServerStore((s) => s.lastUpdated);
 
   const [, forceTick] = useState(0);
   useEffect(() => {
@@ -32,7 +33,12 @@ export function StatusFooter() {
   const pieces: Array<{ label: string; value: string; className?: string }> = [];
 
   if (stats.uptime !== undefined) {
-    pieces.push({ label: 'uptime', value: formatUptime(stats.uptime) });
+    // DASH-ELEC-049: compute live uptime rather than showing the frozen poll
+    // value. Add the seconds elapsed since the last successful poll so the
+    // number increments on screen even between fetch cycles (up to 60 s gap
+    // at max back-off). Falls back to raw stats.uptime when lastUpdated is null.
+    const elapsed = lastUpdated != null ? Math.floor((Date.now() - lastUpdated) / 1000) : 0;
+    pieces.push({ label: 'uptime', value: formatUptime(stats.uptime + elapsed) });
   }
   if (stats.multiTenant !== undefined) {
     pieces.push({

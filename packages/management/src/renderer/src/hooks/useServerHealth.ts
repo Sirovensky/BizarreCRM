@@ -36,11 +36,16 @@ export function useServerHealth(): void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef(BASE_INTERVAL);
   const pollingRef = useRef(false); // prevent overlapping polls
+  // DASH-ELEC-047: isMounted guard prevents setState after unmount under
+  // React 18 StrictMode double-mount (cleanup fires before second mount).
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     const poll = async () => {
       const isAuth = useAuthStore.getState().isAuthenticated;
-      if (!isAuth || pollingRef.current) return;
+      if (!isMountedRef.current || !isAuth || pollingRef.current) return;
       pollingRef.current = true;
 
       try {
@@ -50,12 +55,24 @@ export function useServerHealth(): void {
           api.service.getStatus(),
         ]);
 
+        // Guard again after the await — component may have unmounted while
+        // the IPC round-trip was in flight.
+        if (!isMountedRef.current) {
+          pollingRef.current = false;
+          return;
+        }
+
         if (statsRes.success && statsRes.data) {
           useServerStore.getState().setStats(statsRes.data);
           intervalRef.current = BASE_INTERVAL;
         } else if (statsRes.offline) {
           useServerStore.getState().setOffline(statsRes.message ?? 'Server not reachable');
-          intervalRef.current = Math.min(intervalRef.current * BACKOFF_MULTIPLIER, MAX_INTERVAL);
+          // DASH-ELEC-226: Apply ±20% jitter to prevent thundering-herd when
+          // multiple dashboard windows reconnect simultaneously.
+          intervalRef.current = Math.min(
+            intervalRef.current * BACKOFF_MULTIPLIER * (0.8 + Math.random() * 0.4),
+            MAX_INTERVAL,
+          );
         } else if (isAuthExpiredMessage(statsRes.message)) {
           // @audit-fixed: previously this used a brittle substring match
           // (`message?.includes('expired')`). Any server-side message tweak
@@ -74,18 +91,27 @@ export function useServerHealth(): void {
 
         useServerStore.getState().setServiceStatus(serviceStatus);
       } catch {
-        useServerStore.getState().setOffline('Server not reachable');
-        intervalRef.current = Math.min(intervalRef.current * BACKOFF_MULTIPLIER, MAX_INTERVAL);
+        if (isMountedRef.current) {
+          useServerStore.getState().setOffline('Server not reachable');
+          // DASH-ELEC-226: Jitter in the catch branch too.
+          intervalRef.current = Math.min(
+            intervalRef.current * BACKOFF_MULTIPLIER * (0.8 + Math.random() * 0.4),
+            MAX_INTERVAL,
+          );
+        }
       }
 
       pollingRef.current = false;
-      timerRef.current = setTimeout(poll, intervalRef.current);
+      if (isMountedRef.current) {
+        timerRef.current = setTimeout(poll, intervalRef.current);
+      }
     };
 
     // Start polling
     poll();
 
     return () => {
+      isMountedRef.current = false;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [navigate]);

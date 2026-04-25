@@ -21,7 +21,7 @@ const SEVERITY_HIGHLIGHT: Array<{ pattern: RegExp; cls: string }> = [
   { pattern: /\b(FATAL|ERROR|❌|✖)\b/i, cls: 'text-red-300' },
   { pattern: /\b(WARN|WARNING|⚠️)\b/i, cls: 'text-amber-300' },
   { pattern: /\b(INFO|✓|✔|OK)\b/i, cls: 'text-emerald-300/70' },
-  { pattern: /\b(DEBUG|TRACE)\b/i, cls: 'text-surface-500' },
+  { pattern: /\b(DEBUG|TRACE)\b/i, cls: 'text-surface-400 opacity-70' },
 ];
 
 function colorize(line: string): string {
@@ -120,11 +120,19 @@ export function LogsPage() {
     }
   }, [content, autoRefresh]);
 
+  // DASH-ELEC-038: derive the raw line array once so filteredLines and
+  // errorCodeCounts both consume the same memoised split instead of each
+  // calling content.split('\n') independently on every 2-second poll tick.
+  // DASH-ELEC-215: strip ANSI escape sequences (e.g. ^[[32m) emitted by
+  // coloured server output so they don't render as literal garbage.
+  // eslint-disable-next-line no-control-regex
+  const allLines = useMemo(() => content.replace(/\x1b\[[0-9;]*m/g, '').split('\n'), [content]);
+
   const filteredLines = useMemo(() => {
-    if (!filter.trim()) return content.split('\n');
+    if (!filter.trim()) return allLines;
     const needle = filter.toLowerCase();
-    return content.split('\n').filter((l) => l.toLowerCase().includes(needle));
-  }, [content, filter]);
+    return allLines.filter((l) => l.toLowerCase().includes(needle));
+  }, [allLines, filter]);
 
   // Extract ERR_* codes that appear in the current tail so operators can
   // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
@@ -134,7 +142,7 @@ export function LogsPage() {
     // Match ERR_<UPPER_WITH_UNDERSCORES> — mirrors the server's errorCodes registry shape.
     // Bounded to 4..40 chars to avoid matching tail-end junk like `ERR_` with no suffix.
     const re = /\bERR_[A-Z][A-Z0-9_]{3,40}\b/g;
-    for (const line of content.split('\n')) {
+    for (const line of allLines) {
       const matches = line.match(re);
       if (!matches) continue;
       for (const code of matches) {
@@ -142,7 +150,7 @@ export function LogsPage() {
       }
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [content]);
+  }, [allLines]);
 
   const selectedFile = files.find((f) => f.name === selected);
 
@@ -154,15 +162,26 @@ export function LogsPage() {
           Server Logs
         </h1>
         <div className="flex items-center gap-2">
+          {autoRefresh && (
+            <span
+              aria-live="polite"
+              aria-label="Live log tail active"
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold tracking-widest text-emerald-400 border border-emerald-900/60 bg-emerald-950/30"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+              LIVE
+            </span>
+          )}
           <button
             onClick={() => setAutoRefresh((v) => !v)}
+            aria-pressed={autoRefresh}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
               autoRefresh
                 ? 'bg-emerald-950/40 border-emerald-900/60 text-emerald-300 hover:bg-emerald-950/60'
                 : 'bg-surface-900 border-surface-700 text-surface-400 hover:text-surface-200'
             }`}
           >
-            {autoRefresh ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            {autoRefresh ? <Pause className="w-3.5 h-3.5" aria-hidden="true" /> : <Play className="w-3.5 h-3.5" aria-hidden="true" />}
             {autoRefresh ? 'Pause tail' : 'Resume tail'}
           </button>
           <button
@@ -238,7 +257,7 @@ export function LogsPage() {
           )}
         </div>
         {selectedFile?.mtime && (
-          <span className="text-surface-500">
+          <span className="text-surface-500" title={new Date(selectedFile.mtime).toISOString()}>
             modified {formatDateTime(selectedFile.mtime)}
           </span>
         )}
@@ -291,7 +310,10 @@ export function LogsPage() {
           </div>
         ) : (
           filteredLines.map((line, i) => (
-            <div key={i} className={`whitespace-pre-wrap break-all ${colorize(line)}`}>
+            // DASH-ELEC-039: content-derived key so React can reuse DOM nodes
+            // that haven't changed on the 2-second tail refresh rather than
+            // diffing the entire list by position.
+            <div key={`${i}-${line.slice(0, 20)}`} className={`whitespace-pre-wrap break-all ${colorize(line)}`}>
               {renderWithHighlight(line, filter)}
             </div>
           ))

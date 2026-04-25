@@ -3,11 +3,17 @@
   "version": "2.0.0",
   "description": "BizarreCRM Server Management Dashboard",
   "author": "Bizarre Electronics",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bizarre-electronics/bizarrecrm",
+    "directory": "packages/management"
+  },
   "private": true,
   "type": "module",
   "main": "dist/main/index.js",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.11.0 <25"
   },
   "scripts": {
     "dev": "concurrently -k -n main,renderer \"npm run build:main -- --watch\" \"vite --port 5174\"",
@@ -17,16 +23,17 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
     "start": "electron .",
-    "package": "electron-builder --win"
+    "package": "npm run build && electron-builder --win"
   },
   "dependencies": {
-    "@bizarre-crm/shared": "*",
+    "@bizarre-crm/shared": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@electron/fuses": "^2.0.0",
     "app-builder-bin": "5.0.0-alpha.10",
     "@tanstack/react-query": "^5.62.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

@@ -3,7 +3,6 @@ import {
   Play,
   Square,
   RotateCw,
-  OctagonX,
   Skull,
   Globe,
   FileText,

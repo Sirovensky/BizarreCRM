@@ -72,14 +72,15 @@ export function Header() {
       {/* Right: User + window controls (not draggable) */}
       <div className="flex items-center gap-2">
         {/* Static palette hint — the actual Cmd+K handler lives on window in
-            CommandPalette. Click-to-dispatch would be nice but adds a stale
-            focus dance we don't need. */}
-        <span
-          className="hidden sm:inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono"
-          title="Ctrl/Cmd + K to open the command palette"
+            CommandPalette. DASH-ELEC-126: use <kbd> so SR announces "keyboard
+            shortcut" and add aria-keyshortcuts on the hint element itself. */}
+        <kbd
+          className="hidden sm:inline-flex items-center gap-1 text-[10px] text-surface-500 border border-surface-700 rounded px-1.5 py-0.5 font-mono not-italic"
+          aria-label="Command palette shortcut: Control K or Command K"
+          aria-keyshortcuts="Control+k Meta+k"
         >
           ⌘K
-        </span>
+        </kbd>
         {username && (
           <span className="text-xs text-surface-500 mr-2">{username}</span>
         )}
@@ -87,6 +88,7 @@ export function Header() {
           onClick={() => getAPI().system.minimize()}
           className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
           title="Minimize"
+          aria-label="Minimize window"
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
@@ -94,6 +96,7 @@ export function Header() {
           onClick={() => getAPI().system.maximize()}
           className="p-1.5 rounded hover:bg-surface-800 text-surface-400 hover:text-surface-200 transition-colors"
           title="Maximize"
+          aria-label="Maximize window"
         >
           <Square className="w-3 h-3" />
         </button>

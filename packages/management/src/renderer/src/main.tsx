@@ -29,8 +29,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-surface-950">
-          <div className="text-5xl mb-4">&#9888;</div>
+        // DASH-ELEC-274: role="alert" ensures AT immediately announces the crash.
+        <div role="alert" className="flex flex-col items-center justify-center min-h-screen p-8 text-center bg-surface-950">
+          <div className="text-5xl mb-4" aria-hidden="true">&#9888;</div>
           <h1 className="text-xl font-bold text-surface-100 mb-2">
             Something went wrong
           </h1>
@@ -94,9 +95,19 @@ createRoot(rootElement).render(
           <App />
           <Toaster
             position="top-right"
+            containerStyle={{ top: 52 }}
             toastOptions={{
+              // DASH-ELEC-181: top offset clears 44px frameless window controls
               className: '!bg-surface-800 !text-surface-100 !shadow-lg !border !border-surface-700',
-              duration: 4000,
+              // DASH-ELEC-282: formatApiError produces ~65-char strings with ERR_
+              // codes and ref IDs; 4s was too short for operators to read them.
+              duration: 6000,
+              // DASH-ELEC-275: error toasts must be assertive so AT announces them
+              // immediately rather than waiting for the current output to finish.
+              error: {
+                duration: 8000,
+                ariaProps: { role: 'alert' as const, 'aria-live': 'assertive' as const },
+              },
             }}
           />
         </HashRouter>

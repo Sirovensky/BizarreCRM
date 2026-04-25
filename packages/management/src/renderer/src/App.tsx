@@ -8,9 +8,8 @@ import { TenantsPage } from '@/pages/TenantsPage';
 import { BackupPage } from '@/pages/BackupPage';
 import { CrashMonitorPage } from '@/pages/CrashMonitorPage';
 import { UpdatesPage } from '@/pages/UpdatesPage';
-import { AuditLogPage } from '@/pages/AuditLogPage';
-import { SecurityAlertsPage } from '@/pages/SecurityAlertsPage';
-import { SessionsPage } from '@/pages/SessionsPage';
+// AuditLogPage / SecurityAlertsPage / SessionsPage are now rendered as tabs
+// inside ActivityPage — imports removed to satisfy noUnusedLocals (DASH-ELEC-104).
 import { SettingsPage } from '@/pages/SettingsPage';
 import { AdminToolsPage } from '@/pages/AdminToolsPage';
 import { LogsPage } from '@/pages/LogsPage';

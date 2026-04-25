@@ -16,6 +16,8 @@ import { ipcMain, app } from 'electron';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { z } from 'zod';
+import { assertRendererOrigin } from './management-api.js';
 
 const SERVICE_NAME = 'BizarreCRM';
 const DIRECT_PID_FILE = 'direct-server.json';
@@ -582,18 +584,28 @@ async function startDirectServer(): Promise<CommandResult> {
 
 function stopDirectServer(): CommandResult {
   const state = readDirectState();
-  if (!state || !isProcessAlive(state.pid)) {
-    clearDirectState();
+  if (!state) {
     return { success: true, output: 'Direct server is not running' };
   }
 
+  // Do NOT pre-check isProcessAlive: between the signal-0 probe and the
+  // taskkill the PID can exit and the OS can reassign it to an unrelated
+  // process, creating a TOCTOU kill of the wrong process.  Instead always
+  // issue taskkill and treat exit 128 (no such PID / already gone) as
+  // success — both outcomes mean the target is no longer running.
   const stopped = runArgs('taskkill', ['/PID', String(state.pid), '/T', '/F']);
   clearDirectState();
-  return stopped.success ? { success: true, output: `Stopped direct server PID ${state.pid}` } : stopped;
+  // taskkill exit 128 = "no such PID" — the process already exited, so we
+  // treat it as a successful stop rather than an error.
+  if (stopped.success || stopped.output?.includes('128') || stopped.output?.includes('not found')) {
+    return { success: true, output: `Stopped direct server PID ${state.pid}` };
+  }
+  return stopped;
 }
 
 export function registerServiceControlIpc(): void {
-  ipcMain.handle('service:get-status', async (): Promise<ServiceStatus> => {
+  ipcMain.handle('service:get-status', async (event): Promise<ServiceStatus> => {
+    assertRendererOrigin(event);
     // Check Windows Service first
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
@@ -626,7 +638,8 @@ export function registerServiceControlIpc(): void {
     return { state: 'not_installed', pid: null, startType: 'unknown', mode: 'none' };
   });
 
-  ipcMain.handle('service:start', async () => {
+  ipcMain.handle('service:start', async (event) => {
+    assertRendererOrigin(event);
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       return runArgs('sc', ['start', SERVICE_NAME]);
@@ -649,7 +662,8 @@ export function registerServiceControlIpc(): void {
     return startDirectServer();
   });
 
-  ipcMain.handle('service:stop', async () => {
+  ipcMain.handle('service:stop', async (event) => {
+    assertRendererOrigin(event);
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       return runArgs('sc', ['stop', SERVICE_NAME]);
@@ -660,7 +674,8 @@ export function registerServiceControlIpc(): void {
     return stopDirectServer();
   });
 
-  ipcMain.handle('service:restart', async () => {
+  ipcMain.handle('service:restart', async (event) => {
+    assertRendererOrigin(event);
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       runArgs('sc', ['stop', SERVICE_NAME]);
@@ -680,7 +695,8 @@ export function registerServiceControlIpc(): void {
     return startDirectServer();
   });
 
-  ipcMain.handle('service:emergency-stop', async () => {
+  ipcMain.handle('service:emergency-stop', async (event) => {
+    assertRendererOrigin(event);
     // Kill everything
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
@@ -694,21 +710,26 @@ export function registerServiceControlIpc(): void {
     return { success: true, message: 'Emergency stop executed' };
   });
 
-  ipcMain.handle('service:set-auto-start', async (_event, enabled: boolean) => {
+  ipcMain.handle('service:set-auto-start', async (event, enabled: boolean) => {
+    assertRendererOrigin(event);
+    // DASH-ELEC-077: validate boolean at runtime — TS types are erased over IPC;
+    // a caller could pass "true" (string) or 1, which are truthy but not boolean.
+    const validEnabled = z.boolean().parse(enabled);
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       // NB: on Windows, `sc config` uses `start= <type>` — a SINGLE argv
       // token with the trailing `=`. spawnSync preserves this correctly.
-      const startType = enabled ? 'auto' : 'demand';
+      const startType = validEnabled ? 'auto' : 'demand';
       return runArgs('sc', ['config', SERVICE_NAME, 'start=', startType]);
     }
-    if (hasPm2() && enabled) {
+    if (hasPm2() && validEnabled) {
       return pm2Run(['save']);
     }
     return { success: false, output: 'Auto-start requires a Windows Service or PM2. Manual Start Server still works.' };
   });
 
-  ipcMain.handle('service:disable', async () => {
+  ipcMain.handle('service:disable', async (event) => {
+    assertRendererOrigin(event);
     const svc = getWindowsServiceStatus();
     if (svc.installed) {
       runArgs('sc', ['stop', SERVICE_NAME]);
@@ -720,10 +741,10 @@ export function registerServiceControlIpc(): void {
     return stopDirectServer();
   });
 
-  ipcMain.handle('service:kill-all', async () => {
+  ipcMain.handle('service:kill-all', async (event) => {
+    assertRendererOrigin(event);
     // 1. Stop PM2 managed server
     try { pm2Run(['kill']); } catch { /* ignore */ }
-    try { stopDirectServer(); } catch { /* ignore */ }
 
     // 2. Stop Windows Service if installed
     const svc = getWindowsServiceStatus();
@@ -731,8 +752,21 @@ export function registerServiceControlIpc(): void {
       try { runArgs('sc', ['stop', SERVICE_NAME]); } catch { /* ignore */ }
     }
 
-    // 3. Force-kill any remaining node processes (same user, no admin needed)
-    try { runArgs('taskkill', ['/F', '/IM', 'node.exe']); } catch { /* ignore */ }
+    // 3. DASH-ELEC-087: kill only the known direct-server PID, not all node.exe
+    // processes (which would also terminate VS Code helpers, dev servers, etc.)
+    // Fall back to /IM filter constrained to our command-line footprint when no
+    // PID file exists (e.g. service path already cleaned up the file).
+    const directState = readDirectState();
+    if (directState?.pid) {
+      try { runArgs('taskkill', ['/PID', String(directState.pid), '/T', '/F']); } catch { /* ignore */ }
+    } else {
+      // No known PID — use image-name filter scoped to our process name so we
+      // avoid touching unrelated node.exe instances owned by other apps.
+      try {
+        runArgs('taskkill', ['/F', '/FI', 'IMAGENAME eq node.exe', '/FI', 'WINDOWTITLE eq bizarre-crm*']);
+      } catch { /* ignore */ }
+    }
+    try { stopDirectServer(); } catch { /* ignore */ }
 
     // 4. Kill the dashboard itself
     setTimeout(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, LogIn, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus } from 'lucide-react';
+import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -22,7 +22,6 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [serverOffline, setServerOffline] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
 
   // Check setup status on mount
   useEffect(() => {
@@ -33,7 +32,6 @@ export function LoginPage() {
     try {
       const res = await getAPI().management.setupStatus();
       if (res.success && res.data) {
-        setNeedsSetup(res.data.needsSetup);
         setServerOffline(false);
         setStep(res.data.needsSetup ? 'setup' : 'login');
         return;
@@ -51,7 +49,6 @@ export function LoginPage() {
           try {
             const retry = await getAPI().management.setupStatus();
             if (retry.success && retry.data) {
-              setNeedsSetup(retry.data.needsSetup);
               setServerOffline(false);
               setError('');
               setStarting(false);
@@ -82,7 +79,6 @@ export function LoginPage() {
     try {
       const res = await getAPI().management.setup(username.trim(), password);
       if (res.success) {
-        setNeedsSetup(false);
         setStep('login');
         setPassword('');
         setError('');
@@ -280,11 +276,11 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* Error */}
+        {/* Error — DASH-ELEC-284: role="alert" so AT announces on mount/update */}
         {error && (
           <div className="mb-4">
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-red-950/40 border border-red-900/50 text-red-400 text-xs">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div role="alert" className="flex items-start gap-2 p-3 rounded-lg bg-red-950/40 border border-red-900/50 text-red-400 text-xs">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <span>{error}</span>
             </div>
             {serverOffline && (
@@ -313,15 +309,18 @@ export function LoginPage() {
             <div className="space-y-3 mb-5">
               <input
                 type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                placeholder="Choose a username (min 3 chars)" autoComplete="off" autoFocus
+                placeholder="Choose a username (min 3 chars)" autoComplete="username" autoFocus
                 maxLength={256}
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                aria-label="Choose a username (minimum 3 characters)"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Choose a password (min 8 chars)"
                 maxLength={1024}
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                autoComplete="new-password"
+                aria-label="Choose a password (minimum 8 characters)"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
             <button
@@ -340,15 +339,18 @@ export function LoginPage() {
             <div className="space-y-3 mb-5">
               <input
                 type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username" autoComplete="off" autoFocus
+                placeholder="Username" autoComplete="username" autoFocus
                 maxLength={256}
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                aria-label="Username"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
                 maxLength={1024}
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                autoComplete="current-password"
+                aria-label="Password"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
             <button
@@ -368,12 +370,16 @@ export function LoginPage() {
               <input
                 type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="New password (min 10 characters)" autoFocus
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                autoComplete="new-password"
+                aria-label="New password (minimum 10 characters)"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
               <input
                 type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm password"
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors"
+                autoComplete="new-password"
+                aria-label="Confirm password"
+                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
             <button
@@ -388,9 +394,10 @@ export function LoginPage() {
         {/* Step: 2FA Setup */}
         {step === '2fa-setup' && (
           <form onSubmit={handleVerify2fa}>
+            {/* DASH-ELEC-094: bg-white scoped to <img> only — outer card uses surface token */}
             {qrCode && (
-              <div className="flex justify-center mb-4 p-4 bg-white rounded-lg">
-                <img src={qrCode} alt="2FA QR Code" className="w-48 h-48" />
+              <div className="flex justify-center mb-4 p-4 bg-surface-800 rounded-lg">
+                <img src={qrCode} alt="2FA QR Code" className="w-48 h-48 bg-white p-1 rounded" />
               </div>
             )}
             <p className="text-xs text-surface-400 mb-4 text-center">
@@ -399,7 +406,9 @@ export function LoginPage() {
             <input
               type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="6-digit code" autoFocus maxLength={6}
-              className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 text-center tracking-[0.3em] font-mono placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors mb-4"
+              autoComplete="one-time-code"
+              aria-label="6-digit authenticator code"
+              className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 text-center tracking-[0.3em] font-mono placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors mb-4"
             />
             <button
               type="submit" disabled={loading || totpCode.length !== 6}
@@ -420,7 +429,9 @@ export function LoginPage() {
             <input
               type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="000000" autoFocus maxLength={6}
-              className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 text-center tracking-[0.3em] font-mono placeholder:text-surface-600 focus:border-accent-500 focus:outline-none transition-colors mb-4"
+              autoComplete="one-time-code"
+              aria-label="6-digit authenticator code"
+              className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 text-center tracking-[0.3em] font-mono placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors mb-4"
             />
             <button
               type="submit" disabled={loading || totpCode.length !== 6}

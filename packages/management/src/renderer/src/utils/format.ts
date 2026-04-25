@@ -1,6 +1,7 @@
 /**
  * Formatting utilities for the dashboard.
  */
+import { formatDistanceToNow } from 'date-fns';
 
 /**
  * Format seconds into a human-readable uptime string.
@@ -39,9 +40,12 @@ export function formatBytes(bytes: number, decimals = 2): string {
 /**
  * Format a number with commas for thousands.
  * e.g. 123456 -> "123,456"
+ *
+ * Explicit 'en-US' locale prevents non-ASCII separators (e.g. thin-space in
+ * fr-FR) that would break CSV re-import or downstream numeric parsing.
  */
 export function formatNumber(n: number): string {
-  return n.toLocaleString();
+  return n.toLocaleString('en-US');
 }
 
 /**
@@ -54,6 +58,11 @@ export function formatDecimal(n: number, places = 1): string {
 
 /**
  * Format an ISO date string to a readable local date/time.
+ *
+ * Explicit 'en-US' locale + dateStyle/timeStyle prevents OS-locale variance
+ * (e.g. "24.4.2026, 14:23" on de-DE or "2026/4/24" on ja-JP) so every
+ * operator sees the same "Apr 24, 2026, 2:23 PM" format regardless of their
+ * system locale settings (DASH-ELEC-052).
  */
 export function formatDateTime(iso: string): string {
   try {
@@ -61,22 +70,22 @@ export function formatDateTime(iso: string): string {
     // Append 'Z' if missing so Date parses it as UTC, then toLocaleString
     // converts to the user's local timezone.
     const utcIso = iso.includes('Z') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z';
-    return new Date(utcIso).toLocaleString();
+    return new Date(utcIso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
   } catch {
     return iso;
   }
 }
 
 /**
- * Format an ISO date string to relative time (e.g. "2m ago", "3h ago").
+ * Format an ISO date string to relative time (e.g. "2 minutes ago", "3 hours ago").
+ * Uses date-fns formatDistanceToNow for locale-aware output (DASH-ELEC-119).
  */
 export function formatRelativeTime(iso: string): string {
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diff = Math.floor((now - then) / 1000);
-
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  try {
+    // SQLite stores datetime('now') as UTC without 'Z' suffix.
+    const utcIso = iso.includes('Z') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z';
+    return formatDistanceToNow(new Date(utcIso), { addSuffix: true });
+  } catch {
+    return iso;
+  }
 }

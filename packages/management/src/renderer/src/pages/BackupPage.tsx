@@ -131,7 +131,7 @@ export function BackupPage() {
   // settings.lastRun, which can be stale if the scheduler missed a tick
   // but a manual `Backup Now` ran).
   const lastBackupAt = backups.length > 0 ? backups[0].created : settings?.lastRun ?? null;
-  const ageMs = lastBackupAt ? Date.now() - new Date(lastBackupAt).getTime() : Infinity;
+  const ageMs = lastBackupAt ? Math.max(0, Date.now() - new Date(lastBackupAt).getTime()) : Infinity;
   const ageHours = ageMs / (1000 * 60 * 60);
   const health: 'fresh' | 'stale' | 'overdue' | 'missing' =
     !lastBackupAt
@@ -189,7 +189,7 @@ export function BackupPage() {
       </div>
 
       {/* Aggregates */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="stat-card">
           <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Total backups</div>
           <div className="text-2xl font-bold text-surface-100">{backups.length}</div>
@@ -208,7 +208,7 @@ export function BackupPage() {
 
       {/* Settings summary */}
       {settings && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-2">
               <FolderOpen className="w-4 h-4 text-surface-500" />
