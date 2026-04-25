@@ -320,7 +320,15 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             TotalsRow("Subtotal", state.subtotalCents.toDollarString())
             if (state.discountCents > 0) TotalsRow("Discount", "− ${state.discountCents.toDollarString()}", highlight = true)
-            TotalsRow("Tax", state.taxCents.toDollarString())
+            // Mockup PHONE 3 shows the rate beside the label, e.g. 'Tax · 8.5%'.
+            // We surface the cart's loaded default rate (the per-line rate
+            // used by CartLine.taxCents) when > 0 so the cashier can sanity-
+            // check the math at a glance. Falls back to bare 'Tax' if rate
+            // failed to load (network hiccup on entry).
+            val taxLabel = if (state.taxRate > 0.0) {
+                "Tax · ${"%.2f".format(state.taxRate * 100).trimEnd('0').trimEnd('.')}%"
+            } else "Tax"
+            TotalsRow(taxLabel, state.taxCents.toDollarString())
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
