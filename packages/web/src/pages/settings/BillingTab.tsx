@@ -6,19 +6,13 @@ import { usePlanStore } from '@/stores/planStore';
 import { api } from '@/api/client';
 import { PLAN_DEFINITIONS, FEATURE_NAMES } from '@bizarre-crm/shared';
 import { useState } from 'react';
+import { formatDate } from '@/utils/format';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export function BillingTab() {

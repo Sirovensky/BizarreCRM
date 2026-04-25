@@ -210,6 +210,9 @@ function UnifiedSearchBar() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <input
             ref={inputRef}
+            // WEB-FL-004 (Fixer-RRR 2026-04-25): F4 hotkey targets this attr
+            // to focus the customer/ticket search from the POS keyboard hook.
+            data-pos-customer-search="true"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}

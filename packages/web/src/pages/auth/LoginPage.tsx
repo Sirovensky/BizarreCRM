@@ -184,6 +184,13 @@ export function LoginPage() {
   useEffect(() => {
     if (isAuthenticated) { navigate(fromPath, { replace: true }); return; }
     if (step === 'firstTimeSetup') return; // Skip auth check during setup
+    // WEB-FG-022 (Fixer-TTT 2026-04-25): the setup-token effect above already
+    // owns the setupStatus() round-trip when we're on `/setup/:token`. Bail
+    // here so we don't double-fire setupStatus on every login mount that
+    // happens to hit a setup link. Token path resolves `step` after its
+    // promise; without this short-circuit both effects race and issue two
+    // `/api/v1/auth/setup-status` requests on the same render.
+    if (/^\/setup\/[a-f0-9]{64}$/.test(window.location.pathname)) return;
 
     let cancelled = false;
     (async () => {

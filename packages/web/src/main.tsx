@@ -215,11 +215,26 @@ if (typeof window !== 'undefined') {
   // within 30 s blocks a second retry so genuine 404s fall through to
   // the manual card instead of looping (SCAN-1184).
   const CHUNK_RELOAD_SENTINEL = 'bizarre:chunk-reload-attempted';
-  const looksLikeChunkError = (msg: string): boolean =>
+  // WEB-FI-009 (Fixer-SSS 2026-04-25): pair the message regex with a name
+  // gate so a user-authored error that happens to contain phrases like
+  // "Importing a module script failed" (e.g. a string baked into a server
+  // response or an i18n catalog entry) cannot trigger an infinite reload
+  // loop limited only by the 30s sentinel. Genuine dynamic-import failures
+  // surface either as `name === 'TypeError'` (Chrome/Safari/Firefox path
+  // for Failed to fetch dynamically imported module) or as `name ===
+  // 'ChunkLoadError'` (legacy bundler / explicit class). Anything else
+  // that merely shares a substring is treated as user error and bubbles
+  // to the boundary card instead of nuking the page.
+  const looksLikeChunkMessage = (msg: string): boolean =>
     /Failed to fetch dynamically imported module/i.test(msg) ||
     /error loading dynamically imported module/i.test(msg) ||
     /Importing a module script failed/i.test(msg) ||
     /ChunkLoadError/i.test(msg);
+  const isChunkError = (name: string, msg: string): boolean => {
+    if (name === 'ChunkLoadError') return true;
+    if (name === 'TypeError' && looksLikeChunkMessage(msg)) return true;
+    return false;
+  };
   const handleChunkReload = (): void => {
     try {
       const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
@@ -255,12 +270,18 @@ if (typeof window !== 'undefined') {
     const reason = e.reason as { message?: string; name?: string } | undefined;
     const msg = reason?.message ?? String(reason ?? '');
     const name = reason?.name ?? '';
-    if (name === 'ChunkLoadError' || looksLikeChunkError(msg)) {
+    if (isChunkError(name, msg)) {
       handleChunkReload();
     }
   });
   window.addEventListener('error', (e) => {
-    if (looksLikeChunkError(e.message || '')) {
+    // ErrorEvent carries the original Error on `e.error` — read its name so
+    // the TypeError / ChunkLoadError gate matches the unhandledrejection
+    // path. If `e.error` is missing (some browsers null it for cross-origin
+    // script errors) we conservatively skip the reload rather than reload
+    // on a substring-only match.
+    const errName = (e.error as Error | undefined)?.name ?? '';
+    if (errName && isChunkError(errName, e.message || '')) {
       handleChunkReload();
     }
   });

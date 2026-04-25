@@ -289,16 +289,31 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
       if (!Array.isArray(stored)) return;
       // Validate each entry — without this, a corrupted or XSS-injected
       // `path` field would flow straight into <NavLink to={item.path}>.
+      // WEB-FD-001 (Fixer-RRR 2026-04-25): also lock down `type` to a small
+      // allowlist (used as React `key` and to drive future icon mapping) and
+      // cap `label` length + strip control chars so a malicious localStorage
+      // writer cannot phish via the truncated collapsed-mode label.
+      const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
       const safe: { type: string; id: number; label: string; path: string }[] = [];
       for (const raw of stored.slice(0, 5)) {
         if (!raw || typeof raw !== 'object') continue;
         const it = raw as Record<string, unknown>;
         const path = it.path;
         if (typeof path !== 'string' || !path.startsWith('/')) continue;
+        // Reject paths with embedded protocol/host (e.g. "/\\evil.com") that
+        // some browsers normalize away from the leading slash.
+        if (path.startsWith('//') || path.includes('\\')) continue;
+        const type = typeof it.type === 'string' && ALLOWED_TYPES.has(it.type) ? it.type : '';
+        const rawLabel = typeof it.label === 'string' ? it.label : '';
+        // Strip C0/DEL control chars + cap at 64 chars so collapsed-mode
+        // 6-char slice cannot be primed with control chars or oversized
+        // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
+        // eslint-disable-next-line no-control-regex
+        const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
         safe.push({
-          type: typeof it.type === 'string' ? it.type : '',
-          id: typeof it.id === 'number' ? it.id : 0,
-          label: typeof it.label === 'string' ? it.label : '',
+          type,
+          id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
+          label,
           path,
         });
       }

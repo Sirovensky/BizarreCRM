@@ -48,11 +48,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatPhoneDisplay(phone: string): string {
-  if (!phone) return '';
-  return formatPhone(phone);
-}
-
 function getScoreColor(score: number): string {
   if (score >= 70) return '#22c55e';
   if (score >= 40) return '#f59e0b';
@@ -486,7 +481,7 @@ export function LeadListPage() {
                       {lead.phone ? (
                         <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-primary-600">
                           <Phone className="h-3.5 w-3.5" />
-                          {formatPhoneDisplay(lead.phone)}
+                          {formatPhone(lead.phone)}
                         </a>
                       ) : (
                         <span className="text-surface-300 dark:text-surface-600">--</span>

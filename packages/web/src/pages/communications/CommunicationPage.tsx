@@ -11,7 +11,8 @@ import {
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatPhone } from '@/utils/format';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
+import { formatPhone, formatCurrency } from '@/utils/format';
 import { useDraft } from '@/hooks/useDraft';
 // Team-inbox enrichment (audit §51) — all new components are additive.
 import { TeamInboxHeader } from './components/TeamInboxHeader';
@@ -1662,7 +1663,7 @@ export function CommunicationPage() {
                             to={`/tickets/${t.id}`}
                             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium hover:opacity-80 transition-opacity"
                             style={{ backgroundColor: `${t.status_color}18`, color: t.status_color }}
-                            title={`${t.order_id} — ${t.device_name || 'Unknown'} — ${t.status_name}${t.total ? ` — $${Number(t.total).toFixed(2)}` : ''}`}
+                            title={`${t.order_id} — ${t.device_name || 'Unknown'} — ${t.status_name}${t.total ? ` — ${formatCurrency(Number(t.total))}` : ''}`}
                           >
                             <Ticket className="h-2.5 w-2.5" />
                             {t.order_id}

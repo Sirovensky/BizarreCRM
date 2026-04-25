@@ -1236,7 +1236,8 @@ export const campaignsApi = {
     trigger_rule_json: string | null;
   }>) => api.patch(`/campaigns/${id}`, data),
   delete: (id: number) => api.delete(`/campaigns/${id}`),
-  preview: (id: number) => api.post(`/campaigns/${id}/preview`),
+  preview: (id: number, opts?: { signal?: AbortSignal }) =>
+    api.post(`/campaigns/${id}/preview`, undefined, { signal: opts?.signal }),
   runNow: (id: number) => api.post(`/campaigns/${id}/run-now`),
   stats: (id: number) => api.get(`/campaigns/${id}/stats`),
   triggerReviewRequest: (ticketId: number) =>

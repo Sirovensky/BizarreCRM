@@ -13,6 +13,8 @@ import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, ca
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
+import { formatNumber } from '@/utils/format';
 import { RepairPricingTab } from './RepairPricingTab';
 import { TicketsRepairsSettings } from './TicketsRepairsSettings';
 import { PosSettings } from './PosSettings';
@@ -2446,7 +2448,7 @@ function SupplierCatalogSyncSection() {
     onSuccess: (res) => {
       const copied = (res as any)?.data?.data?.copied ?? 0;
       if (copied > 0) {
-        toast.success(`Loaded ${copied.toLocaleString()} catalog items from template`);
+        toast.success(`Loaded ${formatNumber(copied)} catalog items from template`);
       } else {
         toast.success('Catalog is already up to date (0 new items)');
       }
@@ -2473,12 +2475,12 @@ function SupplierCatalogSyncSection() {
           <div className="grid grid-cols-2 gap-4 max-w-md">
             <div className="bg-surface-50 dark:bg-surface-800 rounded-lg p-3">
               <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">Your Catalog</p>
-              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{tenantTotal.toLocaleString()}</p>
+              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{formatNumber(tenantTotal)}</p>
               <p className="text-xs text-surface-400">items</p>
             </div>
             <div className="bg-surface-50 dark:bg-surface-800 rounded-lg p-3">
               <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">Template Catalog</p>
-              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{templateCount.toLocaleString()}</p>
+              <p className="text-lg font-bold text-surface-900 dark:text-surface-100 mt-1">{formatNumber(templateCount)}</p>
               <p className="text-xs text-surface-400">items available</p>
             </div>
           </div>
@@ -2732,8 +2734,8 @@ function DataImportTab() {
                         />
                       </div>
                       <p className="mt-1 text-[10px] text-surface-400">
-                        {cp.step.toLocaleString()}
-                        {cp.total > 0 && <> / {cp.total.toLocaleString()}</>}
+                        {formatNumber(cp.step)}
+                        {cp.total > 0 && <> / {formatNumber(cp.total)}</>}
                         {cp.last_processed_id && <> &middot; last: {cp.last_processed_id}</>}
                       </p>
                     </div>
@@ -2806,7 +2808,7 @@ function DataImportTab() {
                   />
                   <span className="text-sm text-surface-700 dark:text-surface-300">{label}</span>
                   {counts[key] != null && (
-                    <span className="text-xs text-surface-400 dark:text-surface-500">({counts[key].toLocaleString()})</span>
+                    <span className="text-xs text-surface-400 dark:text-surface-500">({formatNumber(counts[key])})</span>
                   )}
                 </label>
               ))}

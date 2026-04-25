@@ -66,6 +66,14 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// WEB-FF-025 (Fixer-TTT 2026-04-25): build a YYYY-MM-DD key once so the month
+// grid can do an O(1) Map lookup per cell instead of filtering every
+// appointment 42× per render. On a busy month with 500 appts this drops
+// 21k Date constructions per render to ~500 (one per appt).
+function dayKey(d: Date) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 function startOfWeek(date: Date) {
   const d = new Date(date);
   d.setDate(d.getDate() - d.getDay());
@@ -395,6 +403,19 @@ function MonthView({
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
+  // WEB-FF-025: bucket appointments by day-key once so each of the 42 cells
+  // does an O(1) Map lookup instead of an O(N) filter.
+  const apptsByDay = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      const k = dayKey(new Date(a.start_time));
+      const list = map.get(k);
+      if (list) list.push(a);
+      else map.set(k, [a]);
+    }
+    return map;
+  }, [appointments]);
+
   return (
     <div className="grid grid-cols-7 border-l border-t border-surface-200 dark:border-surface-700">
       {WEEKDAYS.map((day) => (
@@ -405,7 +426,7 @@ function MonthView({
       {cells.map((day, i) => {
         const cellDate = day ? new Date(year, month, day) : null;
         const dayAppts = cellDate
-          ? appointments.filter((a) => isSameDay(new Date(a.start_time), cellDate))
+          ? (apptsByDay.get(dayKey(cellDate)) ?? [])
           : [];
         const isToday = cellDate && isSameDay(cellDate, today);
 

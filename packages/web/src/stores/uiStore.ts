@@ -72,9 +72,20 @@ export const useUiStore = create<UiState>((set) => ({
   setMobileSidebarOpen: (open: boolean) => set({ mobileSidebarOpen: open }),
 
   setTheme: (theme: 'light' | 'dark' | 'system') => {
-    safeWrite('theme', theme);
-    applyTheme(theme);
+    // WEB-FI-018 (Fixer-SSS 2026-04-25): order matters here — the
+    // `handleSystemThemeChange` matchMedia listener below reads
+    // `useUiStore.getState().theme` to decide whether to re-apply
+    // 'system'. If safeWrite + applyTheme run before `set`, a
+    // matchMedia tick that fires in between sees the OLD theme value
+    // in the store and re-paints it on top of the new one. By moving
+    // `set({ theme })` first the store value is canonical before any
+    // listener can run; applyTheme then paints the new class, and
+    // safeWrite persists last (the localStorage write is the only
+    // step nobody else reads synchronously). Net: no observable race
+    // window where the store and the document class disagree.
     set({ theme });
+    applyTheme(theme);
+    safeWrite('theme', theme);
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),

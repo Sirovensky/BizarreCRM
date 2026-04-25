@@ -44,7 +44,18 @@
          /fonts/SavedByZero.woff2 (TODO: ship the file — placeholder below). -->
     <!-- TODO: self-host Saved By Zero — drop SavedByZero.woff2 into /public/fonts/
          and add @font-face { font-family: 'Saved By Zero'; src: url('/fonts/SavedByZero.woff2') format('woff2'); } to globals.css -->
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- WEB-FE-018 (Fixer-SSS 2026-04-25): Google Fonts CSS loaded asynchronously
+         via the canonical preload+media=print swap pattern so the stylesheet
+         download no longer render-blocks first paint (was 200-400 ms cold-load
+         hit). The browser fetches the CSS at low priority, then onload swaps
+         media back to "all" so the rules apply. The <noscript> fallback keeps
+         text styled correctly when JS is disabled (the media=print swap is the
+         only thing that needed JS — preload itself does not). All three
+         font-family stacks already declare safe system fallbacks in
+         tailwind.config.* so the FOUT during the async fetch shows readable
+         text rather than invisible glyphs. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
     <script>
       // D4-8: apply dark class synchronously BEFORE the React render cycle so
       // users on dark theme never see a bright-white flash on cold boot.

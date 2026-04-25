@@ -75,7 +75,8 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#9ca3af' }} />
                 <YAxis yAxisId="hours" orientation="left" tick={{ fontSize: 12, fill: '#9ca3af' }} label={{ value: 'Hours', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis yAxisId="revenue" orientation="right" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => `$${v}`} label={{ value: 'Revenue', angle: 90, position: 'insideRight', fontSize: 11, fill: '#9ca3af' }} />
+                {/* @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): hardcoded "$" → formatCurrency for tenant currency */}
+                <YAxis yAxisId="revenue" orientation="right" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} label={{ value: 'Revenue', angle: 90, position: 'insideRight', fontSize: 11, fill: '#9ca3af' }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }}
                   formatter={(value: number, name: string) => {

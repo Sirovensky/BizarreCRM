@@ -16,7 +16,8 @@ import toast from 'react-hot-toast';
 import { catalogApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
-import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace bare `n.toLocaleString()` with shared formatNumber.
+import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
 const SOURCES = [
   { key: 'mobilesentrix',  label: 'Mobilesentrix',   url: 'https://www.mobilesentrix.com', color: 'blue'   },
@@ -419,7 +420,7 @@ export function CatalogPage() {
                 <p className="font-semibold text-surface-800 dark:text-surface-200">{src.label}</p>
                 <p className="text-sm text-surface-500">
                   {/* @audit-fixed: use formatDate helper instead of browser locale */}
-                  {count.toLocaleString()} items cataloged
+                  {formatNumber(count)} items cataloged
                   {lastSync && <span className="ml-2 text-xs">· last sync {formatDate(lastSync)}</span>}
                 </p>
                 {count === 0 && <p className="text-xs text-surface-400 mt-0.5">Catalog syncs automatically daily</p>}
@@ -536,7 +537,7 @@ export function CatalogPage() {
       {/* Results count */}
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm text-surface-500">
-          {catalogLoading ? 'Loading…' : `${total.toLocaleString()} items${debouncedSearch ? ` matching "${debouncedSearch}"` : ''}${deviceModelId ? ` for ${deviceModelName}` : ''}`}
+          {catalogLoading ? 'Loading…' : `${formatNumber(total)} items${debouncedSearch ? ` matching "${debouncedSearch}"` : ''}${deviceModelId ? ` for ${deviceModelName}` : ''}`}
         </p>
         {total === 0 && !catalogLoading && stats.total_catalog === 0 && (
           <p className="text-sm text-amber-600 dark:text-amber-400">Sync a catalog above to populate items</p>

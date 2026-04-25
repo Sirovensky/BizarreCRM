@@ -282,7 +282,7 @@ export function StocktakePage() {
 
           {detailData && (
             <>
-              <div className="rounded-lg border border-surface-200 bg-white p-4">
+              <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                 <h3 className="font-semibold text-lg">{detailData.session.name}</h3>
                 <div className="mt-2 grid grid-cols-4 gap-3 text-sm">
                   <div>
@@ -305,7 +305,7 @@ export function StocktakePage() {
               </div>
 
               {detailData.session.status === 'open' && (
-                <div className="rounded-lg border border-surface-200 bg-white p-4">
+                <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                   <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <ScanBarcode className="h-4 w-4" /> Scan / enter SKU
                   </h3>
@@ -363,9 +363,9 @@ export function StocktakePage() {
                 </div>
               )}
 
-              <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
+              <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:bg-surface-800 dark:border-surface-700">
                 <table className="w-full text-sm">
-                  <thead className="bg-surface-50 border-b border-surface-200">
+                  <thead className="bg-surface-50 border-b border-surface-200 dark:bg-surface-900 dark:border-surface-700">
                     <tr>
                       <th className="text-left px-3 py-2">Item</th>
                       <th className="text-right px-3 py-2">Expected</th>

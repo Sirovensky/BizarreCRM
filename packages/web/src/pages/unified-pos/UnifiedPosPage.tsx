@@ -82,11 +82,25 @@ export function UnifiedPosPage() {
   // F-key quick tabs (audit §43.10). Handlers are memoized so the hook's
   // keydown listener isn't re-bound on every render (which would conflict
   // with the barcode detection listener below).
+  // WEB-FL-004 (Fixer-RRR 2026-04-25): wire F4 (customer search) so it
+  // focuses the unified search box instead of falling through to the
+  // global AppShell handler. F6 ("Returns hotkey") has no destination
+  // route yet — surface a toast so the cashier knows the key is
+  // recognized but the flow is pending, rather than letting it open the
+  // command palette via AppShell.
   const posShortcuts = useMemo(() => ({
     onRepairsTab: () => setActiveTab('repairs'),
     onProductsTab: () => setActiveTab('products'),
     onMiscTab: () => setActiveTab('misc'),
+    onCustomerSearch: () => {
+      const el = document.querySelector<HTMLInputElement>('[data-pos-customer-search="true"]');
+      if (el) {
+        el.focus();
+        el.select();
+      }
+    },
     onCompleteSale: () => setShowCheckout(true),
+    onReturnsHotkey: () => toast('Returns flow coming soon — scan the original invoice from the ticket page for now'),
   }), [setActiveTab, setShowCheckout]);
   usePosKeyboardShortcuts(posShortcuts);
 

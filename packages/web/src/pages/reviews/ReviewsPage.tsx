@@ -119,7 +119,20 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
               placeholder="Thank the customer and address their feedback..."
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
-            <p className="mt-0.5 text-right text-xs text-surface-400">{text.length}/2000</p>
+            {/* WEB-FK-018 (Fixer-TTT 2026-04-25): publishing platforms penalize
+                verbose replies. Soft-warn at 500 chars and switch the counter
+                to amber so the operator notices before submit. Hard limit
+                stays at 2000 (textarea maxLength). */}
+            <p className={
+              text.length >= 500
+                ? 'mt-0.5 text-right text-xs text-amber-600 dark:text-amber-400'
+                : 'mt-0.5 text-right text-xs text-surface-400'
+            }>
+              {text.length}/2000
+              {text.length >= 500 && (
+                <span className="ml-2">— consider being concise; long replies are penalized on Google/Yelp</span>
+              )}
+            </p>
           </div>
         </div>
 

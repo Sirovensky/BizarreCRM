@@ -51,11 +51,6 @@ function looksLikeDeviceName(name: string): boolean {
   return DEVICE_NAME_REGEX.test(name);
 }
 
-function formatPhoneDisplay(phone: string): string {
-  if (!phone) return '';
-  return formatPhone(phone);
-}
-
 export function CustomerListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -437,8 +432,8 @@ export function CustomerListPage() {
         cell: ({ getValue }) => {
           const phone = getValue() as string;
           return phone ? (
-            <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} className="text-surface-600 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400">
-              {formatPhoneDisplay(phone)}
+            <a href={`tel:${phone}`} rel="noreferrer noopener" onClick={(e) => e.stopPropagation()} className="text-surface-600 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400">
+              {formatPhone(phone)}
             </a>
           ) : <span className="text-surface-400">{'\u2014'}</span>;
         },
@@ -938,7 +933,7 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
             <div className="py-1">
               {phone && (
                 <>
-                  <a href={`tel:${phone}`}
+                  <a href={`tel:${phone}`} rel="noreferrer noopener"
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
                     <Phone className="h-3.5 w-3.5 text-blue-500" /> Call
                   </a>
@@ -949,7 +944,7 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
                 </>
               )}
               {customer.email && (
-                <a href={`mailto:${customer.email}`}
+                <a href={`mailto:${customer.email}`} rel="noreferrer noopener"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
                   <Mail className="h-3.5 w-3.5 text-amber-500" /> Email
                 </a>

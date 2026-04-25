@@ -261,8 +261,22 @@ export function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // Authenticate immediately
-      ws.send(JSON.stringify({ type: 'auth', token }));
+      // WEB-FI-011 (Fixer-SSS 2026-04-25): re-read the access token at
+      // onopen-time so a refresh that completed between the WebSocket
+      // constructor call and the open handshake is picked up. Previously
+      // the token captured in `connect()` (line ~243) was sent verbatim
+      // in onopen — during a 401 burst recovery the freshly-rotated
+      // refresh would land first, but this socket would still send the
+      // expired token, get rejected with 4001, and bounce through
+      // scheduleReconnect needlessly. If localStorage is now empty
+      // (logout fired between connect and onopen), close the socket
+      // cleanly so reconnect logic doesn't keep looping with no token.
+      const freshToken = getToken() ?? token;
+      if (!freshToken) {
+        try { ws.close(); } catch { /* ignore */ }
+        return;
+      }
+      ws.send(JSON.stringify({ type: 'auth', token: freshToken }));
     };
 
     ws.onmessage = (event) => {
@@ -314,7 +328,20 @@ export function useWebSocket() {
         const entry = invalidationMap.current[type];
         if (entry) {
           for (const qk of entry.queryKeys) {
-            queryClientRef.current.invalidateQueries({ queryKey: qk.filter((k) => k !== undefined) });
+            // WEB-FI-010 (Fixer-SSS 2026-04-25): the previous code did
+            // `qk.filter((k) => k !== undefined)` which silently demoted
+            // `['ticket', undefined]` to `['ticket']` — under tanstack v5
+            // that prefix-key invalidates EVERY query starting with
+            // `['ticket']`, so a single `ticket:status_changed` event
+            // missing `data.id` re-fetched the entire ticket subtree
+            // across every page. Skip the entry entirely when ANY slot
+            // is undefined so partial keys never get demoted into a
+            // catch-all prefix invalidation. The dedicated
+            // entity-id invalidation below (lines ~325-336) still
+            // handles the targeted `['ticket', id]` refresh when the
+            // server DOES send a usable id.
+            if (qk.some((k) => k === undefined)) continue;
+            queryClientRef.current.invalidateQueries({ queryKey: qk });
           }
 
           // Also invalidate specific entity if data.id is present

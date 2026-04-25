@@ -7,6 +7,8 @@ import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
+import { formatCurrency } from '@/utils/format';
 
 // CROSS3: "service" tab removed — services are non-stockable labor and
 // live in the `repair_services` table, not `inventory_items`. Existing
@@ -816,7 +818,7 @@ export function InventoryListPage() {
                       )}
                       {isColVisible('cost') && (
                       <td className="px-4 py-3 text-sm text-surface-500 dark:text-surface-400">
-                        {item.cost_price > 0 ? `$${Number(item.cost_price).toFixed(2)}` : '\u2014'}
+                        {item.cost_price > 0 ? formatCurrency(Number(item.cost_price)) : '\u2014'}
                       </td>
                       )}
                       {isColVisible('price') && (
@@ -824,7 +826,7 @@ export function InventoryListPage() {
                         {Number(item.retail_price) === 0 ? (
                           <span className="text-surface-400 dark:text-surface-500 italic">No price</span>
                         ) : (
-                          <>${Number(item.retail_price).toFixed(2)}</>
+                          <>{formatCurrency(Number(item.retail_price))}</>
                         )}
                       </td>
                       )}
@@ -946,9 +948,9 @@ export function InventoryListPage() {
                     {pricePreviewItems.slice(0, 20).map((p, i) => (
                       <tr key={i} className="border-b border-surface-100 dark:border-surface-700/50">
                         <td className="py-1 truncate max-w-[200px]">{p.name}</td>
-                        <td className="py-1 text-right text-surface-500">${p.current.toFixed(2)}</td>
+                        <td className="py-1 text-right text-surface-500">{formatCurrency(p.current)}</td>
                         <td className={cn('py-1 text-right font-medium', p.new > p.current ? 'text-green-600' : p.new < p.current ? 'text-red-600' : '')}>
-                          ${p.new.toFixed(2)}
+                          {formatCurrency(p.new)}
                         </td>
                       </tr>
                     ))}
@@ -1552,7 +1554,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                       </p>
                       <p className="text-xs text-surface-500">{item.barcode}
                         {item.currentStock != null && <span className="ml-2">Current: {item.currentStock}</span>}
-                        {item.catalogMatch && <span className="ml-2">${item.catalogMatch.cost_price?.toFixed(2)} ({item.catalogMatch.source})</span>}
+                        {item.catalogMatch && <span className="ml-2">{formatCurrency(item.catalogMatch.cost_price ?? 0)} ({item.catalogMatch.source})</span>}
                       </p>
                     </div>
 

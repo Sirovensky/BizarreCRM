@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Megaphone,
@@ -81,6 +81,13 @@ export function CampaignsPage() {
   // immediately to potentially thousands of recipients, and Delete is final.
   const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
+  // WEB-FK-017 (Fixer-TTT 2026-04-25): keep a handle on the in-flight Run-now
+  // recipient-count preview so cancelling the confirm dialog (or clicking
+  // Run-now on a different campaign) aborts the previous request instead of
+  // letting it finish and overwrite state. Server-side preview can spin up
+  // significant DB work on a 2000-customer segment; aborting prevents waste
+  // and the late-arriving-A-overwrites-B race.
+  const runPreviewAbortRef = useRef<AbortController | null>(null);
 
   const { data: campaignsRes, isLoading } = useQuery<{ data?: Campaign[] }>({
     queryKey: ['campaigns'],
@@ -245,12 +252,18 @@ export function CampaignsPage() {
                         // Open confirm dialog with a recipient-count preview so the
                         // operator sees how many people will be messaged before firing.
                         setRunConfirm({ campaign, total: null });
+                        // WEB-FK-017: abort any prior in-flight preview before starting a new one.
+                        runPreviewAbortRef.current?.abort();
+                        const ac = new AbortController();
+                        runPreviewAbortRef.current = ac;
                         try {
-                          const res = await campaignsApi.preview(campaign.id);
+                          const res = await campaignsApi.preview(campaign.id, { signal: ac.signal });
+                          if (ac.signal.aborted) return;
                           const total = (res.data as any)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
-                        } catch {
+                        } catch (err: any) {
+                          if (ac.signal.aborted || err?.name === 'CanceledError' || err?.name === 'AbortError') return;
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
                         }
                       }}
@@ -332,9 +345,15 @@ export function CampaignsPage() {
         danger
         onConfirm={() => {
           if (runConfirm) runNow.mutate(runConfirm.campaign.id);
+          runPreviewAbortRef.current?.abort();
           setRunConfirm(null);
         }}
-        onCancel={() => setRunConfirm(null)}
+        onCancel={() => {
+          // WEB-FK-017: abort the preview round-trip on cancel so we don't
+          // pay for a potentially-expensive recipient-count the user no longer needs.
+          runPreviewAbortRef.current?.abort();
+          setRunConfirm(null);
+        }}
       />
 
       <ConfirmDialog

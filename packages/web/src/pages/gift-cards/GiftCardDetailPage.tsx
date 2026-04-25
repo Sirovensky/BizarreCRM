@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
+import { formatDate, formatCurrency as formatCurrencyShared } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,15 +44,12 @@ function dollarsFromMaybeCents(amount: number): number {
 }
 
 function formatCurrency(amount: number): string {
-  return `$${Math.abs(dollarsFromMaybeCents(amount)).toFixed(2)}`;
+  // Magnitude only — sign is rendered separately by the caller (+/-).
+  return formatCurrencyShared(Math.abs(dollarsFromMaybeCents(amount)));
 }
 
 function formatBalance(amount: number): string {
-  return `$${dollarsFromMaybeCents(amount).toFixed(2)}`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatCurrencyShared(dollarsFromMaybeCents(amount));
 }
 
 function txLabel(type: TxType): string {

@@ -58,6 +58,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false, // Never ship source maps to production — prevents source code exposure
+    // WEB-FW-002 (Fixer-RRR 2026-04-25): explicit production budget. Default
+    // chunkSizeWarningLimit is 500 kB which lets vendor chunks (recharts ~500 kB)
+    // silently exceed the budget. Tightening to 350 kB surfaces a build-log
+    // warning on bundle-size regressions; reportCompressedSize prints the
+    // gzipped sizes so PR reviewers can spot growth at a glance.
+    chunkSizeWarningLimit: 350,
+    reportCompressedSize: true,
+    cssCodeSplit: true,
+    assetsInlineLimit: 4096, // 4 KB — keep tiny SVG/font data-uri'd, larger assets stay separate so HTTP caching wins
     rollupOptions: {
       output: {
         manualChunks: {

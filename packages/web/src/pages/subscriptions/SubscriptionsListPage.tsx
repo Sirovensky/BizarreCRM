@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,10 +36,6 @@ interface Subscription {
 // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): dropped local `formatCurrency`
 // — was hardcoded `$` + `toFixed(2)`, ignoring tenant currency/locale. Now
 // delegates to canonical `@/utils/format` so EUR/GBP/CAD tenants render correctly.
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 function statusBadge(status: SubStatus): string {
   switch (status) {

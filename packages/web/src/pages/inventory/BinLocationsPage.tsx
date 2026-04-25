@@ -147,7 +147,7 @@ export function BinLocationsPage() {
           </div>
 
           {showNew && (
-            <div className="rounded-lg border border-surface-200 bg-white p-3 space-y-2">
+            <div className="rounded-lg border border-surface-200 bg-white p-3 space-y-2 dark:bg-surface-800 dark:border-surface-700">
               <input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
@@ -201,7 +201,7 @@ export function BinLocationsPage() {
 
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
             {bins.map((b) => (
-              <div key={b.id} className="flex items-center justify-between rounded border border-surface-200 bg-white px-3 py-2">
+              <div key={b.id} className="flex items-center justify-between rounded border border-surface-200 bg-white px-3 py-2 dark:bg-surface-800 dark:border-surface-700">
                 <div>
                   <div className="font-mono text-sm">{b.code}</div>
                   {b.description && <div className="text-xs text-surface-500">{b.description}</div>}
@@ -243,7 +243,7 @@ export function BinLocationsPage() {
             </select>
           </div>
 
-          <div className="rounded-lg border border-surface-200 bg-white p-4">
+          <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
             {heatmapData && heatmapData.bins.length > 0 ? (
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                 {heatmapData.bins.map((b) => (

@@ -1111,11 +1111,12 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   {comparisonRevenue ? (
                     <BarChart data={comparisonRevenue} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      {/* @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): chart axes/tooltips honored hardcoded "$" — switched to formatCurrency for tenant currency */}
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}`]}
+                        formatter={(value: number) => [formatCurrency(value)]}
                       />
                       <Bar dataKey="previous" fill="#d1d5db" radius={[0, 4, 4, 0]} name="Previous Period" />
                       <Bar dataKey="current" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Current Period" />
@@ -1123,11 +1124,11 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   ) : (
                     <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                        formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                       />
                       <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
                         {revenue_by_model.map((_, i) => (

@@ -13,23 +13,13 @@ import {
 } from 'lucide-react';
 import { voiceApi, type VoiceCall } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 function formatDuration(seconds: number | null): string {
   if (seconds == null || seconds <= 0) return '—';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -92,7 +82,7 @@ function CallRow({ call }: CallRowProps) {
         </span>
       </td>
       <td className="px-4 py-3 text-xs text-surface-500 dark:text-surface-400 whitespace-nowrap">
-        {formatDate(call.created_at)}
+        {formatDateTime(call.created_at)}
       </td>
       <td className="px-4 py-3">
         {hasRecording(call) ? (

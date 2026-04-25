@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,10 +60,6 @@ function formatCurrency(amount: number): string {
     ? amount / 100
     : amount;
   return formatCurrencyShared(dollars);
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
 }
 
 function maskCode(code: string): string {
