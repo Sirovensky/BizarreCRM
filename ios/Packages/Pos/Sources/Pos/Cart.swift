@@ -253,6 +253,33 @@ public final class Cart {
         }
     }
 
+    /// Persist the per-line note typed in the iPad inspector pane (or the
+    /// iPhone line-edit sheet). Empty / whitespace-only strings collapse to
+    /// `nil` so receipts and exports don't print a stray blank "Note:" row.
+    public func update(id: UUID, notes: String?) {
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        items = items.map { row in
+            guard row.id == id else { return row }
+            // CartItem.with(notes:) treats nil as "keep current"; we need an
+            // explicit clear path, so build the row by hand when stored == nil.
+            if stored == nil {
+                return CartItem(
+                    id: row.id,
+                    inventoryItemId: row.inventoryItemId,
+                    name: row.name,
+                    sku: row.sku,
+                    quantity: row.quantity,
+                    unitPrice: row.unitPrice,
+                    taxRate: row.taxRate,
+                    discountCents: row.discountCents,
+                    notes: nil
+                )
+            }
+            return row.with(notes: stored)
+        }
+    }
+
     /// Drop every line. The attached customer is also cleared — the next
     /// sale starts from a clean slate per §16.4. The pending payment-link
     /// reference is dropped locally; the UI layer is responsible for

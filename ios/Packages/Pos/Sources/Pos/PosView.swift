@@ -940,6 +940,9 @@ public struct PosView: View {
                     if inspectorDiscountCents != item.discountCents {
                         cart.update(id: item.id, discountCents: inspectorDiscountCents)
                     }
+                    if inspectorNote != (item.notes ?? "") {
+                        cart.update(id: item.id, notes: inspectorNote)
+                    }
                     editingCartItem = nil
                     BrandHaptics.success()
                 } label: {
