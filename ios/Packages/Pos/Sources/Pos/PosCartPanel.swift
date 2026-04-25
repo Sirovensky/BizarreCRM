@@ -747,10 +747,12 @@ struct PosChargeButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .padding(.horizontal, 18)
-            .foregroundStyle(Color(hex: 0x2B1400))
+            // Adaptive: dark = #2b1400 on cream / light = white on deep orange
+            // (BrandOrange asset adapts per W2-LIGHT theme refresh).
+            .foregroundStyle(Color.bizarreOnPrimary)
             .background(
                 LinearGradient(
-                    colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
+                    colors: [Color.bizarreOrange.opacity(0.92), Color.bizarreOrange],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
@@ -760,7 +762,7 @@ struct PosChargeButton: View {
                 RoundedRectangle(cornerRadius: 14)
                     .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
             )
-            .shadow(color: Color(hex: 0xFDEED0).opacity(0.10), radius: 10, y: 5)
+            .shadow(color: Color.bizarreOrange.opacity(0.18), radius: 10, y: 5)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
