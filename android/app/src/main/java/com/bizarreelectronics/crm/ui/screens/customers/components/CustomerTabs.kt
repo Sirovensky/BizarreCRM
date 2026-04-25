@@ -10,6 +10,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -28,10 +34,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
@@ -42,6 +50,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerLtvTier
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
+import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
@@ -75,6 +84,7 @@ private val TABS = listOf("Info", "Tickets", "Invoices", "Communications", "Asse
  * @param onDelete        Delete customer.
  * @param onRecalculateHealth Trigger health score recalculation.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CustomerDetailTabs(
     customer: CustomerEntity,
@@ -96,11 +106,42 @@ fun CustomerDetailTabs(
     onShare: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onRecalculateHealth: (() -> Unit)? = null,
+    /** 5.7: opens the add-asset bottom sheet. */
+    onAddAsset: (() -> Unit)? = null,
+    /** 5.7: tap on an asset row → show device history sheet. */
+    onAssetTap: ((CustomerAsset) -> Unit)? = null,
+    /** 5.8.1/5.8.2: tap on a tag chip → navigate to tag-filtered list. */
+    onTagClick: ((String) -> Unit)? = null,
+    /** 5.8.1: tag color palette forwarded from Detail VM. */
+    tagPalette: Map<String, Color> = emptyMap(),
     modifier: Modifier = Modifier,
 ) {
+    // 5.8.1: tag chips header row — rendered above the tab bar if customer has tags.
+    val customerTags = remember(customer.tags) {
+        customer.tags?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+    }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     Column(modifier = modifier.fillMaxWidth()) {
+        // 5.8.1: colored tag chips at the top of the detail header
+        if (customerTags.isNotEmpty()) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                customerTags.forEach { tag ->
+                    TagChip(
+                        label = tag,
+                        tagPalette = tagPalette,
+                        onClick = onTagClick?.let { cb -> { cb(tag) } },
+                    )
+                }
+            }
+        }
+
         PrimaryTabRow(selectedTabIndex = selectedTab) {
             TABS.forEachIndexed { index, title ->
                 Tab(
@@ -143,7 +184,11 @@ fun CustomerDetailTabs(
                     onNoteDraftChange = onNoteDraftChange,
                     onPostNote = onPostNote,
                 )
-                4 -> AssetsTab(assets = assets)
+                4 -> AssetsTab(
+                    assets = assets,
+                    onAddAsset = onAddAsset,
+                    onAssetTap = onAssetTap,
+                )
             }
         }
     }
@@ -489,7 +534,11 @@ private fun NoteTabRow(note: CustomerNote) {
 // ─── Assets tab (plan:L897) ──────────────────────────────────────────────────
 
 @Composable
-private fun AssetsTab(assets: List<CustomerAsset>?) {
+private fun AssetsTab(
+    assets: List<CustomerAsset>?,
+    onAddAsset: (() -> Unit)? = null,
+    onAssetTap: ((CustomerAsset) -> Unit)? = null,
+) {
     if (assets == null) {
         LoadingPlaceholder()
         return
@@ -503,15 +552,28 @@ private fun AssetsTab(assets: List<CustomerAsset>?) {
             item { EmptyTabMessage("No assets registered") }
         } else {
             items(assets, key = { it.id }) { asset ->
-                AssetTabRow(asset)
+                AssetTabRow(asset, onClick = onAssetTap?.let { cb -> { cb(asset) } })
+            }
+        }
+        // 5.7: "+ Add asset" button at the bottom of the list
+        if (onAddAsset != null) {
+            item {
+                FilledTonalButton(
+                    onClick = onAddAsset,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Add asset")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AssetTabRow(asset: CustomerAsset) {
-    BrandCard(modifier = Modifier.fillMaxWidth()) {
+private fun AssetTabRow(asset: CustomerAsset, onClick: (() -> Unit)? = null) {
+    BrandCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 asset.name ?: "Asset #${asset.id}",

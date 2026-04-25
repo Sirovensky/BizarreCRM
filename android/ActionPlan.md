@@ -919,30 +919,30 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Concurrent-edit 409 banner.
 
 ### 5.5 Merge
-- [ ] `POST /customers/merge` with `{ keep_id, merge_id }`.
-- [ ] Search + select candidate; diff preview (which fields survive); confirmation.
-- [ ] Destructive — explicit warning that merge is irreversible past 24h window.
+- [x] `POST /customers/merge` with `{ keep_id, merge_id }`.
+- [x] Search + select candidate; diff preview (which fields survive); confirmation.
+- [x] Destructive — explicit warning that merge is irreversible past 24h window.
 
 ### 5.6 Bulk actions
-- [ ] Bulk tag (`POST /customers/bulk-tag`).
-- [ ] Bulk delete with undo.
-- [ ] Bulk export selected.
+- [x] Bulk tag (`POST /customers/bulk-tag`).
+- [x] Bulk delete with undo.
+- [x] Bulk export selected.
 
 ### 5.7 Asset tracking
-- [ ] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
-- [ ] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
+- [x] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
+- [x] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
 
 ### 5.8 Tags & segments
 - [x] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
 - [x] Color-coded with tenant-defined palette.
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold").
-- [ ] Customer detail header chip row for tags.
-- [ ] Tap tag → filter customer list.
-- [ ] Bulk-assign tags via list multi-select.
+- [x] Customer detail header chip row for tags.
+- [x] Tap tag → filter customer list.
+- [x] Bulk-assign tags via list multi-select.
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters.
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d").
 - [ ] Segments used by marketing (§37) and pricing rules.
-- [ ] Max 20 tags per customer (warn at 10).
+- [x] Max 20 tags per customer (warn at 10).
 - [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices).
 
 ### 5.9 Customer 360

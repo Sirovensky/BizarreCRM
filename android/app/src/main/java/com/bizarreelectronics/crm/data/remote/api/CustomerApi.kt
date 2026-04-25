@@ -1,6 +1,10 @@
 package com.bizarreelectronics.crm.data.remote.api
 
+import com.bizarreelectronics.crm.data.remote.dto.AddCustomerAssetRequest
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.BulkDeleteRequest
+import com.bizarreelectronics.crm.data.remote.dto.BulkRestoreRequest
+import com.bizarreelectronics.crm.data.remote.dto.BulkTagRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
@@ -9,6 +13,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListData
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.CustomerLtvTier
+import com.bizarreelectronics.crm.data.remote.dto.CustomerMergeRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.data.remote.dto.CustomerPageResponse
 import com.bizarreelectronics.crm.data.remote.dto.CustomerStats
@@ -123,4 +128,39 @@ interface CustomerApi {
     /** Delete customer (plan:L905). */
     @DELETE("customers/{id}")
     suspend fun deleteCustomer(@Path("id") id: Long): ApiResponse<Unit>
+
+    // ─── 5.5 Merge ──────────────────────────────────────────────────────────
+
+    /**
+     * Merge two customer records. [keep_id] survives; [merge_id] is absorbed.
+     * Destructive after 24 h (server enforces). POST /customers/merge.
+     */
+    @POST("customers/merge")
+    suspend fun mergeCustomers(@Body request: CustomerMergeRequest): ApiResponse<CustomerDetail>
+
+    // ─── 5.6 Bulk actions ────────────────────────────────────────────────────
+
+    /** Bulk-apply a single tag string to a set of customer ids. */
+    @POST("customers/bulk-tag")
+    suspend fun bulkTag(@Body request: BulkTagRequest): ApiResponse<Unit>
+
+    /** Bulk-delete a set of customer ids (soft-delete; reversible within 24 h). */
+    @POST("customers/bulk-delete")
+    suspend fun bulkDelete(@Body request: BulkDeleteRequest): ApiResponse<Unit>
+
+    /**
+     * Bulk-restore previously soft-deleted customers. Used by the 5-second undo
+     * snackbar after a bulk-delete. Falls back to no-op when the endpoint 404s.
+     */
+    @POST("customers/bulk-restore")
+    suspend fun bulkRestore(@Body request: BulkRestoreRequest): ApiResponse<Unit>
+
+    // ─── 5.7 Asset tracking ──────────────────────────────────────────────────
+
+    /** Add a device asset to a customer. POST /customers/:id/assets. */
+    @POST("customers/{id}/assets")
+    suspend fun addAsset(
+        @Path("id") customerId: Long,
+        @Body request: AddCustomerAssetRequest,
+    ): ApiResponse<com.bizarreelectronics.crm.data.remote.dto.CustomerAsset>
 }

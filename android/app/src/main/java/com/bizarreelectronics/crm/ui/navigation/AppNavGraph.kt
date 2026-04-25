@@ -152,6 +152,10 @@ sealed class Screen(val route: String) {
         fun createRoute(ticketId: Long, deviceId: Long) = "tickets/$ticketId/photos/$deviceId"
     }
     data object Customers : Screen("customers")
+    /** Tag-filtered customer list. [tag] is URI-encoded in [createRoute]. */
+    data object CustomersFilteredByTag : Screen("customers?tag={tag}") {
+        fun createRoute(tag: String) = "customers?tag=${Uri.encode(tag)}"
+    }
     data object CustomerDetail : Screen("customers/{id}") {
         fun createRoute(id: Long) = "customers/$id"
     }
@@ -1194,6 +1198,24 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
                 )
             }
+            // 5.8.2: tag-filtered customer list launched from a TagChip tap.
+            composable(
+                route = Screen.CustomersFilteredByTag.route,
+                arguments = listOf(navArgument("tag") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }),
+            ) { backStackEntry ->
+                val tag = backStackEntry.arguments?.getString("tag").orEmpty()
+                @OptIn(ExperimentalSharedTransitionApi::class)
+                CustomerListScreen(
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedContentScope = this@composable,
+                    initialTagFilter = tag,
+                    onCustomerClick = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
+                )
+            }
             composable(Screen.CustomerDetail.route) { backStackEntry ->
                 val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -1209,6 +1231,10 @@ fun AppNavGraph(
                     // Category step instead of forcing a second customer
                     // picker trip.
                     onCreateTicket = { id -> navController.navigate(Screen.CheckInEntry.createRoute(id)) },
+                    // 5.8.2: tag chip tap → tag-filtered customer list
+                    onNavigateToTagFilter = { tag ->
+                        navController.navigate(Screen.CustomersFilteredByTag.createRoute(tag))
+                    },
                 )
             }
             composable(Screen.CustomerCreate.route) {

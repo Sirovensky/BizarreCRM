@@ -219,6 +219,52 @@ data class CreateCustomerNoteRequest(
     val body: String,
 )
 
+// ─── 5.5 Merge ────────────────────────────────────────────────────────────────
+
+/**
+ * POST /customers/merge body.
+ * [keepId] is the customer record that survives; [mergeId] is absorbed.
+ */
+data class CustomerMergeRequest(
+    @SerializedName("keep_id")
+    val keepId: Long,
+    @SerializedName("merge_id")
+    val mergeId: Long,
+)
+
+// ─── 5.6 Bulk actions ─────────────────────────────────────────────────────────
+
+/** POST /customers/bulk-tag body. */
+data class BulkTagRequest(
+    val ids: List<Long>,
+    val tag: String,
+)
+
+/** POST /customers/bulk-delete body. */
+data class BulkDeleteRequest(
+    val ids: List<Long>,
+)
+
+/** POST /customers/bulk-restore body (undo after bulk-delete). */
+data class BulkRestoreRequest(
+    val ids: List<Long>,
+)
+
+// ─── 5.7 Asset tracking ───────────────────────────────────────────────────────
+
+/**
+ * POST /customers/:id/assets body.
+ * [templateId] is the device-model id from the catalog. All fields except
+ * [templateId] are optional; at least one of [serial] / [imei] is expected.
+ */
+data class AddCustomerAssetRequest(
+    @SerializedName("templateId")
+    val templateId: Long?,
+    val serial: String?,
+    val imei: String?,
+    val notes: String?,
+)
+
 /**
  * POS-STORECREDIT-001: response shape for GET /customers/:id/store-credit.
  * Server returns cents (integer) to avoid float precision loss when the

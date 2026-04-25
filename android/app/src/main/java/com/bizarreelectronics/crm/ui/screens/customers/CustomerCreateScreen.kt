@@ -1136,8 +1136,25 @@ fun CustomerCreateScreen(
             HorizontalDivider()
 
             // ── Tags chip input ───────────────────────────────────────
-            Text("Tags", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 5.8.4: max 20 tags; warn at 10
+            val tagCount = state.tags.size
+            val tagLimitReached = tagCount >= 20
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Tags", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tagCount >= 10) {
+                    Text(
+                        "$tagCount/20 tags",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (tagLimitReached) MaterialTheme.colorScheme.error
+                                 else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (state.tags.isNotEmpty()) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1164,12 +1181,13 @@ fun CustomerCreateScreen(
                     modifier = Modifier.weight(1f),
                     label = { Text("Add tag") },
                     singleLine = true,
+                    enabled = !tagLimitReached,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { viewModel.addTag() }),
+                    keyboardActions = KeyboardActions(onDone = { if (!tagLimitReached) viewModel.addTag() }),
                 )
                 FilledTonalIconButton(
                     onClick = viewModel::addTag,
-                    enabled = state.tagInput.isNotBlank(),
+                    enabled = state.tagInput.isNotBlank() && !tagLimitReached,
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add tag")
                 }
