@@ -223,11 +223,17 @@ export function firstStepKey(flowId: TutorialFlowId): string {
 export async function dismissAllTutorials(navigate: NavigateFunction): Promise<void> {
   try {
     localStorage.setItem('tutorial.all.dismissed', '1');
-  } catch { /* storage unavailable — still proceed */ }
+  } catch (err) {
+    // storage unavailable — still proceed (server flag below is the source of truth).
+    console.warn('[tutorialFlows] dismiss localStorage write failed', err);
+  }
 
   try {
     await onboardingApi.patchState({ checklist_dismissed: true });
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    // non-fatal — local flag still set, retry on next dismiss attempt.
+    console.warn('[tutorialFlows] patchState(checklist_dismissed) failed', err);
+  }
 
   navigate('/', { replace: true });
 }
@@ -244,7 +250,10 @@ export async function handleTutorialComplete(
   if (flowId === 'settings' && reason === 'done') {
     try {
       await onboardingApi.patchState({ advanced_settings_unlocked: true });
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      // non-fatal — flow proceeds; user keeps locked-state until next reconciliation.
+      console.warn('[tutorialFlows] patchState(advanced_settings_unlocked) failed', err);
+    }
   }
 
   const next: Partial<Record<TutorialFlowId, string>> = {

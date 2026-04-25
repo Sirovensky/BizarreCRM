@@ -16,8 +16,9 @@ const getInitialTheme = (): 'light' | 'dark' | 'system' => {
   try {
     const stored = localStorage.getItem('theme');
     if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
-  } catch {
+  } catch (err) {
     // localStorage may throw in private mode / sandboxed iframes — fall through to default.
+    console.warn('[uiStore] getInitialTheme: localStorage read failed', err);
   }
   return 'system';
 };
@@ -44,8 +45,9 @@ const readSidebarCollapsed = (): boolean => {
 const safeWrite = (key: string, value: string): void => {
   try {
     localStorage.setItem(key, value);
-  } catch {
+  } catch (err) {
     // ignore — private mode etc.
+    console.warn(`[uiStore] safeWrite("${key}") failed; setting will not persist`, err);
   }
 };
 
@@ -111,7 +113,8 @@ if (typeof window !== 'undefined') {
       themeMqAttached = true;
       mql.__bizarreThemeAttached = true;
     }
-  } catch {
+  } catch (err) {
     // No-op: legacy environments without addEventListener on MediaQueryList.
+    console.warn('[uiStore] system theme listener attach failed', err);
   }
 }

@@ -7,6 +7,7 @@ import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, timeAgo } from '@/utils/format';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
+import { confirm } from '@/stores/confirmStore';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ export default function KanbanBoard() {
   }, []);
 
   const handleDrop = useCallback(
-    (e: DragEvent, targetStatusId: number) => {
+    async (e: DragEvent, targetStatusId: number) => {
       e.preventDefault();
       setDragOverStatus(null);
       if (dragTicketId == null) return;
@@ -215,6 +216,7 @@ export default function KanbanBoard() {
 
       // WEB-FK-001: refuse forbidden transitions (closed<->cancelled), confirm
       // dangerous ones (reopen closed / restore cancelled) before mutating.
+      // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
       const targetColumn = allColumns.find((c) => c.status.id === targetStatusId);
       const verdict = evaluateTicketTransition(sourceColumn.status, targetColumn?.status);
       if (verdict.kind === 'forbidden') {
@@ -222,9 +224,12 @@ export default function KanbanBoard() {
         setDragTicketId(null);
         return;
       }
-      if (verdict.kind === 'confirm' && !window.confirm(verdict.reason)) {
-        setDragTicketId(null);
-        return;
+      if (verdict.kind === 'confirm') {
+        const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+        if (!ok) {
+          setDragTicketId(null);
+          return;
+        }
       }
 
       statusMutation.mutate({ id: dragTicketId, statusId: targetStatusId });

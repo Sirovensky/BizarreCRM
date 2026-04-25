@@ -57,7 +57,10 @@ function isFlowDismissed(flowId: string): boolean {
 function setFlowDismissed(flowId: string): void {
   try {
     localStorage.setItem(flowDismissedKey(flowId), '1');
-  } catch { /* ignore */ }
+  } catch (err) {
+    // localStorage may throw in private mode / quota — flow dismissal is session-only.
+    console.warn('[SpotlightCoach] persisting flow dismissal failed', err);
+  }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

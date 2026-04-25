@@ -28,7 +28,15 @@
     <meta name="theme-color" content="#FBF3DB" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- WEB-FQ-001 / WEB-FE-003 (Fixer-Z 2026-04-25): canonical brand fonts per
+         §project_brand_fonts — Bebas Neue (display/headings), Jost (body, as
+         a free Google Fonts proxy for Futura Medium), JetBrains Mono (code).
+         Saved By Zero (logo) is a custom typeface and is NOT on Google Fonts;
+         it must be self-hosted via @font-face in styles/globals.css against
+         /fonts/SavedByZero.woff2 (TODO: ship the file — placeholder below). -->
+    <!-- TODO: self-host Saved By Zero — drop SavedByZero.woff2 into /public/fonts/
+         and add @font-face { font-family: 'Saved By Zero'; src: url('/fonts/SavedByZero.woff2') format('woff2'); } to globals.css -->
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <script>
       // D4-8: apply dark class synchronously BEFORE the React render cycle so
       // users on dark theme never see a bright-white flash on cold boot.

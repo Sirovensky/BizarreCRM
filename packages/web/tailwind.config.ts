@@ -76,9 +76,19 @@ export default {
           950: '#09090b',
         },
       },
+      // WEB-FQ-001 / WEB-FE-003 (Fixer-Z 2026-04-25): canonical brand fonts
+       // per §project_brand_fonts. `display` is the new heading family
+       // (Bebas Neue), `sans` is body (Futura Medium → Jost free proxy on
+       // Google Fonts), `logo` keeps Saved By Zero as the head of the chain
+       // even though the @font-face is still pending self-host (falls back
+       // to Bebas Neue, then Jost — never Inter again). Existing
+       // `font-sans` / `font-mono` consumers stay valid; `font-display`
+       // and `font-logo` are new tokens for headings + the logo wordmark.
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Bebas Neue', 'Jost', 'system-ui', 'sans-serif'],
+        sans: ['Jost', 'Futura', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        logo: ['Saved By Zero', 'Bebas Neue', 'Jost', 'sans-serif'],
       },
       animation: {
         'slide-in': 'slideIn 0.2s ease-out',

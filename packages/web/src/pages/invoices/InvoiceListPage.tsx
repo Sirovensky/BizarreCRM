@@ -5,6 +5,7 @@ import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Recei
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 
@@ -166,9 +167,14 @@ export function InvoiceListPage() {
   });
 
   // @audit-fixed: confirm before destructive bulk actions (was firing on single click)
-  const handleBulkAction = (action: string, label: string) => {
+  // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
+  const handleBulkAction = async (action: string, label: string) => {
     if (bulkMut.isPending) return;
-    const ok = window.confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`);
+    const ok = await confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`, {
+      title: `${label} invoices`,
+      confirmLabel: label,
+      danger: true,
+    });
     if (!ok) return;
     bulkMut.mutate({ action });
   };

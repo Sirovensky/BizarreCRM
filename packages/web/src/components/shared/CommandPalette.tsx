@@ -81,8 +81,9 @@ function saveRecentSearch(query: string) {
       RECENT_SEARCHES_KEY,
       JSON.stringify(filtered.slice(0, MAX_RECENT)),
     );
-  } catch {
+  } catch (err) {
     // sessionStorage unavailable — skip silently
+    console.warn('[CommandPalette] persisting recent searches failed', err);
   }
 }
 

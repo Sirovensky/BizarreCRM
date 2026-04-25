@@ -15,6 +15,7 @@ import {
   type PortalPhoto,
 } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+import { confirm } from '@/stores/confirmStore';
 
 interface PhotoGalleryProps {
   ticketId: number;
@@ -38,7 +39,8 @@ export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElemen
 
   const handleHide = useCallback(
     async (path: string): Promise<void> => {
-      const confirmed = window.confirm(t('photos.delete_confirm'));
+      // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
+      const confirmed = await confirm(t('photos.delete_confirm'), { danger: true });
       if (!confirmed) return;
       setHidingPath(path);
       try {

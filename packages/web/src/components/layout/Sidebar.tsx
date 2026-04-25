@@ -274,7 +274,10 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
         });
       }
       setItems(safe);
-    } catch { /* ignore */ }
+    } catch (err) {
+      // Corrupted recent_views JSON or storage unavailable — clear list silently.
+      console.warn('[Sidebar] recent_views parse failed', err);
+    }
   }, [location.pathname]);
 
   if (items.length === 0) return null;

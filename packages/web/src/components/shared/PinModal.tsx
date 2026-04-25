@@ -43,7 +43,10 @@ function readPersistedLockout(): PersistedLockout {
 
 function writePersistedLockout(next: PersistedLockout): void {
   try { sessionStorage.setItem(LOCKOUT_STORAGE_KEY, JSON.stringify(next)); }
-  catch { /* quota / sandboxed — best effort */ }
+  catch (err) {
+    // quota / sandboxed — best effort; lockout still tracked in component state.
+    console.warn('[PinModal] persisting lockout state failed', err);
+  }
 }
 
 function clearPersistedLockout(): void {

@@ -579,7 +579,10 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
     setError('');
     try {
       await onSuccess(pin);
-    } catch {
+    } catch (err) {
+      // Underlying error already mapped to a UI banner; log so the actual cause
+      // (network vs auth vs server) is visible in console / Sentry.
+      console.warn('[PinModal] PIN unlock failed', err);
       setError('Invalid PIN or switch failed');
       setPin('');
       inputRef.current?.focus();

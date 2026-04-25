@@ -11,6 +11,7 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { safeColor } from '@/utils/safeColor';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
+import { confirm } from '@/stores/confirmStore';
 import type { Ticket, TicketStatus, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -77,13 +78,15 @@ function HeaderStatusDropdown({
               // (e.g. reopening a closed ticket or flipping closed<->cancelled).
               const verdict = evaluateTicketTransition(currentStatus, s);
               const isForbidden = verdict.kind === 'forbidden';
-              const handleClick = () => {
+              // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
+              const handleClick = async () => {
                 if (isForbidden) {
                   toast.error(verdict.reason);
                   return;
                 }
                 if (verdict.kind === 'confirm') {
-                  if (!window.confirm(verdict.reason)) return;
+                  const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+                  if (!ok) return;
                 }
                 onSelect(s.id);
                 setOpen(false);

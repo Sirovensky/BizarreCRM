@@ -58,5 +58,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false, // Never ship source maps to production — prevents source code exposure
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ['lucide-react'],
   },
 });

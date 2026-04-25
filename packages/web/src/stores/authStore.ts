@@ -70,7 +70,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    try { await api.post('/auth/logout'); } catch {}
+    try { await api.post('/auth/logout'); } catch (err) {
+      // Network/server error during logout — proceed with local cleanup regardless,
+      // but surface the failure so it's not invisible (server-side session may linger).
+      console.warn('[auth] /auth/logout failed; clearing local session anyway', err);
+    }
     localStorage.removeItem('accessToken');
     set({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: notify listeners (queryClient, planStore, ws state) so the
