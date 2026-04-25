@@ -4,15 +4,14 @@ import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
 import com.bizarreelectronics.crm.data.repository.ExpenseRepository
 import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
@@ -40,31 +40,43 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 
 private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
+
+/** Max amount enforced client-side; server validates too. */
+private const val MAX_AMOUNT = 100_000.0
+private val AMOUNT_DISPLAY_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy")
 
 data class ExpenseCreateUiState(
     val category: String = "",
     val amount: String = "",
     val description: String = "",
     val date: String = LocalDate.now().toString(),
+    /** Millis for the DatePickerState; kept in sync with [date]. */
+    val dateMillis: Long = System.currentTimeMillis(),
+    val isReimbursable: Boolean = false,
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val createdId: Long? = null,
-    /** URI of the receipt photo chosen from the photo picker (local, not yet uploaded). */
     val receiptUri: Uri? = null,
-    /** True while ML Kit OCR is running on the picked image. */
     val isOcrRunning: Boolean = false,
-    /** Non-null when OCR runs but finds no useful fields. */
     val ocrToast: String? = null,
+    /** True when offline create was queued (show distinct snackbar). */
+    val savedOffline: Boolean = false,
 )
 
 @HiltViewModel
 class ExpenseCreateViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val draftStore: DraftStore,
+    private val authPreferences: AuthPreferences,
     private val gson: Gson,
 ) : ViewModel() {
 
@@ -95,11 +107,17 @@ class ExpenseCreateViewModel @Inject constructor(
         onFieldChanged()
     }
 
+    /**
+     * Amount filter: digits + single dot + max 2 decimal places.
+     * Rejects values > $100,000. Validation state drives isError on the field.
+     */
     fun updateAmount(value: String) {
+        // Allow empty or well-formed decimal
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
             _state.value = _state.value.copy(amount = value)
             onFieldChanged()
         }
+        // Silently drop characters that would produce invalid input (extra dots, >2 decimals).
     }
 
     fun updateDescription(value: String) {
@@ -109,6 +127,23 @@ class ExpenseCreateViewModel @Inject constructor(
 
     fun updateDate(value: String) {
         _state.value = _state.value.copy(date = value)
+        onFieldChanged()
+    }
+
+    /** Called when the Material3 DatePicker confirms a selection. */
+    fun updateDateMillis(millis: Long) {
+        val localDate = Instant.ofEpochMilli(millis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+        _state.value = _state.value.copy(
+            dateMillis = millis,
+            date = localDate.toString(),
+        )
+        onFieldChanged()
+    }
+
+    fun updateReimbursable(checked: Boolean) {
+        _state.value = _state.value.copy(isReimbursable = checked)
         onFieldChanged()
     }
 
@@ -124,10 +159,10 @@ class ExpenseCreateViewModel @Inject constructor(
         _state.value = _state.value.copy(receiptUri = null)
     }
 
-    /**
-     * Called when a receipt image is picked via PhotoPicker.
-     * Stores the URI then triggers ML Kit OCR to auto-fill form fields.
-     */
+    fun clearSavedOffline() {
+        _state.value = _state.value.copy(savedOffline = false)
+    }
+
     fun onReceiptPicked(context: android.content.Context, uri: Uri) {
         _state.value = _state.value.copy(receiptUri = uri, isOcrRunning = true, ocrToast = null)
         viewModelScope.launch {
@@ -212,10 +247,14 @@ class ExpenseCreateViewModel @Inject constructor(
             return
         }
         val amount = current.amount.toDoubleOrNull()
-        if (amount == null || amount <= 0) {
-            _state.value = current.copy(error = "Amount must be greater than 0")
+        if (amount == null || amount <= 0 || amount > MAX_AMOUNT) {
+            _state.value = current.copy(error = "Amount must be between 0.01 and $100,000")
             return
         }
+
+        // Reimbursable + role → approval_status
+        val userRole = authPreferences.userRole
+        val approvalStatus: String? = if (current.isReimbursable && userRole != "admin") "pending" else null
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
@@ -225,12 +264,19 @@ class ExpenseCreateViewModel @Inject constructor(
                     amount = amount,
                     description = current.description.trim().ifBlank { null },
                     date = current.date.trim().ifBlank { null },
+                    reimbursable = current.isReimbursable,
+                    approvalStatus = approvalStatus,
                 )
+                // ExpenseRepository handles online/offline transparently.
+                // Offline path writes to SyncQueueDao and returns a negative temp id
+                // (convention from OfflineIdGenerator.nextTempId).
                 val createdId = expenseRepository.createExpense(request)
+                val wasOffline = createdId < 0
                 discardDraft()
                 _state.value = _state.value.copy(
                     isSubmitting = false,
                     createdId = createdId,
+                    savedOffline = wasOffline,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -274,9 +320,18 @@ fun ExpenseCreateScreen(
     val state by viewModel.state.collectAsState()
     val pendingDraft by viewModel.pendingDraft.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showCategoryDropdown by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+
+    // ── Category dropdown ─────────────────────────────────────────────
+    var categoryExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // ── Date picker ───────────────────────────────────────────────────
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = state.dateMillis,
+    )
+
     val onNext = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
     val onDoneSave = KeyboardActions(
         onDone = {
@@ -284,6 +339,22 @@ fun ExpenseCreateScreen(
             viewModel.save()
         },
     )
+
+    // ── Amount validation ─────────────────────────────────────────────
+    val amountDouble = state.amount.toDoubleOrNull()
+    val amountError = state.amount.isNotEmpty() &&
+        (amountDouble == null || amountDouble <= 0 || amountDouble > MAX_AMOUNT)
+
+    val canSave = state.category.isNotBlank() &&
+        amountDouble != null && amountDouble > 0 && amountDouble <= MAX_AMOUNT
+
+    // ── Date display ──────────────────────────────────────────────────
+    val displayDate = remember(state.date) {
+        runCatching {
+            LocalDate.parse(state.date)
+                .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+        }.getOrElse { state.date }
+    }
 
     LaunchedEffect(state.createdId) {
         val id = state.createdId
@@ -306,8 +377,12 @@ fun ExpenseCreateScreen(
         }
     }
 
-    val canSave = state.category.isNotBlank() &&
-        (state.amount.toDoubleOrNull()?.let { it > 0 } == true)
+    LaunchedEffect(state.savedOffline) {
+        if (state.savedOffline) {
+            snackbarHostState.showSnackbar("Saved offline; will sync when reconnected")
+            viewModel.clearSavedOffline()
+        }
+    }
 
     val isFormEmpty = state.category.isBlank() && state.amount.isBlank() && state.description.isBlank()
     if (pendingDraft != null && isFormEmpty) {
@@ -317,6 +392,24 @@ fun ExpenseCreateScreen(
             onResume = { viewModel.resumeDraft(pendingDraft!!) },
             onDiscard = { viewModel.discardDraft() },
         )
+    }
+
+    // ── Date picker dialog ────────────────────────────────────────────
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { viewModel.updateDateMillis(it) }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 
     Scaffold(
@@ -371,36 +464,45 @@ fun ExpenseCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // Category dropdown
-            Box {
+            // ── 1. Category — ExposedDropdownMenuBox ─────────────────
+            ExposedDropdownMenuBox(
+                expanded = categoryExpanded,
+                onExpandedChange = { categoryExpanded = it },
+            ) {
                 OutlinedTextField(
                     value = state.category,
                     onValueChange = {},
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
                     label = { Text("Category *") },
                     readOnly = true,
                     trailingIcon = {
-                        IconButton(onClick = { showCategoryDropdown = true }) {
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select category")
-                        }
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded)
                     },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                 )
-                DropdownMenu(
-                    expanded = showCategoryDropdown,
-                    onDismissRequest = { showCategoryDropdown = false },
+                ExposedDropdownMenu(
+                    expanded = categoryExpanded,
+                    onDismissRequest = { categoryExpanded = false },
                 ) {
-                    EXPENSE_CATEGORIES.forEach { category ->
+                    // EXPENSE_CATEGORIES is defined in ExpenseListScreen.kt (same package).
+                    // No server endpoint for expense-categories exists yet.
+                    // TODO: fetch from GET /settings/expense-categories when endpoint is added;
+                    //       fall back to EXPENSE_CATEGORIES constant if unavailable.
+                    EXPENSE_CATEGORIES.forEach { cat ->
                         DropdownMenuItem(
-                            text = { Text(category) },
+                            text = { Text(cat) },
                             onClick = {
-                                viewModel.updateCategory(category)
-                                showCategoryDropdown = false
+                                viewModel.updateCategory(cat)
+                                categoryExpanded = false
                             },
                         )
                     }
                 }
             }
 
+            // ── 2. Amount with validation ─────────────────────────────
             OutlinedTextField(
                 value = state.amount,
                 onValueChange = viewModel::updateAmount,
@@ -411,6 +513,10 @@ fun ExpenseCreateScreen(
                 },
                 placeholder = { Text("0.00") },
                 singleLine = true,
+                isError = amountError,
+                supportingText = if (amountError) {
+                    { Text("Must be 0.01–\$100,000") }
+                } else null,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next,
@@ -429,15 +535,49 @@ fun ExpenseCreateScreen(
                 keyboardActions = onNext,
             )
 
+            // ── 3. Date picker ────────────────────────────────────────
             OutlinedTextField(
-                value = state.date,
-                onValueChange = viewModel::updateDate,
+                value = displayDate,
+                onValueChange = {},
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Date (YYYY-MM-DD)") },
+                label = { Text("Date") },
+                readOnly = true,
+                trailingIcon = {
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Pick date")
+                    }
+                },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = onDoneSave,
             )
+
+            // ── 4. Reimbursable toggle ────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        text = "Reimbursable",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    if (state.isReimbursable) {
+                        Text(
+                            text = "Approval required (pending)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Switch(
+                    checked = state.isReimbursable,
+                    onCheckedChange = viewModel::updateReimbursable,
+                )
+            }
+
+            // Offline create is handled by ExpenseRepository: offline path writes to
+            // SyncQueueDao and returns a negative temp id. VM sets savedOffline = (createdId < 0);
+            // LaunchedEffect above shows the "Saved offline" snackbar and navigates via onCreated.
         }
     }
 }

@@ -1486,11 +1486,11 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [x] Minimal.
 - [x] **Receipt capture** — CameraX inline; OCR total via ML Kit `TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable). (commit 117106a — `ReceiptOcrScanner.kt` ML Kit `TextRecognition` wrapper + `parseReceiptText()` regex extracts total/vendor/date; auto-fill with override; `mlkit-text-recognition:16.0.0` dep; 5 JVM tests)
 - [x] **PhotoPicker import** — pick existing receipt. (commit 117106a — `ReceiptPhotoPicker.kt` `ActivityResultContracts.PickVisualMedia(ImageOnly)` + preview thumbnail + clear + OCR spinner)
-- [ ] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
-- [ ] **Amount validation** — decimal 2 places; cap $100k.
-- [ ] **Date picker** — Material3 `DatePicker`; defaults today.
-- [ ] **Reimbursable toggle** — if user role = employee, approval defaults pending.
-- [ ] **Offline create** + temp-id reconcile.
+- [x] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
+- [x] **Amount validation** — decimal 2 places; cap $100k.
+- [x] **Date picker** — Material3 `DatePicker`; defaults today.
+- [x] **Reimbursable toggle** — if user role = employee, approval defaults pending.
+- [x] **Offline create** + temp-id reconcile.
 
 ### 11.4 Approval (admin)
 - [x] List filter "Pending approval". (commit 117106a — filter tab added to ExpenseListScreen)

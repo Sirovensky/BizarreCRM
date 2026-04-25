@@ -67,6 +67,9 @@ data class CreateExpenseRequest(
     val amount: Double,
     val description: String? = null,
     val date: String? = null,
+    val reimbursable: Boolean = false,
+    @SerializedName("approval_status")
+    val approvalStatus: String? = null,
 )
 
 data class UpdateExpenseRequest(
