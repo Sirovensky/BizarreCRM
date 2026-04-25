@@ -51,6 +51,18 @@ export class PageErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // eslint-disable-next-line no-console
     console.error('PageErrorBoundary caught:', error, info.componentStack);
+    // WEB-FI-022: forward to global error reporter (Sentry/Datadog) when
+    // production deploys assign window.__bizarrecrm_reportError in main.tsx.
+    // Skip for chunk-load errors since those are deploy-rotation false alarms
+    // and the auto-reload below handles them.
+    if (!isChunkLoadError(error)) {
+      try {
+        const w = window as unknown as { __bizarrecrm_reportError?: (e: Error, ctx: unknown) => void };
+        w.__bizarrecrm_reportError?.(error, { boundary: 'PageErrorBoundary', componentStack: info.componentStack });
+      } catch {
+        // reporter threw — swallow so the auto-reload path below still runs
+      }
+    }
 
     // Stale lazy-chunk after deploy: auto-reload ONCE per (url, recent
     // window). Sentinel stores `{ ts, url }` so two independent conditions

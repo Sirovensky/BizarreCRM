@@ -184,7 +184,7 @@ function DeviceEditForm({
           <input
             value={form.device_name}
             onChange={(e) => setForm({ ...form, device_name: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
         <div>
@@ -193,7 +193,7 @@ function DeviceEditForm({
             type="number" step="0.01"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
       </div>
@@ -201,19 +201,19 @@ function DeviceEditForm({
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">IMEI</label>
           <input value={form.imei} onChange={(e) => setForm({ ...form, imei: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="IMEI number" />
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">Serial</label>
           <input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Serial number" />
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">Passcode</label>
           <input value={form.security_code} onChange={(e) => setForm({ ...form, security_code: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Device passcode" />
         </div>
       </div>
@@ -221,7 +221,7 @@ function DeviceEditForm({
         <label className="block text-xs font-medium text-surface-500 mb-1">Issue / Notes</label>
         <textarea value={form.additional_notes} onChange={(e) => setForm({ ...form, additional_notes: e.target.value })}
           rows={2}
-          className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+          className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           placeholder="Describe the issue..." />
       </div>
       <div className="flex justify-end gap-2">
@@ -545,7 +545,7 @@ function PartsSearchModal({
                         value={qaName}
                         onChange={(e) => setQaName(e.target.value)}
                         placeholder="Part name"
-                        className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                         autoFocus
                       />
                       <div className="flex gap-3">
@@ -558,7 +558,7 @@ function PartsSearchModal({
                             value={qaPrice}
                             onChange={(e) => setQaPrice(e.target.value)}
                             placeholder="0.00"
-                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                           />
                         </div>
                         <div className="w-20">
@@ -568,7 +568,7 @@ function PartsSearchModal({
                             min="1"
                             value={qaQty}
                             onChange={(e) => setQaQty(e.target.value)}
-                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                           />
                         </div>
                       </div>

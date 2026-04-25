@@ -59,6 +59,31 @@
     outline-color: #a66d1f; /* primary-600 caramel — AA contrast on cream + light surfaces */
   }
 
+  /* WEB-FE-006 / FIXED-by-Fixer-JJJ 2026-04-25 — 197 sites apply Tailwind's
+   * `outline-none` / `focus:outline-none` on buttons/links/inputs without a
+   * `focus-visible:ring-*` replacement, leaving keyboard nav invisible
+   * (WCAG 2.4.7 fail). `box-shadow` is NOT cleared by `outline:none`, so a
+   * fallback ring drawn via `box-shadow` survives those wrappers and gives
+   * keyboard users a visible indicator everywhere. The selector is scoped
+   * to interactive elements so we don't double-ring `<div>` containers, and
+   * narrowed to elements where the outline was suppressed (computed
+   * `outline-style: none`). The existing `:focus-visible` outline above
+   * still wins on un-suppressed sites, so this is purely additive.
+   *
+   * `--tw-ring-shadow` is set to a transparent value so this rule composes
+   * with Tailwind's own ring utilities instead of stomping a deliberate
+   * styled ring on a sibling element. */
+  :is(button, a, input, select, textarea, [role="button"], [role="link"], [tabindex]):focus-visible {
+    box-shadow:
+      0 0 0 2px rgb(255 255 255 / 0.85),
+      0 0 0 4px #a66d1f;
+  }
+  .dark :is(button, a, input, select, textarea, [role="button"], [role="link"], [tabindex]):focus-visible {
+    box-shadow:
+      0 0 0 2px rgb(24 24 27 / 0.85), /* surface-900 inner ring */
+      0 0 0 4px #e9c477;              /* primary-400 — AA on dark surfaces */
+  }
+
   /* V19: Low contrast placeholders */
   ::placeholder {
     color: #a1a1aa;

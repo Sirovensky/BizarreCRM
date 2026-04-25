@@ -112,6 +112,27 @@ const queryClient = new QueryClient({
 if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {
     queryClient.clear();
+    // WEB-FJ-006 / FIXED-by-Fixer-JJJ 2026-04-25 — wipe PII residue from
+    // the previous session: `recent_views` (Sidebar) and `crm_recent_searches`
+    // (sessionStorage) hold customer/ticket NAMES + email/phone strings that
+    // would otherwise survive logout and leak last-seen identities to the
+    // next user of a shared kiosk PC. Also drop any `draft_sms_*` /
+    // `draft_note_ticket_*` / `draft_note_*` keys (WEB-FJ-004 hazard) so SMS
+    // body residue + ticket-note drafts don't sit in localStorage post-logout.
+    try {
+      window.localStorage.removeItem('recent_views');
+      window.sessionStorage.removeItem('crm_recent_searches');
+      // Sweep namespaced draft keys. Iterate over a snapshot of keys because
+      // removeItem mutates the live `length`.
+      const draftKeys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const k = window.localStorage.key(i);
+        if (k && (k.startsWith('draft_sms_') || k.startsWith('draft_note_'))) {
+          draftKeys.push(k);
+        }
+      }
+      draftKeys.forEach((k) => window.localStorage.removeItem(k));
+    } catch { /* quota / privacy mode — best-effort only */ }
   });
 
   // Stale lazy-chunk auto-reload (belt + suspenders with PageErrorBoundary).

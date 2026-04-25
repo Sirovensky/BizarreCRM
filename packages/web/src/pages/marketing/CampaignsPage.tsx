@@ -138,7 +138,10 @@ export function CampaignsPage() {
     // — operator saw a stale list with no feedback. Surface server rejection
     // (rate-limit, segment deleted, validation error) via toast.
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to update campaign status');
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): server returns descriptive errors
+      // under .message (per shared httpError helper); .error was a legacy field
+      // that no longer ships, so toasts always fell back to the generic string.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to update campaign status');
     },
   });
 
@@ -395,7 +398,8 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
       onCreated();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to create campaign');
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): prefer .message; .error kept as fallback.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to create campaign');
     },
   });
 

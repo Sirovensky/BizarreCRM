@@ -172,7 +172,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search ticket ID or customer..."
-              className="w-full rounded border border-surface-200 bg-surface-50 py-1.5 pl-7 pr-2 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded border border-surface-200 bg-surface-50 py-1.5 pl-7 pr-2 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
             />
           </div>
           {searchLoading && debouncedSearch.length >= 2 && (
@@ -303,7 +303,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
               type="datetime-local"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
             />
           </div>
           <div>
@@ -312,7 +312,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
               type="datetime-local"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
             />
           </div>
           <div>
@@ -321,7 +321,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Optional note..."
-              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
             />
           </div>
           <div className="flex gap-2 pt-1">

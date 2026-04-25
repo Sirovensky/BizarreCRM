@@ -91,15 +91,39 @@ export function NpsTrendPage() {
                 No NPS responses recorded yet. Wire the post-pickup SMS survey to start collecting.
               </div>
             ) : (
-              <div className="flex items-end gap-2 h-40 overflow-x-auto">
+              // WEB-FC-010 (Fixer-KKK 2026-04-25): two-zone bar chart with a
+              // baseline at zero so a -60 NPS month sinks below the axis and
+              // does NOT visually equal +60. Positive bars push up from the
+              // baseline; negative bars hang down. Color still encodes
+              // health (emerald/sky/red).
+              <div className="flex items-stretch gap-2 h-40 overflow-x-auto">
                 {monthly.map((m) => {
                   const height = Math.max(4, Math.abs(m.nps));
                   const color = m.nps >= 50 ? 'bg-emerald-500' : m.nps >= 0 ? 'bg-sky-500' : 'bg-red-500';
+                  const isNegative = m.nps < 0;
                   return (
-                    <div key={m.month} className="flex flex-col items-center gap-1 flex-shrink-0 w-16">
-                      <div className="text-[10px] tabular-nums font-semibold">{m.nps}</div>
-                      <div className={`w-full rounded-t ${color}`} style={{ height: `${height}%` }} />
-                      <div className="text-[10px] text-surface-500">{m.month}</div>
+                    <div key={m.month} className="flex flex-col items-center flex-shrink-0 w-16">
+                      {/* Top half — positive bars only */}
+                      <div className="flex-1 w-full flex flex-col justify-end items-center">
+                        {!isNegative && (
+                          <>
+                            <div className="text-[10px] tabular-nums font-semibold">{m.nps}</div>
+                            <div className={`w-full rounded-t ${color}`} style={{ height: `${height / 2}%` }} />
+                          </>
+                        )}
+                      </div>
+                      {/* Zero baseline */}
+                      <div className="w-full h-px bg-surface-300 dark:bg-surface-600" aria-hidden="true" />
+                      {/* Bottom half — negative bars only */}
+                      <div className="flex-1 w-full flex flex-col items-center">
+                        {isNegative && (
+                          <>
+                            <div className={`w-full rounded-b ${color}`} style={{ height: `${height / 2}%` }} />
+                            <div className="text-[10px] tabular-nums font-semibold text-red-600 dark:text-red-400">{m.nps}</div>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-surface-500 mt-1">{m.month}</div>
                     </div>
                   );
                 })}

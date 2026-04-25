@@ -243,7 +243,8 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
       onCreated();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to create segment');
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): prefer .message (canonical); .error kept as fallback.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to create segment');
     },
   });
 

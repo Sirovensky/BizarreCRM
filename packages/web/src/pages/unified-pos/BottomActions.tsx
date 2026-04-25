@@ -26,6 +26,15 @@ function CashModal({ type, onClose }: CashModalProps) {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // WEB-FX-003: Esc dismisses unless we're mid-submit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
+
   const handleSubmit = async () => {
     const num = parseFloat(amount);
     if (!num || num <= 0) {
@@ -48,10 +57,21 @@ function CashModal({ type, onClose }: CashModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-modal-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="cash-modal-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Cash {type === 'in' ? 'In' : 'Out'}
           </h3>
           <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -67,7 +87,7 @@ function CashModal({ type, onClose }: CashModalProps) {
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="0.00"
               autoFocus
             />
@@ -78,7 +98,7 @@ function CashModal({ type, onClose }: CashModalProps) {
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="e.g. Change for customer"
             />
           </div>
@@ -112,11 +132,31 @@ interface SignatureGateModalProps {
 }
 
 function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, onCancel, onProceed }: SignatureGateModalProps) {
+  // WEB-FX-003: Esc cancels (but only when not actively waiting on hardware).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && state !== 'pending') onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, state]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && state !== 'pending') onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signature-gate-title"
+        className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="signature-gate-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Customer Signature Required
           </h3>
           <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -529,11 +569,31 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
     }
   };
 
+  // WEB-FX-003: Esc cancels unless mid-verify.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !verifying) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, verifying]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !verifying) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manager-pin-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="manager-pin-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Manager PIN required
           </h3>
           <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -554,7 +614,7 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
             autoFocus
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="Manager PIN"
-            className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
           />
           {error && <p className="text-center text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -1103,11 +1103,26 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
 
   const reset = () => setDraft([...DEFAULT_WIDGETS]);
 
+  // WEB-FX-003: Esc dismisses the customize modal.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dashboard-customize-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-md mx-4"
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between p-4 border-b border-surface-100 dark:border-surface-800">
-          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
+          <h3 id="dashboard-customize-title" className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
             <X className="h-4 w-4" />
           </button>

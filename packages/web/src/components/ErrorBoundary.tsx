@@ -13,9 +13,20 @@ export class ErrorBoundary extends Component<Props, State> {
   // @audit-fixed: previously only `getDerivedStateFromError` was implemented,
   // so render errors were silently swallowed with no console output. Adding
   // `componentDidCatch` ensures we at least log the stack to dev tools.
+  // WEB-FI-022: also forward to a global error-reporter hook if configured
+  // (Sentry/Datadog/etc.) — wired via window.__bizarrecrm_reportError so the
+  // boundary stays free of a hard SDK dependency. Production deploys can
+  // assign this in main.tsx after `import * as Sentry`. Without a hook, prod
+  // render crashes are invisible without a user-supplied screenshot.
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // eslint-disable-next-line no-console
     console.error('ErrorBoundary caught:', error, info.componentStack);
+    try {
+      const w = window as unknown as { __bizarrecrm_reportError?: (e: Error, ctx: unknown) => void };
+      w.__bizarrecrm_reportError?.(error, { boundary: 'ErrorBoundary', componentStack: info.componentStack });
+    } catch {
+      // reporter threw — swallow so the boundary still renders the fallback UI
+    }
   }
 
   render() {

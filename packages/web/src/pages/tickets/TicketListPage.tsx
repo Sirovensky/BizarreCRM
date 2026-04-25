@@ -287,7 +287,7 @@ function SavedFiltersDropdown({
                   value={filterName}
                   onChange={(e) => setFilterName(e.target.value)}
                   placeholder="Filter name..."
-                  className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
                 />
                 <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
                   Save
@@ -628,7 +628,7 @@ const TicketRow = memo(function TicketRow({
                   if (!input.value.trim()) return;
                   onAddNote(ticket.id, input.value.trim()).then(() => { input.value = ''; });
                 }}>
-                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400" />
                   <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add</button>
                 </form>
                 {customer?.phone && (
@@ -642,7 +642,7 @@ const TicketRow = memo(function TicketRow({
                       input.value = '';
                     }).finally(() => { btn.disabled = false; });
                   }}>
-                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-green-500" />
+                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500 focus-visible:border-green-500" />
                     <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
                       <Send className="h-3 w-3" /> Send
                     </button>
@@ -1716,7 +1716,7 @@ export function TicketListPage() {
                       return next;
                     });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>

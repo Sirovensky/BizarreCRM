@@ -168,6 +168,17 @@ export function LeadDetailPage() {
   const [reminderDate, setReminderDate] = useState('');
   const [reminderNote, setReminderNote] = useState('');
 
+  // WEB-FF-023: Reminders' "Overdue" badge is computed inside a useMemo whose
+  // deps don't include the wall clock, so a reminder ticking past `now` while
+  // the page is open never flips from Pending → Overdue until the next refetch.
+  // Drive the memo with a 30s-cadence Date.now() snapshot so shift-handover
+  // edge cases stay accurate without spamming re-renders.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['lead', id],
     queryFn: () => leadApi.get(Number(id)),
@@ -294,7 +305,9 @@ export function LeadDetailPage() {
         type: 'reminder',
         date: r.remind_at,
         title: r.note || 'Follow-up reminder',
-        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at) < new Date() ? 'Overdue' : 'Pending'),
+        // WEB-FF-023: compare against the ticking `nowMs` so the badge flips
+        // from Pending → Overdue without needing a refetch.
+        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at).getTime() < nowMs ? 'Overdue' : 'Pending'),
       });
     }
     if (lead.created_at) {
@@ -313,7 +326,7 @@ export function LeadDetailPage() {
     }
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
-  }, [appointments, reminders, lead]);
+  }, [appointments, reminders, lead, nowMs]);
 
   return (
     <div>
@@ -527,7 +540,9 @@ export function LeadDetailPage() {
             ) : (
               <div className="space-y-2">
                 {reminders.map((r: any) => {
-                  const isOverdue = !r.is_dismissed && new Date(r.remind_at) < new Date();
+                  // WEB-FF-023: drive isOverdue from the ticking nowMs so the
+                  // visual chip flips when the reminder passes, not on refetch.
+                  const isOverdue = !r.is_dismissed && new Date(r.remind_at).getTime() < nowMs;
                   return (
                     <div
                       key={r.id}

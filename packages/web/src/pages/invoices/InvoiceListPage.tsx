@@ -227,8 +227,11 @@ export function InvoiceListPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {statusPieData.map((entry, i) => (
-                          <Cell key={i} fill={PIE_COLORS_STATUS[entry.name] || '#94a3b8'} />
+                        {/* WEB-FF-021: key by entry.name (status, e.g. "paid"/"unpaid") so React reconciles cell→color
+                            pairings stably across poll-driven refreshes. Index keys flicker when the dataset shrinks
+                            (e.g. all "draft" rows resolve and the slice drops out). */}
+                        {statusPieData.map((entry) => (
+                          <Cell key={entry.name} fill={PIE_COLORS_STATUS[entry.name] || '#94a3b8'} />
                         ))}
                       </Pie>
                       <Tooltip formatter={(value: number) => [value, 'Count']} />
@@ -255,8 +258,10 @@ export function InvoiceListPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={methodPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {methodPieData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]} />
+                        {/* WEB-FF-021: key by entry.name (method, e.g. "card"/"cash") so slice→color identity is
+                            stable when one method drops to zero on refresh. Color still cycles by index for variety. */}
+                        {methodPieData.map((entry, i) => (
+                          <Cell key={entry.name} fill={PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]} />
                         ))}
                       </Pie>
                       <Tooltip formatter={(value: number) => [value, 'Count']} />

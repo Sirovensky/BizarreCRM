@@ -298,6 +298,16 @@ function ImpersonateConfirmModal({
   const reasonValid = reason.trim().length >= 8;
   const canConfirm = slugMatches && reasonValid && !submitting;
 
+  // WEB-FX-003: Esc dismisses unless we're mid-submit (avoid losing the
+  // typed slug/reason during the network round trip).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, submitting]);
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"

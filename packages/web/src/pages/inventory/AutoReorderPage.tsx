@@ -12,6 +12,9 @@ import { ChevronLeft, RefreshCw, Zap, Loader2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+// WEB-FB-007 (Fixer-KKK 2026-04-25): themed async confirm — matches the
+// pattern used on Estimates / POS / Customers / Tickets / Invoices.
+import { confirm } from '@/stores/confirmStore';
 
 interface AutoReorderRule {
   inventory_item_id: number;
@@ -144,10 +147,12 @@ export function AutoReorderPage() {
           </p>
         </div>
         <button
-          onClick={() => {
-            if (confirm('Run auto-reorder? This creates purchase orders for all low-stock items.')) {
-              runMut.mutate();
-            }
+          onClick={async () => {
+            const ok = await confirm('Run auto-reorder? This creates purchase orders for all low-stock items.', {
+              title: 'Run auto-reorder',
+              confirmLabel: 'Run now',
+            });
+            if (ok) runMut.mutate();
           }}
           disabled={runMut.isPending}
           className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
@@ -286,8 +291,13 @@ export function AutoReorderPage() {
                 </td>
                 <td className="px-2 py-2">
                   <button
-                    onClick={() => {
-                      if (confirm(`Remove rule for ${r.name}?`)) deleteMut.mutate(r.inventory_item_id);
+                    onClick={async () => {
+                      const ok = await confirm(`Remove rule for ${r.name}?`, {
+                        title: 'Remove auto-reorder rule',
+                        confirmLabel: 'Remove',
+                        danger: true,
+                      });
+                      if (ok) deleteMut.mutate(r.inventory_item_id);
                     }}
                     className="text-red-500 hover:text-red-700 disabled:opacity-40"
                     disabled={deleteMut.isPending && deleteMut.variables === r.inventory_item_id}

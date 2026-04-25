@@ -20,6 +20,16 @@ interface LogoutRequiredDetail {
   reason: 'refresh-failed' | 'session-expired' | 'forced';
 }
 
+// WEB-FJ-007 / FIXED-by-Fixer-JJJ 2026-04-25 — production console output must
+// not contain auth payloads, refresh request configs, or correlation ids that
+// third-party browser-error shippers (Sentry, Datadog RUM, LogRocket) might
+// forward into less-trusted sinks. Gate every diagnostic warn behind DEV;
+// production code paths swallow silently (the user-visible toast in the
+// response interceptor + forceLogout() flow already covers UX).
+const devWarn: (...args: unknown[]) => void = import.meta.env.DEV
+  ? (...args) => { console.warn(...args); }
+  : () => {};
+
 function emitLogoutRequired(reason: LogoutRequiredDetail['reason']) {
   try {
     window.dispatchEvent(
@@ -27,7 +37,7 @@ function emitLogoutRequired(reason: LogoutRequiredDetail['reason']) {
     );
   } catch (err) {
     // Environments without window (SSR/tests) — best-effort only
-    console.warn('Failed to emit logout-required event', err);
+    devWarn('Failed to emit logout-required event', err);
   }
 }
 
@@ -118,7 +128,7 @@ function scheduleTokenRefresh() {
         scheduleTokenRefresh(); // Schedule next refresh
       } catch (err) {
         // Refresh failed — let the 401 interceptor handle it on the next request
-        console.warn('Proactive token refresh failed:', err);
+        devWarn('Proactive token refresh failed:', err);
       }
     }, refreshIn);
   } catch (err) {
@@ -131,7 +141,7 @@ function scheduleTokenRefresh() {
     if (cleared) {
       localStorage.removeItem('accessToken');
     }
-    console.warn('Could not decode access token for refresh scheduling:', err);
+    devWarn('Could not decode access token for refresh scheduling:', err);
     // SCAN-1084: a malformed token left the auth store thinking we were
     // authenticated until the NEXT API call 401'd. During that window the
     // UI rendered protected routes with no Authorization header and POSTs
@@ -180,7 +190,7 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
     })
     .catch((err) => {
       // Logout endpoint failure is non-fatal — local state will still clear
-      console.warn('Logout endpoint call failed:', err);
+      devWarn('Logout endpoint call failed:', err);
     })
     .finally(() => {
       useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
@@ -252,13 +262,13 @@ client.interceptors.response.use(
           // controlled 403 body could inject an arbitrary string and break
           // the type guarantee at runtime.
           if (!isUpgradeFeatureKey(rawFeature)) {
-            console.warn('Ignoring 403 upgrade_required with unknown feature:', rawFeature);
+            devWarn('Ignoring 403 upgrade_required with unknown feature:', rawFeature);
             return;
           }
           usePlanStore.getState().openUpgradeModal(rawFeature);
         })
         .catch((err) => {
-          console.warn('Failed to open upgrade modal:', err);
+          devWarn('Failed to open upgrade modal:', err);
         });
       return Promise.reject(error);
     }
@@ -289,13 +299,13 @@ client.interceptors.response.use(
               ? (retryErr as { response?: { status?: number } }).response?.status
               : undefined;
           if (retryStatus === 401) {
-            console.warn('Retried request still 401 after refresh; forcing logout.');
+            devWarn('Retried request still 401 after refresh; forcing logout.');
             forceLogout('session-expired');
           }
           return Promise.reject(retryErr);
         }
       } catch (refreshErr) {
-        console.warn('Token refresh failed, logging out:', refreshErr);
+        devWarn('Token refresh failed, logging out:', refreshErr);
         forceLogout('refresh-failed');
       }
     }
@@ -433,7 +443,7 @@ superAdminClient.interceptors.response.use(
         try {
           window.dispatchEvent(new CustomEvent(SUPER_ADMIN_LOGOUT_EVENT));
         } catch (err) {
-          console.warn('Failed to emit super-admin-logout event', err);
+          devWarn('Failed to emit super-admin-logout event', err);
         }
         toast.error('Super-admin session expired. Please sign in again.');
       }

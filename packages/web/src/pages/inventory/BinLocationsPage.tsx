@@ -14,6 +14,9 @@ import { ChevronLeft, MapPin, Plus, Flame, Loader2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+// WEB-FB-007 (Fixer-KKK 2026-04-25): themed async confirm — matches the
+// pattern used on Estimates / POS / Customers / Tickets / Invoices.
+import { confirm } from '@/stores/confirmStore';
 
 interface BinLocation {
   id: number;
@@ -204,8 +207,13 @@ export function BinLocationsPage() {
                   {b.description && <div className="text-xs text-surface-500">{b.description}</div>}
                 </div>
                 <button
-                  onClick={() => {
-                    if (confirm(`Deactivate bin ${b.code}?`)) deleteMut.mutate(b.id);
+                  onClick={async () => {
+                    const ok = await confirm(`Deactivate bin ${b.code}?`, {
+                      title: 'Deactivate bin',
+                      confirmLabel: 'Deactivate',
+                      danger: true,
+                    });
+                    if (ok) deleteMut.mutate(b.id);
                   }}
                   className="text-red-500 hover:text-red-700 disabled:opacity-40"
                   disabled={deleteMut.isPending && deleteMut.variables === b.id}

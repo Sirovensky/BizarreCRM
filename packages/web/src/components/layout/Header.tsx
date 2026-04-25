@@ -10,6 +10,7 @@ import { cn } from '@/utils/cn';
 // keeps the relative-time output consistent across pages and respects the
 // shared UTC handling for server timestamps without trailing 'Z'.
 import { timeAgo } from '@/utils/format';
+import { notificationDeepLink } from '@/utils/notificationRoutes';
 import {
   Search,
   Bell,
@@ -204,18 +205,10 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         toast.error('Could not mark notification read');
       }
     }
-    // Navigate to entity
-    if (notif.entity_type && notif.entity_id) {
-      const routes: Record<string, string> = {
-        ticket: '/tickets',
-        invoice: '/invoices',
-        customer: '/customers',
-        inventory: '/inventory',
-        lead: '/leads',
-      };
-      const base = routes[notif.entity_type];
-      if (base) navigate(`${base}/${notif.entity_id}`);
-    }
+    // Navigate to entity (WEB-FL-016: route map hoisted to utils/notificationRoutes
+    // so the server entity_type taxonomy stays alignable + unit-testable).
+    const deepLink = notificationDeepLink(notif.entity_type, notif.entity_id);
+    if (deepLink) navigate(deepLink);
     setNotifOpen(false);
   }, [navigate]);
 

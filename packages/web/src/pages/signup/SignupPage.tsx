@@ -91,9 +91,17 @@ export function SignupPage() {
     }
   };
 
+  // WEB-FA-016 (Fixer-KKK 2026-04-25): track the most-recently-requested slug
+  // so out-of-order responses (server slow on "abc", fast on "abcd") don't
+  // overwrite the visible status with a stale "available"/"taken" verdict
+  // for an old value. Public checkSlug endpoint has no abort surface yet,
+  // so we ignore stale resolves at the consumer side.
+  const latestSlugRef = useRef<string>('');
+
   // Debounced slug availability check
   const checkSlug = useCallback((value: string) => {
     if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
+    latestSlugRef.current = value;
 
     if (!value || value.length < 3) {
       setSlugStatus(value ? 'invalid' : 'idle');
@@ -112,10 +120,13 @@ export function SignupPage() {
     slugTimerRef.current = setTimeout(async () => {
       try {
         const res = await signupApi.checkSlug(value);
+        // Drop stale results: user has typed further since this fired.
+        if (latestSlugRef.current !== value) return;
         const { available, reason } = res.data.data;
         setSlugStatus(available ? 'available' : 'taken');
         setSlugMessage(available ? 'Available!' : (reason || 'Already taken'));
       } catch {
+        if (latestSlugRef.current !== value) return;
         setSlugStatus('idle');
         setSlugMessage('Could not check availability');
       }

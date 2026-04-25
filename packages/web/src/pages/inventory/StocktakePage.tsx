@@ -23,6 +23,11 @@ import {
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
+// WEB-FB-007 (Fixer-KKK 2026-04-25): swapped native window.confirm for the
+// themed async modal — matches the pattern already used on Estimates / POS /
+// Customers / Tickets / Invoices, picks up dark mode + brand fonts, and is
+// not blocked by Safari's third-party-iframe modal suppression.
+import { confirm } from '@/stores/confirmStore';
 
 interface StocktakeSession {
   id: number;
@@ -329,10 +334,12 @@ export function StocktakePage() {
 
                   <div className="mt-4 flex gap-2">
                     <button
-                      onClick={() => {
-                        if (confirm('Commit this stocktake? Inventory counts will be updated.')) {
-                          commitMut.mutate();
-                        }
+                      onClick={async () => {
+                        const ok = await confirm('Commit this stocktake? Inventory counts will be updated.', {
+                          title: 'Commit stocktake',
+                          confirmLabel: 'Commit',
+                        });
+                        if (ok) commitMut.mutate();
                       }}
                       disabled={detailData.counts.length === 0 || commitMut.isPending}
                       className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -340,10 +347,13 @@ export function StocktakePage() {
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('Cancel this stocktake? No stock changes will be applied.')) {
-                          cancelMut.mutate();
-                        }
+                      onClick={async () => {
+                        const ok = await confirm('Cancel this stocktake? No stock changes will be applied.', {
+                          title: 'Cancel stocktake',
+                          confirmLabel: 'Cancel stocktake',
+                          danger: true,
+                        });
+                        if (ok) cancelMut.mutate();
                       }}
                       className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600"
                     >

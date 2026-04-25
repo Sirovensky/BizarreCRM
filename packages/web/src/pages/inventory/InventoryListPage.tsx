@@ -355,12 +355,15 @@ export function InventoryListPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (stockConfirm) { setStockConfirm(null); return; }
+      if (dismissConfirm) { setDismissConfirm(false); return; }
+      if (orderAllQueue.length > 0) { setOrderAllQueue([]); setOrderAllOpened(new Set()); return; }
       if (showBulkPriceModal) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); return; }
       if (showImportModal) { setShowImportModal(false); setImportText(''); setImportPreview([]); return; }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [showBulkPriceModal, showImportModal]);
+  }, [showBulkPriceModal, showImportModal, stockConfirm, dismissConfirm, orderAllQueue.length]);
 
   // Price preview for bulk update
   const pricePreviewItems = useMemo(() => {
@@ -1052,9 +1055,20 @@ export function InventoryListPage() {
       )}
       {/* Dismiss all low stock confirmation */}
       {dismissConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6">
-            <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDismissConfirm(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dismiss-low-stock-title"
+            className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="dismiss-low-stock-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
               Dismiss All Low Stock Alerts
             </h3>
             <p className="text-sm text-surface-600 dark:text-surface-400 mb-1">
@@ -1177,9 +1191,20 @@ export function InventoryListPage() {
 
       {/* Stock adjustment confirmation dialog */}
       {stockConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6">
-            <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setStockConfirm(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="adjust-stock-title"
+            className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="adjust-stock-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
               Adjust Stock
             </h3>
             <p className="text-sm text-surface-600 dark:text-surface-400 mb-4">
@@ -1249,6 +1274,15 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
 
   // Auto-focus input on mount and after each scan
   useEffect(() => { inputRef.current?.focus(); }, [scannedItems.length]);
+
+  // WEB-FX-003: Esc dismisses unless we're mid-submit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
 
   const handleScan = async (barcode: string) => {
     const trimmed = barcode.trim();
@@ -1398,10 +1432,21 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   // Summary screen after successful receive
   if (summary) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-8 w-full max-w-md text-center">
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onComplete();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receive-summary-title"
+          className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-8 w-full max-w-md text-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="text-5xl mb-4">&#9989;</div>
-          <h3 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Items Received</h3>
+          <h3 id="receive-summary-title" className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Items Received</h3>
           <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.received} existing items restocked</p>
           {summary.created > 0 && (
             <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.created} new items created</p>
@@ -1416,12 +1461,23 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="receive-items-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
           <div>
-            <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+            <h3 id="receive-items-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
               <ScanBarcode className="h-5 w-5 text-primary-600" /> Receive Items
             </h3>
             <p className="text-sm text-surface-500 mt-0.5">Scan barcodes or type SKU/UPC to receive inventory</p>
@@ -1615,13 +1671,28 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
       .finally(() => setLoading(false));
   }, [months]);
 
+  // WEB-FX-003: Esc dismisses.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-4xl max-h-[85vh] rounded-xl bg-white dark:bg-surface-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="variance-analysis-title"
+        className="w-full max-w-4xl max-h-[85vh] rounded-xl bg-white dark:bg-surface-900 shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200 dark:border-surface-700">
           <div>
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+            <h2 id="variance-analysis-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
               <TrendingDown className="h-5 w-5 text-red-500" />
               Variance Analysis
             </h2>

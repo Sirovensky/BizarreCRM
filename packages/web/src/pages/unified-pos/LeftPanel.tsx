@@ -220,7 +220,7 @@ function UnifiedSearchBar() {
               'w-full rounded-lg border border-surface-200 dark:border-surface-700',
               'bg-white dark:bg-surface-800 pl-9 pr-3 py-2 text-sm',
               'text-surface-900 dark:text-surface-100 placeholder:text-surface-400',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:border-primary-500',
             )}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && results.length > 0) {
@@ -359,7 +359,7 @@ function TicketSearch() {
           'w-full rounded-lg border border-surface-200 dark:border-surface-700',
           'bg-white dark:bg-surface-800 pl-9 pr-3 py-1.5 text-sm',
           'text-surface-900 dark:text-surface-100 placeholder:text-surface-400',
-          'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:border-primary-500',
           'transition-colors',
         )}
       />
@@ -441,7 +441,7 @@ function BarcodeSearch() {
           'w-full rounded-lg border border-surface-200 dark:border-surface-700',
           'bg-white dark:bg-surface-800 pl-9 pr-3 py-1.5 text-sm',
           'text-surface-900 dark:text-surface-100 placeholder:text-surface-400',
-          'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:border-primary-500',
           'transition-colors',
         )}
       />
@@ -530,7 +530,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           data-tutorial-target="checkout:price-cell"
           value={item.laborPrice}
           onChange={(e) => updateCartItem(item.id, { laborPrice: parseFloat(e.target.value) || 0 } as Partial<RepairCartItem>)}
-          className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
           step="0.01"
           min="0"
         />
@@ -671,7 +671,7 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
         type="text" inputMode="decimal" pattern="[0-9.]*"
         value={item.unitPrice}
         onChange={(e) => updateCartItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 } as Partial<ProductCartItem>)}
-        className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
         step="0.01"
         min="0"
       />

@@ -105,6 +105,16 @@ export function TeamChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  // WEB-FX-003: Esc dismisses the New-channel modal.
+  useEffect(() => {
+    if (!showNew) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowNew(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showNew]);
+
   const sendMut = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/team-chat/channels/${selectedChannelId}/messages`, {
@@ -258,9 +268,20 @@ export function TeamChatPage() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New channel</h2>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowNew(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-channel-title"
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="new-channel-title" className="text-lg font-bold mb-4">New channel</h2>
             <label className="block mb-3">
               <span className="text-xs font-semibold text-gray-600">Channel name</span>
               <input
