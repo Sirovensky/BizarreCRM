@@ -438,19 +438,19 @@ struct PosCartStrip: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // 26pt teal avatar
+            // 26pt teal avatar (mockup spec: gradient teal background, dark teal initials)
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
+                            colors: [Color.bizarreTeal, Color.bizarreTeal.opacity(0.55)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                 Text(customer.initials)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x002D35))
+                    .foregroundStyle(Color.bizarreSurfaceBase)
             }
             .frame(width: 26, height: 26)
             .accessibilityHidden(true)

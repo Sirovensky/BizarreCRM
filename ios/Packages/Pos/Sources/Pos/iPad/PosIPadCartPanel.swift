@@ -87,19 +87,19 @@ public struct PosIPadCartPanel: View {
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
         HStack(spacing: BrandSpacing.md) {
-            // 32pt teal avatar
+            // 32pt teal avatar (mockup spec: gradient teal background, dark teal initials)
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: 0x4DB8C9), Color(hex: 0x2F6F78)],
+                            colors: [Color.bizarreTeal, Color.bizarreTeal.opacity(0.55)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                 Text(customer.initials)
                     .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x002D35))
+                    .foregroundStyle(Color.bizarreSurfaceBase)
             }
             .frame(width: 32, height: 32)
             .accessibilityHidden(true)
