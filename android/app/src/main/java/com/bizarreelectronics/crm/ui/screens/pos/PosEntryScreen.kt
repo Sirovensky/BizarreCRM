@@ -42,7 +42,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 /**
@@ -115,6 +117,12 @@ fun PosEntryScreen(
     // statusBarsPadding pushes the entire POS-entry surface below the
     // system status bar so the customer banner / clock no longer overlap.
     Box(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(innerPadding)) {
+        // TASK-4: offline banner defensive placement (top of entry screen)
+        PosOfflineBanner(
+            isOnline = state.isOnline,
+            pendingSaleCount = state.pendingSaleCount,
+            modifier = Modifier.align(Alignment.TopCenter).zIndex(1f),
+        )
         // ── Content layer ───────────────────────────────────────────────────
         AnimatedVisibility(
             visible = !searchExpanded,

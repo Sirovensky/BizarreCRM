@@ -38,6 +38,12 @@ data class PosSaleRequest(
      *  invoice gets attached so it shows up in the ticket's history. */
     @SerializedName("linked_ticket_id") val linkedTicketId: Long? = null,
     val notes: String? = null,
+    /**
+     * Per-jurisdiction tax breakdown keyed by jurisdictionId → taxCents.
+     * Populated by [PosTaxCalculator] before submission; null when the
+     * calculator is not yet wired to a real TenantTaxConfig (see TODO POS-TAX-MULTI-001).
+     */
+    @SerializedName("tax_breakdown") val taxBreakdown: Map<String, Long>? = null,
 )
 
 data class PosPaymentDto(

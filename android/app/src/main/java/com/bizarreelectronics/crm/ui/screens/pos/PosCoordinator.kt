@@ -27,10 +27,13 @@ class PosCoordinator @Inject constructor() {
         val completedOrderId: String? = null,
         val completedInvoiceId: Long? = null,
         val trackingUrl: String? = null,
+        /** Tip amount in cents. TODO: tenant tip config from server settings. */
+        val tipCents: Long = 0L,
     ) {
         val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
         val taxCents: Long get() = lines.sumOf { it.taxCents }
-        val totalCents: Long get() = (subtotalCents + taxCents - cartDiscountCents).coerceAtLeast(0L)
+        // TASK-1: tip is added on top of the discounted + taxed subtotal
+        val totalCents: Long get() = (subtotalCents + taxCents - cartDiscountCents + tipCents).coerceAtLeast(0L)
         val paidCents: Long get() = appliedTenders.sumOf { it.amountCents }
         val remainingCents: Long get() = (totalCents - paidCents).coerceAtLeast(0L)
         // POS-AUDIT-002: allow $0.00 totals (fully-discounted / store-credit-covered).
@@ -66,6 +69,10 @@ class PosCoordinator @Inject constructor() {
         _session.update { s ->
             s.copy(appliedTenders = s.appliedTenders.filter { it.id != tenderId })
         }
+
+    /** TASK-1: set tip for the current session. */
+    fun setTip(cents: Long) =
+        _session.update { it.copy(tipCents = cents.coerceAtLeast(0L)) }
 
     fun completeOrder(orderId: String, invoiceId: Long, trackingUrl: String?) =
         _session.update {

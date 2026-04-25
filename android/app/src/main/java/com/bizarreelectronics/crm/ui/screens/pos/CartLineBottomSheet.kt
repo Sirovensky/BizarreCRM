@@ -25,15 +25,22 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
  *
  * [cartDimAlpha] is applied to the underlying cart via the caller's Modifier —
  * the sheet itself just owns its own content.
+ *
+ * TASK-3: [canEditPrice] gates the unit-price field (admin/manager only).
+ * [onPriceChange] receives the new price in cents + override reason on Save.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CartLineBottomSheet(
     line: CartLine,
     cartDimAlpha: Float = 0.35f,
+    /** TASK-3: allow price editing for admin / manager roles. */
+    canEditPrice: Boolean = false,
     onQtyChange: (Int) -> Unit,
     onDiscountChange: (Long) -> Unit,
     onNoteChange: (String) -> Unit,
+    /** TASK-3: called on Save when canEditPrice is true. newPriceCents + reason. */
+    onPriceChange: ((newPriceCents: Long, reason: String) -> Unit)? = null,
     onRemove: () -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
@@ -66,6 +73,13 @@ fun CartLineBottomSheet(
     var customPctInput by remember(line.id) { mutableStateOf("") }
 
     var note by remember(line.id) { mutableStateOf(line.note ?: "") }
+
+    // TASK-3: price override state (only matters when canEditPrice == true)
+    var priceInput by remember(line.id) {
+        mutableStateOf("%.2f".format(line.unitPriceCents / 100.0))
+    }
+    var priceReason by remember(line.id) { mutableStateOf("") }
+    val newPriceCents: Long = Math.round((priceInput.toDoubleOrNull() ?: 0.0) * 100)
 
     // AUDIT-009: discount derived from current qty + chip + custom inputs (never stale)
     val discountCents: Long by remember {
@@ -154,15 +168,45 @@ fun CartLineBottomSheet(
                 }
             }
 
-            // ── Unit price (read-only) ─────────────────────────────────────────
+            // ── Unit price ────────────────────────────────────────────────────
+            // TASK-3: editable for admin/manager; read-only for others.
             HorizontalDivider()
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Unit price", style = MaterialTheme.typography.bodyMedium)
-                Text(line.unitPriceCents.toDollarString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            if (canEditPrice) {
+                Column(modifier = Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Unit price", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = priceInput,
+                        onValueChange = { raw ->
+                            val filtered = raw.filter { it.isDigit() || it == '.' }
+                            val dotIdx = filtered.indexOf('.')
+                            priceInput = if (dotIdx >= 0)
+                                filtered.substring(0, dotIdx + 1) +
+                                    filtered.substring(dotIdx + 1).filter { it.isDigit() }.take(2)
+                            else filtered
+                        },
+                        prefix = { Text("$") },
+                        label = { Text("Override price") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = priceReason,
+                        onValueChange = { priceReason = it.take(200) },
+                        label = { Text("Reason (required for audit)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Unit price", style = MaterialTheme.typography.bodyMedium)
+                    Text(line.unitPriceCents.toDollarString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                }
             }
 
             // ── Discount chips ─────────────────────────────────────────────────
@@ -287,11 +331,15 @@ fun CartLineBottomSheet(
                     Text("Remove", fontWeight = FontWeight.Bold)
                 }
                 // AUDIT-007: Save is the single point that flushes all local state to VM
+                // TASK-3: also flush price override when canEditPrice
                 Button(
                     onClick = {
                         onQtyChange(qty)
                         onDiscountChange(discountCents)
                         onNoteChange(note)
+                        if (canEditPrice && newPriceCents != line.unitPriceCents) {
+                            onPriceChange?.invoke(newPriceCents, priceReason)
+                        }
                         onSave()
                     },
                     modifier = Modifier.weight(1.5f).semantics { contentDescription = "Save changes to ${line.name}" },

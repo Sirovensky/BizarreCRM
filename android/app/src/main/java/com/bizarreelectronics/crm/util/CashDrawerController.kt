@@ -60,14 +60,28 @@ class CashDrawerController @Inject constructor(
         } ?: Result.failure(IOException("Cash drawer kick timed out (2 s)"))
     }
 
-    override suspend fun manualOpen(operatorId: String): Result<Unit> {
+    override suspend fun manualOpen(
+        operatorId: String,
+        operatorRole: String,
+        reason: String,
+    ): Result<Unit> {
+        if (operatorRole != "admin") {
+            return Result.failure(SecurityException("Cash drawer manual open requires admin role"))
+        }
         runCatching {
             syncQueueDao.insert(
                 SyncQueueEntity(
                     entityType = "cash_drawer_manual_open",
                     entityId = 0L,
                     operation = "manual_open",
-                    payload = gson.toJson(mapOf("operator" to operatorId, "timestamp" to System.currentTimeMillis())),
+                    payload = gson.toJson(
+                        mapOf(
+                            "operator" to operatorId,
+                            "operator_role" to operatorRole,
+                            "reason" to reason,
+                            "timestamp" to System.currentTimeMillis(),
+                        )
+                    ),
                 )
             )
         }

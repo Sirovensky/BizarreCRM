@@ -94,6 +94,13 @@ interface SyncQueueDao {
     @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'pending'")
     fun getCount(): Flow<Int>
 
+    /**
+     * Count pending entries whose [SyncQueueEntity.operation] matches [opType].
+     * Used by PosCartViewModel to surface the "N sale(s) queued" offline-banner count.
+     */
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'pending' AND operation = :opType")
+    suspend fun countPendingByOpType(opType: String): Int
+
     // ─── Dead-letter queue (R9 / N8) ─────────────────────────────────────────────
 
     /**

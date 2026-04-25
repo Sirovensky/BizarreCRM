@@ -3,9 +3,18 @@ package com.bizarreelectronics.crm.ui.screens.pos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.dao.ParkedCartDao
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
+import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.PosApi
 import com.bizarreelectronics.crm.data.remote.api.QuickAddItem
+import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionRule
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosTaxCalculator
+import com.bizarreelectronics.crm.ui.screens.pos.components.TaxBreakdown
+import com.bizarreelectronics.crm.ui.screens.pos.components.TenantTaxConfig
+import com.bizarreelectronics.crm.util.NetworkMonitor
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,11 +44,20 @@ data class PosCartUiState(
     val shiftActive: Boolean = true,
     /** Count of locally parked carts. Sourced from ParkedCartDao.observeCount(). */
     val parkedCartCount: Int = 0,
+    // ── TASK-1: tip ──────────────────────────────────────────────────────────
+    val tipCents: Long = 0L,
+    // ── TASK-4: offline banner ────────────────────────────────────────────────
+    val isOnline: Boolean = true,
+    /** Count of queued pos_sale entries awaiting sync. */
+    val pendingSaleCount: Int = 0,
+    // ── TASK-5: tax breakdown ─────────────────────────────────────────────────
+    val taxBreakdown: TaxBreakdown? = null,
 ) {
     val subtotalCents: Long get() = lines.sumOf { it.lineTotalCents }
-    val taxCents: Long get() = lines.sumOf { it.taxCents }
+    val taxCents: Long get() = taxBreakdown?.totalTaxCents ?: lines.sumOf { it.taxCents }
     val discountCents: Long get() = cartDiscountCents
-    val totalCents: Long get() = (subtotalCents + taxCents - cartDiscountCents).coerceAtLeast(0L)
+    // TASK-1: mirror coordinator totalCents formula (includes tip)
+    val totalCents: Long get() = (subtotalCents + taxCents - cartDiscountCents + tipCents).coerceAtLeast(0L)
 
     val editingLine: CartLine? get() = lines.firstOrNull { it.id == editingLineId }
 }
@@ -50,7 +68,11 @@ class PosCartViewModel @Inject constructor(
     private val inventoryApi: InventoryApi,
     private val posApi: PosApi,
     private val parkedCartDao: ParkedCartDao,
+    private val syncQueueDao: SyncQueueDao,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
+
+    private val gson = Gson()
 
     private val _uiState = MutableStateFlow(PosCartUiState())
     val uiState: StateFlow<PosCartUiState> = _uiState.asStateFlow()
@@ -62,6 +84,7 @@ class PosCartViewModel @Inject constructor(
         // Mirror coordinator session into local UI state
         viewModelScope.launch {
             coordinator.session.collect { session ->
+                val breakdown = computeTaxBreakdown(session.lines, _uiState.value.taxRate)
                 _uiState.update {
                     it.copy(
                         customer = session.customer,
@@ -69,8 +92,24 @@ class PosCartViewModel @Inject constructor(
                         cartDiscountCents = session.cartDiscountCents,
                         cartNote = session.cartNote,
                         linkedTicketId = session.linkedTicketId,
+                        tipCents = session.tipCents,
+                        taxBreakdown = breakdown,
                     )
                 }
+            }
+        }
+        // TASK-4: observe network state
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _uiState.update { it.copy(isOnline = online) }
+            }
+        }
+        // TASK-4: observe pending pos_sale count from sync queue
+        viewModelScope.launch {
+            syncQueueDao.getCount().collect { _ ->
+                // getCount() tracks all pending; query for pos_sale specifically
+                val count = syncQueueDao.countPendingByOpType("pos_sale")
+                _uiState.update { it.copy(pendingSaleCount = count) }
             }
         }
         // POS-TAX-001: load the default tax class rate from
@@ -90,7 +129,13 @@ class PosCartViewModel @Inject constructor(
                     val ratePercent = classes.firstOrNull { it.isDefault == 1 }?.rate
                         ?: classes.firstOrNull()?.rate
                         ?: 0.0
-                    _uiState.update { it.copy(taxRate = ratePercent / 100.0) }
+                    val taxFraction = ratePercent / 100.0
+                    _uiState.update { state ->
+                        state.copy(
+                            taxRate = taxFraction,
+                            taxBreakdown = computeTaxBreakdown(state.lines, taxFraction),
+                        )
+                    }
                 }
         }
         // Mockup PHONE 3 'Catalog' tab — fetch quick-add tiles. Server route
@@ -237,20 +282,146 @@ class PosCartViewModel @Inject constructor(
 
     fun dismissLineEdit() = _uiState.update { it.copy(editingLineId = null) }
 
+    // ── TASK-1: tip ───────────────────────────────────────────────────────────
+
+    /** Set the cart tip. Delegates to coordinator so PosTender sees the updated totalCents. */
+    fun setTip(cents: Long) {
+        coordinator.setTip(cents)
+    }
+
+    // ── TASK-2: parked cart full restore (POS-PARK-002) ───────────────────────
+
     /**
-     * Restore a parked cart by id.
-     * TODO: POS-PARK-002 — deserialize cartJson → PosCoordinator session.
-     * Currently just deletes the parked row so the chip count decrements.
+     * Restore a parked cart by id. Parses the stored cartJson back into
+     * coordinator state (lines + customer + cartDiscount + linkedTicketId),
+     * then deletes the parked row so the chip count decrements.
      */
     fun restoreParkedCart(cartId: String) {
         viewModelScope.launch {
+            val entity = parkedCartDao.getById(cartId) ?: return@launch
+            var restoredLineCount = 0
+            runCatching {
+                val type = object : TypeToken<ParkedCartSnapshot>() {}.type
+                val snapshot = gson.fromJson<ParkedCartSnapshot>(entity.cartJson, type)
+                restoredLineCount = snapshot.lines.size
+                coordinator.resetSession()
+                coordinator.setLines(snapshot.lines)
+                coordinator.setCartDiscount(snapshot.cartDiscountCents)
+                snapshot.cartNote?.let { coordinator.setCartNote(it) }
+                snapshot.linkedTicketId?.let { coordinator.setLinkedTicket(it) }
+                snapshot.customer?.let { c ->
+                    coordinator.attachCustomer(
+                        PosAttachedCustomer(
+                            id = c.id,
+                            name = c.name,
+                            phone = c.phone,
+                            email = c.email,
+                            storeCreditCents = c.storeCreditCents,
+                            taxExempt = c.taxExempt,
+                        )
+                    )
+                }
+            }
             parkedCartDao.deleteById(cartId)
-            // TODO: POS-PARK-002 — parse cartJson and call coordinator.setLines()
-            //       + coordinator.attachCustomer() to restore the full session.
+            // Surface "Cart restored" snackbar via the scan-message channel
+            if (restoredLineCount > 0) {
+                _uiState.update { it.copy(scanMessage = "Cart restored — $restoredLineCount item(s)") }
+            }
         }
+    }
+
+    // ── TASK-3: unit-price override ───────────────────────────────────────────
+
+    /**
+     * Override a line's unit price (admin/manager only — enforced by caller).
+     * Stamps [CartLine.originalUnitPriceCents] for strikethrough hint when price
+     * differs from the original. Also enqueues a price_override audit entry.
+     *
+     * @param reason Mandatory reason text supplied alongside the override. Used
+     *   as the SyncQueue payload comment (price_override audit).
+     */
+    fun setLineUnitPrice(lineId: String, newPriceCents: Long, reason: String = "") {
+        val updated = _uiState.value.lines.map { line ->
+            if (line.id != lineId) line
+            else line.copy(
+                unitPriceCents = newPriceCents,
+                originalUnitPriceCents = if (newPriceCents != line.unitPriceCents)
+                    line.originalUnitPriceCents ?: line.unitPriceCents
+                else line.originalUnitPriceCents,
+            )
+        }
+        pushLines(updated)
+        // Audit: queue price_override for sync
+        viewModelScope.launch {
+            val payload = gson.toJson(
+                mapOf(
+                    "line_id" to lineId,
+                    "new_price_cents" to newPriceCents,
+                    "reason" to reason,
+                )
+            )
+            syncQueueDao.insert(
+                SyncQueueEntity(
+                    entityType = "cart_line",
+                    entityId = 0L,
+                    operation = "price_override",
+                    payload = payload,
+                    idempotencyKey = UUID.randomUUID().toString(),
+                )
+            )
+        }
+    }
+
+    // ── TASK-5: tax breakdown computation ────────────────────────────────────
+
+    /**
+     * Build a [TaxBreakdown] from current lines + rate using [PosTaxCalculator].
+     * Uses a single flat jurisdiction ("default") built from the loaded tax rate.
+     * TODO: replace with TenantSettingsRepository that supplies real multi-jurisdiction config.
+     */
+    private fun computeTaxBreakdown(lines: List<CartLine>, taxFraction: Double): TaxBreakdown? {
+        if (taxFraction <= 0.0 || lines.isEmpty()) return null
+        val rateBps = (taxFraction * 10_000).toInt()
+        val config = TenantTaxConfig(
+            jurisdictions = listOf(
+                JurisdictionRule(
+                    jurisdictionId = "default",
+                    name = "Tax · ${"%.2f".format(taxFraction * 100).trimEnd('0').trimEnd('.')}%",
+                    rateBps = rateBps,
+                )
+            ),
+        )
+        val cartState = PosCartState(
+            lines = lines,
+            customer = _uiState.value.customer?.let {
+                AttachedCustomer(id = it.id, name = it.name, taxExempt = it.taxExempt)
+            },
+        )
+        return PosTaxCalculator.calculate(cartState, config)
     }
 
     private fun pushLines(lines: List<CartLine>) {
         coordinator.setLines(lines)
     }
 }
+
+/**
+ * Minimal snapshot stored in [com.bizarreelectronics.crm.data.local.db.entities.ParkedCartEntity.cartJson].
+ * Mirrors the fields we serialize at park time (see PosTenderViewModel.parkCart).
+ */
+data class ParkedCartSnapshot(
+    val lines: List<CartLine> = emptyList(),
+    val cartDiscountCents: Long = 0L,
+    val cartNote: String? = null,
+    val linkedTicketId: Long? = null,
+    val customer: ParkedCustomerSnapshot? = null,
+)
+
+data class ParkedCustomerSnapshot(
+    val id: Long,
+    val name: String,
+    val phone: String? = null,
+    val email: String? = null,
+    val storeCreditCents: Long = 0L,
+    val taxExempt: Boolean = false,
+)

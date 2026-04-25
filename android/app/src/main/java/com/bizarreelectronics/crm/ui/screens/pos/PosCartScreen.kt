@@ -40,6 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
+import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionTaxResult
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,17 +51,27 @@ fun PosCartScreen(
     onNavigateToTender: () -> Unit,
     onBack: () -> Unit,
     onScanBarcode: () -> Unit = {},
+    // TASK-6: navigate to split-cart screen
+    onSplitCart: () -> Unit = {},
     scannedBarcodeFlow: kotlinx.coroutines.flow.Flow<String?>? = null,
     onScannedBarcodeConsumed: () -> Unit = {},
     viewModel: PosCartViewModel = hiltViewModel(),
+    // TASK-3: injected by NavGraph caller so screen doesn't need Hilt directly
+    authPreferences: AuthPreferences? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
+    // TASK-3: admin / manager can override unit prices
+    val canEditPrice = remember(authPreferences) {
+        val role = authPreferences?.userRole?.lowercase()
+        role == "admin" || role == "manager"
+    }
     var showDetachConfirm by remember { mutableStateOf(false) }
     var showMiscDialog by remember { mutableStateOf(false) }
     var showDiscountDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showParkedCarts by remember { mutableStateOf(false) }
+    var showTipDialog by remember { mutableStateOf(false) }
     // Mockup PHONE 3 path tabs: Catalog | Cart · N · $X — selected tab
     // index 1 by default since cashier reaches this screen with intent to
     // tender. Catalog tab populates from quick-add (Today's Top-5).
@@ -244,6 +257,13 @@ fun PosCartScreen(
                                     // TODO: POS-PARK-001 — park cart implementation
                                 },
                             )
+                            DropdownMenuItem(
+                                text = { Text("Split cart") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    onSplitCart()
+                                },
+                            )
                         }
                     }
                 },
@@ -254,6 +274,11 @@ fun PosCartScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // TASK-4: offline banner — zero-height when online
+            PosOfflineBanner(
+                isOnline = state.isOnline,
+                pendingSaleCount = state.pendingSaleCount,
+            )
             // Mockup PHONE 3 path tabs: 'Catalog' + 'Cart · N · $X' active.
             CartPathTabs(
                 selectedIndex = selectedTab,
@@ -313,6 +338,12 @@ fun PosCartScreen(
                             DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
                             DashedSlot(label = "+ Note", onClick = { showNoteDialog = true }, modifier = Modifier.weight(1f))
                             DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
+                            // TASK-1: tip slot
+                            DashedSlot(
+                                label = if (state.tipCents > 0) "Tip ${state.tipCents.toDollarString()}" else "+ Tip",
+                                onClick = { showTipDialog = true },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -325,14 +356,31 @@ fun PosCartScreen(
             CartLineBottomSheet(
                 line = line,
                 cartDimAlpha = 0.35f,
+                canEditPrice = canEditPrice,
                 onQtyChange = { viewModel.setLineQty(line.id, it) },
                 onDiscountChange = { viewModel.setLineDiscount(line.id, it) },
                 onNoteChange = { viewModel.setLineNote(line.id, it) },
+                onPriceChange = { newPrice, reason ->
+                    viewModel.setLineUnitPrice(line.id, newPrice, reason)
+                },
                 onRemove = { viewModel.removeLine(line.id) },
                 onSave = { viewModel.dismissLineEdit() },
                 onDismiss = { viewModel.dismissLineEdit() },
             )
         }
+    }
+
+    // TASK-1: tip dialog
+    if (showTipDialog) {
+        TipDialog(
+            subtotalCents = state.subtotalCents,
+            currentTipCents = state.tipCents,
+            onApply = { cents ->
+                viewModel.setTip(cents)
+                showTipDialog = false
+            },
+            onDismiss = { showTipDialog = false },
+        )
     }
 
     if (showMiscDialog) {
@@ -495,15 +543,24 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             TotalsRow("Subtotal", state.subtotalCents.toDollarString())
             if (state.discountCents > 0) TotalsRow("Discount", "− ${state.discountCents.toDollarString()}", highlight = true)
-            // Mockup PHONE 3 shows the rate beside the label, e.g. 'Tax · 8.5%'.
-            // We surface the cart's loaded default rate (the per-line rate
-            // used by CartLine.taxCents) when > 0 so the cashier can sanity-
-            // check the math at a glance. Falls back to bare 'Tax' if rate
-            // failed to load (network hiccup on entry).
-            val taxLabel = if (state.taxRate > 0.0) {
-                "Tax · ${"%.2f".format(state.taxRate * 100).trimEnd('0').trimEnd('.')}%"
-            } else "Tax"
-            TotalsRow(taxLabel, state.taxCents.toDollarString())
+            // TASK-5: multi-jurisdiction tax breakdown. When breakdown has
+            // > 1 jurisdiction render one row each; else fallback to single
+            // 'Tax · X%' line matching mockup PHONE 3.
+            val breakdown = state.taxBreakdown
+            if (breakdown != null && breakdown.jurisdictions.size > 1) {
+                breakdown.jurisdictions.forEach { j ->
+                    TotalsRow(j.name, j.taxCents.toDollarString())
+                }
+            } else {
+                val taxLabel = if (state.taxRate > 0.0) {
+                    "Tax · ${"%.2f".format(state.taxRate * 100).trimEnd('0').trimEnd('.')}%"
+                } else "Tax"
+                TotalsRow(taxLabel, state.taxCents.toDollarString())
+            }
+            // TASK-1: tip line — only when tip is set
+            if (state.tipCents > 0L) {
+                TotalsRow("Tip", state.tipCents.toDollarString())
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -885,6 +942,103 @@ private fun CartDiscountDialog(
         },
         confirmButton = {
             TextButton(onClick = { onApply(cents) }, enabled = canApply) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ─── Tip dialog ──────────────────────────────────────────────────────────────
+
+/**
+ * TASK-1: Tip prompt with percent presets + flat-amount custom field.
+ *
+ * Percent presets (15 / 18 / 20) are hardcoded for now.
+ * TODO: read default tip presets from AppPreferences once tenant tip config
+ * is delivered from the server (TenantSettingsRepository).
+ *
+ * @param subtotalCents  Cart subtotal used to compute percent-based tips.
+ * @param currentTipCents  Currently applied tip (pre-fills custom field).
+ */
+@Composable
+private fun TipDialog(
+    subtotalCents: Long,
+    currentTipCents: Long,
+    onApply: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Tip presets in percent — TODO: read from AppPreferences / tenant config
+    val tipPresets = listOf(15, 18, 20)
+    var selectedPct by remember { mutableStateOf<Int?>(null) }
+    var customInput by remember {
+        mutableStateOf(
+            if (currentTipCents > 0) "%.2f".format(currentTipCents / 100.0) else ""
+        )
+    }
+
+    val tipCents: Long = when {
+        selectedPct != null -> subtotalCents * (selectedPct ?: 0) / 100
+        else -> Math.round((customInput.toDoubleOrNull() ?: 0.0) * 100)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add tip") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Percent preset radio group
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    tipPresets.forEach { pct ->
+                        FilterChip(
+                            selected = selectedPct == pct,
+                            onClick = {
+                                selectedPct = if (selectedPct == pct) null else pct
+                                if (selectedPct != null) customInput = ""
+                            },
+                            label = { Text("$pct%") },
+                        )
+                    }
+                    // Custom % chip
+                    FilterChip(
+                        selected = selectedPct == null && customInput.isNotBlank(),
+                        onClick = { selectedPct = null },
+                        label = { Text("Custom") },
+                    )
+                }
+                if (selectedPct != null) {
+                    Text(
+                        "Tip amount: ${tipCents.toDollarString()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = customInput,
+                        onValueChange = { raw ->
+                            val filtered = raw.filter { it.isDigit() || it == '.' }
+                            val dotIdx = filtered.indexOf('.')
+                            customInput = if (dotIdx >= 0)
+                                filtered.substring(0, dotIdx + 1) +
+                                    filtered.substring(dotIdx + 1).filter { it.isDigit() }.take(2)
+                            else filtered
+                        },
+                        label = { Text("Tip amount") },
+                        prefix = { Text("$") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onApply(tipCents) },
+                enabled = tipCents >= 0L,
+            ) {
+                Text(if (tipCents == 0L) "No tip" else "Apply ${tipCents.toDollarString()}")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

@@ -13,6 +13,8 @@ import com.bizarreelectronics.crm.data.remote.api.NotificationApi
 import com.bizarreelectronics.crm.data.remote.api.EstimateApi
 import com.bizarreelectronics.crm.data.remote.api.ExpenseApi
 import com.bizarreelectronics.crm.data.remote.api.LeadApi
+import com.bizarreelectronics.crm.data.remote.api.PosApi
+import com.bizarreelectronics.crm.data.remote.api.PosSaleRequest
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
@@ -75,6 +77,7 @@ class SyncManager @Inject constructor(
     private val expenseApi: ExpenseApi,
     private val settingsApi: SettingsApi,
     private val notificationApi: NotificationApi,
+    private val posApi: PosApi,
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
     private val gson: Gson,
@@ -291,7 +294,42 @@ class SyncManager @Inject constructor(
             "estimate" -> dispatchEstimateEntry(entry)
             "expense" -> dispatchExpenseEntry(entry)
             "appointment" -> dispatchAppointmentEntry(entry)
+            "pos_sale" -> dispatchPosSaleEntry(entry)
             else -> Log.w(TAG, "Unknown entityType '${entry.entityType}' in sync queue (id=${entry.id})")
+        }
+    }
+
+    /**
+     * Dispatch an offline-queued POS sale to the server.
+     *
+     * The entry payload is a Gson-serialized [PosSaleRequest]. The idempotency
+     * key from [SyncQueueEntity.idempotencyKey] (falling back to the key embedded
+     * in the request body) is sent as the Idempotency-Key header so a retried POST
+     * does not produce a duplicate sale on the server.
+     *
+     * A 409 Conflict is treated as success (server already has the row from a
+     * previous attempt whose response was dropped mid-flight).
+     */
+    private suspend fun dispatchPosSaleEntry(entry: SyncQueueEntity) {
+        if (entry.operation != "create") {
+            Log.w(TAG, "pos_sale entry id=${entry.id} has unexpected operation '${entry.operation}' — skipping")
+            return
+        }
+        val request = gson.fromJson(entry.payload, PosSaleRequest::class.java)
+        val idempotencyKey = entry.idempotencyKey ?: request.idempotencyKey
+        try {
+            val resp = posApi.completeSale(idempotencyKey, request)
+            if (!resp.success) {
+                throw RuntimeException("pos_sale sync failed: ${resp.message ?: "no message"}")
+            }
+            Log.d(TAG, "pos_sale entry id=${entry.id} synced → orderId=${resp.data?.orderId}")
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 409) {
+                // Idempotent duplicate — treat as success.
+                Log.d(TAG, "pos_sale entry id=${entry.id} 409 Conflict — already synced, marking complete")
+                return
+            }
+            throw e
         }
     }
 

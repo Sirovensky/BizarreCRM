@@ -2,10 +2,12 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,9 @@ data class PosEntryUiState(
     // shows live item count + subtotal without a separate API call.
     val cartLineCount: Int = 0,
     val cartSubtotalCents: Long = 0L,
+    // TASK-4: offline banner (defensive)
+    val isOnline: Boolean = true,
+    val pendingSaleCount: Int = 0,
 )
 
 @HiltViewModel
@@ -41,6 +46,8 @@ class PosEntryViewModel @Inject constructor(
     private val customerApi: CustomerApi,
     private val inventoryApi: InventoryApi,
     private val coordinator: PosCoordinator,
+    private val networkMonitor: NetworkMonitor,
+    private val syncQueueDao: SyncQueueDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosEntryUiState())
@@ -50,6 +57,18 @@ class PosEntryViewModel @Inject constructor(
 
     init {
         wireSearchDebounce()
+        // TASK-4: observe network state (defensive)
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _uiState.update { it.copy(isOnline = online) }
+            }
+        }
+        viewModelScope.launch {
+            syncQueueDao.getCount().collect { _ ->
+                val count = syncQueueDao.countPendingByOpType("pos_sale")
+                _uiState.update { it.copy(pendingSaleCount = count) }
+            }
+        }
         // AUDIT-006: pre-load the default tax rate so openReadyForPickup can
         // seed the CartLine.taxRate — same logic as PosCartViewModel.init.
         viewModelScope.launch {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,8 +18,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
+import com.bizarreelectronics.crm.ui.screens.pos.components.PosSplitTenderDialog
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,6 +34,11 @@ fun PosTenderScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showCashDialog by remember { mutableStateOf(false) }
+    var showGiftCardDialog by remember { mutableStateOf(false) }
+    var showInvoiceLaterConfirm by remember { mutableStateOf(false) }
+    var showSplitDialog by remember { mutableStateOf(false) }
+    var showDrawerManualDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when order completes
@@ -45,6 +54,64 @@ fun PosTenderScreen(
                 showCashDialog = false
             },
             onDismiss = { showCashDialog = false },
+        )
+    }
+
+    // ── Task 1: Gift card dialog ───────────────────────────────────────────────
+    if (showGiftCardDialog) {
+        GiftCardDialog(
+            onApply = { code ->
+                viewModel.applyGiftCard(code)
+                showGiftCardDialog = false
+            },
+            onDismiss = { showGiftCardDialog = false },
+        )
+    }
+
+    // ── Task 2: Invoice later confirm dialog ──────────────────────────────────
+    if (showInvoiceLaterConfirm) {
+        AlertDialog(
+            onDismissRequest = { showInvoiceLaterConfirm = false },
+            title = { Text("Invoice later") },
+            text = { Text("Create invoice for ${state.totalCents.toDollarString()} total? The customer will be billed later.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showInvoiceLaterConfirm = false
+                    viewModel.invoiceLater()
+                }) { Text("Create Invoice") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInvoiceLaterConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // ── Task 3: Split tender dialog ───────────────────────────────────────────
+    if (showSplitDialog) {
+        PosSplitTenderDialog(
+            totalCents = state.totalCents,
+            remainingCents = state.remainingCents,
+            onSplitEvenly = { parts ->
+                showSplitDialog = false
+                viewModel.splitEvenly(parts)
+            },
+            onSplitByItem = {
+                showSplitDialog = false
+                // TODO POS-SPLIT-BY-ITEM-001: item-level split needs cart screen — Phase 2.
+                viewModel.showMessage("Split by item — Phase 2")
+            },
+            onDismiss = { showSplitDialog = false },
+        )
+    }
+
+    // ── Task 5: Manual drawer open — reason dialog ────────────────────────────
+    if (showDrawerManualDialog) {
+        ManualDrawerDialog(
+            onOpen = { reason ->
+                showDrawerManualDialog = false
+                viewModel.openCashDrawerManual(reason)
+            },
+            onDismiss = { showDrawerManualDialog = false },
         )
     }
 
@@ -97,7 +164,26 @@ fun PosTenderScreen(
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // ── Task 5: Overflow menu — "Open cash drawer" ────────────
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Open cash drawer") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showDrawerManualDialog = true
+                                },
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                 },
             )
         },
@@ -106,8 +192,14 @@ fun PosTenderScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // TASK-4: offline banner — zero-height when online
+        PosOfflineBanner(
+            isOnline = state.isOnline,
+            pendingSaleCount = state.pendingSaleCount,
+        )
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
         ) {
@@ -144,24 +236,43 @@ fun PosTenderScreen(
 
             // ── Add payment grid ───────────────────────────────────────────────
             item {
-                Text(
-                    "+ ADD PAYMENT FOR REMAINING ${state.remainingCents.toDollarString()}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // ── Task 3: "Split…" button alongside header ──────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "+ ADD PAYMENT FOR REMAINING ${state.remainingCents.toDollarString()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (state.remainingCents > 0L) {
+                        TextButton(
+                            onClick = { showSplitDialog = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text("Split…", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
             }
             item {
                 PaymentMethodGrid(
                     remainingCents = state.remainingCents,
                     attachedCustomerStoreCreditCents = state.attachedCustomerStoreCreditCents,
+                    hasAttachedCustomer = state.hasAttachedCustomer,
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
                     onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
                     onParkCart = { viewModel.parkCart() },
                     onStoreCredit = { viewModel.applyStoreCredit() },
+                    onGiftCard = { showGiftCardDialog = true },
+                    onInvoiceLater = { showInvoiceLaterConfirm = true },
                 )
             }
         }
+        } // end Column (TASK-4)
     }
 
     LaunchedEffect(state.errorMessage) {
@@ -276,11 +387,14 @@ private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
 private fun PaymentMethodGrid(
     remainingCents: Long,
     attachedCustomerStoreCreditCents: Long,
+    hasAttachedCustomer: Boolean,
     onCardReader: () -> Unit,
     onCash: () -> Unit,
     onAch: () -> Unit,
     onParkCart: () -> Unit,
     onStoreCredit: () -> Unit,
+    onGiftCard: () -> Unit,
+    onInvoiceLater: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
@@ -324,6 +438,26 @@ private fun PaymentMethodGrid(
                 modifier = Modifier.weight(1f),
             )
         }
+        // ── Task 1: Gift card + Task 2: Invoice later ─────────────────────────
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PaymentTile(
+                emoji = "🎁",
+                label = "Gift card",
+                sublabel = "Scan or enter code",
+                isPrimary = false,
+                onClick = onGiftCard,
+                modifier = Modifier.weight(1f),
+            )
+            PaymentTile(
+                emoji = "🧾",
+                label = "Invoice later",
+                sublabel = if (hasAttachedCustomer) "Bill customer later" else "Attach customer first",
+                isPrimary = false,
+                enabled = hasAttachedCustomer,
+                onClick = onInvoiceLater,
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (attachedCustomerStoreCreditCents > 0L) {
             PaymentTile(
                 emoji = "🎁",
@@ -345,9 +479,15 @@ private fun PaymentTile(
     isPrimary: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
-    val borderColor = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    val borderWidth = if (isPrimary) 1.5.dp else 1.dp
+    val borderColor = when {
+        !enabled -> MaterialTheme.colorScheme.outlineVariant
+        isPrimary -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outline
+    }
+    val borderWidth = if (isPrimary && enabled) 1.5.dp else 1.dp
+    val contentAlpha = if (enabled) 1f else 0.38f
     // M3 Expressive: primary 'Card / Tap' tile uses MaterialShapes.Cookie9Sided
     // so the canonical primary payment surface gets the alpha shape morph
     // (visible cut-off edges). Secondary tiles stay rounded squares.
@@ -361,22 +501,102 @@ private fun PaymentTile(
             .clip(tileShape)
             .border(borderWidth, borderColor, tileShape)
             .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClickLabel = label) { onClick() }
+            .clickable(enabled = enabled, onClickLabel = label) { onClick() }
             .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(emoji, style = MaterialTheme.typography.headlineSmall)
+        Text(
+            emoji,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+        )
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.SemiBold,
-            color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            color = when {
+                !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+                isPrimary -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurface
+            },
         )
         sublabel?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+            )
         }
     }
+}
+
+// ─── Gift card dialog ─────────────────────────────────────────────────────────
+
+@Composable
+private fun GiftCardDialog(
+    onApply: (code: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var code by remember { mutableStateOf("") }
+    val canApply = code.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gift card") },
+        text = {
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '-' } },
+                label = { Text("Card code") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                placeholder = { Text("e.g. GC-XXXX-XXXX") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(enabled = canApply, onClick = { onApply(code) }) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ─── Manual drawer open dialog ────────────────────────────────────────────────
+
+@Composable
+private fun ManualDrawerDialog(
+    onOpen: (reason: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var reason by remember { mutableStateOf("") }
+    val canOpen = reason.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Open cash drawer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Admin role required. Enter reason for manual open.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    label = { Text("Reason") },
+                    singleLine = true,
+                    placeholder = { Text("e.g. Count drawer, customer change") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = canOpen, onClick = { onOpen(reason) }) { Text("Open") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 // ─── Cash tender dialog — receive amount + change-due preview ───────────────

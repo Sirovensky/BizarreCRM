@@ -54,6 +54,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryDetailScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosEntryScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosCartScreen
+import com.bizarreelectronics.crm.ui.screens.pos.PosSplitCartScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosTenderScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosReceiptScreen
 import com.bizarreelectronics.crm.ui.screens.pos.StoreCreditPaymentScreen
@@ -172,6 +173,8 @@ sealed class Screen(val route: String) {
     data object Pos : Screen("pos")
     data object PosCart : Screen("pos/cart")
     data object PosTender : Screen("pos/tender")
+    // TASK-6: split cart stub
+    data object PosSplitCart : Screen("pos/split-cart")
     // AUDIT-030: dedicated screen for store-credit payment path tile.
     data object StoreCreditPayment : Screen("pos/store-credit-payment")
     data object PosReceipt : Screen("pos/receipt/{orderId}") {
@@ -669,6 +672,7 @@ fun AppNavGraph(
             // full-screen POS flows; bottom nav must not show on any of them.
             currentRoute != Screen.PosCart.route &&
             currentRoute != Screen.PosTender.route &&
+            currentRoute != Screen.PosSplitCart.route &&
             !currentRoute.startsWith("pos/receipt/") &&
             currentRoute != Screen.StoreCreditPayment.route &&
             // AUD-20260414-M5: Sync Issues is a modal-ish diagnostic screen
@@ -754,6 +758,7 @@ fun AppNavGraph(
                                     currentRoute in setOf(
                                         Screen.PosCart.route,
                                         Screen.PosTender.route,
+                                        Screen.PosSplitCart.route,
                                         Screen.Scanner.route,
                                     )
                                 ) {
@@ -1282,10 +1287,13 @@ fun AppNavGraph(
                     onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
                     onBack = { navController.popBackStack() },
                     onScanBarcode = { navController.navigate(Screen.Scanner.route) },
+                    onSplitCart = { navController.navigate(Screen.PosSplitCart.route) },
                     scannedBarcodeFlow = scannedFlow,
                     onScannedBarcodeConsumed = {
                         backStack.savedStateHandle["scanned_barcode"] = null
                     },
+                    // TASK-3: pass authPreferences so CartLineBottomSheet can gate price editing
+                    authPreferences = authPreferences,
                 )
             }
             composable(Screen.PosTender.route) {
@@ -1295,6 +1303,12 @@ fun AppNavGraph(
                             popUpTo(Screen.Pos.route)
                         }
                     },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // TASK-6: split cart stub
+            composable(Screen.PosSplitCart.route) {
+                PosSplitCartScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
