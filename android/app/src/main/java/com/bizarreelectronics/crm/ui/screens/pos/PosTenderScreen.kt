@@ -29,10 +29,22 @@ fun PosTenderScreen(
     viewModel: PosTenderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showCashDialog by remember { mutableStateOf(false) }
 
     // Navigate when order completes
     LaunchedEffect(state.completedOrderId) {
         state.completedOrderId?.let { onNavigateToReceipt(it) }
+    }
+
+    if (showCashDialog) {
+        CashTenderDialog(
+            remainingCents = state.remainingCents,
+            onApply = { receivedCents ->
+                viewModel.applyCash(receivedCents)
+                showCashDialog = false
+            },
+            onDismiss = { showCashDialog = false },
+        )
     }
 
     Scaffold(
@@ -113,7 +125,7 @@ fun PosTenderScreen(
                 PaymentMethodGrid(
                     remainingCents = state.remainingCents,
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
-                    onTapToPay = { /* NFC — Phase 4 */ },
+                    onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
                     onParkCart = { viewModel.parkCart() },
                 )
@@ -226,26 +238,31 @@ private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
 private fun PaymentMethodGrid(
     remainingCents: Long,
     onCardReader: () -> Unit,
-    onTapToPay: () -> Unit,
+    onCash: () -> Unit,
     onAch: () -> Unit,
     onParkCart: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
+        // the shop's hardware path is a single Bluetooth/USB card reader (no
+        // device-to-device NFC), so the two collapse into one tile labelled
+        // 'Card / Tap'. Cash takes Tap-to-pay's slot since real-world walk-in
+        // sales still hand over physical bills more often than ACH.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "💳",
-                label = "Card reader",
+                label = "Card / Tap",
                 sublabel = "Charge ${remainingCents.toDollarString()}",
                 isPrimary = true,
                 onClick = onCardReader,
                 modifier = Modifier.weight(1f),
             )
             PaymentTile(
-                emoji = "📱",
-                label = "Tap to pay",
-                sublabel = "NFC · Apple / Google Pay",
+                emoji = "💵",
+                label = "Cash",
+                sublabel = "Receive · change due",
                 isPrimary = false,
-                onClick = onTapToPay,
+                onClick = onCash,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -303,6 +320,61 @@ private fun PaymentTile(
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+// ─── Cash tender dialog — receive amount + change-due preview ───────────────
+
+@Composable
+private fun CashTenderDialog(
+    remainingCents: Long,
+    onApply: (receivedCents: Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val remainingDollars = remainingCents / 100.0
+    var input by remember { mutableStateOf("%.2f".format(remainingDollars)) }
+    val received = (input.toDoubleOrNull() ?: 0.0)
+    val receivedCents = (received * 100).toLong()
+    val changeDollars = (received - remainingDollars).coerceAtLeast(0.0)
+    val canApply = receivedCents > 0L
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cash received") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { raw -> input = raw.filter { it.isDigit() || it == '.' } },
+                    label = { Text("Amount") },
+                    prefix = { Text("$") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Due: ${remainingCents.toDollarString()}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (changeDollars > 0.0) {
+                    Text(
+                        "Change due: ${"$%.2f".format(changeDollars)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalExtendedColors.current.success,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = canApply, onClick = { onApply(receivedCents) }) {
+                Text("Apply")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 // ─── Bottom action bar ────────────────────────────────────────────────────────

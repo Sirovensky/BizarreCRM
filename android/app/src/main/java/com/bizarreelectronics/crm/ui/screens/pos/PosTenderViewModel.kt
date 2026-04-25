@@ -73,6 +73,29 @@ class PosTenderViewModel @Inject constructor(
         coordinator.addTender(tender)
     }
 
+    /**
+     * Cash tender: cashier types received amount; we apply min(received, remaining)
+     * as the tender amount and surface change-due in the detail string when
+     * received > remaining (matches mockup PHONE 5 'Received \$100 · change \$2.00 due').
+     */
+    fun applyCash(receivedCents: Long) {
+        val remaining = _uiState.value.remainingCents
+        if (receivedCents <= 0L) return
+        val applied = receivedCents.coerceAtMost(remaining)
+        val change = (receivedCents - remaining).coerceAtLeast(0L)
+        val detail = if (change > 0L) {
+            "Received ${receivedCents.toDollarString()} · change ${change.toDollarString()} due"
+        } else null
+        coordinator.addTender(
+            AppliedTender(
+                method = "cash",
+                label = "Cash",
+                amountCents = applied,
+                detail = detail,
+            )
+        )
+    }
+
     fun parkCart() {
         // Parking stores the cart for later retrieval — stub for Phase 2
         // Full layaway mode implemented in Phase 3 alongside check-in
