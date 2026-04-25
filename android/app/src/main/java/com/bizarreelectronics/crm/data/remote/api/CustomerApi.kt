@@ -71,6 +71,10 @@ interface CustomerApi {
     @GET("customers/{id}/store-credit")
     suspend fun getStoreCredit(@Path("id") id: Long): ApiResponse<StoreCreditBalanceData>
 
+    /** Customer's on-file devices (mockup PHONE 2 'ON FILE' picker). */
+    @GET("customers/{id}/assets")
+    suspend fun getAssets(@Path("id") id: Long): ApiResponse<List<com.bizarreelectronics.crm.data.remote.dto.CustomerAsset>>
+
     @POST("customers")
     suspend fun createCustomer(@Body request: CreateCustomerRequest): ApiResponse<CustomerDetail>
 

@@ -163,6 +163,8 @@ fun CheckInEntryScreen(
                 onDeviceModelChange = viewModel::onDeviceModelChange,
                 onImeiSerialChange = viewModel::onImeiSerialChange,
                 onNotesChange = viewModel::onNotesChange,
+                onSelectOnFileDevice = viewModel::selectOnFileDevice,
+                onAddNewDevice = viewModel::toggleManualEntry,
             )
         }
     }
@@ -362,61 +364,200 @@ private fun Step2DeviceContent(
     onDeviceModelChange: (String) -> Unit,
     onImeiSerialChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
+    onSelectOnFileDevice: (Long) -> Unit = {},
+    onAddNewDevice: () -> Unit = {},
 ) {
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 12.dp),
     ) {
-        Spacer(Modifier.height(4.dp))
+        // Mockup PHONE 2 'ON FILE · N' header + selectable rows.
+        if (state.onFileDevices.isNotEmpty()) {
+            item {
+                Text(
+                    "ON FILE · ${state.onFileDevices.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                )
+            }
+            items(state.onFileDevices, key = { it.id }) { device ->
+                OnFileDeviceRow(
+                    device = device,
+                    selected = device.id == state.selectedOnFileDeviceId,
+                    onClick = { onSelectOnFileDevice(device.id) },
+                )
+            }
+        }
 
-        OutlinedTextField(
-            value = state.deviceModel,
-            onValueChange = onDeviceModelChange,
-            label = { Text("Device model *") },
-            placeholder = { Text("e.g. iPhone 15 Pro") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Words,
-                imeAction = ImeAction.Next,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Device model field, required" },
-        )
+        // Mockup PHONE 2 'ADD NEW' header + dashed-primary 'Add new device' tile.
+        item {
+            Text(
+                "ADD NEW",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+        }
+        item {
+            AddNewDeviceTile(
+                expanded = state.showManualEntry,
+                onClick = onAddNewDevice,
+            )
+        }
 
-        OutlinedTextField(
-            value = state.imeiSerial,
-            onValueChange = onImeiSerialChange,
-            label = { Text("IMEI / Serial (optional)") },
-            placeholder = { Text("15-digit IMEI or S/N") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Next,
-            ),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "IMEI or serial number field, optional" },
-        )
+        // Manual-entry text fields appear only after the cashier toggles
+        // 'Add new device' or selects nothing. Stays as a 3-field stack so
+        // the existing text-field layout doesn't regress.
+        if (state.showManualEntry) {
+            item {
+                OutlinedTextField(
+                    value = state.deviceModel,
+                    onValueChange = onDeviceModelChange,
+                    label = { Text("Device model *") },
+                    placeholder = { Text("e.g. iPhone 15 Pro") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Next,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .semantics { contentDescription = "Device model field, required" },
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = state.imeiSerial,
+                    onValueChange = onImeiSerialChange,
+                    label = { Text("IMEI / Serial (optional)") },
+                    placeholder = { Text("15-digit IMEI or S/N") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "IMEI or serial number field, optional" },
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = state.notes,
+                    onValueChange = onNotesChange,
+                    label = { Text("Color / capacity note (optional)") },
+                    placeholder = { Text("e.g. Space Black 256 GB") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Color or capacity note field, optional" },
+                )
+            }
+        }
+    }
+}
 
-        OutlinedTextField(
-            value = state.notes,
-            onValueChange = onNotesChange,
-            label = { Text("Color / capacity note (optional)") },
-            placeholder = { Text("e.g. Space Black 256 GB") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Done,
-            ),
+@Composable
+private fun OnFileDeviceRow(
+    device: com.bizarreelectronics.crm.ui.screens.checkin.entry.OnFileDevice,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val borderWidth = if (selected) 1.5.dp else 1.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClickLabel = "Select ${device.name}") { onClick() }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Color or capacity note field, optional" },
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("📱", style = MaterialTheme.typography.titleMedium)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(device.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            val subtitle = listOfNotNull(
+                device.imei?.takeIf { it.isNotBlank() }?.let { "IMEI ${it.take(3)}…${it.takeLast(4)}" }
+                    ?: device.serial?.takeIf { it.isNotBlank() }?.let { "Serial ${it.take(3)}…${it.takeLast(3)}" },
+                device.color?.takeIf { it.isNotBlank() },
+                device.notes?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(
+            if (selected) "●" else "○",
+            style = MaterialTheme.typography.titleMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun AddNewDeviceTile(expanded: Boolean, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(onClickLabel = "Add new device") { onClick() }
+            .drawBehind {
+                val strokeWidth = 1.5.dp.toPx()
+                val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                drawRoundRect(
+                    color = primary,
+                    size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+                    topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx() - strokeWidth / 2),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth, pathEffect = dash),
+                )
+            }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimary)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Add new device", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                if (expanded) "Fill out details below" else "Pick model, IMEI/serial, condition",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(if (expanded) "▾" else "›", color = MaterialTheme.colorScheme.primary)
     }
 }
 

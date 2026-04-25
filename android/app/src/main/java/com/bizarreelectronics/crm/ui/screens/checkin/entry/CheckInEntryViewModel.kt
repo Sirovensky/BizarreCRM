@@ -39,6 +39,20 @@ data class EntryStep2State(
     val deviceModel: String = "",
     val imeiSerial: String = "",
     val notes: String = "",
+    /** Mockup PHONE 2 'ON FILE' rows — fetched from /customers/:id/assets. */
+    val onFileDevices: List<OnFileDevice> = emptyList(),
+    val selectedOnFileDeviceId: Long? = null,
+    /** Toggled true when cashier taps 'Add new device' tile so the text fields reveal. */
+    val showManualEntry: Boolean = false,
+)
+
+data class OnFileDevice(
+    val id: Long,
+    val name: String,
+    val imei: String? = null,
+    val serial: String? = null,
+    val color: String? = null,
+    val notes: String? = null,
 )
 
 data class AttachedCustomerEntry(
@@ -151,6 +165,69 @@ class CheckInEntryViewModel @Inject constructor(
             )
         }
         appPreferences.addRecentCheckinCustomerId(entry.id)
+        loadOnFileDevices(entry.id)
+    }
+
+    /**
+     * Mockup PHONE 2 'ON FILE' devices: fetch /customers/:id/assets. Errors
+     * silently degrade (the picker just shows 'ADD NEW' without a list).
+     */
+    private fun loadOnFileDevices(customerId: Long) {
+        if (customerId <= 0L) {
+            _step2.update { it.copy(onFileDevices = emptyList(), showManualEntry = true) }
+            return
+        }
+        viewModelScope.launch {
+            runCatching { customerApi.getAssets(customerId) }
+                .onSuccess { resp ->
+                    val devices = resp.data.orEmpty().map { a ->
+                        OnFileDevice(
+                            id = a.id,
+                            name = a.name?.takeIf { it.isNotBlank() } ?: "Device #${a.id}",
+                            imei = a.imei,
+                            serial = a.serial,
+                            color = a.color,
+                            notes = a.notes,
+                        )
+                    }
+                    _step2.update {
+                        it.copy(
+                            onFileDevices = devices,
+                            // If customer has no devices on file, default to manual-entry mode
+                            // so the cashier doesn't see an empty 'ON FILE' header.
+                            showManualEntry = devices.isEmpty(),
+                        )
+                    }
+                }
+                .onFailure {
+                    _step2.update { it.copy(onFileDevices = emptyList(), showManualEntry = true) }
+                }
+        }
+    }
+
+    fun selectOnFileDevice(deviceId: Long) {
+        val device = _step2.value.onFileDevices.firstOrNull { it.id == deviceId } ?: return
+        _step2.update {
+            it.copy(
+                selectedOnFileDeviceId = deviceId,
+                deviceModel = device.name,
+                imeiSerial = device.imei ?: device.serial ?: "",
+                notes = device.color ?: device.notes ?: "",
+                showManualEntry = false,
+            )
+        }
+    }
+
+    fun toggleManualEntry() {
+        _step2.update {
+            it.copy(
+                showManualEntry = true,
+                selectedOnFileDeviceId = null,
+                deviceModel = "",
+                imeiSerial = "",
+                notes = "",
+            )
+        }
     }
 
     fun attachWalkIn() {
@@ -163,6 +240,8 @@ class CheckInEntryViewModel @Inject constructor(
                 isCreatingNew = false,
             )
         }
+        // Walk-in has no on-file devices — go straight to manual entry.
+        _step2.update { it.copy(onFileDevices = emptyList(), showManualEntry = true) }
     }
 
     fun detachCustomer() {
@@ -176,6 +255,7 @@ class CheckInEntryViewModel @Inject constructor(
      */
     fun preFillCustomer(customerId: Long) {
         if (customerId <= 0L || _step1.value.attachedCustomer != null) return
+        loadOnFileDevices(customerId)
         viewModelScope.launch {
             runCatching { customerApi.getCustomer(customerId) }
                 .onSuccess { resp ->
