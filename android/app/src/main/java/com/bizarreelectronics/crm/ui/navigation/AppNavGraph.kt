@@ -1456,7 +1456,14 @@ fun AppNavGraph(
             composable(Screen.ReportTax.route) {
                 com.bizarreelectronics.crm.ui.screens.reports.TaxReportScreen()
             }
-            composable(Screen.ReportCustom.route) {
+            composable(
+                route = Screen.ReportCustom.route,
+                deepLinks = listOf(
+                    // §15.8 — custom-scheme deep-link: bizarrecrm://reports/custom/<id>
+                    // Allows sharing a saved custom report via shareCustomReport() in CustomReportScreen.
+                    navDeepLink { uriPattern = "bizarrecrm://reports/custom/{id}" },
+                ),
+            ) {
                 com.bizarreelectronics.crm.ui.screens.reports.CustomReportScreen()
             }
             composable(Screen.Employees.route) { backStackEntry ->

@@ -45,6 +45,7 @@ fun InventoryReportScreen(
                     ReportsExportActions(
                         reportTitle = "Inventory_Report",
                         csvContent = { buildInventoryCsv() },
+                        printHtmlContent = { buildInventoryHtml() },
                     )
                 },
             )
@@ -105,4 +106,31 @@ private fun SectionCard(title: String, body: String) {
 private fun buildInventoryCsv(): String = buildString {
     appendLine("Category,Value")
     appendLine("Note,Full data pending /reports/inventory endpoint")
+}
+
+private fun buildInventoryHtml(): String = buildString {
+    append("""
+        <html><head><meta charset="utf-8">
+        <style>
+          body{font-family:sans-serif;margin:24px;color:#1a1a1a}
+          h1{font-size:20px;margin-bottom:4px}
+          p.period{font-size:13px;color:#666;margin:0 0 16px}
+          table{width:100%;border-collapse:collapse;font-size:14px}
+          th{background:#2c2c2c;color:#fff;text-align:left;padding:8px 12px}
+          td{padding:8px 12px;border-bottom:1px solid #e0e0e0}
+          p.note{font-size:12px;color:#888;margin-top:16px}
+        </style></head><body>
+        <h1>Inventory Report — Bizarre Electronics</h1>
+        <p class="period">Exported ${java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(java.util.Date())}</p>
+        <table>
+          <thead><tr><th>Category</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Slow Movers (no sales ≥90 days)</td><td>Pending /reports/inventory</td></tr>
+            <tr><td>Inventory Turnover Rate</td><td>Pending /reports/inventory</td></tr>
+            <tr><td>Restock Forecast</td><td>Pending /reports/inventory</td></tr>
+          </tbody>
+        </table>
+        <p class="note">Full inventory data available once /reports/inventory endpoint ships.</p>
+        </body></html>
+    """.trimIndent())
 }

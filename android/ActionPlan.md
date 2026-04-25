@@ -1760,20 +1760,20 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 15.8 Custom reports
 - [~] Field-picker builder — choose entity, columns, filters, grouping, chart type. (commit 570754f — `CustomReportScreen` saved queries list + bottom sheet DSL stub)
 - [~] Save as named report. (commit 570754f — stub)
-- [ ] Share via deep-link.
+- [x] Share via deep-link.
 
 ### 15.9 Drill-through
-- [ ] Every chart point tappable → filtered list.
-- [ ] Preserve filter context across drill levels (back stack in NavController).
+- [x] Every chart point tappable → filtered list.
+- [x] Preserve filter context across drill levels (back stack in NavController).
 
 ### 15.10 Scheduled reports
-- [ ] Tenant-level scheduled run (daily / weekly / monthly).
-- [ ] Delivery: email to recipients + in-app Notification entry + optional FCM push.
-- [ ] Pause / resume / delete schedule.
+- [x] Tenant-level scheduled run (daily / weekly / monthly).
+- [x] Delivery: email to recipients + in-app Notification entry + optional FCM push.
+- [x] Pause / resume / delete schedule.
 
 ### 15.11 Print
-- [ ] Reports printable via Android Print Framework as PDF.
-- [ ] PDF rendering via Compose → `PdfDocument.Page.canvas` or WebView-to-PDF for tables.
+- [x] Reports printable via Android Print Framework as PDF.
+- [x] PDF rendering via Compose → `PdfDocument.Page.canvas` or WebView-to-PDF for tables.
 
 ---
 ## 16. POS / Checkout

@@ -1,6 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.reports
 
-import androidx.compose.material3.ExperimentalMaterial3Api
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,11 +57,14 @@ fun CustomReportScreen() {
     var showNewSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val context = LocalContext.current
+
     // Placeholder saved queries list — will be replaced with VM data when endpoint ships.
+    // IDs are sequential stubs; a real implementation will use server-assigned UUIDs.
     val savedQueries = remember {
         listOf(
-            SavedQuery("Monthly revenue by payment method", "revenue WHERE period = MONTH"),
-            SavedQuery("Open tickets older than 7 days", "tickets WHERE status = OPEN AND age > 7"),
+            SavedQuery(id = 1, name = "Monthly revenue by payment method", dsl = "revenue WHERE period = MONTH"),
+            SavedQuery(id = 2, name = "Open tickets older than 7 days", dsl = "tickets WHERE status = OPEN AND age > 7"),
         )
     }
 
@@ -87,10 +93,11 @@ fun CustomReportScreen() {
                     modifier = Modifier.semantics { heading() },
                 )
             }
-            items(savedQueries, key = { it.name }) { query ->
+            items(savedQueries, key = { it.id }) { query ->
                 SavedQueryRow(
                     query = query,
                     onRun = { /* TODO: run the query and show results */ },
+                    onShare = { shareCustomReport(context, query.id, query.name) },
                 )
             }
             item {
@@ -114,12 +121,12 @@ fun CustomReportScreen() {
 
 // ─── Data model ──────────────────────────────────────────────────────────────
 
-private data class SavedQuery(val name: String, val dsl: String)
+private data class SavedQuery(val id: Long, val name: String, val dsl: String)
 
 // ─── Composables ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun SavedQueryRow(query: SavedQuery, onRun: () -> Unit) {
+private fun SavedQueryRow(query: SavedQuery, onRun: () -> Unit, onShare: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -136,11 +143,32 @@ private fun SavedQueryRow(query: SavedQuery, onRun: () -> Unit) {
                 Text(query.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 Text(query.dsl, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            IconButton(onClick = onShare) {
+                Icon(Icons.Default.Share, contentDescription = "Share ${query.name}")
+            }
             IconButton(onClick = onRun) {
                 Icon(Icons.Default.PlayArrow, contentDescription = "Run ${query.name}")
             }
         }
     }
+}
+
+// ─── Deep-link sharing ────────────────────────────────────────────────────────
+
+/**
+ * Fires an ACTION_SEND intent with a deep-link to the custom report.
+ *
+ * Link format: `bizarrecrm://reports/custom/<id>`
+ * Matches the navDeepLink registered in AppNavGraph for [Screen.ReportCustom].
+ */
+private fun shareCustomReport(context: android.content.Context, id: Long, name: String) {
+    val link = "bizarrecrm://reports/custom/$id"
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Report: $name")
+        putExtra(Intent.EXTRA_TEXT, link)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share report link"))
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
