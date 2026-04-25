@@ -603,6 +603,7 @@ public struct PosView: View {
                 PosTenderMethodPickerView(
                     coordinator: coordinator,
                     loyaltyTierLabel: nil,
+                    storeCreditCents: storeCreditCents,
                     bottomBar: AnyView(EmptyView())
                 )
             }
@@ -967,7 +968,7 @@ public struct PosView: View {
 
             Divider().background(.bizarreOutline)
 
-            // Footer — Cancel + Continue
+            // Footer — Cancel + Skip (skippable steps only) + Continue
             HStack(spacing: BrandSpacing.sm) {
                 Button(role: .destructive) {
                     coordinator.cancel()
@@ -979,6 +980,23 @@ public struct PosView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("pos.ipad.repair.cancel")
+
+                // Skip — only for steps where mockup CI-3 / CI-4 declares skippable
+                // (.describeIssue, .diagnosticQuote). Pick-device + Deposit required.
+                if coordinator.currentStep == .describeIssue ||
+                   coordinator.currentStep == .diagnosticQuote {
+                    Button {
+                        coordinator.skipCurrent()
+                    } label: {
+                        Text("Skip")
+                            .font(.brandTitleSmall())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, BrandSpacing.sm)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.bizarreOnSurfaceMuted)
+                    .accessibilityIdentifier("pos.ipad.repair.skip")
+                }
 
                 Button {
                     coordinator.advance()
