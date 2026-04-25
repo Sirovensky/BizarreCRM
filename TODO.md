@@ -10,52 +10,52 @@ type: project
 ## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
 
 ### P0
-- [ ] WEB-W3-001. **Inventory stocktake barcode scan uses partial keyword search — wrong item selected on scan.** `pages/inventory/StocktakePage.tsx`. Fix: exact match by barcode/SKU first; only fall back to keyword if no exact hit.
-- [ ] WEB-W3-002. **Stocktake quick-scan defaults to `in_stock+1` not absolute count — corrupts data.** `StocktakePage.tsx`. Fix: scan must record absolute count input or be a separate "increment" mode clearly labeled.
+- [x] WEB-W3-001. **Inventory stocktake barcode scan uses partial keyword search — wrong item selected on scan.** CLOSED 2026-04-24 — see DONETODOS. `pages/inventory/StocktakePage.tsx`. Fix: exact match by barcode/SKU first; only fall back to keyword if no exact hit.
+- [x] WEB-W3-002. **Stocktake quick-scan defaults to `in_stock+1` not absolute count — corrupts data.** CLOSED 2026-04-24 — see DONETODOS. `StocktakePage.tsx`. Fix: scan must record absolute count input or be a separate "increment" mode clearly labeled.
 - [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
 - [ ] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** `pages/pos/CashRegisterPage.tsx` / `unified-pos`. Fix: each card leg of split tender must call BlockChyp `charge` for that amount; only mark paid on terminal success.
 - [ ] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** `pages/billing/`. Fix: implement `POST /payment-links` with token, public `/pay/:token` page that runs BlockChyp Hosted Checkout.
 
 ### P1 (silent no-op)
-- [ ] WEB-W3-006. **Auto-reorder uses raw item ID input — no search, no enable/disable toggle.** `pages/inventory/AutoReorderPage.tsx`. Fix: replace ID input with item picker (autocomplete by SKU/name); add per-item enabled toggle.
-- [ ] WEB-W3-007. **Bin locations: no edit/rename for existing bins.** `BinLocationsPage.tsx`. Fix: add inline rename + `PUT /bin-locations/:id`.
-- [ ] WEB-W3-008. **Inventory age buckets capped at 100, no pagination.** `InventoryAgePage.tsx`. Fix: add pagination params + load-more.
+- [x] WEB-W3-006. **Auto-reorder uses raw item ID input — no search, no enable/disable toggle.** CLOSED 2026-04-24 — see DONETODOS. `pages/inventory/AutoReorderPage.tsx`. Fix: replace ID input with item picker (autocomplete by SKU/name); add per-item enabled toggle.
+- [x] WEB-W3-007. **Bin locations: no edit/rename for existing bins.** CLOSED 2026-04-24 — 1b4b77a6 `BinLocationsPage.tsx` pencil icon → inline rename; `PUT /bin-locations/:id` now accepts `code` field.
+- [x] WEB-W3-008. **Inventory age buckets capped at 100, no pagination.** CLOSED 2026-04-24 — see DONETODOS. `InventoryAgePage.tsx`. Fix: add pagination params + load-more.
 - [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
 - [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
-- [ ] WEB-W3-011. **Serial numbers page uses raw item ID input; no cross-item serial search.** `SerialNumbersPage.tsx`. Fix: item picker + `GET /inventory/serials?serial=` global search.
-- [ ] WEB-W3-012. **Shrinkage page uses raw item ID input.** `ShrinkagePage.tsx`. Fix: item picker.
+- [x] WEB-W3-011. **Serial numbers page uses raw item ID input; no cross-item serial search.** CLOSED 2026-04-24 — see DONETODOS. `SerialNumbersPage.tsx`. Fix: item picker + `GET /inventory/serials?serial=` global search.
+- [x] WEB-W3-012. **Shrinkage page uses raw item ID input.** CLOSED 2026-04-24 — see DONETODOS. `ShrinkagePage.tsx`. Fix: item picker.
 - [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
-- [ ] WEB-W3-014. **`wholesale_price` missing from inventory edit form.** `InventoryDetailPage.tsx`. Fix: add field; route already accepts column.
-- [ ] WEB-W3-015. **POS "Other" payment has no reference capture.** `CashRegisterPage.tsx`. Fix: add reference field on Other tender (e.g. check #, voucher code).
+- [x] WEB-W3-014. **`wholesale_price` missing from inventory edit form.** CLOSED 2026-04-24 — see DONETODOS. `InventoryDetailPage.tsx`. Fix: add field; route already accepts column.
+- [x] WEB-W3-015. **POS "Other" payment has no reference capture.** CLOSED 2026-04-24 — see DONETODOS. `CashRegisterPage.tsx`. Fix: add reference field on Other tender (e.g. check #, voucher code).
 - [ ] WEB-W3-016. **POS Z-report Print prints full page not modal.** `pages/pos/`. Fix: `window.print()` after wrapping report in print-only stylesheet, or open new window with z-report HTML.
 - [ ] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** `pages/billing/`. Fix: wire bulk-select + `POST /invoices/send-reminder` per row.
-- [ ] WEB-W3-018. **Payment-links page uses raw Customer/Invoice ID inputs.** `pages/billing/`. Fix: pickers.
+- [x] WEB-W3-018. **Payment-links page uses raw Customer/Invoice ID inputs.** CLOSED 2026-04-24 — see DONETODOS. `pages/billing/`. Fix: pickers.
 - [ ] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** `pages/billing/`. Fix: structured editor — list of steps with day-offset + channel + template selector.
 - [ ] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** `pages/subscriptions/`. Fix: implement `POST /subscriptions/:id/run-billing` that creates invoice + charges saved card via BlockChyp tokenized CNP.
-- [ ] WEB-W3-021. **Expenses create form has no receipt upload.** `pages/expenses/`. Fix: add file upload wired to `expenseReceipts.routes.ts`.
-- [ ] WEB-W3-022. **Gift cards: no balance-adjustment UI.** `pages/gift-cards/`. Fix: add adjust modal calling existing balance-adjust route, or add route if missing.
+- [x] WEB-W3-021. **Expenses create form has no receipt upload.** CLOSED 2026-04-24 — see DONETODOS. `pages/expenses/`. Fix: add file upload wired to `expenseReceipts.routes.ts`.
+- [x] WEB-W3-022. **Gift cards: no balance-adjustment UI.** CLOSED 2026-04-24 — see DONETODOS. `pages/gift-cards/`. Fix: add adjust modal calling existing balance-adjust route, or add route if missing.
 - [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
 - [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
 
 ### P2 (cosmetic / missing UI)
 - [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
-- [ ] WEB-W3-026. **Inventory age: no date-range filter; cost shows per-unit not total.** `InventoryAgePage.tsx`.
-- [ ] WEB-W3-027. **Shrinkage: no filter by reason/date; no export.** `ShrinkagePage.tsx`.
-- [ ] WEB-W3-028. **Print Barcode hidden when no SKU/UPC.** `InventoryDetailPage.tsx`. Fix: generate UUID-based barcode fallback or show disabled with tooltip.
+- [x] WEB-W3-026. **Inventory age: no date-range filter; cost shows per-unit not total.** CLOSED 2026-04-24 — see DONETODOS. `InventoryAgePage.tsx`.
+- [x] WEB-W3-027. **Shrinkage: no filter by reason/date; no export.** CLOSED 2026-04-24 — see DONETODOS. `ShrinkagePage.tsx`.
+- [x] WEB-W3-028. **Print Barcode hidden when no SKU/UPC.** CLOSED 2026-04-24 — see DONETODOS. `InventoryDetailPage.tsx`. Fix: generate UUID-based barcode fallback or show disabled with tooltip.
 - [ ] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`.
 - [ ] WEB-W3-030. **Subscriptions Cancel has no end-date display.** `pages/subscriptions/`.
-- [ ] WEB-W3-031. **Expenses list has no category/date filter.** `pages/expenses/`.
+- [x] WEB-W3-031. **Expenses list has no category/date filter.** CLOSED 2026-04-24 — see DONETODOS. `pages/expenses/`.
 - [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
 - [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
 - [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
-- [ ] WEB-W3-035. **Loaners list: no search / status filter.** `pages/loaners/`.
-- [ ] WEB-W3-036. **Catalog device-filter: 2-char minimum with no visible hint.** `pages/catalog/`. Fix: add hint text.
+- [x] WEB-W3-035. **Loaners list: no search / status filter.** CLOSED 2026-04-24 — see DONETODOS. `pages/loaners/`.
+- [x] WEB-W3-036. **Catalog device-filter: 2-char minimum with no visible hint.** CLOSED 2026-04-24 — see DONETODOS. `pages/catalog/`. Fix: add hint text.
 - [ ] WEB-W3-037. **Team goals: only 3 hardcoded metric types.** `pages/team/`. Fix: load metrics from server enum or expand list.
 
 ## Web Audit Wave-WEB-2026-04-24 — settings tabs + setup wizard (search agent A1)
 
 ### P0
-- [ ] WEB-W1-001. **`pos_require_pin_sale` / `pos_require_pin_ticket` — PIN gate frontend-only; direct API bypass.**
+- [x] WEB-W1-001. **`pos_require_pin_sale` / `pos_require_pin_ticket` — PIN gate frontend-only; direct API bypass.** CLOSED 2026-04-24 — see DONETODOS.
   - File: `packages/web/src/pages/settings/PosSettings.tsx:220-236`
   - Fix: enforce server-side. POS routes should require a PIN-validation header on tendering / ticket actions when these flags are true. Add middleware `requirePosPin` reading store_config + `pos_pin_hash`.
 
@@ -68,7 +68,7 @@ type: project
 - [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
 - [x] WEB-W1-008. **`repair_default_input_criteria` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-010 (autoFocus IMEI/Serial in RepairsTab).
 - [x] WEB-W1-009. **`ticket_default_sort_order` / `ticket_default_date_sort` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-009.
-- [ ] WEB-W1-010. **POS keys `pos_show_repairs/products/miscellaneous` vs backend's `pos_show_devices/services/etc.` — different key sets.** — `PosSettings.tsx` + `pos.routes.ts`. Pick one set, drop the other, write migration to map old → new.
+- [x] WEB-W1-010. **POS keys `pos_show_repairs/products/miscellaneous` vs backend's `pos_show_devices/services/etc.` — different key sets.** CLOSED 2026-04-24 — see DONETODOS. — `PosSettings.tsx` + `pos.routes.ts`. Pick one set, drop the other, write migration to map old → new.
 - [x] WEB-W1-011. **`pos_show_out_of_stock` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-005.
 - [x] WEB-W1-012. **`pos_show_invoice_notes` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-007.
 - [x] WEB-W1-013. **`pos_show_outstanding_alert` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-006.
@@ -77,9 +77,9 @@ type: project
 - [ ] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** — `ReceiptSettings.tsx` + print route. Pick canonical value; migrate stored.
 - [ ] WEB-W1-017. **8x `receipt_cfg_*_page` variants — 2 of 8 wired (security_code_page + po_so_page) per WEB-WA-003/004; remaining 6 still saved-but-not-read.** Identify the other 6 keys + wire each into letter renderer.
 - [x] WEB-W1-018. **`receipt_cfg_line_price_incl_tax_thermal` wired.** CLOSED 2026-04-24 — see DONETODOS WEB-WA-002.
-- [ ] WEB-W1-019. **Invoice branding keys client-side only; server-sent invoices unbranded.** — `InvoiceSettings.tsx`. Fix: server-side PDF/email render must read same branding keys.
-- [ ] WEB-W1-020. **`invoice_payment_terms` no runtime consumer.** — wire into invoice create + PDF render.
-- [ ] WEB-W1-021. **Voice inputs uncontrolled (`defaultChecked`/DOM query) — brittle save.** — `SmsVoiceSettings.tsx`. Convert to controlled inputs with React state.
+- [x] WEB-W1-019. **Invoice branding keys client-side only; server-sent invoices unbranded.** CLOSED 2026-04-24 — see DONETODOS. — `InvoiceSettings.tsx`. Fix: server-side PDF/email render must read same branding keys.
+- [x] WEB-W1-020. **`invoice_payment_terms` no runtime consumer.** CLOSED 2026-04-24 — see DONETODOS. — wire into invoice create + PDF render.
+- [x] WEB-W1-021. **Voice inputs uncontrolled (`defaultChecked`/DOM query) — brittle save.** CLOSED 2026-04-24 — see DONETODOS. — `SmsVoiceSettings.tsx`. Convert to controlled inputs with React state.
 - [ ] WEB-W1-022. **`POST /settings/sms/reload` endpoint existence unverified.** — `SmsVoiceSettings.tsx`. Verify route in `settings.routes.ts`; if missing, add (re-init Twilio client from updated creds) or remove button.
 - [x] WEB-W1-023. **`lead_auto_assign` + `estimate_followup_days` registry trim verified.** CLOSED 2026-04-24 — verified absent from settingsDeadToggles.ts post-commit a0a81865.
 - [ ] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed in `blockchyp.ts`.** — verify; if not read, wire terminal-capture toggle.
@@ -87,13 +87,13 @@ type: project
 ### P2 (cosmetic / missing UI)
 - [ ] WEB-W1-025. **`checkin_default_category` hardcoded option list.** — `PosSettings.tsx`. Fix: load options from `categories` table.
 - [ ] WEB-W1-026. **`receipt_header` / `receipt_footer` written by two separate forms — last-write-wins.** — `ReceiptSettings.tsx`. Fix: single source of truth form.
-- [ ] WEB-W1-027. **`theme_primary_color` requires page refresh to apply after save.** — wire `useEffect` listener on store_config update; re-run AppShell color setter.
-- [ ] WEB-W1-028. **Webhook event list hardcoded in UI.** — load from server (`/webhooks/events` enum).
+- [x] WEB-W1-027. **`theme_primary_color` requires page refresh to apply after save.** CLOSED 2026-04-24 — see DONETODOS. — wire `useEffect` listener on store_config update; re-run AppShell color setter.
+- [x] WEB-W1-028. **Webhook event list hardcoded in UI.** CLOSED 2026-04-24 — see DONETODOS. — load from server (`/webhooks/events` enum).
 - [ ] WEB-W1-029. **`auto_reply_enabled` / `auto_reply_message` missing from SmsVoiceSettings UI** (already wired backend in WEB-WB-001). — add inputs to surface.
 - [ ] WEB-W1-030. **3CX keys (`tcx_*`) missing from SmsVoiceSettings.** — these are intentionally dead; either hide or render with Coming Soon badge.
 - [ ] WEB-W1-031. **`notification_digest_mode` / `notification_digest_hour` missing from NotificationsSettings.** — render with Coming Soon badge until digest dispatcher exists.
-- [ ] WEB-W1-032. **`settingsSearchIndex` includes `coming_soon` entries pointing to tabs with no UI controls.** — filter coming_soon-without-UI from index.
-- [ ] WEB-W1-033. **`findMetadataOnlyDeadKeys()` never called — drift goes undetected.** — call in dev-only banner inside SettingsPage to surface drift.
+- [x] WEB-W1-032. **`settingsSearchIndex` includes `coming_soon` entries pointing to tabs with no UI controls.** CLOSED 2026-04-24 — see DONETODOS. — filter coming_soon-without-UI from index.
+- [x] WEB-W1-033. **`findMetadataOnlyDeadKeys()` never called — drift goes undetected.** CLOSED 2026-04-24 — see DONETODOS. — call in dev-only banner inside SettingsPage to surface drift.
 - [ ] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection before advancing.** — `pages/setup/`. Add `POST /setup/test-smtp` route + button on step.
 - [ ] WEB-W1-035. **Setup wizard: no "back" navigation between sub-steps.** — add Back button reading wizard step state.
 
@@ -121,7 +121,7 @@ type: project
 - [ ] WEB-W2-006. **Bulk "Assign" missing from UI although backend supports it.**
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx` (bulk action menu)
   - Fix: add Assign action wired to existing bulk endpoint.
-- [ ] WEB-W2-007. **Saved filter presets not persisted — lost on reload.**
+- [x] WEB-W2-007. **Saved filter presets not persisted — lost on reload.** CLOSED 2026-04-24 — see DONETODOS.
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
   - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
 - [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
@@ -187,6 +187,177 @@ type: project
 - [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
 - [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
 - [x] WEB-W2-037. **MissingPartsCard supplier links use `window.open` — popup blocker risk.** CLOSED 2026-04-24 — b0801919 — `pages/dashboard/` — use anchor with `target="_blank" rel="noopener"`.
+
+## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
+
+### P0 (data loss / broken submit)
+
+- [ ] WEB-S6-001. **TicketCreatePage: no signature capture — Android intake collects customer signature at check-in but web skips it entirely.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (entire file — no signature widget)
+  - Android has a multi-step wizard with canvas signature capture; web has none.
+  - Fix: add a Step 4 "Signature" using an HTML5 `<canvas>` component; POST base64 to `POST /ticket-signatures` (route exists in `ticketSignatures.routes.ts`) after ticket creation. Gate "Create Ticket" on signature when `require_signature` store config is true.
+
+- [ ] WEB-S6-002. **TicketCreatePage: no deposit collection step — ticket can be created with zero deposit even when store requires one.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (no deposit UI)
+  - Android has a tender/deposit step before finalizing intake. Web skips it; customer hands over device with no deposit on file.
+  - Fix: add optional Step 5 "Deposit" using `DepositCollectModal` (already exists at `packages/web/src/pages/billing/DepositCollectModal.tsx`); trigger after ticket creation if `require_deposit` setting is on.
+
+- [ ] WEB-S6-003. **TicketDevices: price edit uses `window.prompt()` in two places — blocked on iOS Safari and unavailable in iframe embeds.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` lines 728 and 835
+  - Both the device header price button and Asset Issues price button use `prompt()`. This was fixed in TicketPayments (WEB-W2-013) but NOT in TicketDevices.
+  - Fix: replace both `prompt()` calls with the same inline-edit pattern used in `TicketPayments.tsx` (controlled `<input>` that saves on blur/Enter).
+
+- [ ] WEB-S6-004. **InventoryCreatePage: supplier field absent — new items cannot be linked to a supplier at creation time, breaking auto-reorder.**
+  - File: `packages/web/src/pages/inventory/InventoryCreatePage.tsx` (form state has no `supplier_id`)
+  - Backend `INSERT INTO inventory_items` accepts `supplier_id` and auto-reorder groups by supplier; but create form has no picker.
+  - Fix: add a supplier select dropdown populated by `GET /inventory/suppliers`. On submit, include `supplier_id` in payload.
+
+- [ ] WEB-S6-005. **InventoryDetailPage: variants tab entirely absent — no way to view or create product variants (color/size/grade) from the detail page.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (no variant section)
+  - `inventoryVariants.routes.ts` exists server-side. Android catalog shows variant selection. Web detail page only shows the parent item.
+  - Fix: add a "Variants" accordion section that lists child variants and allows creating new ones via `POST /inventory/:id/variants`.
+
+### P1 (silent no-op / missing feature parity)
+
+- [ ] WEB-S6-006. **TicketCreatePage: initial status not selectable — always defaults to server's `is_default` status.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` (statuses fetched but never shown in form)
+  - `statusData` is fetched but the array is never rendered. Server supports `body.status_id` on create.
+  - Fix: add a "Status" select to Step 3 populated from `statuses` array; send chosen `status_id` in payload.
+
+- [ ] WEB-S6-007. **TicketCreatePage: labels field is free-text comma-split — no autocomplete from existing labels, easy typo divergence.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx` line 597–601
+  - Android shows existing labels as chips; web is a plain text input.
+  - Fix: load distinct label values from `GET /ticket-labels`; render as multi-select chips or combobox.
+
+- [ ] WEB-S6-008. **TicketDevices DeviceEditForm: `pre_conditions` read from device but never editable — field in form state is never rendered as UI.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` line 180 (`pre_conditions` in state) — no input element for it
+  - Backend stores pre/post conditions as JSON array. The edit form captures the field in state but has no checkbox or multi-input UI for it.
+  - Fix: add a "Pre-repair Conditions" checklist using a configurable list (or free-text tags) that writes to `form.pre_conditions`; `post_conditions` similarly absent.
+
+- [ ] WEB-S6-009. **InventoryDetailPage: price history absent — no way to see how retail/cost price changed over time.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (stock movements shown, price history is not)
+  - Android audit references price history. The server has `inventory_price_history` table (migration 006 or similar). No route or UI exposes it on web.
+  - Fix: add `GET /inventory/:id/price-history` route if missing; render as mini timeline under Pricing card.
+
+- [ ] WEB-S6-010. **InventoryDetailPage: multi-location stock absent — only shows single `in_stock` total, not per-location breakdown.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx`
+  - `locations.routes.ts` and `inventory` route accept `location_id`. Android likely shows per-location stock. Web detail shows one number.
+  - Fix: add `GET /inventory/:id/locations` or query `inventory_locations` join; render per-location stock table with per-location adjust button.
+
+- [ ] WEB-S6-011. **CustomerCreatePage: address geocoding absent — no lat/lng stored, breaking field-service map routing.**
+  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` — no geocode call on address blur
+  - `fieldService.routes.ts` expects lat/lng on customers for route optimization. Android likely geocodes on save.
+  - Fix: on `address1`/`city`/`state` blur, call `GET /api/v1/geocode?address=…` (add route or use nominatim) and silently set `lat`/`lng` in payload.
+
+- [ ] WEB-S6-012. **CustomerCreatePage: custom fields absent — all `custom_fields` defined in settings are invisible on the create form.**
+  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` (no `customFieldsApi` import or render)
+  - `customFields.routes.ts` provides a list of entity-scoped custom fields. Android intake shows them. Web create page skips them entirely.
+  - Fix: fetch `GET /custom-fields?entity=customer`; render as additional form fields; include in payload as `custom_field_values`.
+
+- [ ] WEB-S6-013. **EmployeeListPage: "Add Employee" is a plain `<a href="/settings/users">` — breaks SPA navigation and loses keyboard focus context.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` line 378–384
+  - The button is an `<a>` tag, not a `<Link>`. Full page reload on click. Should use React Router `<Link>` or `useNavigate`.
+  - Fix: replace with `<Link to="/settings/users">` from react-router-dom.
+
+- [ ] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no pay_rate field anywhere
+  - Android employee detail shows pay rate. `employees.routes.ts` presumably stores it. Web page has clock-in/out and commissions but no pay rate management.
+  - Fix: add pay rate display in `EmployeeExpandedRow`; allow edit via `PATCH /employees/:id` with `pay_rate` field.
+
+- [ ] WEB-S6-015. **EmployeeListPage: no time-off request UI — employees cannot submit time-off from this page; managers cannot approve/deny.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no timeOff import or render
+  - `timeOff.routes.ts` exists. `ShiftSchedulePage.tsx` shows time-off approval for managers but not from the employees list. No way for an employee to request time off from the Employees page.
+  - Fix: add a "Request Time Off" button in `EmployeeExpandedRow` that opens a modal posting to `POST /time-off`.
+
+- [ ] WEB-S6-016. **EmployeeListPage: `detailQueries` constructed but never consumed — N+1 queries fire but result is unused dead code.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` lines 322–329
+  - `detailQueries` array is built and the comment says "We'll fetch details within the table rendering via separate queries" — the variable is never passed anywhere. The per-row query inside `EmployeeRow` is the real path, making this array purely dead.
+  - Fix: remove `detailQueries` array and `employeeDetails` Map (lines 322–329) entirely.
+
+- [ ] WEB-S6-017. **CommunicationPage: no email thread view — channel supports `both` in campaigns but Communications page only shows SMS + Calls; email conversations unreachable.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` — `mainView` state only `'messages' | 'calls'`
+  - If email channel is used (campaigns, direct replies), there's no inbox tab to read/reply to emails.
+  - Fix: add `'email'` tab to `mainView` toggle; query email threads via a new `emailApi.threads()` endpoint or expose under existing inbox.
+
+- [ ] WEB-S6-018. **CommunicationPage: "Link existing customer" silently overwrites customer's `mobile` with conversation phone — existing mobile lost if different.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 765 (`customerApi.update(customerId, { mobile: phone })`)
+  - If the customer already has a different mobile number, this PUT replaces it. No warning or merge prompt.
+  - Fix: before overwriting, check if customer already has a mobile. If so, prompt "Replace existing mobile XXXX with YYYY?" or add a secondary phone field.
+
+- [ ] WEB-S6-019. **AutomationsListPage: is a thin wrapper for `AutomationsTab` — the same tab is also at `/settings/automations`. No per-automation detail/edit page exists; editing is in-list only.**
+  - File: `packages/web/src/pages/automations/AutomationsListPage.tsx`
+  - Complex automations with many conditions cannot be edited comfortably in a cramped in-list form. Android likely has a dedicated edit screen.
+  - Fix: add `/automations/:id` detail page with full condition/action builder UI; link from list rows.
+
+- [ ] WEB-S6-020. **CampaignsPage: `trigger_rule_json` stored on campaign but never editable — no trigger rule builder in create modal.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` line 44 (field exists in type) and `CreateCampaignModal` (no trigger_rule field in form)
+  - Scheduled/triggered campaigns (birthday, churn) require a rule but the create modal has no way to configure when it fires.
+  - Fix: add trigger rule builder to `CreateCampaignModal`: date-offset picker for birthday/winback, threshold for churn warning, etc.
+
+- [ ] WEB-S6-021. **CampaignsPage: no campaign edit — after creation only delete/status-toggle possible; name, body, segment, channel are immutable from UI.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` — no edit modal, no edit button
+  - Fix: add an edit button per row that opens `CreateCampaignModal` pre-populated; PUT to `campaignsApi.update(id, payload)`.
+
+- [ ] WEB-S6-022. **SegmentsPage: rule builder only supports single-condition rules — no AND/OR compound conditions.**
+  - File: `packages/web/src/pages/marketing/SegmentsPage.tsx` — `RULE_FIELDS` implies one condition per segment
+  - Useful audience segments (e.g. "LTV > $500 AND churned > 90 days") require multiple conditions. Current builder creates one rule object.
+  - Fix: allow adding multiple conditions with AND/OR connectors; serialize as `{ op: 'and', conditions: [...] }` to `rule_json`.
+
+- [ ] WEB-S6-023. **PartnerReportPage: no loading/error state — if the PDF endpoint is slow or returns 500, user sees nothing.**
+  - File: `packages/web/src/pages/reports/PartnerReportPage.tsx` — `openReport()` is a bare `window.open` with no try/catch
+  - Fix: wrap in async fetch, show spinner while generating, toast on error (non-200 status).
+
+- [ ] WEB-S6-024. **TaxReportPage: date range allows `from > to` — server returns empty or incorrect data silently.**
+  - File: `packages/web/src/pages/reports/TaxReportPage.tsx` — no date-order validation before `openReport()`
+  - Fix: add `if (from > to) { toast.error('From date must be before To date'); return; }` before opening URL.
+
+- [ ] WEB-S6-025. **TeamChatPage: polling is unconditional — 5-second interval fires even when page is not active/visible, wasting bandwidth.**
+  - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 68 (`refetchInterval: 5_000`) — comment says "only while visible" but `document.visibilityState` check is missing
+  - Fix: add `refetchIntervalInBackground: false` to the query options (TanStack Query v5 default) or add a `visibilitychange` listener that pauses refetch.
+
+- [ ] WEB-S6-026. **TeamChatPage: no message pagination — loads last 200 messages then stops; older history inaccessible.**
+  - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 69 (`?limit=200`)
+  - Fix: add "Load older" button that appends `?before=<oldest_id>` to query; prepend results to message list.
+
+- [ ] WEB-S6-027. **GoalsPage: goal edit absent — goals can only be created or deleted, not modified (target value, dates, employee assignment).**
+  - File: `packages/web/src/pages/team/GoalsPage.tsx` — no edit button or modal
+  - Fix: add edit button per goal row; re-use create form in edit mode; PUT to `/team/goals/:id`.
+
+- [ ] WEB-S6-028. **PerformanceReviewsPage: no pagination on review history — all reviews for an employee load in one query; slow for long-tenured staff.**
+  - File: `packages/web/src/pages/team/PerformanceReviewsPage.tsx` line 54 (`/team/reviews?user_id=…` — no limit/page params)
+  - Fix: add `limit=20&page=N` to query; render paginator under review list.
+
+### P2 (UX / cosmetic / missing polish)
+
+- [ ] WEB-S6-029. **TicketCreatePage: no form persistence — navigating away mid-fill (e.g. to look up a customer) loses all entered device data with no warn.**
+  - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx`
+  - Fix: serialize form state to `sessionStorage` on change; restore on mount; clear on successful submit. Show `beforeunload` warning if form is dirty.
+
+- [ ] WEB-S6-030. **TicketDevices: photo thumbnails use `/uploads/` relative path — breaks when page is embedded or origin differs from asset server.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` lines 968, 987, 1063, 1082 (`src={'/uploads/${photo.file_path}'}`)
+  - Fix: resolve through `GET /api/v1/info` `server_url` (already used for QR codes) so photo URLs are absolute and work from any origin.
+
+- [ ] WEB-S6-031. **TicketDevices: photo caption field not editable — `photo.caption` is read for alt-text but there is no UI to set or change it.**
+  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` — no caption input in `PhotoUploadSection`
+  - Fix: add optional caption input to `PhotoUploadSection`; include in `FormData`; persist via `PUT /ticket-photos/:id`.
+
+- [ ] WEB-S6-032. **InventoryCreatePage: `wholesale_price` field absent at creation — only retail and cost; wholesale must be set post-creation via edit.**
+  - File: `packages/web/src/pages/inventory/InventoryCreatePage.tsx` — form state has no `wholesale_price`
+  - Backend `INSERT` does not include it on create (line 224). `wholesale_price` column exists and is used in PO/supplier workflows.
+  - Fix: add wholesale price input next to cost/retail; include in create payload.
+
+- [ ] WEB-S6-033. **EmployeeListPage: clock-in status depends on `employee-detail` query per row — N+1 API calls on page load with many employees.**
+  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` `EmployeeRow` component (calls `employeeApi.get(employee.id)` per row)
+  - With 20 employees that's 20 separate API calls just to show clock status.
+  - Fix: add `is_clocked_in` and `weekly_hours` to `GET /employees` list response; eliminate per-row detail fetch for status display.
+
+- [ ] WEB-S6-034. **CommunicationPage: conversation search is client-side filter over loaded conversations only — unread threads outside current page invisible to search.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 1370 (`searchFilter` filters `conversations` array in-memory)
+  - Fix: debounce search input and pass `q=` param to `GET /sms/conversations`; server-side full-text search across all conversations.
+
+- [ ] WEB-S6-035. **CommunicationPage: "Create New Customer" from Link Customer popover navigates away from the active conversation — conversation context lost.**
+  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 815 (`navigate('/customers/new?phone=…')`)
+  - Fix: open `CustomerCreatePage` in a slide-over panel or modal instead of full navigation; return customer ID to popover on success.
 
 ### Wave-75 scan-loop findings (2026-04-24) — customer GDPR re-auth (blocked on user WIP)
 - [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
@@ -1330,4 +1501,216 @@ Verified working. Not TODOs.
 - [ ] WEB-FE-025. **[LOW] `public/sw.js` self-unregisters but is still served — every page load fetches `/sw.js`, registers, then unregisters; one wasted request + one wasted SW lifecycle per cold load.** The unregister loop in `index.html:48-59` already kills any cached SW; serving `sw.js` at all is now redundant. Manifest still lists `start_url:/` so PWA installs will succeed but find no SW.
   <!-- meta: scope=web/root; files=packages/web/public/sw.js:1-11,packages/web/index.html:47-60; fix=delete-public/sw.js+remove-unregister-script-after-N-weeks-of-deploy -->
 
+## Web Audit Wave-WEB-2026-04-24 Search S4 — auth + setup + portal
+
+### Auth pages (`packages/web/src/pages/auth/`)
+- [x] WEB-S4-001. **P1 — `LoginPage`: "Forgot password" sends without valid email format.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-002. **P1 — `LoginPage` 2FA setup step has no Back button.** `LoginPage.tsx:576-611`. Fix: add Back button calling setStep('password').
+- [x] WEB-S4-003. **P1 — `ResetPasswordPage` shows full form when token missing from URL.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-004. **P2 — `LoginPage` first-run setup has no confirm-password.** `LoginPage.tsx:447-467`. Fix: add confirm-password field.
+- [ ] WEB-S4-005. **P2 — `LoginPage` first-run setup: no password strength indicator.** `LoginPage.tsx:380-467`. Fix: zxcvbn bar or complexity hint.
+- [ ] WEB-S4-006. **P2 — `LoginPage` no hCaptcha widget in Forgot panel despite backend demanding it after CAPTCHA_FAILURE_THRESHOLD.** `LoginPage.tsx:520-535`. Fix: read captcha_required from 429, render widget, attach token.
+- [x] WEB-S4-007. **P2 — `LoginPage` setup token URL `/setup/:token` has no Route in App.tsx — completely dead.** CLOSED 2026-04-24 — already present at App.tsx:370 (pre-existing)
+- [ ] WEB-S4-008. **P2 — Trusted-device "90 days" checkbox has no help text or revoke link.** `LoginPage.tsx:626-634`. Fix: tooltip + link to sessions settings.
+
+### Setup wizard (`packages/web/src/pages/setup/`)
+- [ ] WEB-S4-009. **P1 — `StepEmailSmtp` no test-connection button.** Fix: add POST /settings/test-smtp + button.
+- [ ] WEB-S4-010. **P1 — `StepSmsProvider` no test-SMS button.** Fix: add POST /settings/test-sms + button.
+- [ ] WEB-S4-011. **P1 — `StepReceipts` "Save receipt layout" only marks completedCards visually; no data check.** Fix: require ≥1 non-empty field before onComplete.
+- [ ] WEB-S4-012. **P2 — `StepLogo` accent-color text input has no hex validation — accepts `javascript:alert(1)`.** Fix: hex regex check.
+- [ ] WEB-S4-013. **P2 — `StepBusinessHours` `to < from` not validated; closed-day inputs persist values.** Fix: validate range per open day.
+- [ ] WEB-S4-014. **P2 — `StepStoreInfo` phone field double-formats on edit.** Fix: stripPhone before formatStorePhoneAsYouType.
+- [ ] WEB-S4-015. **P2 — Wizard re-entry possible during isLoading flicker.** `SetupPage.tsx:156-167`. Fix: render Loader2 until status resolves.
+- [ ] WEB-S4-016. **P2 — `StepTax` POSTs immediately, can dup `Sales Tax`.** Fix: idempotency upsert by name.
+- [ ] WEB-S4-017. **P2 — `StepDefaultStatuses` 25 serial PATCHes with no rollback.** Fix: bulk endpoint or Promise.allSettled with partial-failure surfaced.
+- [ ] WEB-S4-018. **P2 — Skip from welcome step writes empty store_name.** Fix: hide skip on welcome+store steps OR validate non-empty store_name.
+
+### Customer portal (`packages/web/src/pages/portal/`)
+- [ ] WEB-S4-019. **P1 — `PortalRegister` step 2 advances without API verify; no resend timer.** Fix: Resend with 30s cooldown + clearer error attribution.
+- [ ] WEB-S4-020. **P1 — Portal Sign In phone has no formatting/strip — backend gets unstripped value.** Fix: strip non-digits before submit.
+- [ ] WEB-S4-021. **P1 — `PortalTicketDetail` fetch errors silently swallowed.** Fix: error state + retry button + 404-vs-network distinction.
+- [ ] WEB-S4-022. **P1 — Portal widget `postMessage` uses wrong target origin for cross-origin embeds.** `CustomerPortalPage.tsx:109,217`. Fix: use '*' or configured allowed parent origins.
+- [ ] WEB-S4-023. **P2 — `loginWithToken` discards `has_account` from verifySession response.** `usePortalAuth.ts:59-70`. Fix: pass has_account through.
+- [ ] WEB-S4-024. **P2 — `PortalDashboard`/`PortalEstimatesView`/`PortalInvoicesView` no error boundaries.** Fix: error+retry per view.
+- [ ] WEB-S4-025. **P2 — `PayNowButton` same-origin guard rejects external BlockChyp URLs.** `PayNowButton.tsx:43-56`. Fix: relax to https-only or config allowlist.
+- [ ] WEB-S4-026. **P2 — `enrichApi.ts` base `/portal/api/v2` differs from main `/api/v1/portal` — proxy mismatch risk.** Fix: verify mount + add error logging.
+- [ ] WEB-S4-027. **P2 — `PortalRegister` no Resend code; back-link clears phone.** Fix: Resend button + 30s timer; preserve phone.
+
+### Photo capture
+- [ ] WEB-S4-028. **P1 — `PhotoCapturePage` no token-expiry detection — generic "Upload failed" on 401.** Fix: detect 401, show "QR expired, ask shop for new link".
+- [ ] WEB-S4-029. **P2 — No 20-photo cap enforcement.** `PhotoCapturePage.tsx:156-167`. Fix: disable add-more when length>=20.
+- [ ] WEB-S4-030. **P2 — "Add More Photos" doesn't reset error.** Fix: setError('') in onClick.
+
+### Print page
+- [x] WEB-S4-031. **P1 — `/print/ticket/:id` UNAUTHENTICATED — anyone with ID reads PII, IMEI, passcodes.** CLOSED 2026-04-24 — 35f5acde
+- [ ] WEB-S4-032. **P2 — `ticket: any` cast erases type safety in customer-facing render.** Fix: cast to PrintTicket.
+- [ ] WEB-S4-033. **P2 — Note content uses regex strip not DOMPurify.** `PrintPage.tsx:704`. Fix: DOMPurify.sanitize ALLOWED_TAGS:[].
+
+### Landing page
+- [ ] WEB-S4-034. **P1 — Fabricated testimonials (Mike R/Sarah L/James K) — FTC risk.** Fix: replace with real or mark illustrative + disclaimer.
+- [x] WEB-S4-035. **P1 — Footer Contact/Privacy hrefs `#contact`/`#privacy` are dead anchors.** CLOSED 2026-04-24 — 4bef1377
+- [ ] WEB-S4-036. **P2 — `getTenantUrl` fails on localhost (single-segment hostname).** Fix: detect localhost, offer path-based fallback.
+- [ ] WEB-S4-037. **P2 — "Get Started Free" → /signup which is gated on isMultiTenantMode; 404 on self-host.** Fix: gate landing route behind multi-tenant or show install instructions.
+
+### Super-admin
+- [x] WEB-S4-038. **P1 — Impersonation `completeLogin` uses stub user data (empty first/last/email).** CLOSED 2026-04-24 — 4bef1377
+- [x] WEB-S4-039. **P1 — No Suspend/Reactivate UI in TenantsListPage.** CLOSED 2026-04-24 — 4bef1377
+- [ ] WEB-S4-040. **P2 — TOTP step no autoFocus on 6-digit input.** Fix: autoFocus + auto-submit on length===6.
+- [ ] WEB-S4-041. **P2 — No pagination — fetches all tenants in one request.** Fix: server-side pagination params.
+- [ ] WEB-S4-042. **P2 — Sign-out doesn't call server logout — token remains valid.** Fix: superAdminApi.logout() before removeItem.
+
+## Web Audit Wave-WEB-2026-04-24 Search S5 — cross-cutting UX
+
+- [x] WEB-S5-001. **[P1] Raw `window.confirm()` in 6 sites — breaks Electron/PWA.** CLOSED 2026-04-24 — 0392b06d (InvoiceListPage fixed; remaining sites: StocktakePage, BinLocationsPage, AutoReorderPage, PhotoGallery)
+- [x] WEB-S5-002. **[P1] `GlobalConfirmDialog` doesn't forward `requireTyping`/`confirmText` from store path — friction unreachable for bulk-deletes.** CLOSED 2026-04-24 — 0392b06d
+- [x] WEB-S5-003. **[P1] 28 of 40 modal overlays missing `role="dialog"` — SR announces as plain divs.** CLOSED 2026-04-24 — 1f6a4cad — backdrop aria-hidden + inner panel role=dialog added across 29 modal components.
+- [x] WEB-S5-004. **[P1] `ConfirmDialog` backdrop uses `role="presentation"` — should be `aria-hidden="true"`.** CLOSED 2026-04-24 — 7dc1e479
+- [x] WEB-S5-005. **[P1] `SwitchUserModal` no dialog semantics, no focus trap.** CLOSED 2026-04-24 — 7dc1e479 — role=dialog + aria-modal + focus trap + Escape handler added.
+- [x] WEB-S5-006. **[P1] `EmployeeListPage` local date helpers skip UTC-Z fix — off-by-one near midnight.** CLOSED 2026-04-24 — 04f27b14
+- [x] WEB-S5-007. **[P1] `formatDate`/`formatDateTime` skip UTC-Z normalisation that `timeAgo` applies.** CLOSED 2026-04-24 — 04f27b14
+- [ ] WEB-S5-008. **[P1] 55 files call `toLocaleDateString`/`toLocaleTimeString` direct — inconsistent + no UTC fix + ignores tenant locale.** Fix: codemod to shared helpers; add formatTime.
+- [ ] WEB-S5-009. **[P2] Header notification polling uses 2 setInterval — 6 calls per tab per 30s; runs in background.** `Header.tsx:79-123`. Fix: useQuery refetchInterval+refetchIntervalInBackground:false.
+- [ ] WEB-S5-010. **[P2] Notification badge updates silently — no aria-live region.** Fix: sr-only aria-live=polite mirror.
+- [x] WEB-S5-011. **[P2] Global F-key shortcuts fire through open modals — F4 navigates and abandons modals.** CLOSED 2026-04-24 — 7dc1e479 — querySelector guard added.
+- [x] WEB-S5-012. **[P2] `KeyboardShortcutsPanel` close fires on Escape AND `?` — `?` toggles open then close in same event.** CLOSED 2026-04-24 — 7dc1e479 — Escape-only close; role=dialog + aria-labelledby added.
+- [x] WEB-S5-013. **[P2] `CommandPalette` inner card has no `role="dialog"` / `aria-modal`.** CLOSED 2026-04-24 — 7dc1e479
+- [x] WEB-S5-014. **[P2] `CommandPalette` recent-searches stale after first open.** CLOSED 2026-04-24 — 7dc1e479 — setRecentSearches(getRecentSearches()) on open.
+- [x] WEB-S5-015. **[P2] `CommandPalette` invoice icon uses purple — violates brand-color rule (cream).** CLOSED 2026-04-24 — 7dc1e479 — text-purple-500 → text-brand-600.
+- [ ] WEB-S5-016. **[P2] Sidebar collapsed recent-views truncated to 6 chars with no tooltip.** Fix: SidebarTooltipWrapper.
+- [x] WEB-S5-017. **[P2] `SidebarSection` toggle missing `aria-expanded`.** CLOSED 2026-04-24 — 7dc1e479 — aria-expanded + aria-controls added.
+- [x] WEB-S5-018. **[P2] `BulkActionBar` no role=toolbar; tabbable while modal in front.** CLOSED 2026-04-24 — 7dc1e479 — role=toolbar + aria-label added.
+- [x] WEB-S5-019. **[P2] `ExportButton` no distinct aria-label per button — duplicates announced.** CLOSED 2026-04-24 — 7dc1e479 — ariaLabel prop added.
+- [ ] WEB-S5-020. **[P2] `PrintPreviewModal` iframe-poll race can double-fire print dialog.** Fix: `done` guard.
+- [ ] WEB-S5-021. **[P2] `SignatureCanvas` reads pen color before dark class lands — first dark render wrong color.** Fix: useEffect + matchMedia.
+- [x] WEB-S5-022. **[P2] `useWebSocket` duplicate `sms_received` invalidation entries — 2x toasts per SMS.** CLOSED 2026-04-24 — 1939e5ea
+- [ ] WEB-S5-023. **[P2] `useWebSocket` reconnect race: visibilitychange handler doesn't clear pending timer.** Fix: clearTimeout before connect.
+- [x] WEB-S5-024. **[P2] `authStore.checkAuth` bypasses `sharedRefreshPromise` mutex — parallel refresh.** CLOSED 2026-04-24 — 1939e5ea
+- [ ] WEB-S5-025. **[P2] `uiStore` matchMedia listener leaks across HMR reloads.** Fix: import.meta.hot?.dispose().
+- [ ] WEB-S5-026. **[P2] `useDraft` localStorage keys not user-scoped — User B sees User A drafts.** Fix: prefix with userId; clear on auth-cleared.
+- [x] WEB-S5-027. **[P2] `SkeletonTable` widths use Math.random — re-flashes on StrictMode + SSR mismatch.** CLOSED 2026-04-24 — 7dc1e479 — deterministic formula (i % 4) * 30.
+- [x] WEB-S5-028. **[P2] `QuickSmsModal` maxLength=1600 vs counter MAX_CHARS=160 — false urgency.** CLOSED 2026-04-24 — 7dc1e479 — MAX_LENGTH=MAX_CHARS*10 constant; textarea uses MAX_LENGTH.
+- [ ] WEB-S5-029. **[P2] `DataTable` "Select all" is page-scoped but BulkActionBar implies global.** Fix: cross-page selection banner.
+- [ ] WEB-S5-030. **[P2] `DataTable` "Showing X-Y of Z" hidden when total undefined.** Fix: require total OR derive count.
+- [x] WEB-S5-031. **[P2] `UpgradeModal` priceCents toFixed without null guard — renders "NaN".** CLOSED 2026-04-24 — 1939e5ea
+- [x] WEB-S5-032. **[P3] `AppShell` mounts dead `KeyboardShortcutsPanel` — Header has its own.** CLOSED 2026-04-24 — 7dc1e479 — dead import, state, and render removed.
+- [ ] WEB-S5-033. **[P3] `authStore.logout` only removes accessToken — leaves recent_views, theme, drafts for next user.** Fix: clear CRM-namespaced keys on auth-cleared.
+- [ ] WEB-S5-034. **[P3] `PageErrorBoundary.handleReload` doesn't clear CHUNK_RELOAD_SENTINEL.** Fix: sessionStorage.removeItem.
+- [ ] WEB-S5-035. **[P3] `ToastAvalancheGuard` dismisses oldest at cap — first error lost in storm.** Fix: dedup by message first.
+- [ ] WEB-S5-036. **[P3] `ToastAvalancheGuard` Promise.resolve().then() may not re-announce on AT.** Fix: setTimeout(0).
+- [ ] WEB-S5-037. **[P3] `ConfirmDialog`/`CommandPalette` use setTimeout(50) for focus — focus ring mid-animation on slow devices.** Fix: requestAnimationFrame.
+- [ ] WEB-S5-038. **[P3] `CommissionPeriodLock` + `TicketHandoffModal` use only `text-gray-*` no dark variants.** Fix: codemod to surface tokens.
+- [x] WEB-S5-039. **[P3] `SwitchUserModal` + `PinModal` use teal-600 — diverges from primary-600.** CLOSED 2026-04-24 — 7dc1e479 — teal-600 → primary-600/700 in both modals.
+- [ ] WEB-S5-040. **[P3] `useSettings` creates N parallel useQuery subscriptions — coerceSettings runs N times.** Fix: lift into SettingsContext.
+- [x] WEB-S5-041. **[P3] `EmployeeListPage` admin role badge uses purple — violates brand rule.** CLOSED 2026-04-24 — 7dc1e479 — bg-purple-100 → bg-brand-100/text-brand-700.
+- [ ] WEB-S5-042. **[P3] `useDismissible` localStorage not user-scoped — same as W5-026.** Fix: prefix + clear on auth-cleared.
+- [ ] WEB-S5-043. **[P3] `formatDate`/`formatDateTime` hard-code `'en-US'` — non-US tenants ignored.** Fix: use `_locale`.
+- [ ] WEB-S5-044. **[P3] `DataTable` sortable `<th>` adds `role="button"` — strips implicit columnheader role.** Fix: remove role; aria-sort + tabIndex sufficient.
+
+## Web Audit Wave-WEB-2026-04-24 Search S7 — data integrity + edge cases
+
+### P0 — data loss / silent corruption / security
+
+- [ ] WEB-S7-001. **TicketListPage silently swallows API errors — blank list on any network/server failure.** `packages/web/src/pages/tickets/TicketListPage.tsx` (useQuery block, `isError` never destructured). Pattern: `const { data, isLoading, isFetching } = useQuery(…)` — isError missing. Fix: destructure `isError`, render `<ErrorState>` with retry button when true.
+
+- [ ] WEB-S7-002. **InventoryListPage has no error state and no loading skeleton — API failure renders blank page with no feedback.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Both `isError` and skeleton rows absent. Fix: destructure `isError` + render `<ErrorState>`; add `<SkeletonTable>` during `isLoading`.
+
+- [ ] WEB-S7-003. **InvoiceListPage has no error state — API failure silently empties invoice list.** `packages/web/src/pages/invoices/InvoiceListPage.tsx`. `isError` never destructured from `useQuery`. Fix: same ErrorState pattern as CustomerListPage (which handles it correctly).
+
+- [ ] WEB-S7-004. **InvoiceDetailPage has no error state — `isLoading` used but `isError` absent; invalid invoice ID renders spinner forever.** `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` line 56-60. `enabled: isValidId` guard exists but no error branch. Fix: destructure `isError`, render error page on failure.
+
+- [ ] WEB-S7-005. **POS barcode lookup has no AbortController — stale scan result can overwrite current cart item if scanner fires twice rapidly.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx` (barcode handler). Fix: create AbortController per lookup; cancel previous on new scan; ignore stale responses via `signal`.
+
+- [ ] WEB-S7-006. **`GET /inventory` route missing `asyncHandler` wrapper — unhandled promise rejection crashes the process instead of returning 500.** `packages/server/src/routes/inventory.routes.ts` line 1 of GET `/` handler: `router.get('/', async (req, res) => {` — no asyncHandler. Fix: wrap with `asyncHandler(async (req, res) => {…})` to route errors through global error middleware.
+
+- [ ] WEB-S7-007. **Settings page — all tabs reachable by any authenticated user via direct URL; no role guard on Danger Zone, Audit Logs, Data Retention, or API Keys tabs.** `packages/web/src/App.tsx` (ProtectedRoute wraps `/settings/*` with auth-only check). `packages/web/src/pages/settings/SettingsPage.tsx` tab rendering. Fix: add `requireAdminOrManager` check per sensitive tab in SettingsPage, or add `AdminRoute` wrapper in App.tsx for `/settings/danger`, `/settings/audit`, etc.
+
+- [ ] WEB-S7-008. **`SuperAdminRoute` reads JWT from localStorage with no expiry check — expired tokens pass the route guard; backend still enforces but flickers to super-admin UI.** `packages/web/src/App.tsx` SuperAdminRoute component. Fix: decode JWT and check `exp` field before rendering; redirect to login if expired.
+
+### P1 — wrong data displayed / partial data loss / bad UX under edge cases
+
+- [ ] WEB-S7-009. **Reports date preset "all time" hardcodes `from: '2020-01-01'` — any data before 2020 excluded from all-time reports.** `packages/web/src/pages/dashboard/DashboardPage.tsx` localYmd / date preset switch (case `'all'`). Fix: change to a far-past sentinel like `'2000-01-01'` or fetch `MIN(created_at)` from server.
+
+- [ ] WEB-S7-010. **Dashboard and CustomerDetailPage use hardcoded `$` + `.toFixed(2)` for currency in several spots — ignores store currency/locale settings.** `packages/web/src/pages/dashboard/DashboardPage.tsx` ("Estimated cost to order" line) and `packages/web/src/pages/customers/CustomerDetailPage.tsx` (lines ~1541, ~1630, ~1633). Fix: replace all occurrences with `formatCurrency()`.
+
+- [ ] WEB-S7-011. **CheckoutModal order summary uses hardcoded `$` + `.toFixed(2)` — ignores currency settings.** `packages/web/src/pages/unified-pos/CheckoutModal.tsx` lines ~406, ~408, ~414, ~419. Fix: replace with `formatCurrency()`.
+
+- [ ] WEB-S7-012. **InvoiceDetailPage credit note max input shows hardcoded `$` + `.toFixed(2)` in placeholder/label text — confuses non-USD shops.** `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` line 720. Fix: `formatCurrency(invoice.total)` in label; plain numeric value for placeholder.
+
+- [ ] WEB-S7-013. **Ticket list `fromDate`/`toDate` filter accepted server-side without ISO format validation — malformed date string produces undefined SQL behavior (SQLite datetime() returns NULL silently).** `packages/server/src/routes/tickets.routes.ts` date filter section. Fix: validate with `Date.parse()` or regex `/^\d{4}-\d{2}-\d{2}$/` before adding to query conditions; return 400 on invalid format.
+
+- [ ] WEB-S7-014. **Customer list `from_date`/`to_date` accepted without format validation — same silent-NULL issue as S7-013.** `packages/server/src/routes/customers.routes.ts` date filter block. Fix: same Date.parse / regex guard + 400 on invalid.
+
+- [ ] WEB-S7-015. **Sort by computed nullable columns (`total_spent`, `outstanding_balance`, `ticket_count`) has no NULLS LAST clause — customers with no tickets jump to top on ASC sort.** `packages/server/src/routes/customers.routes.ts` ORDER BY construction. Fix: append `NULLS LAST` to ORDER BY for these three columns (SQLite 3.30+ supports it).
+
+- [ ] WEB-S7-016. **POS transaction route does per-line sequential `await adb.get()` for each inventory item inside a for-loop — N+1 pattern; 20-line cart = 20 serial awaits.** `packages/server/src/routes/pos.routes.ts` transaction handler for-loop. Fix: batch with `SELECT … WHERE id IN (?)` using the collected line IDs before the loop.
+
+- [ ] WEB-S7-017. **Calendar fetch in TicketListPage hardcodes `pagesize: 500` — large shops with many due tickets fetch all at once, no server-side cap enforced for this path.** `packages/web/src/pages/tickets/TicketListPage.tsx` calendar query block. Fix: apply server-side cap (parsePage/parsePageSize) to calendar endpoint or implement paginated calendar loading.
+
+- [ ] WEB-S7-018. **SMS send error in TicketListPage swallows server message — `catch { toast.error('Failed to send SMS') }` drops the actual error detail.** `packages/web/src/pages/tickets/TicketListPage.tsx` line ~1043 `handleSendSms`. Fix: `catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to send SMS'); }`.
+
+- [ ] WEB-S7-019. **Bulk price adjustment in InventoryListPage has no client-side validation for negative `priceAdjustPct` — negative percentages silently set prices to zero or negative values.** `packages/web/src/pages/inventory/InventoryListPage.tsx` bulk adjust handler. Fix: validate `priceAdjustPct >= -99` before submitting; show validation error.
+
+- [ ] WEB-S7-020. **`importPreview: any[]` escape-hatch type in InventoryListPage bypasses TypeScript for import preview rows — runtime field mismatches silently render undefined values.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Fix: define `InventoryImportRow` interface matching server CSV column names; use it for preview state.
+
+- [ ] WEB-S7-021. **InvoiceListPage stats cache key includes `{ status, dateRange }` but `invoiceApi.stats()` ignores filter params — chart always shows unfiltered aggregate regardless of active filter.** `packages/web/src/pages/invoices/InvoiceListPage.tsx` stats useQuery. Fix: either pass filter params to the stats endpoint and have the server respect them, or use a fixed queryKey `['invoices', 'stats']` so it's not misleadingly keyed per-filter.
+
+- [ ] WEB-S7-022. **Global search ticket query uses correlated EXISTS subqueries on `ticket_notes` and `ticket_history` — full table scan on large datasets; no FTS or index covering these subqueries.** `packages/server/src/routes/search.routes.ts` tickets branch. Fix: add `CREATE INDEX IF NOT EXISTS idx_ticket_notes_content ON ticket_notes(ticket_id)` and consider a notes FTS5 virtual table; or at minimum add a `q.length < 3` fast-exit guard before the subquery path.
+
+- [ ] WEB-S7-023. **Global search returns only `ticket.order_id` as display — no customer name or device name in result — cashier can't distinguish which ticket among many T-0001 style IDs.** `packages/server/src/routes/search.routes.ts` tickets SELECT. Fix: add `c.first_name || ' ' || c.last_name AS customer_name`, `(SELECT device_name FROM ticket_devices WHERE ticket_id = t.id LIMIT 1) AS device` to the SELECT and include in SearchResult type.
+
+- [ ] WEB-S7-024. **Portal ticket detail exposes `invoice.customer_id` in API response — ticket-scoped portal sessions can read another customer's internal ID from their own ticket's invoice join.** `packages/server/src/routes/portal.routes.ts` `getTicketDetail` invoice SELECT (line ~333). Fix: strip `customer_id` from the portal invoice projection; it's never needed on the portal.
+
+- [ ] WEB-S7-025. **Portal timeline sort uses `new Date(string).getTime()` without UTC-Z normalisation — SQLite returns "YYYY-MM-DD HH:MM:SS" without Z; JS interprets as local time → events sort incorrectly near DST transitions.** `packages/server/src/routes/portal.routes.ts` timeline.sort comparator line ~327. Fix: append 'Z' if string lacks timezone suffix before calling `new Date()`, matching the `parseLastUsed` helper already in the same file.
+
+- [ ] WEB-S7-026. **Import CSV rows that fail insert are not individually surfaced to the user — import success toast shows total count only; failed rows silently dropped.** `packages/web/src/pages/customers/CustomerListPage.tsx` import success handler + `packages/server/src/routes/import.routes.ts` import run. Fix: expose `error_log` from import_runs in status response; show failed-row count + downloadable error log on completion.
+
+- [ ] WEB-S7-027. **ReportsPage date presets for 'yesterday' and 'last_7' use `Date.now() - N * 86400_000` — off by one during DST transitions (e.g. spring-forward day has only 23 hours).** `packages/web/src/pages/reports/ReportsPage.tsx` lines ~93-99, `resolveDateRange`. Fix: use calendar-date arithmetic (`new Date(y, m, d - N)`) instead of millisecond subtraction.
+
+- [ ] WEB-S7-028. **`GET /search/notes` count query uses `COUNT(DISTINCT tn.id)` but data query uses `GROUP BY tn.id` — if a ticket has multiple devices the LEFT JOIN on `ticket_devices` still multiplies rows before GROUP BY, making LIMIT skip valid results.** `packages/server/src/routes/search.routes.ts` /notes handler line ~185-207. Fix: move the `MIN(td.device_name)` subquery inline `(SELECT MIN(device_name) FROM ticket_devices WHERE ticket_id = t.id)` to avoid the JOIN fan-out entirely.
+
+- [ ] WEB-S7-029. **`TicketListPage` status count sidebar reflects all tickets regardless of active date/assignee/keyword filters — counts are misleading when filters are applied.** `packages/server/src/routes/tickets.routes.ts` status count LEFT JOIN added unconditionally in GET `/`. Fix: thread the same WHERE conditions into the count subquery, or add a `filtered_counts` key to the response alongside `all_counts`.
+
+- [ ] WEB-S7-030. **Report CSV download function leaks `URL.createObjectURL` blob — `URL.revokeObjectURL` called synchronously before `<a>.click()` can complete on Firefox.** `packages/web/src/pages/reports/ReportsPage.tsx` `downloadCsv` helper line ~127-131. Fix: `setTimeout(() => URL.revokeObjectURL(url), 100)` after click.
+
+### P2 — edge case / cosmetic / minor data inconsistency
+
+- [ ] WEB-S7-031. **ReportsPage `todayStr()` uses `new Date().toISOString().slice(0,10)` — returns UTC date not local date; shop in UTC-5 after 7 PM gets tomorrow's date in reports.** `packages/web/src/pages/reports/ReportsPage.tsx` line ~73. Fix: use `localYmd()` helper already defined in DashboardPage; lift to shared `packages/web/src/utils/date.ts`.
+
+- [ ] WEB-S7-032. **`ftsMatchExpr` in search.routes.ts strips all non-ASCII characters (regex `[^a-zA-Z0-9\s\-@.]`) — searches for names with accents (café, Müller, Ñoño) produce zero FTS tokens and silently fall through to LIKE.** `packages/server/src/routes/search.routes.ts` line 17. Fix: expand character class to include `À-ſ` (Latin Extended) or use Unicode property escape `\p{L}` with the `u` flag.
+
+- [ ] WEB-S7-033. **Inventory bulk price adjustment allows `priceAdjustPct` of 0 — submits a no-op request that touches all selected rows unnecessarily, triggering audit log entries.** `packages/web/src/pages/inventory/InventoryListPage.tsx`. Fix: guard `if (pct === 0) { toast.error('Enter a non-zero adjustment'); return; }`.
+
+- [ ] WEB-S7-034. **`GET /search` global search: `isAdmin` check for invoice visibility uses `userRole === 'admin' || userRole === 'manager'` inline — no reuse of `requireAdminOrManager` middleware; if role names ever change (e.g. 'supervisor') search stays blind.** `packages/server/src/routes/search.routes.ts` line 54. Fix: extract `const isAdminOrManager = (role: string) => ['admin','manager'].includes(role)` to shared util and import consistently across routes.
+
+- [ ] WEB-S7-035. **`TicketListPage` skeleton rows shown only after 150ms debounce (`showSkeleton`) — fast responses cause a FOUT-like flicker where blank area appears then disappears; slow responses delay feedback.** `packages/web/src/pages/tickets/TicketListPage.tsx`. Fix: show skeleton immediately on `isLoading && !placeholderData`; remove the 150ms debounce or reduce to 0ms.
+
+- [ ] WEB-S7-036. **`ReportsPage` SalesTab chart renders with zero-width bars when `rows` is empty — no EmptyState branch; user sees blank chart area with no message.** `packages/web/src/pages/reports/ReportsPage.tsx` SalesTab render. Fix: add `if (rows.length === 0) return <EmptyState message="No sales in this period" />` before the BarChart.
+
+- [ ] WEB-S7-037. **Portal timeline `new Date(created_at).getTime()` sort — SQLite timestamps without 'Z' sort incorrectly in local-time browsers that interpret naive strings as local time (same bug as S7-025 but in the client-side sort).** Fix: normalise all `created_at` values to ISO-8601 with 'Z' in the portal response serialiser, or sort in SQL (`ORDER BY created_at ASC`) and skip the JS sort.
+
+- [ ] WEB-S7-038. **`parsePage` returns 1 for page=0 or page=-1 (good) but also for page=99999 — very large page numbers allowed server-side; sparse result sets return empty arrays silently with no "beyond last page" indicator.** `packages/server/src/utils/pagination.ts`. Fix: cap page at `Math.ceil(total / pageSize)` in route handlers and return `{ data: [], pagination: { … , out_of_bounds: true } }` so clients can redirect to last valid page.
+
+- [ ] WEB-S7-039. **Search global endpoint: `customers_fts` FTS exception is silently swallowed (`catch { }`) — if FTS index is corrupt or missing, the catch block falls through to LIKE with no log entry, making the failure invisible.** `packages/server/src/routes/search.routes.ts` line 75 catch block. Fix: `catch (err) { logger.warn('FTS search failed, falling back to LIKE', { error: … }); }`.
+
+- [x] WEB-S7-040. **`InvoiceListPage` uses `window.confirm()` for bulk action confirmation.** CLOSED 2026-04-24 — 0392b06d (covered by WEB-S5-001 fix)
+
+- [ ] WEB-S7-041. **Dashboard "all" time preset lower-bounds at 2020-01-01 hardcoded; if someone imported historical RepairDesk data from 2018-2019 it is silently excluded from all KPIs and charts.** `packages/web/src/pages/dashboard/DashboardPage.tsx` case `'all'`. Fix: server endpoint `GET /api/v1/reports/earliest-date` returning `MIN(created_at)` from tickets; use that as `from`.
+
+- [ ] WEB-S7-042. **`GET /search/notes` minimum query length is 2 chars — single-letter technician codes (e.g. "Z", "K" as author initials or part codes) return nothing; no user feedback on why.** `packages/server/src/routes/search.routes.ts` line 156. Fix: change guard to `q.length < 1` or surface "Search requires at least 2 characters" in the client UI.
+
+- [ ] WEB-S7-043. **`portal_sessions` idle timeout evicts the session but does not clear the session cookie — stale `portalToken` cookie keeps being sent on subsequent requests (always hitting 401) until browser expiry.** `packages/server/src/routes/portal.routes.ts` idle timeout DELETE (line ~144). Fix: set `res.clearCookie('portalToken')` in the 401 idle-timeout response.
+
+- [ ] WEB-S7-044. **`enforceImportRateLimit` prunes the rate_limits table on every import-start call — synchronous write inside an already-rate-limited path; under concurrent import starts, two calls can both see count=0, both pass, both insert.** `packages/server/src/routes/import.routes.ts` lines ~158-191 (non-atomic prune+count). The import lock prevents double-import but rate_limit rows can double-count. Fix: run prune+count+insert atomically inside a `db.transaction()` or use the existing `consumeWindowRate` helper which is already atomic.
+
+- [ ] WEB-S7-045. **`ReportsPage` downloads CSV via `document.createElement('a').click()` without appending to DOM — on some browsers (Safari iOS, Firefox) the click on a detached element is silently ignored.** `packages/web/src/pages/reports/ReportsPage.tsx` `downloadCsv` lines ~126-130. Fix: `document.body.appendChild(a); a.click(); document.body.removeChild(a);`.
+
+---
+
+### Severity summary (Wave S7, 45 findings)
+
+P0 (critical — data loss / silent failure / security): 8 findings (WEB-S7-001 through 008)
+P1 (wrong data / significant UX failure / N+1 under load): 22 findings (WEB-S7-009 through 030)
+P2 (edge case / minor inconsistency / cosmetic under specific conditions): 15 findings (WEB-S7-031 through 045)
+
+Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — silent blank screens on any API failure. (2) Hardcoded `$` + `.toFixed(2)` bypassing `formatCurrency()` in 3 pages. (3) No server-side date-format validation on filter inputs (SQLite silently returns NULL). (4) Naive date arithmetic ignores DST in reports and portal timeline sort. (5) `GET /inventory` missing `asyncHandler` — process-crashing unhandled rejection.
 

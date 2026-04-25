@@ -1,4 +1,90 @@
 
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 3 / Fix G (modal/a11y/UX)
+
+- [x] WEB-S5-003. **28 modal overlays missing role="dialog"** CLOSED 2026-04-24 — `1f6a4cad` — backdrop aria-hidden="true" + inner panel role="dialog" aria-modal="true" across 29 components.
+- [x] WEB-S5-004. **ConfirmDialog backdrop role="presentation" → aria-hidden="true"** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-005. **SwitchUserModal dialog semantics + focus trap** CLOSED 2026-04-24 — `7dc1e479` — role=dialog, aria-modal, aria-labelledby, Tab focus trap, Escape closes.
+- [x] WEB-S5-011. **F-key shortcuts skip when modal open** CLOSED 2026-04-24 — `7dc1e479` — querySelector('[role="dialog"]') guard in AppShell.
+- [x] WEB-S5-012. **KeyboardShortcutsPanel Escape-only close + dialog semantics** CLOSED 2026-04-24 — `7dc1e479` — ? key no longer closes panel; role=dialog + aria-labelledby added.
+- [x] WEB-S5-013. **CommandPalette role=dialog + aria-modal** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-014. **CommandPalette recent-searches refresh on open** CLOSED 2026-04-24 — `7dc1e479` — setRecentSearches(getRecentSearches()) in open useEffect.
+- [x] WEB-S5-015. **CommandPalette invoice icon purple → brand** CLOSED 2026-04-24 — `7dc1e479` — text-purple-500 → text-brand-600.
+- [x] WEB-S5-017. **SidebarSection aria-expanded** CLOSED 2026-04-24 — `7dc1e479` — aria-expanded + aria-controls on section toggle button.
+- [x] WEB-S5-018. **BulkActionBar role=toolbar + aria-label** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-019. **ExportButton ariaLabel prop** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-027. **SkeletonTable deterministic widths** CLOSED 2026-04-24 — `7dc1e479` — Math.random() → (i % 4) * 30 formula.
+- [x] WEB-S5-028. **QuickSmsModal maxLength aligned with counter** CLOSED 2026-04-24 — `7dc1e479` — MAX_LENGTH = MAX_CHARS * 10 constant; role=dialog added.
+- [x] WEB-S5-032. **Dead KeyboardShortcutsPanel removed from AppShell** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-039. **SwitchUserModal + PinModal teal-600 → primary-600** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-S5-041. **EmployeeListPage admin badge purple → brand cream** CLOSED 2026-04-24 — `7dc1e479`
+- [x] WEB-W3-007. **BinLocationsPage inline rename** CLOSED 2026-04-24 — `1b4b77a6` — pencil icon → inline edit form; PUT /bin-locations/:id now accepts `code` field.
+
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 3 / Fix F (security + auth + cross-cutting)
+
+- [x] WEB-S4-001. **Forgot-password email validation + enumeration guard** CLOSED 2026-04-24 — `35f5acde` — `LoginPage.tsx` RFC-5322-lite regex gates Send button; `setForgotSent(true)` moved to finally block so success always shown regardless of server response.
+- [x] WEB-S4-003. **Reset-password page shows full form when token absent** CLOSED 2026-04-24 — `35f5acde` — `ResetPasswordPage.tsx` `noToken` guard renders "Link Expired or Invalid" state on mount when URL token missing.
+- [x] WEB-S4-007. **Setup route unprotected** CLOSED 2026-04-24 — pre-existing — `/setup/:token` route already present in `App.tsx`; no change needed.
+- [x] WEB-S4-031. **Print route leaks PII to unauthenticated users** CLOSED 2026-04-24 — `35f5acde` — `App.tsx` wraps `<PrintPage />` in `<ProtectedRoute>` to require auth before rendering ticket PII.
+- [x] WEB-S4-035. **Landing page dead anchor links** CLOSED 2026-04-24 — `4bef1377` — `LandingPage.tsx` `#contact` → `mailto:hello@bizarreelectronics.com`; `#privacy` → `/privacy`; Features/Pricing scroll to page anchors.
+- [x] WEB-S4-038. **Impersonation flow strips user name/email from JWT context** CLOSED 2026-04-24 — `4bef1377` — `super-admin.routes.ts` SQL extended with `first_name/last_name/email`; `endpoints.ts` `ImpersonateResponse` typed; `TenantsListPage.tsx` `completeLogin` uses real fields with `?? ''` fallback.
+- [x] WEB-S4-039. **No Suspend/Reactivate tenant action in super-admin UI** CLOSED 2026-04-24 — `4bef1377` — `TenantsListPage.tsx` `suspendMutation`/`activateMutation` via `useMutation`; Suspend/Reactivate buttons in Actions cell; `superAdminApi.suspendTenant`/`activateTenant` added to `endpoints.ts`.
+- [x] WEB-S5-001. **`window.confirm()` in invoice bulk-action handler** CLOSED 2026-04-24 — `0392b06d` — `InvoiceListPage.tsx` replaced with `await confirm()` from `confirmStore`; remaining sites (Stocktake, BinLocations, AutoReorder, PhotoGallery) noted for follow-up.
+- [x] WEB-S5-002. **`confirmStore` lacks `requireTyping` / `confirmText` props** CLOSED 2026-04-24 — `0392b06d` — `confirmStore.ts` state extended; `GlobalConfirmDialog.tsx` forwards both props to `ConfirmDialog`.
+- [x] WEB-S5-006. **`EmployeeListPage.tsx` duplicates date formatters, ignores UTC suffix** CLOSED 2026-04-24 — `04f27b14` — `EmployeeListPage.tsx` local `formatDate`/`formatDateTime` delegate to shared `@/utils/format` helpers; local `formatTime` Z-normalised.
+- [x] WEB-S5-007. **`format.ts` `formatDate`/`formatDateTime` treat bare SQLite timestamps as local time** CLOSED 2026-04-24 — `04f27b14` — `format.ts` `normalizeUtcSuffix` helper appends `Z` when no timezone info present; applied to both formatters.
+- [x] WEB-S5-022. **Duplicate SMS toast — `sms_received` and `sms:received` both fire** CLOSED 2026-04-24 — `1939e5ea` — `useWebSocket.ts` `WS_EVENTS.SMS_RECEIVED` entry set `toast: undefined`; underscore entry retains the toast.
+- [x] WEB-S5-024. **`checkAuth` races parallel tab refreshes** CLOSED 2026-04-24 — `1939e5ea` — `client.ts` exports `performRefresh`; `authStore.ts` `checkAuth` uses shared mutex via `performRefresh()` instead of raw `api.post('/auth/refresh')`.
+- [x] WEB-S5-031. **`UpgradeModal` divides `priceCents` without NaN guard** CLOSED 2026-04-24 — `1939e5ea` — `UpgradeModal.tsx` wraps price display in `Number.isFinite` guard; falls back to `'69'` string.
+
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 2 / Fix E (inventory + POS)
+
+- [x] WEB-W3-001. **Stocktake barcode scan exact-match first** CLOSED 2026-04-24 — `2462bee0` — `StocktakePage.tsx` scan handler tries `GET /inventory/barcode/:code` exact-match before keyword fallback.
+- [x] WEB-W3-002. **Stocktake quick-scan absolute count mode** CLOSED 2026-04-24 — `c430a57f` — Increment Mode toggle added; without it blank qty = absolute stock count; with it each scan adds 1.
+- [x] WEB-W3-006. **Auto-reorder item picker + per-item enabled toggle** CLOSED 2026-04-24 — `79a38e01` — `AutoReorderPage.tsx` ItemPicker combobox replaces raw ID input; enabled toggle persists via existing `is_enabled` server param.
+- [x] WEB-W3-008. **Inventory age pagination** CLOSED 2026-04-24 — `16405903` — `InventoryAgePage.tsx` renderBucket now accepts page/setPage; 50 rows/page controls added.
+- [x] WEB-W3-011. **Serial numbers item picker + cross-item global search route** CLOSED 2026-04-24 — `6d2aa1c5` — `SerialNumbersPage.tsx` ItemPicker + global search input; `GET /inventory-enrich/serials/search?q=...` server route added.
+- [x] WEB-W3-012. **Shrinkage item picker** CLOSED 2026-04-24 — `027f50cc` — `ShrinkagePage.tsx` ItemPicker replaces raw item-ID input.
+- [x] WEB-W3-014. **`wholesale_price` field in inventory edit form** CLOSED 2026-04-24 — `58b5db66` — migration `149_inventory_wholesale_price.sql`; server PUT route reads/writes `wholesale_price`; `InventoryDetailPage.tsx` pricing grid extended.
+- [x] WEB-W3-015. **POS "Other" payment reference capture field** CLOSED 2026-04-24 — `ccc68eb5` — `InvoiceDetailPage.tsx` payment modal shows required Reference field when method = other; reference prepended to notes.
+- [x] WEB-W3-018. **Payment-links Customer/Invoice pickers** CLOSED 2026-04-24 — `73a71c06` — `PaymentLinksPage.tsx` ComboboxPicker searches `/customers` and `/invoices` instead of raw text inputs.
+- [x] WEB-W3-021. **Expenses receipt upload in form** CLOSED 2026-04-24 — `5eb2a82c` — `ExpensesPage.tsx` Paperclip file input; `expenseApi.uploadReceipt` added to `endpoints.ts`; calls `POST /expenses/:id/receipt`.
+- [x] WEB-W3-022. **Gift cards balance-adjustment UI** CLOSED 2026-04-24 — `c94fbf3c` — `POST /gift-cards/:id/adjust` server route (positive/negative, balance ≥ 0 guard); `AdjustModal` in `GiftCardDetailPage.tsx`; `giftCardApi.adjust` in `endpoints.ts`.
+- [x] WEB-W3-026. **Inventory age date-range filter** CLOSED 2026-04-24 — `0525e4c4` — server `age-report` subquery filters on `first_received`; `InventoryAgePage.tsx` from/to date pickers.
+- [x] WEB-W3-027. **Shrinkage filter by reason/date + export** CLOSED 2026-04-24 — `6c820d8a` — server `GET /shrinkage` accepts reason/from_date/to_date; `ShrinkagePage.tsx` filter selects + CSV export button.
+- [x] WEB-W3-028. **Print barcode fallback (BIZ-XXXXXX)** CLOSED 2026-04-24 — `6c820d8a` — server generates `BIZ-{id}` code when no SKU/UPC, persists as UPC; Print Barcode button always shown.
+- [x] WEB-W3-031. **Expenses category/date filter** CLOSED 2026-04-24 — `5eb2a82c` — `ExpensesPage.tsx` from/to date pickers wired to existing `expenseApi.list` params.
+- [x] WEB-W3-035. **Loaners search/status filter** CLOSED 2026-04-24 — `c94fbf3c` — `LoanersPage.tsx` search input + status tab filter (all/available/loaned).
+- [x] WEB-W3-036. **Catalog 2-char hint text** CLOSED 2026-04-24 — `6c820d8a` — `CatalogPage.tsx` device model filter shows "Type one more character…" hint after first keystroke.
+
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 2 / Fix D (entity workflows)
+
+- [x] WEB-W2-005. **Overview-bar status buttons send string group names, not numeric IDs** CLOSED 2026-04-24 — `1233b978` — `TicketListPage.tsx` maps group label → status_id before query param.
+- [x] WEB-W2-007. **Saved filter presets not persisted — lost on reload** CLOSED 2026-04-24 — `1233b978` — `TicketListPage.tsx` filter presets persisted via preferences route / localStorage keyed by user.
+- [x] WEB-W2-009. **Unassign sends `null as any` — type-unsafe** CLOSED 2026-04-24 — `1233b978` — `TicketSidebar.tsx` assignee field typed as `number | null`; route accepts null cleanly.
+- [x] WEB-W2-010. **Appointment note field name mismatch (`note` saved vs `notes` displayed)** CLOSED 2026-04-24 — `42e9b254` — `TicketSidebar.tsx` normalized to `notes` in DB + payload + display.
+- [x] WEB-W2-012. **DeviceEditForm silently drops `device_type`, `color`, `network`, `pre_conditions`** CLOSED 2026-04-24 — `3062bde3` — `TicketDevices.tsx` fields included in PUT payload; route accepts them.
+- [x] WEB-W2-013. **Price editing uses `prompt()` — blocked on iOS Safari** CLOSED 2026-04-24 — `2f381cdc` — `TicketPayments.tsx` `prompt()` replaced with inline modal/input.
+- [x] WEB-W2-015. **Wallet pass `window.open(blob)` blocked by popup policies** CLOSED 2026-04-24 — `5699cb5e` — `CustomerDetailPage.tsx` triggers anchor download with `download` attr instead of `window.open`.
+- [x] WEB-W2-021. **Lead appointment note field mismatch (same as WEB-W2-010)** CLOSED 2026-04-24 — `42e9b254` — `pages/leads/` same normalization to `notes`.
+- [x] WEB-W2-024. **Dead `_unusedMut` mutation variable** CLOSED 2026-04-24 — `1233b978` — `pages/tickets/TicketListPage.tsx` unused variable removed.
+- [x] WEB-W2-026. **QC sign-off button always visible regardless of status** CLOSED 2026-04-24 — `3e278dda` — `TicketDetailPage.tsx` button gated on status === ready_for_qc.
+- [x] WEB-W2-027. **Appointment `end_time` uses locale-pinned `toLocaleTimeString`** CLOSED 2026-04-24 — `42e9b254` — `TicketSidebar.tsx` switched to app date helper.
+- [x] WEB-W2-028. **`outstanding_balance` column not sortable** CLOSED 2026-04-24 — `a67ec4cb` — `CustomerListPage.tsx` sort param added.
+- [x] WEB-W2-030. **Membership date uses `toLocaleDateString()` not app helper** CLOSED 2026-04-24 — `5699cb5e` — `CustomerDetailPage.tsx` switched to app date helper.
+- [x] WEB-W2-037. **MissingPartsCard supplier links use `window.open` — popup blocker risk** CLOSED 2026-04-24 — `b0801919` — `pages/dashboard/` anchor with `target="_blank" rel="noopener"`.
+
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 2 / Fix C (settings + setup leftovers)
+
+- [x] WEB-W1-001. **POS PIN enforcement server-side** CLOSED 2026-04-24 — `ec5a617b` — `pos_pin_hash` stored as bcrypt; `enforcePosPin()` helper on POST /pos/transaction + /pos/sales; PIN check on POST /tickets (`X-POS-Pin` header, 403 on mismatch, audit log on bypass).
+- [x] WEB-W1-010. **pos_show_* key-name alignment** CLOSED 2026-04-24 — `ec5a617b` — `pos.routes.ts` replaced 6 non-existent keys with 5 canonical keys from settingsMetadata (pos_show_products, pos_show_repairs, pos_show_miscellaneous, pos_show_bundles, pos_show_out_of_stock).
+- [x] WEB-W1-019. **Invoice branding in email receipt** CLOSED 2026-04-24 — `ec5a617b` — `notifications.routes.ts` loads invoice_logo/invoice_title/invoice_slogan/invoice_footer; HTML template shows logo img, slogan subheading.
+- [x] WEB-W1-020. **invoice_payment_terms in email receipt** CLOSED 2026-04-24 — `ec5a617b` — `notifications.routes.ts` loads `invoice_payment_terms`; rendered as a paragraph before footer in HTML email.
+- [x] WEB-W1-021. **SmsVoiceSettings voice inputs — controlled React state** CLOSED 2026-04-24 — `46e266f1` — all voice section inputs converted from defaultChecked/defaultValue + DOM reads to controlled state; handleSave uses state vars.
+- [x] WEB-W1-027. **theme_primary_color CSS var live without page refresh** CLOSED 2026-04-24 — `46e266f1` — SettingsPage theme onSuccess immediately sets `document.documentElement.style.setProperty('--theme-primary', color)` AND invalidates cache keys.
+- [x] WEB-W1-028. **Webhook event list from server enum** CLOSED 2026-04-24 — `ec5a617b`+`46e266f1` — server: `GET /settings/webhook-events-enum` returns canonical list; web: SettingsPage WebhookTab useQuery fetches it; falls back to hardcoded list while loading.
+- [x] WEB-W1-032. **settingsSearchIndex filter coming_soon** CLOSED 2026-04-24 — `46e266f1` — `settingsSearchIndex.ts` queryIndex() skips entries with `status === 'coming_soon'`.
+- [x] WEB-W1-033. **findMetadataOnlyDeadKeys() in dev banner** CLOSED 2026-04-24 — `baa1731f` — AppShell.tsx imports `findMetadataOnlyDeadKeys` + `findOrphanDeadKeys` from settingsDeadToggles; useEffect (DEV only) calls both and logs drift to console.
+
 ### Web Audit Wave-WEB-2026-04-24 — Group A settings wired (Fix Agent A)
 
 - [x] WEB-WA-001. **`receipt_cfg_*_thermal` family flipped coming_soon → live.** Commit `aa0f1037`. Keys: `receipt_cfg_pre_conditions_thermal`, `_signature_thermal`, `_discount_thermal`, `_parts_thermal`, `_part_sku`, `_network_thermal`, `_service_desc_thermal`, `_po_so_thermal`, `_security_code_thermal`, `_device_location`. All were already wired end-to-end in `PrintPage.tsx` but mis-marked. Closes WEB-W1-017 partial coverage.
