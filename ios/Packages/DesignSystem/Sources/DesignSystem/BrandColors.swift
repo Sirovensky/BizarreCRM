@@ -28,10 +28,6 @@ public extension Color {
     // Used by the repair-flow and tender CTAs to express colour intent without
     // hard-coding dark/light hex values. Wired to the existing orange tokens.
 
-    /// Foreground colour on top of orange-filled CTA buttons.
-    /// Alias of `bizarreOnOrange` (= `var(--on-primary)` in the mockup CSS).
-    static let bizarreOnPrimary          = bizarreOnOrange
-
     /// Lighter/brighter variant of the brand orange used in gradient stops.
     /// Alias of `bizarreOrangeContainer` which holds the container/bright swatch.
     static let bizarreOrangeBright       = bizarreOrangeContainer
@@ -59,6 +55,5 @@ public extension ShapeStyle where Self == Color {
     // §30 — Semantic badge additions
     static var bizarreDanger:          Color { .bizarreDanger }
     static var bizarreInfo:            Color { .bizarreInfo }
-    static var bizarreOnPrimary:       Color { .bizarreOnPrimary }
     static var bizarreOrangeBright:    Color { .bizarreOrangeBright }
 }

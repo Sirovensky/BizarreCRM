@@ -63,12 +63,6 @@ public final class PosRepairFlowCoordinator {
     /// Closure called when the deposit is tendered and the invoice is created.
     public var onComplete: ((Int64) -> Void)?
 
-    /// Customer display name for the nav-bar chip on repair step screens
-    /// (mockup spec `pos-iphone-mockups.html` 1b–1e + `pos-ipad-mockups.html`
-    /// 1b–1e: "New repair · Sarah M."). Set by PosView after coordinator
-    /// construction; nil falls back to "Repair" without a customer chip.
-    public var customerDisplayName: String?
-
     // MARK: - Init
 
     public init(customerId: Int64, api: any APIClient) {
