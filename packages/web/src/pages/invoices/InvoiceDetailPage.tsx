@@ -217,8 +217,30 @@ export function InvoiceDetailPage() {
     try {
       const res = await blockchypApi.processPayment(invoiceId);
       const result = res.data?.data;
+      // @audit-fixed (WEB-FN-004 / Fixer-K 2026-04-24): the server returns
+      // HTTP 202 with `{ success: false, data: { status: 'pending_reconciliation' } }`
+      // when the terminal charge outcome is unknown (SEC-M34). Previously the UI
+      // treated that as a generic decline and hid the transactionRef the operator
+      // needs to reconcile by hand. Branch explicitly so the operator sees a
+      // distinct, non-retryable state and the receipt prompt does NOT open.
+      if (res.status === 202 || result?.status === 'pending_reconciliation') {
+        toast.error(
+          `Terminal outcome unknown — pending reconciliation${result?.transactionRef ? ` (ref ${result.transactionRef})` : ''}. Verify with the terminal before retrying.`,
+          { duration: 8000 },
+        );
+        // Refresh invoice in case server already wrote a payment row before timeout.
+        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        return;
+      }
       if (result?.success) {
-        toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
+        // @audit-fixed: surface idempotency replay so the operator knows the
+        // charge wasn't re-attempted. Avoids double-prompting for receipts on a
+        // refresh-after-success.
+        if (result.replayed) {
+          toast.success(`Payment already captured — using prior charge${result.cardType ? ` (${result.cardType} ending ${result.last4})` : ''}`);
+        } else {
+          toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
+        }
         queryClient.invalidateQueries({ queryKey: ['invoice', id] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
         setShowPayment(false);

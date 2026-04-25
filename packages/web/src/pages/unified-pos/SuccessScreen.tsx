@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail } from 'lucide-react';
+import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUnifiedPosStore } from './store';
@@ -292,21 +292,50 @@ export function SuccessScreen() {
   }
 
   // ─── Payment Received Success ──────────────────────────────────────
+  // WEB-FH-008: when the card terminal declined / errored AFTER invoice
+  // creation, render a RED warning state instead of the green checkmark.
+  // The cashier MUST notice they need to retry the charge before handing
+  // the receipt to the customer.
+  const cardDeclined = !!data.card_declined;
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 p-8">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-500/10">
-        <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-400" strokeWidth={1.5} />
-      </div>
+      {cardDeclined ? (
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-500/10">
+          <AlertTriangle className="h-12 w-12 text-red-600 dark:text-red-400" strokeWidth={1.5} />
+        </div>
+      ) : (
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-500/10">
+          <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-400" strokeWidth={1.5} />
+        </div>
+      )}
 
-      <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Payment Received!</h1>
+      <h1 className={`text-2xl font-bold ${cardDeclined ? 'text-red-700 dark:text-red-400' : 'text-surface-900 dark:text-surface-50'}`}>
+        {cardDeclined ? 'Card Declined — Retry Payment' : 'Payment Received!'}
+      </h1>
+
+      {cardDeclined && (
+        <div className="w-full max-w-md rounded-lg border-2 border-red-300 bg-red-50 p-4 text-center dark:border-red-500/40 dark:bg-red-500/10">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+            Invoice was created but the card terminal did not authorize.
+          </p>
+          {data.card_decline_message && (
+            <p className="mt-1 text-xs text-red-700 dark:text-red-400">
+              {data.card_decline_message}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-red-700 dark:text-red-400">
+            Do <strong>not</strong> release the goods. Click "View Invoice" below to retry the charge or take an alternate tender.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1.5 text-center">
         {total > 0 && (
-          <p className="text-3xl font-bold text-surface-900 dark:text-surface-100">
+          <p className={`text-3xl font-bold ${cardDeclined ? 'text-red-700 dark:text-red-400' : 'text-surface-900 dark:text-surface-100'}`}>
             ${total.toFixed(2)}
           </p>
         )}
-        {change > 0 && (
+        {change > 0 && !cardDeclined && (
           <p className="text-lg font-medium text-green-600 dark:text-green-400">
             Change: ${change.toFixed(2)}
           </p>
@@ -328,8 +357,9 @@ export function SuccessScreen() {
         )}
       </div>
 
-      {/* Receipt delivery */}
-      {invoiceId && (customerPhone || customerEmail) && (
+      {/* Receipt delivery — WEB-FH-008: suppress in declined state so the
+          cashier can't accidentally SMS/email a "paid" receipt. */}
+      {!cardDeclined && invoiceId && (customerPhone || customerEmail) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
           {customerPhone && (
             <button
@@ -356,8 +386,10 @@ export function SuccessScreen() {
 
       {/* FA-L4 — scannable receipt QR. Points the customer at the
           invoice detail page so they can pull up a copy on their phone
-          without needing an SMS/email. */}
-      {invoiceId && serverUrl && (
+          without needing an SMS/email.
+          WEB-FH-008: suppress on card-declined so the customer doesn't
+          walk away with a QR pointing at an unpaid invoice. */}
+      {!cardDeclined && invoiceId && serverUrl && (
         <div className="flex flex-col items-center gap-1 pt-2">
           <QrReceiptCode
             value={`${serverUrl}/invoices/${invoiceId}`}
@@ -369,13 +401,18 @@ export function SuccessScreen() {
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-        <button
-          onClick={handlePrintReceipt}
-          className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
-        >
-          <Printer className="h-4 w-4" />
-          Print Receipt
-        </button>
+        {/* WEB-FH-008: Print Receipt is hidden when the card declined to
+            prevent the cashier from handing a misleading receipt to a
+            customer whose payment never actually authorized. */}
+        {!cardDeclined && (
+          <button
+            onClick={handlePrintReceipt}
+            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+          >
+            <Printer className="h-4 w-4" />
+            Print Receipt
+          </button>
+        )}
         {invoiceId && (
           <button
             onClick={handleViewInvoice}

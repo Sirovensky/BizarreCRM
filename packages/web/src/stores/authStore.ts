@@ -133,6 +133,44 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 // ──────────────────────────────────────────────────────────────────
+// WEB-FO-002: cross-tab auth sync via the `storage` event.
+// localStorage writes in tab A fire a `storage` event in every other
+// tab on the same origin. We listen for changes to `accessToken` and
+// either force-logout (token removed in another tab) or re-hydrate
+// the user (token added/changed in another tab — typically a sign-in
+// or silent refresh). Without this, two tabs of the same user can
+// drift indefinitely: one logs out and the other keeps showing
+// protected pages until the next 401 round-trip.
+// ──────────────────────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e: StorageEvent) => {
+    if (e.key !== 'accessToken') return;
+    // Token removed in another tab → mirror the logout here. Don't
+    // call api/logout (the other tab already did) and don't navigate
+    // if we're already on /login.
+    if (e.newValue === null) {
+      const wasAuthed = useAuthStore.getState().isAuthenticated;
+      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+      emitAuthCleared();
+      if (wasAuthed && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+      return;
+    }
+    // Token added/changed in another tab → silently re-hydrate the
+    // user via /auth/me so this tab picks up the new identity (login
+    // or switchUser elsewhere). checkAuth() also covers refresh-token
+    // rotation so this tab uses the freshest access token on next req.
+    if (e.newValue && e.newValue !== e.oldValue) {
+      // Wipe per-user caches in this tab before /auth/me lands so a
+      // tenant-switch doesn't bleed state across tabs.
+      emitAuthCleared();
+      useAuthStore.getState().checkAuth();
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────
 // Listen for forced logouts from the API client (T9 fix)
 // ──────────────────────────────────────────────────────────────────
 // client.ts emits a `logout-required` event whenever the refresh pipeline

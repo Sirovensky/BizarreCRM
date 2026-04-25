@@ -28,6 +28,28 @@ export default {
           900: '#2b1400',   // onPrimary dark brown for cream fills
           950: '#1a0b00',
         },
+        // @audit-fixed (WEB-FM-002 / Fixer-K 2026-04-24): `bg-brand-*` /
+        // `text-brand-*` / `border-brand-*` are referenced 21+ times across
+        // Sidebar, Header, CommandPalette, DashboardPage, etc. but the palette
+        // was never declared — Tailwind silently drops the rules so the
+        // notification highlight, sidebar active indicator, and command-palette
+        // focus row rendered unstyled. Aliasing `brand` to the canonical
+        // `primary` ramp keeps the existing class names working without a
+        // 21-site rename. If a distinct brand ramp is ever introduced, swap
+        // these values; the keys are stable.
+        brand: {
+          50:  '#fffdf8',
+          100: '#fdf5e1',
+          200: '#fdeed0',
+          300: '#f5dca7',
+          400: '#e9c477',
+          500: '#d6a54b',
+          600: '#a66d1f',
+          700: '#7d4e14',
+          800: '#56330b',
+          900: '#2b1400',
+          950: '#1a0b00',
+        },
         accent: {
           50: '#eff6ff',
           100: '#dbeafe',

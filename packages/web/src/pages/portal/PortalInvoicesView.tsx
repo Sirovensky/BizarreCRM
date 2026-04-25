@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
 import { usePortalI18n } from './i18n';
-import { formatCurrency } from '../../utils/formatCurrency';
+import { formatCurrency } from '../../utils/format';
 
 interface PortalInvoicesViewProps {
   onBack: () => void;

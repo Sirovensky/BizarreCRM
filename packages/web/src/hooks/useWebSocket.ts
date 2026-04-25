@@ -184,6 +184,12 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
 // ---------------------------------------------------------------------------
 const MAX_BACKOFF = 30_000;
 const INITIAL_BACKOFF = 1_000;
+// WEB-FO-003: NAT idle timeouts (60-300s on cellular / corp NAT) silently
+// half-close WebSockets without firing onclose. Send a {type:'ping'} every
+// 30s and force-close the socket if no message of any kind has arrived
+// within the watchdog window. The browser's onclose then fires reconnect.
+const PING_INTERVAL_MS = 30_000;
+const PONG_TIMEOUT_MS = 60_000;
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
@@ -200,6 +206,16 @@ export function useWebSocket() {
   const unmountedRef = useRef(false);
   const authRejectedRef = useRef(false);
   const invalidationMap = useRef(buildInvalidationMap());
+  // WEB-FO-003 heartbeat plumbing.
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastMessageAtRef = useRef<number>(0);
+
+  const stopHeartbeat = useCallback(() => {
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+      pingTimerRef.current = null;
+    }
+  }, []);
   // Stable ref so connect() can call scheduleReconnect() without a circular
   // useCallback dependency or capturing a stale closure value.
   const scheduleReconnectRef = useRef<() => void>(() => { /* populated below */ });
@@ -213,13 +229,14 @@ export function useWebSocket() {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+    stopHeartbeat();
     if (wsRef.current) {
       wsRef.current.onclose = null; // Prevent reconnect on intentional close
       wsRef.current.close();
       wsRef.current = null;
     }
     setConnected(false);
-  }, [setConnected]);
+  }, [setConnected, stopHeartbeat]);
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
@@ -249,6 +266,9 @@ export function useWebSocket() {
     };
 
     ws.onmessage = (event) => {
+      // WEB-FO-003: any message proves the socket is still alive end-to-end.
+      // Track receipt so the watchdog interval can detect a half-open NAT.
+      lastMessageAtRef.current = Date.now();
       try {
         const msg = JSON.parse(event.data);
         const { type, data, success } = msg;
@@ -259,6 +279,22 @@ export function useWebSocket() {
             setConnected(true);
             authRejectedRef.current = false;
             backoffRef.current = INITIAL_BACKOFF; // Reset backoff on successful auth
+            // Start heartbeat now that we are authed. Server replies with
+            // {type:'pong'} which is treated as any other message above.
+            stopHeartbeat();
+            lastMessageAtRef.current = Date.now();
+            pingTimerRef.current = setInterval(() => {
+              const sock = wsRef.current;
+              if (!sock || sock.readyState !== WebSocket.OPEN) return;
+              // Watchdog: if the socket has been silent past PONG_TIMEOUT_MS
+              // the connection is half-open. Force-close so onclose fires
+              // and scheduleReconnect kicks in.
+              if (Date.now() - lastMessageAtRef.current > PONG_TIMEOUT_MS) {
+                try { sock.close(4000, 'heartbeat-timeout'); } catch { /* ignore */ }
+                return;
+              }
+              try { sock.send(JSON.stringify({ type: 'ping', t: Date.now() })); } catch { /* ignore */ }
+            }, PING_INTERVAL_MS);
           } else {
             // Auth explicitly rejected — stop reconnecting with this token
             authRejectedRef.current = true;
@@ -266,6 +302,10 @@ export function useWebSocket() {
           }
           return;
         }
+
+        // Server pong (or implicit pong) — already counted via
+        // lastMessageAtRef above. Don't fan out to invalidation map.
+        if (type === 'pong') return;
 
         // Store last message
         setLastMessage({ type, data });
@@ -311,6 +351,7 @@ export function useWebSocket() {
     ws.onclose = (event) => {
       setConnected(false);
       wsRef.current = null;
+      stopHeartbeat();
       // Don't reconnect on auth failure close codes (4001 = auth rejected, 4003 = forbidden)
       if (event.code === 4001 || event.code === 4003) {
         authRejectedRef.current = true;
@@ -322,7 +363,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [getToken, setConnected, setLastMessage]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [getToken, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;

@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import { superAdminApi, type SuperAdminTenant } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { SUPER_ADMIN_TOKEN_KEY, SUPER_ADMIN_LOGOUT_EVENT } from '@/api/client';
+import { SUPER_ADMIN_LOGOUT_EVENT, superAdminTokenStore } from '@/api/client';
 import {
   setImpersonationSession,
 } from '@/components/ImpersonationBanner';
@@ -64,7 +64,8 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
         setError('No token in response');
         return;
       }
-      localStorage.setItem(SUPER_ADMIN_TOKEN_KEY, token);
+      // WEB-FJ-001: token in sessionStorage so it dies with the tab.
+      superAdminTokenStore.set(token);
       onSuccess();
     } catch (err: unknown) {
       const msg =
@@ -248,7 +249,7 @@ function TenantRow({ tenant }: TenantRowProps) {
 
 export function TenantsListPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    () => Boolean(localStorage.getItem(SUPER_ADMIN_TOKEN_KEY)),
+    () => Boolean(superAdminTokenStore.get()),
   );
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -309,7 +310,7 @@ export function TenantsListPage() {
             <option value="deleted">Deleted</option>
           </select>
           <button
-            onClick={() => { localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY); setIsAuthenticated(false); }}
+            onClick={() => { superAdminTokenStore.remove(); setIsAuthenticated(false); }}
             className="px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800"
           >
             Sign out

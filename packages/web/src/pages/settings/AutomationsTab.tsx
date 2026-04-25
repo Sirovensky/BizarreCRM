@@ -363,6 +363,29 @@ function AutomationModal({
     const cleanAction = Object.fromEntries(
       Object.entries(actionConfig).filter(([, v]) => v !== undefined && v !== '')
     );
+    // WEB-FK-005: client-side loop detection. The dangerous shape is
+    // trigger=ticket_status_changed paired with action=change_status — every
+    // status flip the rule does fires the rule again. Reject when the
+    // trigger isn't narrowed to a specific destination that differs from
+    // the action's target. Even the "narrowed to same status" case is a
+    // foot-gun (rule fires forever as long as the system keeps re-emitting
+    // the event), so we forbid it. The only safe shape is when the trigger
+    // is constrained to a `to_status_id` that's NOT equal to the action's
+    // `status_id` — in that case the action moves the ticket out of the
+    // trigger window.
+    if (triggerType === 'ticket_status_changed' && actionType === 'change_status') {
+      const triggerTo = cleanTrigger.to_status_id ? Number(cleanTrigger.to_status_id) : null;
+      const actionStatus = cleanAction.status_id ? Number(cleanAction.status_id) : null;
+      const wouldLoop = triggerTo === null || actionStatus === null || triggerTo === actionStatus;
+      if (wouldLoop) {
+        toast.error(
+          'Loop detected: this rule changes a status while listening for status changes. ' +
+          'Narrow the trigger to a specific "To Status" different from the action target.',
+          { duration: 7000 },
+        );
+        return;
+      }
+    }
     onSave({ name: name.trim(), trigger_type: triggerType, trigger_config: cleanTrigger, action_type: actionType, action_config: cleanAction });
   }
 

@@ -313,6 +313,30 @@ client.interceptors.response.use(
       toast.error(serverMsg ?? 'Server error — please try again.');
     }
 
+    // WEB-FO-001: surface 409 Conflict on mutating requests so concurrent
+    // edits don't silently overwrite a co-worker. Last-write-wins races on
+    // tickets/invoices were producing "the status pill jumps under your
+    // cursor" UX with zero feedback. We don't add an If-Match header here
+    // (server-side optimistic-concurrency is a larger change), but if the
+    // server already returns 409 (e.g. version-locked routes), the user
+    // now learns about it. Filtered to write methods so list-level 409s
+    // from things like duplicate-create flows bubble through their own
+    // handlers untouched.
+    const method = (originalRequest?.method ?? '').toLowerCase();
+    if (
+      status === 409 &&
+      (method === 'put' || method === 'patch' || method === 'post' || method === 'delete')
+    ) {
+      const serverMsg =
+        typeof error.response?.data?.message === 'string'
+          ? error.response.data.message
+          : null;
+      toast.error(
+        serverMsg ?? 'This item was updated elsewhere — refresh to see the latest changes.',
+        { id: 'conflict-409' }, // dedupe burst on rapid double-click
+      );
+    }
+
     return Promise.reject(error);
   },
 );
@@ -322,11 +346,53 @@ export { client as api };
 
 // ──────────────────────────────────────────────────────────────────
 // Super-admin axios client — uses a separate token stored under
-// 'superAdminToken' in localStorage. Does NOT participate in the
-// regular tenant refresh pipeline.
+// 'superAdminToken'. Does NOT participate in the regular tenant
+// refresh pipeline.
+//
+// WEB-FJ-001: SA token now lives in sessionStorage (not localStorage)
+// — XSS still reads it while the tab is open, but a stolen token does
+// not survive tab close, no cross-tab leak via storage events, and a
+// reboot/reopen does not silently re-authenticate. Helpers below
+// centralise read/write/remove so all call-sites stay consistent;
+// `superAdminTokenStore` is the only thing that should touch the
+// underlying storage.
 // ──────────────────────────────────────────────────────────────────
 export const SUPER_ADMIN_TOKEN_KEY = 'superAdminToken';
 export const SUPER_ADMIN_LOGOUT_EVENT = 'bizarre-crm:super-admin-logout';
+
+export const superAdminTokenStore = {
+  get(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      // Migrate any legacy localStorage token from before WEB-FJ-001 so
+      // existing operators don't get an unexpected forced sign-out.
+      const legacy = window.localStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+      if (legacy) {
+        window.sessionStorage.setItem(SUPER_ADMIN_TOKEN_KEY, legacy);
+        window.localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+        return legacy;
+      }
+      return window.sessionStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set(token: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(SUPER_ADMIN_TOKEN_KEY, token);
+      // Clear any legacy localStorage residue.
+      window.localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+    } catch { /* quota / privacy mode — ignore */ }
+  },
+  remove(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+      window.localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+    } catch { /* ignore */ }
+  },
+};
 
 export const superAdminClient = axios.create({
   baseURL: '/super-admin/api',
@@ -334,7 +400,7 @@ export const superAdminClient = axios.create({
 });
 
 superAdminClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+  const token = superAdminTokenStore.get();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -350,8 +416,8 @@ superAdminClient.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     if (status === 401 || status === 403) {
-      if (localStorage.getItem(SUPER_ADMIN_TOKEN_KEY)) {
-        localStorage.removeItem(SUPER_ADMIN_TOKEN_KEY);
+      if (superAdminTokenStore.get()) {
+        superAdminTokenStore.remove();
         try {
           window.dispatchEvent(new CustomEvent(SUPER_ADMIN_LOGOUT_EVENT));
         } catch (err) {

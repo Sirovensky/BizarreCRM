@@ -35,12 +35,34 @@ export function initCurrencyFromSettings(code: string | undefined | null, locale
   }
 }
 
-export function formatCurrency(amount: number | null | undefined, currencyOverride?: string): string {
+// @audit-fixed (WEB-FM-001 / Fixer-K 2026-04-24): merged the standalone
+// portal-safe `formatCurrency` (formerly utils/formatCurrency.ts) into this
+// canonical helper. Third positional arg accepts an explicit locale so portal
+// pages — which run before AppShell ever calls `initCurrencyFromSettings` —
+// can format using the visitor's preferred language while still picking the
+// tenant's currency from the explicit override. When `localeOverride` is
+// omitted we keep the previous behaviour of using the module-level locale.
+export function formatCurrency(
+  amount: number | null | undefined,
+  currencyOverride?: string,
+  localeOverride?: string,
+): string {
+  const code = currencyOverride ?? _currencyCode;
+  const useCustomLocale = !!localeOverride;
+  const fmt = useCustomLocale || currencyOverride
+    ? buildFormatter(code, localeOverride ?? _locale)
+    : _currencyFmt;
   if (amount == null || isNaN(Number(amount))) {
-    return buildFormatter(currencyOverride ?? _currencyCode).format(0);
+    return fmt.format(0);
   }
-  const fmt = currencyOverride ? buildFormatter(currencyOverride) : _currencyFmt;
-  return fmt.format(Number(amount));
+  try {
+    return fmt.format(Number(amount));
+  } catch (err) {
+    // Fallback for unknown currency codes — surface the bad code so misconfigured
+    // tenant currency settings don't hide behind a silent USD substitution.
+    console.error(`[formatCurrency] format failed for code "${code}" — falling back to USD`, err);
+    return new Intl.NumberFormat(localeOverride ?? _locale, { style: 'currency', currency: 'USD' }).format(Number(amount) || 0);
+  }
 }
 
 /**

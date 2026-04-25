@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { toCsvRow } from '@/utils/csv';
+import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
 
 // CROSS3: "service" tab removed — services are non-stockable labor and
 // live in the `repair_services` table, not `inventory_items`. Existing
@@ -60,6 +60,9 @@ export function InventoryListPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
   const [priceAdjustPct, setPriceAdjustPct] = useState('');
+  // WEB-FH-012: required reason note for bulk price adjustments so the
+  // audit log captures WHO + WHY, matching the per-item adjustStock flow.
+  const [priceAdjustReason, setPriceAdjustReason] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<any[]>([]);
@@ -234,8 +237,8 @@ export function InventoryListPage() {
   });
 
   const bulkMutation = useMutation({
-    mutationFn: ({ ids, action, value }: { ids: number[]; action: string; value?: string | number }) =>
-      inventoryApi.bulkAction(ids, action, value),
+    mutationFn: ({ ids, action, value, reason }: { ids: number[]; action: string; value?: string | number; reason?: string }) =>
+      inventoryApi.bulkAction(ids, action, value, reason),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       setSelectedIds(new Set());
@@ -303,18 +306,25 @@ export function InventoryListPage() {
     const pct = parseFloat(priceAdjustPct);
     if (isNaN(pct)) { toast.error('Enter a valid percentage'); return; }
     if (pct < -100 || pct > 500) { toast.error('Adjustment must be between -100% and +500%'); return; }
-    bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct });
+    // WEB-FH-012: require an audit reason. Mirrors the adjustStock note flow
+    // so compliance can answer "why did margin drop on these SKUs?".
+    const reason = priceAdjustReason.trim();
+    if (reason.length < 3) { toast.error('Enter a reason for the price change'); return; }
+    bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct, reason });
     setShowBulkPriceModal(false);
     setPriceAdjustPct('');
+    setPriceAdjustReason('');
   };
 
   // CSV Export
   // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
+  // WEB-FH-010: prepend UTF-8 BOM so Excel on Windows opens accented /
+  //   non-Latin SKUs and manufacturer names without mojibake.
   const handleExport = () => {
     const headers = ['id', 'name', 'sku', 'item_type', 'in_stock', 'cost_price', 'retail_price', 'reorder_level', 'manufacturer', 'category'];
     const rows = items.map(i => headers.map(h => i[h] ?? ''));
     const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -324,12 +334,15 @@ export function InventoryListPage() {
   };
 
   // CSV Import parse
+  // WEB-FH-011: use shared RFC-4180 parser instead of naive split(',') so
+  //   quoted fields containing commas (e.g. `"Smith, Jr Inc."`) round-trip
+  //   correctly with our own export.
   const parseImportCsv = (text: string) => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) { toast.error('CSV must have a header row and at least one data row'); return; }
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
     const rows = lines.slice(1).map(line => {
-      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       return obj;
@@ -870,7 +883,7 @@ export function InventoryListPage() {
           <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
-              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); }} className="text-surface-400 hover:text-surface-600">
+              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -881,6 +894,24 @@ export function InventoryListPage() {
               <input type="number" value={priceAdjustPct} onChange={e => setPriceAdjustPct(e.target.value)}
                 placeholder="e.g. 10 for +10%, -15 for -15%"
                 className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2" />
+            </div>
+            {/* WEB-FH-012: reason captured for audit trail (margin changes
+                must be defensible to tax/compliance). Server requires it. */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                Reason <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={priceAdjustReason}
+                onChange={e => setPriceAdjustReason(e.target.value)}
+                maxLength={240}
+                placeholder="e.g. Supplier cost increase, MAP correction, seasonal markdown"
+                className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                Recorded in the inventory audit log alongside who + when.
+              </p>
             </div>
             {pricePreviewItems.length > 0 && (
               <div className="flex-1 overflow-auto mb-4 max-h-60">
@@ -905,12 +936,15 @@ export function InventoryListPage() {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); }}
+              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                 Cancel
               </button>
-              <button onClick={handlePriceUpdate} disabled={!priceAdjustPct}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+              <button
+                onClick={handlePriceUpdate}
+                disabled={!priceAdjustPct || priceAdjustReason.trim().length < 3}
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
                 Apply to {selectedIds.size} items
               </button>
             </div>

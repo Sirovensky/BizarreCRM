@@ -41,7 +41,7 @@ import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
-import { toCsvRow } from '@/utils/csv';
+import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
 import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
@@ -318,9 +318,11 @@ export function CustomerListPage() {
       } while (exportPage <= totalPages);
 
       // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
+      // WEB-FH-010: prepend UTF-8 BOM so accented / CJK customer names open
+      //   correctly in Excel on Windows (default code page = CP-1252).
       const rows = all.map((c: any) => headers.map(h => c[h] ?? ''));
       const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -335,13 +337,16 @@ export function CustomerListPage() {
     }
   };
 
+  // WEB-FH-011: use shared RFC-4180 parser. Naive split(',') breaks any
+  //   row whose customer name was exported as `"Smith, John"` — which is
+  //   exactly what our own export produces, so round-tripping was busted.
   const parseImportCsv = (text: string) => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) return;
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
     const rows: ImportCustomerItem[] = [];
     for (const line of lines.slice(1)) {
-      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       // Server requires `first_name`; skip rows missing it rather than

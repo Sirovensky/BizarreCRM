@@ -358,9 +358,14 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then
-      // captures the card. On terminal failure we still show the success screen
-      // (invoice is created) and surface a warning so the cashier can retry
-      // the charge from the invoice detail page.
+      // captures the card. On terminal failure we still need the success
+      // screen (invoice is created and must be reachable for retry) but
+      // WEB-FH-008: track the decline so the screen renders a RED warning
+      // instead of the green "Payment Received!" — a toast under fluorescent
+      // POS lights is too easy to miss, and the cashier was handing receipts
+      // to customers whose card had actually declined.
+      let cardDeclined = false;
+      let cardDeclineMessage: string | null = null;
       if (!splitMode && method === 'Card' && blockchypConfigured) {
         const invoiceId: number | undefined = res.data?.data?.invoice?.id;
         if (invoiceId) {
@@ -368,19 +373,27 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             const terminalRes = await blockchypApi.processPayment(invoiceId);
             const terminalResult = terminalRes.data?.data;
             if (!terminalResult?.success) {
+              cardDeclined = true;
+              cardDeclineMessage =
+                terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
               toast.error(
-                `Invoice created but terminal declined: ${terminalResult?.error || terminalResult?.responseDescription || 'Payment declined'}. Retry from the invoice page.`,
+                `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
                 { duration: 8000 },
               );
             }
           } catch (terminalErr: unknown) {
-            const msg = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
-            toast.error(`Invoice created but terminal charge failed: ${msg}. Retry from the invoice page.`, { duration: 8000 });
+            cardDeclined = true;
+            cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+            toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
           }
         }
       }
 
-      setShowSuccess({ ...res.data.data, mode: 'checkout' });
+      setShowSuccess({
+        ...res.data.data,
+        mode: 'checkout',
+        ...(cardDeclined ? { card_declined: true, card_decline_message: cardDeclineMessage } : {}),
+      });
       // Advance the checkout tutorial when payment is completed.
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       onClose();

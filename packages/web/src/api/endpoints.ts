@@ -311,8 +311,10 @@ export const inventoryApi = {
     api.get('/inventory', { params }),
   manufacturers: () => api.get('/inventory/manufacturers'),
   importCsv: (items: ImportInventoryItem[]) => api.post('/inventory/import-csv', { items }),
-  bulkAction: (item_ids: number[], action: string, value?: string | number) =>
-    api.post('/inventory/bulk-action', { item_ids, action, value }),
+  // WEB-FH-012: `reason` accompanies bulk price updates for audit-trail
+  //   compliance. Server requires it when action='update_price'.
+  bulkAction: (item_ids: number[], action: string, value?: string | number, reason?: string) =>
+    api.post('/inventory/bulk-action', { item_ids, action, value, reason }),
   get: (id: number) => api.get(`/inventory/${id}`),
   create: (data: CreateInventoryInput) => api.post('/inventory', data),
   // @audit-fixed: switched from `Partial<InventoryItem>` to a write-safe DTO
@@ -959,11 +961,45 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-checkin-signature'),
   captureSignature: (ticketId: number) =>
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-signature', { ticketId }),
+  // @audit-fixed (WEB-FN-004 / Fixer-K 2026-04-24): the typed response was
+  // missing six fields the server actually returns across its three branches:
+  //   1. Idempotency replay (blockchyp.routes.ts:245-254): adds `replayed: true`
+  //   2. Indeterminate / pending-reconciliation (HTTP 202, blockchyp.routes.ts:318-326):
+  //      `success: false` + `status: 'pending_reconciliation'` + `transactionRef`
+  //   3. Success path: `transactionRef`, `signatureFilePath`, `testMode`, `receiptSuggestions`
+  // Without these the UI couldn't tell a 200 success from a 202 pending — the
+  // exact bug SEC-M34 was trying to prevent. Pages should branch on
+  // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
+  // recording a "successful" payment.
   processPayment: (invoiceId: number, tip?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    return api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>(
+    return api.post<{
+      success: boolean;
+      data: {
+        success: boolean;
+        // Idempotency replay marker — set when the server returned a previously
+        // captured charge for the same idempotency key. UI MUST NOT double-record.
+        replayed?: boolean;
+        // 202 indeterminate outcome — terminal charge result unknown. UI MUST
+        // surface a "pending reconciliation" state instead of treating as success.
+        status?: 'pending_reconciliation';
+        transactionId?: string;
+        transactionRef?: string;
+        authCode?: string;
+        amount?: string;
+        cardType?: string;
+        last4?: string;
+        signatureFile?: string;
+        signatureFilePath?: string;
+        testMode?: boolean;
+        receiptSuggestions?: Record<string, unknown>;
+        message?: string;
+        error?: string;
+        responseDescription?: string;
+      };
+    }>(
       '/blockchyp/process-payment',
       { invoiceId, tip, idempotency_key: idempotencyKey },
     );
@@ -1231,7 +1267,14 @@ const publicApi = axios.create({
 export const signupApi = {
   checkSlug: (slug: string) =>
     publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
-  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; captcha_token?: string }) =>
+  // @audit-fixed (WEB-FN-001 / Fixer-K 2026-04-24): server destructures
+  // `admin_first_name` + `admin_last_name` from the body (signup.routes.ts:478)
+  // and persists them through `provisionTenant`, but the typed wrapper here
+  // omitted both fields so callers had no way to pass them — every tenant
+  // admin record landed with empty `first_name` / `last_name`. Adding them
+  // as optional fields keeps the existing slug-only signup flow working
+  // while letting future signup forms collect and forward names.
+  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; admin_first_name?: string; admin_last_name?: string; captcha_token?: string }) =>
     publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string }; message?: string }>('/signup', data),
 };
 

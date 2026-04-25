@@ -367,7 +367,7 @@ export function InventoryDetailPage() {
             <div className="card p-6">
               <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Barcode</h2>
               <div className="flex justify-center">
-                <img src={barcodeUrl} alt="Barcode" className="max-w-full" />
+                <img src={barcodeUrl} alt="Barcode" loading="lazy" decoding="async" className="max-w-full" />
               </div>
             </div>
           )}

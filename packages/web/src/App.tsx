@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
-import { SUPER_ADMIN_TOKEN_KEY } from './api/client';
+import { superAdminTokenStore } from './api/client';
 import { extractApiError } from './utils/apiError';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -17,7 +17,6 @@ const SetupPage = lazy(() => import('./pages/setup/SetupPage').then(m => ({ defa
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const TicketListPage = lazy(() => import('./pages/tickets/TicketListPage').then(m => ({ default: m.TicketListPage })));
 const TicketDetailPage = lazy(() => import('./pages/tickets/TicketDetailPage').then(m => ({ default: m.TicketDetailPage })));
-// const TicketWizard = lazy(() => import('./pages/tickets/TicketWizard').then(m => ({ default: m.TicketWizard })));
 const CustomerListPage = lazy(() => import('./pages/customers/CustomerListPage').then(m => ({ default: m.CustomerListPage })));
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
 const CustomerCreatePage = lazy(() => import('./pages/customers/CustomerCreatePage').then(m => ({ default: m.CustomerCreatePage })));
@@ -181,7 +180,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * page component is not even constructed inside the AppShell render tree.
  */
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
-  const hasSaToken = Boolean(localStorage.getItem(SUPER_ADMIN_TOKEN_KEY));
+  // WEB-FJ-001: SA token in sessionStorage. Reading via the helper also
+  // migrates any legacy localStorage value over to sessionStorage on first
+  // access so existing logged-in operators don't bounce.
+  const hasSaToken = Boolean(superAdminTokenStore.get());
   if (!hasSaToken) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-4">

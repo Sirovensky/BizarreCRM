@@ -106,7 +106,14 @@ export function PhotoCapturePage() {
         </p>
         <p className="text-gray-600 text-sm mt-4">You can close this page now.</p>
         <button
-          onClick={() => { setUploaded(false); setPhotos([]); }}
+          onClick={() => {
+            // WEB-FK-002: revoke blob URLs from the just-uploaded batch BEFORE
+            // clearing photos so they don't leak. The unmount cleanup reads
+            // photosRef which has already been reset to [] by then.
+            photosRef.current.forEach((p) => URL.revokeObjectURL(p.preview));
+            setUploaded(false);
+            setPhotos([]);
+          }}
           className="mt-6 px-6 py-3 bg-primary-600 text-white rounded-2xl font-semibold text-sm"
         >
           Add More Photos

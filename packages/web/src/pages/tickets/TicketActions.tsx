@@ -10,6 +10,7 @@ import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { safeColor } from '@/utils/safeColor';
+import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 import type { Ticket, TicketStatus, TicketDevice } from '@bizarre-crm/shared';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -71,20 +72,41 @@ function HeaderStatusDropdown({
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 min-w-[18rem] rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
           <div className="max-h-80 overflow-y-auto py-1">
-            {statuses.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => { onSelect(s.id); setOpen(false); }}
-                className={cn(
-                  'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700',
-                  s.id === currentStatus?.id && 'bg-surface-50 dark:bg-surface-700',
-                )}
-              >
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: safeColor(s.color) }} />
-                <span className="text-surface-700 dark:text-surface-200" title={s.name}>{s.name}</span>
-                {s.id === currentStatus?.id && <Check className="ml-auto h-4 w-4 shrink-0 text-primary-500" />}
-              </button>
-            ))}
+            {statuses.map((s) => {
+              // WEB-FK-001: forbid + confirm flow for dangerous transitions
+              // (e.g. reopening a closed ticket or flipping closed<->cancelled).
+              const verdict = evaluateTicketTransition(currentStatus, s);
+              const isForbidden = verdict.kind === 'forbidden';
+              const handleClick = () => {
+                if (isForbidden) {
+                  toast.error(verdict.reason);
+                  return;
+                }
+                if (verdict.kind === 'confirm') {
+                  if (!window.confirm(verdict.reason)) return;
+                }
+                onSelect(s.id);
+                setOpen(false);
+              };
+              return (
+                <button
+                  key={s.id}
+                  onClick={handleClick}
+                  disabled={isForbidden}
+                  title={isForbidden ? verdict.reason : undefined}
+                  aria-disabled={isForbidden}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700',
+                    s.id === currentStatus?.id && 'bg-surface-50 dark:bg-surface-700',
+                    isForbidden && 'opacity-40 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent',
+                  )}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: safeColor(s.color) }} />
+                  <span className="text-surface-700 dark:text-surface-200" title={s.name}>{s.name}</span>
+                  {s.id === currentStatus?.id && <Check className="ml-auto h-4 w-4 shrink-0 text-primary-500" />}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

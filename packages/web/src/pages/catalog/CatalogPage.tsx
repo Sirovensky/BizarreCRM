@@ -557,7 +557,9 @@ export function CatalogPage() {
                 {/* Image */}
                 <div className="h-28 rounded-lg bg-surface-50 dark:bg-surface-700 flex items-center justify-center overflow-hidden">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-1" />
+                    {/* WEB-FF-013: lazy-load catalog grid imgs — long lists
+                        (100+ products) shouldn't fetch every thumbnail upfront. */}
+                    <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
                   ) : (
                     <Package className="h-10 w-10 text-surface-300" />
                   )}
@@ -657,7 +659,7 @@ export function CatalogPage() {
             </div>
 
             {importModal.image_url && (
-              <img src={importModal.image_url} alt={importModal.name} className="h-24 w-full object-contain rounded-lg bg-surface-50 dark:bg-surface-700 mb-3" />
+              <img src={importModal.image_url} alt={importModal.name} loading="lazy" decoding="async" className="h-24 w-full object-contain rounded-lg bg-surface-50 dark:bg-surface-700 mb-3" />
             )}
 
             <p className="text-sm font-medium text-surface-800 dark:text-surface-200 mb-1">{importModal.name}</p>

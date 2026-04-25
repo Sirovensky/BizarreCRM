@@ -1,10 +1,9 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '../shared/CommandPalette';
-import { KeyboardShortcutsPanel } from '../shared/KeyboardShortcutsPanel';
 import { TrialBanner } from '../shared/TrialBanner';
 import { UpgradeModal } from '../shared/UpgradeModal';
 import { useUiStore } from '@/stores/uiStore';
@@ -17,6 +16,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { OfflineBanner } from '@/components/shared/OfflineBanner';
 
 // Shape of the augmented config payload returned by `settingsApi.getConfig()`.
 // Every field is optional because the server merges store config with env
@@ -29,7 +29,6 @@ interface ServerConfigPayload {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
-  const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
   const [devBannerDismissed, dismissDevBanner] = useDismissible('dev-banner');
   const location = useLocation();
   const navigate = useNavigate();
@@ -157,6 +156,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={{ '--dev-banner-h': (isDev && !devBannerDismissed) ? '28px' : '0px' } as React.CSSProperties}
       >
         <ImpersonationBanner />
+        {/* WEB-FO-004: global offline indicator. Renders nothing while
+            navigator.onLine is true; flips to a high-visibility amber bar
+            the moment the browser fires an `offline` event. */}
+        <OfflineBanner />
         <Header
           hamburgerButton={
             <button
@@ -192,9 +195,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global command palette */}
       <CommandPalette />
-
-      {/* Keyboard shortcuts panel */}
-      <KeyboardShortcutsPanel open={shortcutsPanelOpen} onClose={() => setShortcutsPanelOpen(false)} />
 
       {/* Global confirm dialog */}
       <GlobalConfirmDialog />

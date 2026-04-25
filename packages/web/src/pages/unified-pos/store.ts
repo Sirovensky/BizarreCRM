@@ -39,6 +39,12 @@ interface CheckoutSuccessExtras {
   store_credit_issued?: number;
   checkin_default_category?: string | null;
   auto_print_label?: boolean;
+  // WEB-FH-008: when the BlockChyp terminal declined / errored AFTER the
+  // invoice was created, the cashier needs an unmissable visual cue on the
+  // success screen so they don't hand the customer a "complete" receipt.
+  // Undefined for non-card sales and successful card sales.
+  card_declined?: boolean;
+  card_decline_message?: string | null;
 }
 
 export type CheckoutSuccessPayload = CheckoutSuccessExtras & (

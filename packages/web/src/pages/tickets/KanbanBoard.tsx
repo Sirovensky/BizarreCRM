@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, timeAgo } from '@/utils/format';
+import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -208,6 +209,20 @@ export default function KanbanBoard() {
         col.tickets.some((t) => t.id === dragTicketId),
       );
       if (!sourceColumn || sourceColumn.status.id === targetStatusId) {
+        setDragTicketId(null);
+        return;
+      }
+
+      // WEB-FK-001: refuse forbidden transitions (closed<->cancelled), confirm
+      // dangerous ones (reopen closed / restore cancelled) before mutating.
+      const targetColumn = allColumns.find((c) => c.status.id === targetStatusId);
+      const verdict = evaluateTicketTransition(sourceColumn.status, targetColumn?.status);
+      if (verdict.kind === 'forbidden') {
+        toast.error(verdict.reason);
+        setDragTicketId(null);
+        return;
+      }
+      if (verdict.kind === 'confirm' && !window.confirm(verdict.reason)) {
         setDragTicketId(null);
         return;
       }
