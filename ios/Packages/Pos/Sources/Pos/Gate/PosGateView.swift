@@ -123,55 +123,52 @@ public struct PosGateView: View {
 
     // MARK: - iPad layout
 
+    // §16.28.1 fix: stripped nested NavigationSplitView. POS is already mounted
+    // inside the outer RootView NavigationSplitView; nesting another rendered
+    // a phantom sidebar-toggle that opened an empty .detailOnly column.
     private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: .constant(.detailOnly)) {
-            // Primary column hidden — .detailOnly suppresses it.
-            EmptyView()
-        } detail: {
-            ScrollView {
-                VStack(spacing: 0) {
-                    heroHeader
-                        .padding(.bottom, 12)
-                        .padding(.top, 32)
+        ScrollView {
+            VStack(spacing: 0) {
+                heroHeader
+                    .padding(.bottom, 12)
+                    .padding(.top, 32)
 
-                    fallbackOrLabel
-                        .padding(.bottom, 10)
+                fallbackOrLabel
+                    .padding(.bottom, 10)
 
-                    fallbackButtons(minHeight: 72, cornerRadius: 18)
-                        .frame(maxWidth: 680)
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
+                fallbackButtons(minHeight: 72, cornerRadius: 18)
+                    .frame(maxWidth: 680)
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
 
-                    pickupStripSection
-                        .frame(maxWidth: 680)
-                        .padding(.top, 36)
-                        .padding(.bottom, 32)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 32)
+                pickupStripSection
+                    .frame(maxWidth: 680)
+                    .padding(.top, 36)
+                    .padding(.bottom, 32)
             }
-            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-            .searchable(
-                text: $vm.query,
-                placement: .automatic,
-                prompt: "Search by name, phone, email, loyalty #, or scan customer card"
-            )
-            .keyboardShortcut("k", modifiers: [.command])
-            .overlay(alignment: .top) {
-                if vm.isSearching || !vm.results.isEmpty {
-                    searchResultsOverlay
-                        .frame(maxWidth: 680)
-                        .padding(.horizontal, 32)
-                }
-            }
-            .sheet(isPresented: $vm.isShowingPickupSheet) {
-                PickupListSheet(
-                    isPresented: $vm.isShowingPickupSheet,
-                    allPickups: vm.pickupTickets,
-                    onSelect: { vm.openPickup(id: $0) }
-                )
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+        }
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .searchable(
+            text: $vm.query,
+            placement: .automatic,
+            prompt: "Search by name, phone, email, loyalty #, or scan customer card"
+        )
+        .keyboardShortcut("k", modifiers: [.command])
+        .overlay(alignment: .top) {
+            if vm.isSearching || !vm.results.isEmpty {
+                searchResultsOverlay
+                    .frame(maxWidth: 680)
+                    .padding(.horizontal, 32)
             }
         }
-        .navigationSplitViewStyle(.prominentDetail)
+        .sheet(isPresented: $vm.isShowingPickupSheet) {
+            PickupListSheet(
+                isPresented: $vm.isShowingPickupSheet,
+                allPickups: vm.pickupTickets,
+                onSelect: { vm.openPickup(id: $0) }
+            )
+        }
         .task { await vm.loadPickups() }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: createNewTapTrigger)
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: walkInTapTrigger)

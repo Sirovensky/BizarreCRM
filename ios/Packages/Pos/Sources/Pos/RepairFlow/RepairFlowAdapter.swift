@@ -96,13 +96,17 @@ extension PosRepairFlowCoordinator: Identifiable {
 @MainActor
 public enum PosRepairRouter {
     /// Creates a fully wired coordinator ready for presentation.
+    /// `customerDisplayName` populates the nav-bar chip on repair step screens
+    /// (mockup spec for 1b–1e shows "New repair · {customer}").
     public static func makeCoordinator(
         customerId: Int64,
+        customerDisplayName: String?,
         api: any APIClient,
         onCancel: @escaping () -> Void,
         onComplete: @escaping (Int64) -> Void
     ) -> PosRepairFlowCoordinator {
         let coordinator = PosRepairFlowCoordinator(customerId: customerId, api: api)
+        coordinator.customerDisplayName = customerDisplayName
         coordinator.onCancel = onCancel
         coordinator.onComplete = onComplete
         return coordinator
