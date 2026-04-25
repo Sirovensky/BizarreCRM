@@ -315,7 +315,11 @@ export function BottomActions() {
     setCreatingTicket(true);
     try {
       const payload = buildTicketPayload(signatureFile);
-      const res = await posApi.checkoutWithTicket(payload);
+      // WEB-FH-001 / WEB-FH-002: same stable cart-session idempotency key
+      // as the checkout path — covers the create-ticket-without-payment
+      // double-submit case (button click + keyboard Enter race).
+      const idempotencyKey = useUnifiedPosStore.getState().ensureIdempotencyKey();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
       setShowSuccess({ ...res.data.data, mode: 'create_ticket' });
       // Advance the ticket tutorial when a ticket is successfully saved.
       window.dispatchEvent(new CustomEvent('pos:ticket-saved'));

@@ -39,10 +39,20 @@ function getCsrfTokenCookie(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
+// WEB-FI-001 fix: a slow upstream (DB lock, blocked event loop, hung worker)
+// previously kept axios requests pending forever — React Query never errored
+// out, error boundaries never tripped, and the user stared at a forever-spinner.
+// 30 s is generous enough for normal cold-start latency on small tenant DBs
+// while ensuring failures surface as ECONNABORTED inside a bounded window.
+// Per-route callers that need longer (file uploads, report exports) can
+// override via `client.post(url, body, { timeout: 60_000 })`.
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 const client = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true, // Send httpOnly cookies with requests
+  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
 });
 
 // ──────────────────────────────────────────────────────────────────
@@ -263,7 +273,27 @@ client.interceptors.response.use(
       try {
         const accessToken = await performRefresh();
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        return client(originalRequest);
+        // WEB-FI-003 fix: if the retried request still 401s the response was
+        // previously rejected to the caller WITHOUT a logout — the auth store
+        // still thought the user was authenticated, so the user kept seeing
+        // 401 toasts on every action (clock-skew, token-version bump, role
+        // change between issuance and use). Catch the second 401 here and
+        // forceLogout('session-expired') so the auth store + listeners flip
+        // immediately and the user is sent to /login.
+        try {
+          return await client(originalRequest);
+        } catch (retryErr) {
+          // Use a typed-narrow check rather than `any` to avoid a hard-cast.
+          const retryStatus =
+            typeof retryErr === 'object' && retryErr !== null
+              ? (retryErr as { response?: { status?: number } }).response?.status
+              : undefined;
+          if (retryStatus === 401) {
+            console.warn('Retried request still 401 after refresh; forcing logout.');
+            forceLogout('session-expired');
+          }
+          return Promise.reject(retryErr);
+        }
       } catch (refreshErr) {
         console.warn('Token refresh failed, logging out:', refreshErr);
         forceLogout('refresh-failed');

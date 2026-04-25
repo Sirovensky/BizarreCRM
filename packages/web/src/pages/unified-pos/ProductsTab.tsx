@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ShoppingCart, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -52,7 +53,27 @@ export function ProductsTab() {
       taxable: true,
       taxInclusive: !!product.tax_inclusive,
     };
-    addProduct(item);
+    // WEB-FH-004: pass available stock so the store can clamp the running
+    // cart quantity. Services (item_type==='service') have no in_stock so
+    // skip the cap. Toast warns the cashier when the cap engages.
+    const isService = product.item_type === 'service';
+    const stockCap = isService ? undefined : Number(product.in_stock ?? 0);
+    if (stockCap === 0 && !isService) {
+      toast.error(`${product.name} is out of stock`);
+      return;
+    }
+    // Look up current cart qty for this inventoryItemId BEFORE the add so
+    // we can compare against the cap and toast if we hit it.
+    const cartItems = useUnifiedPosStore.getState().cartItems;
+    const existing = cartItems.find(
+      (c) => c.type === 'product' && c.inventoryItemId === product.id,
+    );
+    const existingQty = existing && existing.type === 'product' ? existing.quantity : 0;
+    if (stockCap != null && existingQty + 1 > stockCap) {
+      toast.error(`Only ${stockCap} of "${product.name}" in stock`);
+      return;
+    }
+    addProduct(item, { stockCap });
   };
 
   return (

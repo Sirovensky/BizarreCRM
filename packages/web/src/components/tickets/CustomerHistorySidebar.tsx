@@ -36,12 +36,36 @@ function formatTicketLabel(orderId: string | number) {
   return s.startsWith('T-') ? s : `T-${s.padStart(4, '0')}`;
 }
 
+// Allow-list raw photo URLs before letting them flow into <img src>. A
+// poisoned tenant row or malicious CSV import could otherwise land
+// `data:image/svg+xml,<svg onload=...>` (the live XSS vector — `javascript:`
+// is blocked by browsers in img, but `data:` SVG is not) directly into the
+// sidebar render. Mirror the http/https-only stance from `getIFixitUrl`.
+//
+// Server-relative paths (`/uploads/...`) are accepted because they resolve
+// to the same origin which the auth/CSP boundary already trusts; protocol-
+// relative `//evil/...` is rejected explicitly.
+function isSafePhotoUrl(raw: unknown): raw is string {
+  if (typeof raw !== 'string' || raw.length === 0) return false;
+  // Reject protocol-relative form before URL parsing (it parses successfully).
+  if (raw.startsWith('//')) return false;
+  // Same-origin server path — safe.
+  if (raw.startsWith('/')) return true;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 function photoUrl(
   device?: HistoryTicket['devices'] extends Array<infer E> ? E : never,
 ): string | null {
   const photos = (device as any)?.photos;
   if (!Array.isArray(photos) || photos.length === 0) return null;
-  return photos[0]?.url || photos[0]?.path || null;
+  const candidate = photos[0]?.url || photos[0]?.path || null;
+  return isSafePhotoUrl(candidate) ? candidate : null;
 }
 
 export function CustomerHistorySidebar({

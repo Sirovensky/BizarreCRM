@@ -253,7 +253,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     : '?';
 
   return (
-    <header className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
+    <header data-app-chrome="true" className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
       <div className="flex flex-1 items-center gap-2">
         {hamburgerButton}

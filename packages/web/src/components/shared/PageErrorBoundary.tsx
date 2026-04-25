@@ -68,7 +68,13 @@ export class PageErrorBoundary extends Component<Props, State> {
       try {
         const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
         const now = Date.now();
-        const url = window.location.href;
+        // WEB-FD-023: previously keyed on `window.location.href`, which
+        // includes the search/hash fragments. A page that errors at
+        // `/tickets?status=open` then redirects to `/tickets?status=closed`
+        // (or just toggles a hash) would each get a fresh "first reload"
+        // pass and could loop indefinitely. Strip query+hash so the loop
+        // guard is by pathname only — chunk URLs do not depend on them.
+        const url = window.location.pathname;
         let alreadyTriedForThisUrl = false;
         if (raw) {
           try {

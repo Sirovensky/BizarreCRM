@@ -66,7 +66,14 @@ function useCheckoutTotals() {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * taxRate * 100) / 100;
+    // WEB-FH-006: must mirror LeftPanel.useTotals — tax on net (post-discount)
+    // taxable amount, with the discount allocated pro-rata across taxable
+    // lines. Without this, the modal-displayed tax disagrees with the
+    // server's recompute on every discounted sale.
+    const taxableShareOfDiscount =
+      subtotal > 0 ? discountAmount * (taxableAmount / subtotal) : 0;
+    const netTaxable = Math.max(0, taxableAmount - taxableShareOfDiscount);
+    const tax = Math.round(netTaxable * taxRate * 100) / 100;
     const total = Math.max(0, Math.round((subtotal + tax - discountAmount) * 100) / 100);
     const itemCount = cartItems.length;
 
@@ -342,7 +349,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
         validSplits,
       );
-      const res = await posApi.checkoutWithTicket(payload);
+      // WEB-FH-001 / WEB-FH-002: stable idempotency key for this cart-session.
+      // Reused on every retry of the SAME submit so a double-click or flaky
+      // network can't double-charge — server idempotent middleware caches by
+      // (user, url, key) for 5 minutes.
+      const idempotencyKey = store.getState().ensureIdempotencyKey();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then

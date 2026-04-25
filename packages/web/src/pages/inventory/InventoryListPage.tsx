@@ -213,6 +213,13 @@ export function InventoryListPage() {
   // Stock adjust confirmation for low-stock view
   const [stockConfirm, setStockConfirm] = useState<{ id: number; name: string; delta: number } | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState(false);
+  // Order-All queue: popup-blockers cap a single click at 1 new tab, so we
+  // present the remaining links as a list the user can click one-by-one
+  // (each click is a fresh user gesture and bypasses the quota).
+  const [orderAllQueue, setOrderAllQueue] = useState<
+    Array<{ id: number; name: string; url: string; supplier: string }>
+  >([]);
+  const [orderAllOpened, setOrderAllOpened] = useState<Set<number>>(new Set());
   const lowStockCount = lowStockData?.data?.data?.items?.length || 0;
   const manufacturers: string[] = manufacturersData?.data?.data?.manufacturers || [];
   const suppliers: any[] = suppliersData?.data?.data?.suppliers || [];
@@ -589,31 +596,48 @@ export function InventoryListPage() {
                     <>
                       <button
                         onClick={() => {
-                          // Group items by supplier source and open cart URLs
+                          // Browsers cap window.open() to 1 tab per user gesture
+                          // (popup blocker). Looping `for (...) window.open(...)`
+                          // silently drops every tab after the first. Instead:
+                          // open the first item synchronously inside the click
+                          // (counts as the gesture's allowed popup), then queue
+                          // the rest into a panel where each item is opened by
+                          // its own click — one user gesture per tab.
                           const plpItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts');
                           const msItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'mobilesentrix');
-                          let opened = 0;
+                          const validated: Array<{ id: number; name: string; url: string; supplier: string }> = [];
                           let skipped = 0;
-                          // Open each supplier URL. Validate protocol first so
-                          // a poisoned `javascript:` / `data:` URL from the
-                          // catalog can't execute code in the new window.
-                          for (const item of [...plpItems, ...msItems].slice(0, 20)) {
+                          for (const item of [...plpItems, ...msItems]) {
                             try {
                               const parsed = new URL(String(item.supplier_url));
                               if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
                                 skipped++;
                                 continue;
                               }
-                              window.open(parsed.href, '_blank', 'noopener,noreferrer');
-                              opened++;
+                              validated.push({
+                                id: Number(item.id),
+                                name: String(item.name || item.sku || `Item #${item.id}`),
+                                url: parsed.href,
+                                supplier: String(item.supplier_source || ''),
+                              });
                             } catch {
                               skipped++;
                             }
                           }
-                          if (opened > 0) toast.success(`Opened ${opened} supplier pages`);
-                          if (plpItems.length + msItems.length > 20) toast(`Showing first 20 of ${plpItems.length + msItems.length}. Open rest manually.`);
+                          if (validated.length === 0) {
+                            if (skipped > 0) toast.error(`Skipped ${skipped} item${skipped > 1 ? 's' : ''} with invalid supplier URL`);
+                            else toast.error('No supplier URLs found for these items');
+                            return;
+                          }
+                          // Open the first synchronously (within the user gesture)
+                          // and mark it as opened so the panel shows progress.
+                          const first = validated[0];
+                          window.open(first.url, '_blank', 'noopener,noreferrer');
+                          setOrderAllOpened(new Set([first.id]));
+                          setOrderAllQueue(validated);
                           if (skipped > 0) toast.error(`Skipped ${skipped} item${skipped > 1 ? 's' : ''} with invalid supplier URL`);
-                          if (opened === 0 && skipped === 0) toast.error('No supplier URLs found for these items');
+                          if (validated.length > 1) toast(`Opened 1 of ${validated.length}. Click the rest in the side panel — popup-blockers require one click per tab.`);
+                          else toast.success('Opened supplier page');
                         }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-teal-600 text-white hover:bg-teal-700 transition-colors"
                       >
@@ -1001,6 +1025,76 @@ export function InventoryListPage() {
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700"
               >
                 Dismiss All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order All on Supplier Sites — popup-blocker-safe queue */}
+      {orderAllQueue.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="order-all-title">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-5 max-h-[80vh] flex flex-col">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h3 id="order-all-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                  Order on supplier sites
+                </h3>
+                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+                  {orderAllOpened.size} of {orderAllQueue.length} opened. Click each row to open in a new tab — popup blockers require one click per tab.
+                </p>
+              </div>
+              <button
+                onClick={() => { setOrderAllQueue([]); setOrderAllOpened(new Set()); }}
+                aria-label="Close supplier order list"
+                className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ul className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1.5 mt-2">
+              {orderAllQueue.map((entry) => {
+                const opened = orderAllOpened.has(entry.id);
+                return (
+                  <li key={entry.id}>
+                    <a
+                      href={entry.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        // Each link click is its own user gesture, so the
+                        // browser allows the popup. Mark it opened for UX.
+                        setOrderAllOpened((prev) => {
+                          const next = new Set(prev);
+                          next.add(entry.id);
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        'flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-sm transition-colors',
+                        opened
+                          ? 'border-teal-200 bg-teal-50 dark:border-teal-800 dark:bg-teal-900/20'
+                          : 'border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800'
+                      )}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-surface-900 dark:text-surface-100">{entry.name}</span>
+                        <span className="block truncate text-xs text-surface-400">{entry.supplier}</span>
+                      </span>
+                      <span className="text-xs font-medium text-teal-700 dark:text-teal-300">
+                        {opened ? 'Opened ✓' : 'Open'}
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={() => { setOrderAllQueue([]); setOrderAllOpened(new Set()); }}
+                className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+              >
+                Done
               </button>
             </div>
           </div>

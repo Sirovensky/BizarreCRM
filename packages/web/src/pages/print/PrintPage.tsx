@@ -941,6 +941,15 @@ export function PrintPage() {
   const size = (params.get('size') || 'receipt80') as PaperSize;
   const isReceiptType = params.get('type') === 'receipt';
 
+  // WEB-FF-008 — opt this route out of the global app-shell print CSS so
+  // its bespoke `@page` + `@media print` rules below remain authoritative.
+  // The default print stylesheet in `globals.css` applies only when
+  // `body` does NOT carry the `print-route` class.
+  useEffect(() => {
+    document.body.classList.add('print-route');
+    return () => document.body.classList.remove('print-route');
+  }, []);
+
   // Guard against missing or non-numeric :id — `Number(undefined)` is NaN
   // and `ticketApi.get(NaN)` hits the backend with a bad id.
   const numericId = id ? Number(id) : NaN;

@@ -243,22 +243,28 @@ export const invoiceApi = {
   stats: () => api.get('/invoices/stats'),
   // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
   get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
-  // DA-6: send an idempotency key so a double-click or flaky network can't
-  // create two invoices for the same ticket. Server middleware (idempotent)
-  // caches responses keyed on (user, url, key) for 5 minutes.
-  create: (data: CreateInvoiceInput) =>
+  // DA-6 / WEB-FH-002: send an idempotency key so a double-click or flaky
+  // network can't create two invoices for the same ticket. Server middleware
+  // (idempotent) caches responses keyed on (user, url, key) for 5 minutes.
+  // The key MUST be stable across retries — caller mints once at form-open
+  // / cart-create time and passes it for every retry of the same submission.
+  // Falls back to an internal mint only if the caller didn't supply one
+  // (legacy paths). Same pattern on `recordPayment` and `posApi.checkoutWithTicket`.
+  create: (data: CreateInvoiceInput, idempotencyKey?: string) =>
     api.post('/invoices', data, {
       headers: {
         'X-Idempotency-Key':
+          idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
       },
     }),
   update: (id: number, data: UpdateInvoiceInput) => api.put(`/invoices/${id}`, data),
-  recordPayment: (id: number, data: RecordPaymentInput) =>
+  recordPayment: (id: number, data: RecordPaymentInput, idempotencyKey?: string) =>
     api.post(`/invoices/${id}/payments`, data, {
       headers: {
         'X-Idempotency-Key':
+          idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
       },
@@ -597,7 +603,22 @@ export const posApi = {
   cashOut: (data: { amount: number; reason?: string }) => api.post('/pos/cash-out', data),
   transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
-  checkoutWithTicket: (data: CheckoutWithTicketInput) => api.post('/pos/checkout-with-ticket', data),
+  // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
+  // cart-session (in the unified-pos store) and reused across every retry
+  // of the same checkout. A double-click on "Complete Checkout" or a
+  // browser-initiated retry sends the same key — server idempotent
+  // middleware returns the cached response, so we never charge twice.
+  // Caller is REQUIRED to pass a stable key; internal fallback exists only
+  // for legacy callers and should be removed once all callers migrate.
+  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string) =>
+    api.post('/pos/checkout-with-ticket', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
 };
 

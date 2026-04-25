@@ -20,12 +20,29 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
 
   async function handleApprove(id: number) {
     setApprovingId(id);
+    setError(null);
+    // Snapshot the current row so we can roll back on server failure — without
+    // the snapshot, an optimistic flip to "approved" lingers forever even when
+    // the server rejects, leaving the customer convinced they approved while
+    // the shop has no record. Capture-then-update inside a setter so we read
+    // the latest state without depending on stale closure.
+    let previous: api.EstimateSummary | undefined;
+    setEstimates(prev => {
+      previous = prev.find(e => e.id === id);
+      return prev.map(e =>
+        e.id === id ? { ...e, status: 'approved', approved_at: new Date().toISOString() } : e
+      );
+    });
     try {
       await api.approveEstimate(id);
-      setEstimates(prev => prev.map(e =>
-        e.id === id ? { ...e, status: 'approved', approved_at: new Date().toISOString() } : e
-      ));
+      // success — keep the optimistic state.
     } catch {
+      // Roll back to the captured snapshot so the row reverts to its prior
+      // (typically "sent") status and the Approve button reappears.
+      if (previous) {
+        const snapshot = previous;
+        setEstimates(prev => prev.map(e => (e.id === id ? snapshot : e)));
+      }
       setError('Failed to approve estimate. Please try again.');
     } finally {
       setApprovingId(null);

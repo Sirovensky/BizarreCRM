@@ -7,6 +7,46 @@ import { formatApiError } from '@/utils/apiError';
 
 type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
 
+// WEB-FA-014: Module-level (per-tab) cache of the most recent me() / setupStatus
+// resolution so a remount of LoginPage within `STALE_MS` does not re-hit the
+// server. Multi-tab dedup uses sessionStorage with the same TTL — the typical
+// "open 3 tabs of the dashboard while logged out" pattern previously fired N
+// /me + N /setup-status calls; with this guard the second/third tab read the
+// cached envelope synchronously and skip the network hop.
+const STALE_MS = 5_000;
+const MEM_CACHE_KEY = 'bizarre:loginpage:bootstrap';
+type LoginBootstrapCache = {
+  ts: number;
+  setupNeedsSetup: boolean | null;
+  setupIsMultiTenant: boolean | null;
+  meUser: unknown | null;
+};
+let memCache: LoginBootstrapCache | null = null;
+function readBootstrapCache(): LoginBootstrapCache | null {
+  const now = Date.now();
+  if (memCache && now - memCache.ts < STALE_MS) return memCache;
+  try {
+    const raw = sessionStorage.getItem(MEM_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LoginBootstrapCache;
+    if (parsed && typeof parsed.ts === 'number' && now - parsed.ts < STALE_MS) {
+      memCache = parsed;
+      return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+function writeBootstrapCache(entry: LoginBootstrapCache): void {
+  memCache = entry;
+  try {
+    sessionStorage.setItem(MEM_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    /* storage disabled — module-level mem cache still works */
+  }
+}
+
 function LoginError({ message, kind }: { message: string; kind: ErrorKind }) {
   const config: Record<ErrorKind, { icon: React.ReactNode; bg: string; text: string; border: string }> = {
     network: {
@@ -89,6 +129,10 @@ export function LoginPage() {
   // check, the stale promise would call setStep / setAutoChecking on an
   // unmounted component. `cancelled` flips in the cleanup and every branch
   // checks before calling a setter.
+  // WEB-FA-001 fix: previously the catch silently dropped the error,
+  // potentially leaving the user staring at an empty login card with no
+  // way to recover. Now we surface a non-fatal banner with the parsed
+  // error and log to the console for debugging.
   useEffect(() => {
     const match = window.location.pathname.match(/^\/setup\/([a-f0-9]{64})$/);
     if (!match) return;
@@ -106,8 +150,18 @@ export function LoginPage() {
           setAutoChecking(false);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[LoginPage] setupStatus failed (token path):', err);
+        const e = err as { response?: { status?: number } } | undefined;
+        if (!e?.response) {
+          setErrorKind('network');
+          setError('Cannot reach server to verify setup link. Check your connection and try again.');
+        } else {
+          setErrorKind('server');
+          setError(formatApiError(err) || 'Failed to verify setup link.');
+        }
         setAutoChecking(false);
       });
     return () => { cancelled = true; };
@@ -121,47 +175,94 @@ export function LoginPage() {
 
     let cancelled = false;
     (async () => {
-      try {
-        // Also check if shop needs first-time setup
-        const setupRes = await authApi.setupStatus();
-        if (cancelled) return;
-        const setupData = setupRes.data?.data;
-        if (setupData?.needsSetup) {
-          // Single-tenant mode: no token exists because there's no
-          // provisioning flow. Render the full first-run wizard.
-          if (setupData.isMultiTenant === false) {
-            setIsSingleTenantSetup(true);
-            setStep('firstTimeSetup');
-            setAutoChecking(false);
-            return;
+      // WEB-FA-014: Short-lived bootstrap cache (per-tab + sessionStorage)
+      // skips the network round-trip when LoginPage remounts or a sibling
+      // tab already resolved the same data within the STALE_MS window.
+      const cached = readBootstrapCache();
+      let setupData: { needsSetup?: boolean; isMultiTenant?: boolean } | null =
+        cached
+          ? { needsSetup: cached.setupNeedsSetup ?? undefined, isMultiTenant: cached.setupIsMultiTenant ?? undefined }
+          : null;
+      let cachedMeUser: unknown = cached?.meUser ?? null;
+
+      // WEB-FA-001 fix: setupStatus() failures used to fall into the same
+      // empty catch as me() failures. me() failing is the normal "no
+      // session" path (silent), but setupStatus() failing means we don't
+      // know whether to render the first-run wizard or the login form —
+      // surface that to the user instead of leaving them stuck.
+      if (!setupData) {
+        try {
+          // Also check if shop needs first-time setup
+          const setupRes = await authApi.setupStatus();
+          if (cancelled) return;
+          setupData = setupRes.data?.data ?? null;
+        } catch (err: unknown) {
+          if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.error('[LoginPage] setupStatus failed:', err);
+          const e = err as { response?: { status?: number } } | undefined;
+          if (!e?.response) {
+            setErrorKind('network');
+            setError('Cannot reach server. Check your connection and try again.');
+          } else {
+            setErrorKind('server');
+            setError(formatApiError(err) || 'Server error while checking setup status.');
           }
-          // Multi-tenant mode, no token in URL — tell the user to ask an
-          // admin for a setup link (the token path handles the rest).
-          setNeedsSetupNoToken(true);
+          // Fall through to render the login form so the user is not stuck.
           setAutoChecking(false);
           return;
         }
-
-        const res = await authApi.me();
-        if (cancelled) return;
-        // @audit-fixed: server returns `{ success, data: req.user }` — the User
-        // sits at `res.data.data`, not `res.data.data.user`. The old read kept
-        // returning undefined and silently dropped every auto-login attempt.
-        const user = res.data?.data;
-        if (user) {
-          const token = localStorage.getItem('accessToken');
-          if (token) {
-            completeLogin(token, '', user);
-            navigate('/');
-            return;
-          }
-        }
-      } catch {
-        // No valid session -- stay on login page
-        // No valid session — proceed to login form
-      } finally {
-        if (!cancelled) setAutoChecking(false);
       }
+
+      if (setupData?.needsSetup) {
+        // Single-tenant mode: no token exists because there's no
+        // provisioning flow. Render the full first-run wizard.
+        if (setupData.isMultiTenant === false) {
+          setIsSingleTenantSetup(true);
+          setStep('firstTimeSetup');
+          setAutoChecking(false);
+          return;
+        }
+        // Multi-tenant mode, no token in URL — tell the user to ask an
+        // admin for a setup link (the token path handles the rest).
+        setNeedsSetupNoToken(true);
+        setAutoChecking(false);
+        return;
+      }
+
+      let meUser: unknown = cachedMeUser;
+      if (!meUser) {
+        try {
+          const res = await authApi.me();
+          if (cancelled) return;
+          // @audit-fixed: server returns `{ success, data: req.user }` — the User
+          // sits at `res.data.data`, not `res.data.data.user`. The old read kept
+          // returning undefined and silently dropped every auto-login attempt.
+          meUser = res.data?.data ?? null;
+        } catch {
+          // No valid session — proceed to login form (expected path, silent).
+          meUser = null;
+        }
+        if (cancelled) return;
+      }
+
+      // Persist whatever we resolved (success or null) for sibling tabs.
+      writeBootstrapCache({
+        ts: Date.now(),
+        setupNeedsSetup: setupData?.needsSetup ?? null,
+        setupIsMultiTenant: setupData?.isMultiTenant ?? null,
+        meUser: meUser ?? null,
+      });
+
+      if (meUser) {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          completeLogin(token, '', meUser as Parameters<typeof completeLogin>[2]);
+          navigate('/');
+          return;
+        }
+      }
+      if (!cancelled) setAutoChecking(false);
     })();
 
     return () => { cancelled = true; };

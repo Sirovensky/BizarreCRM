@@ -9,6 +9,19 @@
          is a client-side belt to the server's strict-origin-when-cross-origin
          Referrer-Policy header — the stricter of the two wins. -->
     <meta name="referrer" content="no-referrer" />
+    <!-- WEB-FE-001: Security headers as <meta> tags so static-host fallbacks
+         (Vite preview, raw S3, file://) still get a baseline policy when no
+         server-side `helmet` middleware is in front of the bundle. The prod
+         server already sends a stricter CSP via response headers; the meta
+         CSP below stays compatible with that one (it only intersects, never
+         loosens, server policy). 'unsafe-inline' on style-src is required by
+         Tailwind dev and Google Fonts CSS; 'unsafe-eval' is intentionally
+         omitted — Vite's prod bundle does not need it. hCaptcha (signup
+         only — see WEB-FA-010) needs https://hcaptcha.com + js.hcaptcha.com
+         on script-src and frame-src. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://js.hcaptcha.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: https: https://*.hcaptcha.com; frame-src https://*.hcaptcha.com https://newassets.hcaptcha.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="format-detection" content="telephone=no" />
     <title>BizarreCRM</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="manifest" href="/manifest.json" />

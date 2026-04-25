@@ -125,29 +125,44 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           </button>
         </div>
         <div className="p-6">
-          <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
-            Enter PIN
-          </label>
-          <div className="relative">
-            <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
-              }}
-              placeholder="4-6 digit PIN"
-              autoFocus
-              className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
-            />
-          </div>
-          {!employee.has_pin && (
-            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              No PIN set for this employee. Any value will be accepted.
-            </p>
+          {/* WEB-FG-004 fix: when the employee has no PIN configured, the
+              modal previously accepted ANY value — meaning a walk-up bystander
+              on an unattended kiosk could clock in/out a pin-less employee
+              and falsify timesheets/commissions. We now hard-block the form:
+              the input is disabled, Submit is disabled, and the operator is
+              told to set a PIN in Edit Employee first. The server is the
+              source of truth; this client gate just removes the trivial
+              walk-up attack. */}
+          {!employee.has_pin ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+              <p className="font-semibold">PIN required to clock in/out.</p>
+              <p className="mt-1">
+                {employee.first_name} {employee.last_name} has no PIN configured. Open Edit Employee
+                and set a 4–6 digit PIN before recording time.
+              </p>
+            </div>
+          ) : (
+            <>
+              <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                Enter PIN
+              </label>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
+                  }}
+                  placeholder="4-6 digit PIN"
+                  autoFocus
+                  className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+              </div>
+            </>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -155,17 +170,18 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
-            Cancel
+            {employee.has_pin ? 'Cancel' : 'Close'}
           </button>
           <button type="button"
             onClick={() => onSubmit(pin)}
-            disabled={pin.length < 4 || isPending}
+            disabled={!employee.has_pin || pin.length < 4 || isPending}
             className={cn(
-              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50',
+              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed',
               action === 'clock-in'
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-red-600 hover:bg-red-700',
             )}
+            title={!employee.has_pin ? 'Set a PIN before clocking in/out' : undefined}
           >
             {isPending ? (
               <span className="flex items-center gap-2">

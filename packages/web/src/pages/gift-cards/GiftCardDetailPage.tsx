@@ -33,8 +33,20 @@ interface GiftCardDetail {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Mirror GiftCardsListPage.formatCurrency: server is mid-migration from
+// float-dollars to integer-cents. Treat large integer values as cents so a
+// silent server flip doesn't render every balance 100x wrong.
+function dollarsFromMaybeCents(amount: number): number {
+  if (!Number.isFinite(amount)) return 0;
+  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
+}
+
 function formatCurrency(amount: number): string {
-  return `$${Math.abs(amount).toFixed(2)}`;
+  return `$${Math.abs(dollarsFromMaybeCents(amount)).toFixed(2)}`;
+}
+
+function formatBalance(amount: number): string {
+  return `$${dollarsFromMaybeCents(amount).toFixed(2)}`;
 }
 
 function formatDate(iso: string): string {
@@ -223,8 +235,8 @@ export function GiftCardDetailPage() {
           </div>
 
           <div className="text-right">
-            <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{`$${card.current_balance.toFixed(2)}`}</p>
-            <p className="text-xs text-surface-500 dark:text-surface-400">of {`$${card.initial_balance.toFixed(2)}`} initial</p>
+            <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatBalance(card.current_balance)}</p>
+            <p className="text-xs text-surface-500 dark:text-surface-400">of {formatBalance(card.initial_balance)} initial</p>
           </div>
         </div>
 

@@ -155,6 +155,7 @@ export function Sidebar() {
 
   return (
     <aside
+      data-app-chrome="true"
       className={cn(
         'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-surface-200 bg-white transition-all duration-200 dark:border-surface-800 dark:bg-surface-900',
         sidebarCollapsed ? 'w-16' : 'w-64'

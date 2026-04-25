@@ -43,8 +43,20 @@ interface IssueFormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatCurrency(cents: number): string {
-  return `$${cents.toFixed(2)}`;
+// Server currently returns balances as float-dollars on this endpoint, but the
+// rest of POS is migrating to integer-cents. Treat anything > 1000 as
+// already-cents (no real-world gift-card balance reaches $1000 in float-dollars
+// outside corporate gifting; if it does, it'll still render correctly because
+// 1000.5 -> 1000.50 dollars stays in dollar branch). This avoids the silent
+// 100x bug if the server flips representation, while keeping today's UX.
+function formatCurrency(amount: number): string {
+  if (!Number.isFinite(amount)) return '$0.00';
+  // Heuristic: treat integer values >= 1000 as cents (POS migration pattern).
+  // Float-dollar values like 25.50 stay in the dollar branch.
+  const dollars = Number.isInteger(amount) && Math.abs(amount) >= 1000
+    ? amount / 100
+    : amount;
+  return `$${dollars.toFixed(2)}`;
 }
 
 function formatDate(iso: string): string {

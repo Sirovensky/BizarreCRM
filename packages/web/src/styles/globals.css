@@ -70,6 +70,50 @@
       background: white !important;
       color: black !important;
     }
+
+    /* WEB-FF-008: Default detail-page print behaviour.
+     * Owners reflexively Ctrl+P from /invoices/:id, /tickets/:id,
+     * /estimates/:id, /customers/:id and previously printed sidebar
+     * + header + filter chrome alongside the document. The dedicated
+     * /print/* routes opt out of this via the `.print-route` class on
+     * their root, so this block only hides chrome on the regular app
+     * shell.
+     *
+     * Strategy: hide the Sidebar (<aside>), Header (<header>), dev/
+     * trial/impersonation banners, toasts, modals, and let <main>
+     * bleed to the full page width. Anything explicitly opted out
+     * with `.no-print` is also hidden; anything inside
+     * `.print-route` keeps its own rules.
+     */
+    body:not(.print-route) [data-app-chrome="true"],
+    body:not(.print-route) [data-no-print="true"],
+    body:not(.print-route) .no-print,
+    /* Toaster + react-hot-toast portal */
+    body:not(.print-route) [data-rht-toaster],
+    /* Generic dialog/modal overlays — never useful on paper */
+    body:not(.print-route) [role="dialog"],
+    body:not(.print-route) [role="alertdialog"] {
+      display: none !important;
+    }
+    body:not(.print-route) main {
+      overflow: visible !important;
+      height: auto !important;
+      max-height: none !important;
+    }
+    body:not(.print-route) {
+      height: auto !important;
+      overflow: visible !important;
+      background: white !important;
+    }
+    /* Collapse the flex shell that offsets content for the sidebar so
+     * the document fills the printable width. */
+    body:not(.print-route) .md\:ml-16,
+    body:not(.print-route) .md\:ml-64 {
+      margin-left: 0 !important;
+    }
+    /* Avoid clipping long detail tables across pages. */
+    body:not(.print-route) table { page-break-inside: auto; }
+    body:not(.print-route) tr { page-break-inside: avoid; page-break-after: auto; }
   }
 
   /* Touch targets for mobile — minimum 44px on interactive elements */

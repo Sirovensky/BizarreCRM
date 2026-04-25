@@ -116,6 +116,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-50 dark:bg-surface-950">
+      {/*
+        WEB-FE-002: Skip-to-main-content link for keyboard users so they
+        don't have to tab through the ~30 sidebar items on every page nav.
+        Visually hidden until focused (sr-only + focus styles), then
+        appears as a high-contrast pill in the top-left. Lands focus on
+        `<main id="main-content">` below.
+      */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+      >
+        Skip to main content
+      </a>
+
       {/* Mobile backdrop overlay */}
       {mobileSidebarOpen && (
         <div
@@ -169,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <TrialBanner />
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">
           <div className="p-6 h-full">
             {children}
           </div>

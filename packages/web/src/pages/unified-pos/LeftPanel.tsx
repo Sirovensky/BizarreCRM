@@ -19,6 +19,20 @@ function UnifiedSearchBar() {
   const { setCustomer, customer, addProduct, addRepair, clearCart } = useUnifiedPosStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // WEB-FH-003: single-fire guard. Enter-keydown and onMouseDown can BOTH
+  // resolve to `results[0].action()` in the same tick (Enter while a touch
+  // is mid-down, or a barcode scanner emitting chars+Enter). Without this
+  // ref the action runs twice — second cart row, double API call. The
+  // 250 ms cooldown matches the input-debounce so legitimate fast scans
+  // still register as separate actions when the input is also cleared.
+  const actionInFlightRef = useRef(false);
+  const fireOnce = (fn: () => void) => {
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    try { fn(); } finally {
+      setTimeout(() => { actionInFlightRef.current = false; }, 250);
+    }
+  };
 
   useEffect(() => {
     if (!input.trim()) { setResults([]); return; }
@@ -129,12 +143,20 @@ function UnifiedSearchBar() {
             label: p.name,
             sub: p.sku ? `SKU: ${p.sku}` : undefined,
             action: () => {
+              // WEB-FH-004: pass stock cap to the store. Service-type rows
+              // have no `in_stock`, so skip the clamp.
+              const isService = p.item_type === 'service';
+              const stockCap = isService ? undefined : Number(p.in_stock ?? 0);
+              if (stockCap === 0 && !isService) {
+                toast.error(`${p.name} is out of stock`);
+                return;
+              }
               addProduct({
                 type: 'product', id: genId(), inventoryItemId: p.id,
                 name: p.name, sku: p.sku || null, quantity: 1,
                 unitPrice: p.retail_price ?? p.price ?? 0,
                 taxable: true, taxInclusive: !!p.tax_inclusive,
-              });
+              }, { stockCap });
               if (!isCancelled) { setInput(''); setResults([]); }
               toast.success(`Added ${p.name}`);
             },
@@ -195,7 +217,9 @@ function UnifiedSearchBar() {
             )}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && results.length > 0) {
-                results[0].action();
+                // WEB-FH-003: guard against Enter+Click race firing the
+                // same action twice.
+                fireOnce(() => results[0].action());
               }
             }}
           />
@@ -208,7 +232,9 @@ function UnifiedSearchBar() {
             return (
               <button
                 key={i}
-                onMouseDown={(e) => { e.preventDefault(); r.action(); }}
+                // WEB-FH-003: same fireOnce guard so a click during the
+                // Enter-keydown window doesn't double-fire.
+                onMouseDown={(e) => { e.preventDefault(); fireOnce(() => r.action()); }}
                 className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
               >
                 <Icon className="h-4 w-4 shrink-0 text-surface-400" />
@@ -339,33 +365,60 @@ function TicketSearch() {
 function BarcodeSearch() {
   const { addProduct } = useUnifiedPosStore();
   const inputRef = useRef<HTMLInputElement>(null);
+  // WEB-FH-003: rapid scanner emissions or Enter held down by an old
+  // imaging gun can trigger overlapping handleKey calls — without a guard
+  // the same barcode adds twice. Lock per scan; the lock releases on
+  // completion (success, miss, or error).
+  const scanInFlightRef = useRef(false);
 
   const handleKey = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     const code = (e.target as HTMLInputElement).value.trim();
     if (!code) return;
+    if (scanInFlightRef.current) return;
+    scanInFlightRef.current = true;
 
     try {
       const res = await posApi.products({ keyword: code });
       const found = res.data?.data?.items?.[0];
       if (found) {
-        addProduct({
-          type: 'product',
-          id: genId(),
-          inventoryItemId: found.id,
-          name: found.name,
-          sku: found.sku || null,
-          quantity: 1,
-          unitPrice: found.retail_price ?? found.price ?? 0,
-          taxable: true,
-          taxInclusive: !!found.tax_inclusive,
-        });
+        // WEB-FH-004: clamp at available stock for non-service items.
+        const isService = (found as any).item_type === 'service';
+        const stockCap = isService ? undefined : Number((found as any).in_stock ?? 0);
+        if (stockCap === 0 && !isService) {
+          toast.error(`${found.name} is out of stock`);
+        } else {
+          // Pre-check the cap against existing cart qty so the cashier
+          // sees a clear toast instead of a silent clamp.
+          const cartItems = useUnifiedPosStore.getState().cartItems;
+          const existing = cartItems.find(
+            (c) => c.type === 'product' && c.inventoryItemId === found.id,
+          );
+          const existingQty = existing && existing.type === 'product' ? existing.quantity : 0;
+          if (stockCap != null && existingQty + 1 > stockCap) {
+            toast.error(`Only ${stockCap} of "${found.name}" in stock`);
+          } else {
+            addProduct({
+              type: 'product',
+              id: genId(),
+              inventoryItemId: found.id,
+              name: found.name,
+              sku: found.sku || null,
+              quantity: 1,
+              unitPrice: found.retail_price ?? found.price ?? 0,
+              taxable: true,
+              taxInclusive: !!found.tax_inclusive,
+            }, { stockCap });
+          }
+        }
         if (inputRef.current) inputRef.current.value = '';
       } else {
         toast.error(`No item found for: ${code}`);
       }
     } catch {
       toast.error('Product search failed');
+    } finally {
+      scanInFlightRef.current = false;
     }
   };
 
@@ -744,7 +797,18 @@ function useTotals(): Totals {
     }
 
     const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * taxRate * 100) / 100;
+
+    // WEB-FH-006: tax MUST be computed on the discounted taxable amount,
+    // not the pre-discount taxable amount. CA / TX / NY / FL / most US
+    // states levy sales tax on the net price after discount. Allocate the
+    // discount pro-rata across taxable lines: taxable_share = discount *
+    // (taxableAmount / subtotal). Non-taxable items (e.g. labor) shoulder
+    // the rest of the discount but never affect the tax base. Falls back
+    // to "tax on full taxable" only when subtotal == 0 (empty cart edge).
+    const taxableShareOfDiscount =
+      subtotal > 0 ? discountAmount * (taxableAmount / subtotal) : 0;
+    const netTaxable = Math.max(0, taxableAmount - taxableShareOfDiscount);
+    const tax = Math.round(netTaxable * taxRate * 100) / 100;
     const total = Math.round((subtotal + tax - discountAmount) * 100) / 100;
     const itemCount = cartItems.length;
 
@@ -906,7 +970,14 @@ export function LeftPanel({ collapsed, onToggle, onNewCustomer }: { collapsed?: 
           </div>
         )}
         <div className="flex justify-between text-xs text-surface-500 dark:text-surface-400">
-          <span>Tax (8.865%){totals.tax === 0 && totals.subtotal > 0 ? ' \u2014 labor exempt' : ''}</span>
+          {/* WEB-FH-007: rate label MUST come from useDefaultTaxRate (live
+              tenant config), not the legacy hardcoded "8.865%". Format with
+              up to 3 fractional digits to keep precision for rates like
+              7.625% or 8.875% without showing trailing zeros for "10%". */}
+          <span>
+            Tax ({(taxRate * 100).toLocaleString(undefined, { maximumFractionDigits: 3 })}%)
+            {totals.tax === 0 && totals.subtotal > 0 ? ' \u2014 labor exempt' : ''}
+          </span>
           <span>${totals.tax.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm font-bold text-surface-900 dark:text-surface-100 pt-1 border-t border-surface-200 dark:border-surface-700">
