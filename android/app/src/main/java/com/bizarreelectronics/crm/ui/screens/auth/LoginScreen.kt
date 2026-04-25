@@ -3277,83 +3277,96 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
         }
     }
 
-    // ── Secret / manual-entry display ──────────────────────────────────────
+    // ── Secret / manual-entry display — collapsed by default ───────────────
     val displaySecret = state.twoFaManualEntry.ifBlank { state.twoFaSecret }
     if (displaySecret.isNotBlank()) {
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Or enter this key manually:",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        var manualEntryExpanded by rememberSaveable { mutableStateOf(false) }
         Spacer(Modifier.height(4.dp))
-        Surface(
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
+        TextButton(
+            onClick = { manualEntryExpanded = (manualEntryExpanded == false) },
+            modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally),
         ) {
-            SelectionContainer {
-                Text(
-                    text = displaySecret,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontFamily = BrandMono.fontFamily,
-                        letterSpacing = 2.sp,
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
-            }
+            Text(
+                if (manualEntryExpanded) "Hide manual key" else "Can't scan?",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        // Row: "Copy secret" + optional "Open authenticator"
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = {
-                    ClipboardUtil.copySensitive(
-                        context = context,
-                        label = "2FA secret",
-                        text = displaySecret,
-                        clearAfterMillis = 30_000L,
-                    )
-                },
-                modifier = Modifier.weight(1f),
+        if (manualEntryExpanded) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Or enter this key manually:",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Copy key", style = MaterialTheme.typography.labelMedium)
-            }
-
-            // "Open authenticator" — only shown when an app handles otpauth://
-            val otpauthUri = remember(state.twoFaSecret, state.username) {
-                if (state.twoFaSecret.isBlank()) null
-                else {
-                    val issuer = "BizarreCRM"
-                    val accountName = state.username.ifBlank { "user" }
-                    Uri.parse(
-                        "otpauth://totp/$issuer:$accountName" +
-                        "?secret=${state.twoFaSecret}&issuer=$issuer"
+                SelectionContainer {
+                    Text(
+                        text = displaySecret,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontFamily = BrandMono.fontFamily,
+                            letterSpacing = 2.sp,
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     )
                 }
             }
-            val canOpenAuthenticator = remember(otpauthUri) {
-                if (otpauthUri == null) false
-                else {
-                    val intent = Intent(Intent.ACTION_VIEW, otpauthUri)
-                    context.packageManager.resolveActivity(intent, 0) != null
-                }
-            }
-            if (canOpenAuthenticator && otpauthUri != null) {
+            Spacer(Modifier.height(8.dp))
+            // Row: "Copy key" + optional "Open authenticator"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 OutlinedButton(
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, otpauthUri))
+                        ClipboardUtil.copySensitive(
+                            context = context,
+                            label = "2FA secret",
+                            text = displaySecret,
+                            clearAfterMillis = 30_000L,
+                        )
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Open app", style = MaterialTheme.typography.labelMedium)
+                    Text("Copy key", style = MaterialTheme.typography.labelMedium)
+                }
+
+                // "Open authenticator" — only shown when an app handles otpauth://
+                val otpauthUri = remember(state.twoFaSecret, state.username) {
+                    if (state.twoFaSecret.isBlank()) null
+                    else {
+                        val issuer = "BizarreCRM"
+                        val accountName = state.username.ifBlank { "user" }
+                        Uri.parse(
+                            "otpauth://totp/$issuer:$accountName" +
+                            "?secret=${state.twoFaSecret}&issuer=$issuer"
+                        )
+                    }
+                }
+                val canOpenAuthenticator = remember(otpauthUri) {
+                    if (otpauthUri == null) false
+                    else {
+                        val intent = Intent(Intent.ACTION_VIEW, otpauthUri)
+                        context.packageManager.resolveActivity(intent, 0) != null
+                    }
+                }
+                if (canOpenAuthenticator && otpauthUri != null) {
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, otpauthUri))
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open app", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
@@ -3452,7 +3465,7 @@ private fun TotpCodeInputContent(state: LoginUiState, viewModel: LoginViewModel,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
         ),
-        leadingIcon = { Icon(Icons.Default.Security, null) },
+        leadingIcon = { Icon(Icons.Default.Lock, null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = {
             focusManager.clearFocus() // Dismiss keyboard
