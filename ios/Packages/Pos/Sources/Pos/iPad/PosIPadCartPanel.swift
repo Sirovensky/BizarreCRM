@@ -37,8 +37,12 @@ public struct PosIPadCartPanel: View {
         VStack(spacing: 0) {
             cartSummaryHeader
             Divider().background(.bizarreOutline)
+            // Cart line list — scrollable, fills available space
+            cartLineList
+            // Coupon row pinned at bottom of the list area (per mockup screen 2)
+            couponRow
+            Divider().background(.bizarreOutline)
             tenderPickerRow
-            Spacer(minLength: BrandSpacing.sm)
             Divider().background(.bizarreOutline)
             totalsBlock
             Divider().background(.bizarreOutline)
@@ -46,6 +50,138 @@ public struct PosIPadCartPanel: View {
         }
         .accessibilityIdentifier("pos.ipad.cartPanel")
     }
+
+    // MARK: - Cart line list
+
+    /// Scrollable list of cart lines. Each row has a `.hoverEffect(.highlight)`
+    /// for pointer devices and a `.contextMenu` with quick actions per
+    /// CLAUDE.md requirement.
+    private var cartLineList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(cart.items) { item in
+                    cartLineRow(item)
+                    Divider()
+                        .padding(.leading, BrandSpacing.md + 28 + BrandSpacing.sm)
+                        .background(Color.bizarreOutline.opacity(0.3))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cartLineRow(_ item: CartItem) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            // Icon area
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.xs)
+                    .fill(Color.bizarreOrangeContainer.opacity(0.25))
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.bizarreOrange)
+            }
+            .frame(width: 28, height: 28)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(item.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(1)
+                if let sku = item.sku, !sku.isEmpty {
+                    Text(sku)
+                        .font(.brandMono(size: 10))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                        .textSelection(.enabled)     // per CLAUDE.md SKUs are text-selectable
+                }
+            }
+
+            Spacer(minLength: BrandSpacing.xxs)
+
+            Text(CartMath.formatCents(item.lineSubtotalCents))
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .contentShape(Rectangle())
+        // Hover highlight for pointer/trackpad per CLAUDE.md
+        .hoverEffect(.highlight)
+        // Context menu with quick edit actions per CLAUDE.md
+        .contextMenu {
+            Button {
+                BrandHaptics.tap()
+                onShowCartList?()
+            } label: {
+                Label("Edit line", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                BrandHaptics.tap()
+                cart.removeLine(id: item.id)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.name), \(CartMath.formatCents(item.lineSubtotalCents))")
+        .accessibilityIdentifier("pos.ipad.cartLine.\(item.id)")
+    }
+
+    // MARK: - Coupon row
+
+    /// Glass-card coupon entry pinned at the bottom of the cart body area
+    /// (per mockup screen 2, line ~2215).
+    private var couponRow: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "tag.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+
+            TextField("Coupon code", text: $couponCode)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .textFieldStyle(.plain)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("pos.ipad.couponField")
+
+            if !couponCode.isEmpty {
+                Button {
+                    BrandHaptics.tapMedium()
+                    // TODO: wire to coupon validation endpoint
+                } label: {
+                    Text("APPLY")
+                        .font(.brandLabelLarge().weight(.bold))
+                        .foregroundStyle(.bizarreTeal)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Apply coupon code")
+                .accessibilityIdentifier("pos.ipad.applyCoupon")
+            }
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .background(
+            Color.bizarreSurface1.opacity(0.7),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+        )
+        .brandGlass(.clear, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.bottom, BrandSpacing.sm)
+        .accessibilityIdentifier("pos.ipad.couponRow")
+    }
+
+    // MARK: - Coupon entry state
+
+    /// Local coupon code state — owned by the cart panel on iPad.
+    @State private var couponCode: String = ""
 
     // MARK: - Sections
 
